@@ -6,7 +6,28 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
+
+/**
+ * @type {import('esbuild').Plugin}
+ */
+const esbuildProblemMatcherPlugin = {
+    name: 'esbuild-problem-matcher',
+
+    setup(build) {
+        build.onStart(() => {
+            console.log(`${watch ? '[watch]' : ''} build started`);
+        });
+        build.onEnd((result) => {
+            result.errors.forEach(({ text, location }) => {
+                console.error(`✘ [ERROR] ${text}`);
+                console.error(`    ${location.file}:${location.line}:${location.column}:`);
+            });
+            console.log(`${watch ? '[watch]' : ''} build finished`);
+        });
+    },
+};
 
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
@@ -15,13 +36,14 @@ const buildOptions = {
     external: ['vscode'],
     platform: 'node',
     outfile: join('dist', 'extension.js'),
-    sourcemap: true,
-    minify: process.env.NODE_ENV === 'production',
+    sourcemap: !production,
+    minify: production,
+    sourcesContent: false,
     format: 'cjs',
     target: 'es2024',
-    define: {
-        'process.env.NODE_ENV': `"${process.env.NODE_ENV || 'development'}"`
-    },
+    plugins: [
+        esbuildProblemMatcherPlugin
+    ]
 };
 
 if (watch) {

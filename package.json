@@ -27,10 +27,13 @@
         ]
     },
     "scripts": {
-        "vscode:prepublish": "npm run build",
-        "build": "tsc --noEmit && node ./esbuild.mjs",
-        "watch": "tsc --noEmit && node ./esbuild.mjs --watch",
+        "vscode:prepublish": "npm run package",
+        "build": "npm run clean && npm run check-types && node ./esbuild.mjs",
+        "watch": "npm run clean && npm run check-types && node ./esbuild.mjs --watch",
+        "package": "npm run clean && npm run check-types && node esbuild.mjs --production",
         "pretest": "npm run build",
+        "check-types": "tsc --noEmit",
+        "clean": "rimraf -g ./*.vsix && rimraf ./dist",
         "test": "jest"
     },
     "dependencies": {
@@ -47,6 +50,7 @@
         "esbuild": "^0.25.0",
         "jest": "^29.7.0",
         "jest-mock-vscode": "^4.1.0",
+        "rimraf": "^6.0.1",
         "ts-jest": "^29.2.6",
         "typescript": "^5.8.2"
     }
