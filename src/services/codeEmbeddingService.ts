@@ -20,7 +20,7 @@ export interface EmbeddingOptions {
  * Service for generating embeddings from code using transformer models
  */
 export class CodeEmbeddingService {
-    private primaryModelName = 'Xenova/qodo-embed-1-1.5b';
+    private primaryModelName = 'Qodo/Qodo-Embed-1-1.5B';
     private fallbackModelName = 'Xenova/all-MiniLM-L6-v2';
     private embeddingPipeline: FeatureExtractionPipeline | null = null;
     private env: any = null;
@@ -322,10 +322,10 @@ export class CodeEmbeddingService {
             this.context.workspaceState.update('codeEmbeddingService.status', 'initializing');
             this.currentModelName = this.primaryModelName;
 
-            vscode.window.setStatusBarMessage(`Loading code embedding model: ${this.currentModelName}...`, 3000);
-            this.embeddingPipeline = await pipeline('feature-extraction', this.currentModelName);
+            vscode.window.setStatusBarMessage(`Loading code embedding model...`, 3000);
+            this.embeddingPipeline = await this.pipeline!('feature-extraction', this.currentModelName);
 
-            vscode.window.setStatusBarMessage(`Code embedding model loaded: ${this.currentModelName}`, 3000);
+            vscode.window.setStatusBarMessage(`Code embedding model loaded.`, 3000);
             this.context.workspaceState.update('codeEmbeddingService.status', 'ready');
             this.context.workspaceState.update('codeEmbeddingService.model', this.currentModelName);
 
@@ -337,10 +337,10 @@ export class CodeEmbeddingService {
             try {
                 this.currentModelName = this.fallbackModelName;
 
-                vscode.window.setStatusBarMessage(`Loading fallback embedding model: ${this.currentModelName}...`, 3000);
+                vscode.window.setStatusBarMessage(`Loading fallback embedding model...`, 3000);
                 this.embeddingPipeline = await this.pipeline!('feature-extraction', this.currentModelName);
 
-                vscode.window.setStatusBarMessage(`Fallback embedding model loaded: ${this.currentModelName}`, 3000);
+                vscode.window.setStatusBarMessage(`Fallback embedding model loaded.`, 3000);
                 this.context.workspaceState.update('codeEmbeddingService.status', 'ready-fallback');
                 this.context.workspaceState.update('codeEmbeddingService.model', this.currentModelName);
 

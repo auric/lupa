@@ -15,7 +15,8 @@ global.Function = function (...args) {
             // Define a pipeline that can simulate failure on demand
             const mockPipeline = jest.fn().mockImplementation((task, model) => {
                 // If we're testing failure and this is the primary model, throw an error
-                if (global.__testPrimaryModelFailure && model === 'Xenova/qodo-embed-1-1.5b') {
+                // Use the exact model name from codeEmbeddingService.ts
+                if (global.__testPrimaryModelFailure && model === 'Qodo/Qodo-Embed-1-1.5B') {
                     throw new Error('Primary model load failed');
                 }
                 // Otherwise return a successful pipeline
