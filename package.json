@@ -1,0 +1,53 @@
+{
+    "name": "codelens-pr-analyzer",
+    "displayName": "CodeLens PR Analyzer",
+    "description": "A VS Code extension for comprehensive pull request analysis using GitHub Copilot models",
+    "version": "0.1.0",
+    "engines": {
+        "vscode": "^1.91.0",
+        "node": ">=20"
+    },
+    "categories": [
+        "Other"
+    ],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "codelens-pr-analyzer.analyzePR",
+                "title": "Analyze Pull Request"
+            },
+            {
+                "command": "codelens-pr-analyzer.configureModels",
+                "title": "Configure PR Analyzer Models"
+            }
+        ]
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run build",
+        "build": "tsc --noEmit && node ./esbuild.mjs",
+        "watch": "tsc --noEmit && node ./esbuild.mjs --watch",
+        "pretest": "npm run build",
+        "test": "jest"
+    },
+    "dependencies": {
+        "@xenova/transformers": "^2.17.2",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0"
+    },
+    "devDependencies": {
+        "@types/jest": "^29.5.14",
+        "@types/node": "^22.13.8",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "@types/vscode": "^1.97.0",
+        "esbuild": "^0.25.0",
+        "jest": "^29.7.0",
+        "jest-mock-vscode": "^4.1.0",
+        "ts-jest": "^29.2.6",
+        "typescript": "^5.8.2"
+    }
+}

@@ -1,0 +1,18 @@
+module.exports = {
+    preset: 'ts-jest',
+    testEnvironment: 'node',
+    roots: ['<rootDir>/src'],
+    testMatch: ['**/__tests__/**/*.+(ts|tsx|js)', '**/?(*.)+(spec|test).+(ts|tsx|js)'],
+    transform: {
+        '^.+\\.(ts|tsx)$': 'ts-jest',
+    },
+    moduleNameMapper: {
+        '^vscode$': '<rootDir>/__mocks__/vscode.js'
+    },
+    moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+    setupFiles: ['<rootDir>/jest.setup.js'],
+    testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+    collectCoverage: true,
+    coverageDirectory: 'coverage',
+    coverageReporters: ['text', 'lcov'],
+};
