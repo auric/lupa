@@ -2,6 +2,8 @@ import esbuild from 'esbuild';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { nativeNodeModulesPlugin } from 'esbuild-native-node-modules-plugin';
+import copyPlugin from 'esbuild-plugin-copy';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -42,8 +44,17 @@ const buildOptions = {
     format: 'cjs',
     target: 'es2024',
     plugins: [
-        esbuildProblemMatcherPlugin
-    ]
+        esbuildProblemMatcherPlugin,
+        nativeNodeModulesPlugin,
+        copyPlugin({
+            resolveFrom: "cwd",
+            assets: {
+                from: ["./node_modules/onnxruntime-node/bin/napi-v3/win32/x64/*"],
+                to: ["./dist/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/"],
+            },
+        }),
+    ],
+    external: ['vscode', 'onnxruntime-node'],
 };
 
 if (watch) {

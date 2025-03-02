@@ -10,7 +10,6 @@ module.exports = {
         '^vscode$': '<rootDir>/__mocks__/vscode.js'
     },
     moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-    setupFiles: ['<rootDir>/jest.setup.js'],
     testPathIgnorePatterns: ['/node_modules/', '/dist/'],
     collectCoverage: true,
     coverageDirectory: 'coverage',

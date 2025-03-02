@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import type { FeatureExtractionPipeline, FeatureExtractionPipelineOptions } from '@xenova/transformers';
+import type { FeatureExtractionPipeline, FeatureExtractionPipelineOptions } from '@huggingface/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -23,8 +24,6 @@ export class CodeEmbeddingService {
     private primaryModelName = 'Qodo/Qodo-Embed-1-1.5B';
     private fallbackModelName = 'Xenova/all-MiniLM-L6-v2';
     private embeddingPipeline: FeatureExtractionPipeline | null = null;
-    private env: any = null;
-    private pipeline: any = null;
     private currentModelName: string;
     private isInitializing = false;
     private initializationPromise: Promise<void> | null = null;
@@ -197,13 +196,13 @@ export class CodeEmbeddingService {
         await this.clearCache(cachePath);
 
         // Set appropriate cache directory for this operation
-        this.env.cacheDir = cachePath;
+        env.cacheDir = cachePath;
 
         vscode.window.showInformationMessage(`Regenerating ${isPrimary ? 'primary' : 'fallback'} cache...`);
 
         try {
             // Load model to populate cache
-            const tempPipeline = await this.pipeline!('feature-extraction', modelName);
+            const tempPipeline = await pipeline('feature-extraction', modelName);
 
             // Generate a small test embedding to ensure cache is populated
             await tempPipeline("test code", { pooling: 'mean' });
@@ -312,18 +311,14 @@ export class CodeEmbeddingService {
      */
     private async _initializeModel(): Promise<void> {
         try {
-            const TransformersApi = Function('return import("@xenova/transformers")')();
-            const { pipeline, env } = await TransformersApi;
-            this.pipeline = pipeline;
-            this.env = env;
-            this.env.allowLocalModels = false;
-            this.env.allowRemoteModels = true;
+            env.allowLocalModels = false;
+            env.allowRemoteModels = true;
 
             this.context.workspaceState.update('codeEmbeddingService.status', 'initializing');
             this.currentModelName = this.primaryModelName;
 
             vscode.window.setStatusBarMessage(`Loading code embedding model...`, 3000);
-            this.embeddingPipeline = await this.pipeline!('feature-extraction', this.currentModelName);
+            this.embeddingPipeline = await pipeline('feature-extraction', this.currentModelName);
 
             vscode.window.setStatusBarMessage(`Code embedding model loaded.`, 3000);
             this.context.workspaceState.update('codeEmbeddingService.status', 'ready');
@@ -338,7 +333,7 @@ export class CodeEmbeddingService {
                 this.currentModelName = this.fallbackModelName;
 
                 vscode.window.setStatusBarMessage(`Loading fallback embedding model...`, 3000);
-                this.embeddingPipeline = await this.pipeline!('feature-extraction', this.currentModelName);
+                this.embeddingPipeline = await pipeline('feature-extraction', this.currentModelName);
 
                 vscode.window.setStatusBarMessage(`Fallback embedding model loaded.`, 3000);
                 this.context.workspaceState.update('codeEmbeddingService.status', 'ready-fallback');
