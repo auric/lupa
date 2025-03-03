@@ -21,7 +21,7 @@ export interface EmbeddingOptions {
  * Service for generating embeddings from code using transformer models
  */
 export class CodeEmbeddingService {
-    private primaryModelName = 'Qodo/Qodo-Embed-1-1.5B';
+    private primaryModelName = 'Salesforce/SFR-Embedding-Code-400M_R';
     private fallbackModelName = 'Xenova/all-MiniLM-L6-v2';
     private embeddingPipeline: FeatureExtractionPipeline | null = null;
     private currentModelName: string;
