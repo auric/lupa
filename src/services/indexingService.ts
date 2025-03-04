@@ -411,7 +411,7 @@ export class IndexingService implements vscode.Disposable {
 
         console.log(`Worker ${workerIndex !== -1 ? workerIndex : 'unknown'} exited with code ${code}`);
 
-        if (workerIndex !== -1 && code !== 0) {
+        if (workerIndex !== -1 && code !== 0 && this.workersInitialized) {
             // Non-zero exit code indicates an error
             this.workers[workerIndex].status = 'error';
             this.updateStatusBar();
@@ -793,8 +793,12 @@ export class IndexingService implements vscode.Disposable {
             // Cancel any ongoing operations
             this.cancelProcessing();
 
+            // Reset initialization flag to prevent workers recriation
+            this.workersInitialized = false;
+
             // Terminate all workers
-            for (const workerInfo of this.workers) {
+            const workersCopy = [...this.workers];
+            for (const workerInfo of workersCopy) {
                 try {
                     await workerInfo.worker.terminate();
                 } catch (e) {
@@ -804,7 +808,6 @@ export class IndexingService implements vscode.Disposable {
 
             // Clear workers array
             this.workers = [];
-            this.workersInitialized = false;
 
             // Update status bar
             this.updateStatusBar();
@@ -892,7 +895,7 @@ export class IndexingService implements vscode.Disposable {
     /**
      * Dispose resources
      */
-    public dispose(): void {
+    public async dispose(): Promise<void> {
         // Cancel any ongoing operations
         if (this.cancelTokenSource) {
             // Use try-catch to prevent errors during dispose
@@ -909,8 +912,10 @@ export class IndexingService implements vscode.Disposable {
         this.activeProcessing.clear();
 
         // Terminate all workers
-        this.shutdownWorkers().catch(e => {
+        try {
+            await this.shutdownWorkers();
+        } catch (e) {
             console.warn('Error shutting down workers during dispose:', e);
-        });
+        }
     }
 }
