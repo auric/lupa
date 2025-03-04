@@ -19,7 +19,7 @@ jest.mock('@huggingface/transformers', () => {
     // Mock pipeline function that will automatically handle test conditions
     const mockPipeline = jest.fn().mockImplementation((task: string, model: string) => {
         // Check if we're testing fallback behavior
-        if (global.__testPrimaryModelFailure && model === 'Salesforce/SFR-Embedding-Code-400M_R') {
+        if (global.__testPrimaryModelFailure && model === 'jinaai/jina-embeddings-v2-base-code') {
             throw new Error('Primary model load failed');
         }
         return async (text: string, options: Record<string, any>) => {
