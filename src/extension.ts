@@ -1,54 +1,30 @@
 import * as vscode from 'vscode';
-import { CodeEmbeddingService } from './services/codeEmbeddingService';
+import { ModelCacheService } from './services/modelCacheService';
+import { PRAnalyzer } from './services/prAnalyzer';
+import { StatusBarService } from './services/statusBarService';
 
+// Main extension activation function
 export async function activate(context: vscode.ExtensionContext) {
-    console.log('Activating CodeLens PR Analyzer extension');
+    console.log('Activating codelens-pr-analyzer extension');
 
-    // Create services
-    const codeEmbeddingService = new CodeEmbeddingService(context);
+    try {
+        // Initialize model cache service
+        const modelCacheService = new ModelCacheService(context);
 
-    // Register commands
-    const analyzePRCommand = vscode.commands.registerCommand(
-        'codelens-pr-analyzer.analyzePR',
-        async () => {
-            vscode.window.showInformationMessage('Analyzing PR...');
+        // Create the PR analyzer instance
+        const prAnalyzer = new PRAnalyzer(context, modelCacheService);
 
-            try {
-                // This will demonstrate the embedding service works
-                const testCode = `
-          function hello() {
-            console.log("Hello, World!");
-          }
-        `;
-
-                vscode.window.showInformationMessage('Generating embedding for test code...');
-
-                const embedding = await codeEmbeddingService.generateEmbedding(testCode);
-
-                vscode.window.showInformationMessage(
-                    `Successfully generated embedding with ${embedding.length} dimensions`
-                );
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                vscode.window.showErrorMessage(`Error: ${errorMessage}`);
-            }
-        }
-    );
-
-    const configureModelsCommand = vscode.commands.registerCommand(
-        'codelens-pr-analyzer.configureModels',
-        () => {
-            vscode.window.showInformationMessage('Model configuration panel will be implemented here');
-        }
-    );
-
-    // Add to subscriptions
-    context.subscriptions.push(analyzePRCommand, configureModelsCommand);
-    context.subscriptions.push(codeEmbeddingService);
-
-    console.log('CodeLens PR Analyzer extension activated');
+        // Register services to be disposed when the extension is deactivated
+        context.subscriptions.push(modelCacheService);
+        context.subscriptions.push(prAnalyzer);
+    } catch (error) {
+        console.error('Failed to activate extension:', error);
+        vscode.window.showErrorMessage(`Failed to activate PR Analyzer: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
+// Main extension deactivation function
 export function deactivate() {
-    console.log('CodeLens PR Analyzer extension deactivated');
+    console.log('Deactivating codelens-pr-analyzer extension');
+    StatusBarService.reset();
 }

@@ -23,6 +23,14 @@
             {
                 "command": "codelens-pr-analyzer.configureModels",
                 "title": "Configure PR Analyzer Models"
+            },
+            {
+                "command": "codelens-pr-analyzer.manageModelCache",
+                "title": "Manage PR Analyzer Model Cache"
+            },
+            {
+                "command": "codelens-pr-analyzer.manageIndexing",
+                "title": "Manage PR Analyzer Indexing"
             }
         ]
     },
@@ -32,8 +40,9 @@
         "watch": "npm run check-types && node ./esbuild.mjs --watch",
         "package": "npm run clean && npm run check-types && node esbuild.mjs --production",
         "pretest": "npm run build",
+        "prepare-models": "node ./scripts/prepare-models.js",
         "check-types": "tsc --noEmit",
-        "clean": "rimraf -g ./*.vsix && rimraf ./dist",
+        "clean": "rimraf -g ./*.vsix && rimraf ./dist && rimraf ./models",
         "test": "jest"
     },
     "dependencies": {
@@ -56,5 +65,9 @@
         "rimraf": "^6.0.1",
         "ts-jest": "^29.2.6",
         "typescript": "^5.8.2"
-    }
+    },
+    "files": [
+        "dist/**/*",
+        "models/**/*"
+    ]
 }

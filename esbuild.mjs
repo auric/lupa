@@ -33,11 +33,14 @@ const esbuildProblemMatcherPlugin = {
 
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
-    entryPoints: [join('src', 'extension.ts')],
+    entryPoints: [
+        join('src', 'extension.ts'),
+        join('src', 'workers', 'indexingWorker.ts'),
+    ],
+    outdir: './dist',
     bundle: true,
     external: ['vscode'],
     platform: 'node',
-    outfile: join('dist', 'extension.js'),
     sourcemap: !production,
     minify: production,
     sourcesContent: false,
@@ -48,10 +51,16 @@ const buildOptions = {
         nativeNodeModulesPlugin,
         copyPlugin({
             resolveFrom: "cwd",
-            assets: {
-                from: ["./node_modules/onnxruntime-node/bin/napi-v3/win32/x64/*"],
-                to: ["./dist/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/"],
-            },
+            assets: [
+                {
+                    from: ["./node_modules/onnxruntime-node/bin/napi-v3/win32/x64/*"],
+                    to: ["./dist/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/"],
+                },
+                {
+                    from: ["./models/**/*"],
+                    to: ["./dist/models/"],
+                }
+            ],
         }),
     ],
     external: ['vscode', 'onnxruntime-node'],
