@@ -69,7 +69,6 @@ export class IndexingService implements vscode.Disposable {
     private workers: Array<WorkerData> = [];
     private workQueue: WorkItem[] = [];
     private activeProcessing: Map<string, WorkItem> = new Map(); // Track files that are actively being processed
-    private isProcessing: boolean = false;
     private cancelTokenSource?: vscode.CancellationTokenSource;
     private extensionPath: string;
     private totalItems: number = 0;
@@ -628,15 +627,20 @@ export class IndexingService implements vscode.Disposable {
 
         if (idleWorkerIndex === -1 || this.workQueue.length === 0) {
             // No idle workers or no work to do
+
+            // Check if all processing is complete
+            if (this.workQueue.length === 0 && this.activeProcessing.size === 0) {
+                // All work is done, update status bar
+                this.updateStatusBar();
+                this.statusBarService.setState(StatusBarState.Ready);
+            }
+
             return;
         }
 
         // Get next work item (prioritize by priority, then FIFO)
         this.workQueue.sort((a, b) => (b.priority || 0) - (a.priority || 0));
-        const workItem = this.workQueue[0];
-
-        // Remove from queue
-        this.workQueue.shift();
+        const workItem = this.workQueue.shift()!;
 
         // Get the worker
         const workerInfo = this.workers[idleWorkerIndex];
@@ -743,11 +747,8 @@ export class IndexingService implements vscode.Disposable {
                 });
             });
 
-            // Start processing if not already started
-            if (!this.isProcessing) {
-                this.isProcessing = true;
-                this.processNextItem();
-            }
+            // Start processing - no need to track "isProcessing" flag
+            this.processNextItem();
 
             // Wait for this batch to complete
             const batchResults = await Promise.all(batchPromises);
@@ -787,7 +788,15 @@ export class IndexingService implements vscode.Disposable {
             item.reject(new Error('Operation cancelled'));
         }
 
-        this.isProcessing = false;
+        // Clear active processing
+        const activeItems = Array.from(this.activeProcessing.values());
+        this.activeProcessing.clear();
+
+        // Reject all active processing promises
+        for (const item of activeItems) {
+            item.reject(new Error('Operation cancelled'));
+        }
+
         this.updateStatusBar();
 
         this.statusBarService.showTemporaryMessage(
