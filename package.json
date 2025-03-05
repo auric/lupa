@@ -48,6 +48,7 @@
     "dependencies": {
         "@huggingface/transformers": "^3.3.3",
         "onnxruntime-node": "^1.20.1",
+        "piscina": "^4.8.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0"
     },

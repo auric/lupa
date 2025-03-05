@@ -63,7 +63,7 @@ const buildOptions = {
             ],
         }),
     ],
-    external: ['vscode', 'onnxruntime-node'],
+    external: ['vscode', 'onnxruntime-node', 'piscina'],
 };
 
 if (watch) {
