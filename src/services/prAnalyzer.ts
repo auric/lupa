@@ -1,26 +1,45 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { ModelCacheService } from './modelCacheService';
 import { IndexingService, FileToProcess } from './indexingService';
 import { StatusBarService, StatusBarMessageType } from './statusBarService';
+import { ResourceDetectionService } from './resourceDetectionService';
+import { ModelSelectionService } from './modelSelectionService';
+import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
  * PRAnalyzer handles the main functionality of analyzing pull requests
  */
 export class PRAnalyzer implements vscode.Disposable {
     private indexingService: IndexingService;
+    private resourceDetectionService: ResourceDetectionService;
+    private modelSelectionService: ModelSelectionService;
+    private workspaceSettingsService: WorkspaceSettingsService;
 
     /**
      * Create a new PR Analyzer
      * @param context VS Code extension context
-     * @param modelCacheService The model cache service
      */
     constructor(
-        private readonly context: vscode.ExtensionContext,
-        private readonly modelCacheService: ModelCacheService
+        private readonly context: vscode.ExtensionContext
     ) {
-        // Initialize the indexing service
-        this.indexingService = new IndexingService(context, modelCacheService);
+        // Initialize the required services
+        this.resourceDetectionService = new ResourceDetectionService({
+            memoryReserveGB: 4 // 4GB reserve for other processes
+        });
+
+        this.modelSelectionService = new ModelSelectionService(
+            path.join(context.extensionPath, 'models')
+        );
+
+        this.workspaceSettingsService = new WorkspaceSettingsService(context);
+
+        // Initialize the indexing service with our dependencies
+        this.indexingService = new IndexingService(
+            context,
+            this.resourceDetectionService,
+            this.modelSelectionService,
+            this.workspaceSettingsService
+        );
 
         // Set up the main status bar for PR Analyzer using the StatusBarService
         const statusBarService = StatusBarService.getInstance();
@@ -156,6 +175,9 @@ export class PRAnalyzer implements vscode.Disposable {
      * Dispose of resources
      */
     public dispose(): void {
+        // Dispose of all services in reverse order of creation
         this.indexingService.dispose();
+        this.workspaceSettingsService.dispose();
+        this.modelSelectionService.dispose();
     }
 }

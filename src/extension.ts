@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { ModelCacheService } from './services/modelCacheService';
 import { PRAnalyzer } from './services/prAnalyzer';
 import { StatusBarService } from './services/statusBarService';
 
@@ -8,14 +7,9 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log('Activating codelens-pr-analyzer extension');
 
     try {
-        // Initialize model cache service
-        const modelCacheService = new ModelCacheService(context);
-
         // Create the PR analyzer instance
-        const prAnalyzer = new PRAnalyzer(context, modelCacheService);
+        const prAnalyzer = new PRAnalyzer(context);
 
-        // Register services to be disposed when the extension is deactivated
-        context.subscriptions.push(modelCacheService);
         context.subscriptions.push(prAnalyzer);
     } catch (error) {
         console.error('Failed to activate extension:', error);

@@ -81,6 +81,11 @@ vscodeMock.workspace = {
   }),
   applyEdit: jest.fn().mockResolvedValue(true),
   onDidChangeTextDocument: jest.fn(),
+  onDidChangeWorkspaceFolders: jest.fn((_listener) => {
+    return {
+      dispose: jest.fn()
+    };
+  }),
   fs: {
     readDirectory: jest.fn().mockResolvedValue([]),
     readFile: jest.fn().mockResolvedValue(Buffer.from('')),

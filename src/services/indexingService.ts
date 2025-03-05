@@ -3,8 +3,10 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { Worker } from 'worker_threads';
-import { ModelCacheService } from './modelCacheService';
-import { StatusBarService, StatusBarMessageType } from './statusBarService';
+import { StatusBarService } from './statusBarService';
+import { ResourceDetectionService } from './resourceDetectionService';
+import { ModelSelectionService, EmbeddingModel } from './modelSelectionService';
+import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
  * Interface representing a file to be processed
@@ -51,8 +53,7 @@ export interface IndexingServiceOptions {
     embeddingOptions?: EmbeddingOptions; // Options for embedding generation
     chunkSize?: number;                  // Size of text chunks
     overlapSize?: number;                // Overlap between chunks
-    highMemoryThreshold?: number;        // Threshold in GB for high memory
-    memoryReserveGB?: number;            // Memory to reserve for other processes
+    chunkSizeSafetyFactor?: number;      // Safety factor for chunk size (to account for token/character ratio)
 }
 
 interface WorkerData {
@@ -81,24 +82,26 @@ export class IndexingService implements vscode.Disposable {
             pooling: 'mean',
             normalize: true
         },
-        chunkSize: 4096,
-        overlapSize: 200,
-        highMemoryThreshold: 8, // GB
-        memoryReserveGB: 4      // 4GB reserve for other processes
+        chunkSize: 3000,               // Default chunk size (smaller than model context length)
+        overlapSize: 200,              // Overlap between chunks
+        chunkSizeSafetyFactor: 0.75,   // Use 75% of model's context length to account for token/char differences
     };
-    private modelsPath: string;
     private workersInitialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
 
     /**
      * Create a new IndexingService
      * @param context VS Code extension context
-     * @param modelCacheService Model cache service to use for model paths and status bar
+     * @param resourceDetectionService Service for detecting system resources
+     * @param modelSelectionService Service for selecting optimal embedding model
+     * @param workspaceSettingsService Service for persisting workspace settings
      * @param options Configuration options
      */
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly modelCacheService: ModelCacheService,
+        private readonly resourceDetectionService: ResourceDetectionService,
+        private readonly modelSelectionService: ModelSelectionService,
+        private readonly workspaceSettingsService: WorkspaceSettingsService,
         options?: IndexingServiceOptions
     ) {
         this.options = { ...this.defaultOptions, ...options };
@@ -112,53 +115,149 @@ export class IndexingService implements vscode.Disposable {
         statusBar.command = "codelens-pr-analyzer.manageIndexing";
         statusBar.hide(); // Hide initially until needed
 
-        // Get models path from service
-        this.modelsPath = modelCacheService.getModelsPath();
-
         // Register indexing management command
         const manageIndexingCommand = vscode.commands.registerCommand(
             'codelens-pr-analyzer.manageIndexing',
             () => this.showIndexingManagementOptions()
         );
         context.subscriptions.push(manageIndexingCommand);
+
+        // Register command to change model
+        const selectModelCommand = vscode.commands.registerCommand(
+            'codelens-pr-analyzer.selectEmbeddingModel',
+            () => this.showModelSelectionOptions()
+        );
+        context.subscriptions.push(selectModelCommand);
     }
 
     /**
-     * Determine optimal worker count and memory allocation based on system resources
+     * Show options for selecting embedding model
      */
-    private calculateOptimalResources(): { workerCount: number, useHighMemoryModel: boolean } {
-        const totalMemoryGB = os.totalmem() / 1024 / 1024 / 1024; // Convert to GB
-        const availableMemoryGB = os.freemem() / 1024 / 1024 / 1024; // Convert to GB
+    private async showModelSelectionOptions(): Promise<void> {
+        // Check if workers are initialized
+        if (this.workersInitialized) {
+            const response = await vscode.window.showWarningMessage(
+                'Changing the embedding model will require restarting all workers and may cause inconsistencies with existing embeddings. Continue?',
+                { modal: true },
+                'Yes', 'No'
+            );
 
-        // Check if we have enough memory for the high-memory model based on percentage of total memory
-        // This is better than a fixed threshold as it accounts for different system sizes
-        const minMemoryPercentage = 0.25; // Need at least 25% of total memory available
-        const useHighMemoryModel = availableMemoryGB >= Math.max(
-            this.options.highMemoryThreshold,
-            totalMemoryGB * minMemoryPercentage
-        );
-
-        // Calculate optimal worker count based on available memory and CPUs
-        const cpuCount = os.cpus().length;
-        // Always leave at least one core for the main process
-        let workerCount = Math.max(1, Math.min(cpuCount - 1, this.options.maxWorkers));
-
-        // If we're using the high memory model, we might need to reduce worker count
-        if (useHighMemoryModel) {
-            // Each worker needs ~8GB for high-memory model, reserve system memory
-            const effectiveAvailableGB = availableMemoryGB - this.options.memoryReserveGB;
-            const memoryPerWorker = 1; // GB per worker for high-memory model
-            const maxWorkersForMemory = Math.max(1, Math.floor(effectiveAvailableGB / memoryPerWorker));
-            workerCount = Math.min(workerCount, maxWorkersForMemory);
-        } else {
-            // For low-memory model, each worker needs ~2GB
-            const effectiveAvailableGB = availableMemoryGB - this.options.memoryReserveGB;
-            const memoryPerWorker = 0.5; // GB per worker for low-memory model
-            const maxWorkersForMemory = Math.max(1, Math.floor(effectiveAvailableGB / memoryPerWorker));
-            workerCount = Math.min(workerCount, maxWorkersForMemory);
+            if (response !== 'Yes') {
+                return;
+            }
         }
 
-        console.log(`Worker calculation: cpus=${cpuCount}, totalMemoryGB=${totalMemoryGB.toFixed(2)}, availableMemoryGB=${availableMemoryGB.toFixed(2)}, highMemoryModel=${useHighMemoryModel}, workerCount=${workerCount}`);
+        // Show model info first
+        this.modelSelectionService.showModelsInfo();
+
+        // Show options
+        const options = [
+            'Use optimal model (automatic selection)',
+            'Force high-memory model (Jina Embeddings)',
+            'Force low-memory model (MiniLM)'
+        ];
+
+        const selected = await vscode.window.showQuickPick(options, {
+            placeHolder: 'Select embedding model preference'
+        });
+
+        if (!selected) {
+            return;
+        }
+
+        // Update settings based on selection
+        switch (selected) {
+            case options[0]: // Automatic
+                this.workspaceSettingsService.setSelectedEmbeddingModel(undefined);
+                break;
+
+            case options[1]: // Force high-memory
+                this.workspaceSettingsService.setSelectedEmbeddingModel(EmbeddingModel.JinaEmbeddings);
+                break;
+
+            case options[2]: // Force low-memory
+                this.workspaceSettingsService.setSelectedEmbeddingModel(EmbeddingModel.MiniLM);
+                break;
+        }
+
+        // If workers are already initialized, offer to restart them
+        if (this.workersInitialized) {
+            const restartResponse = await vscode.window.showInformationMessage(
+                'Restart workers to apply new model selection?',
+                'Yes', 'No'
+            );
+
+            if (restartResponse === 'Yes') {
+                await this.restartWorkers();
+            }
+        }
+    }
+
+    /**
+     * Select the embedding model to use based on workspace settings and system resources
+     */
+    private selectEmbeddingModel(): {
+        model: string;
+        useHighMemoryModel: boolean;
+        modelInfo: any;
+    } {
+        // First check if a specific model is specified in workspace settings
+        const savedModel = this.workspaceSettingsService.getSelectedEmbeddingModel();
+
+        if (savedModel) {
+            // User has explicitly selected a model
+            const selection = this.modelSelectionService.selectOptimalModel();
+            const modelInfos = selection.modelInfo;
+
+            const isHighMemory = savedModel === EmbeddingModel.JinaEmbeddings;
+
+            return {
+                model: savedModel,
+                useHighMemoryModel: isHighMemory,
+                modelInfo: modelInfos
+            };
+        }
+
+        // Otherwise use the model selection service
+        const selection = this.modelSelectionService.selectOptimalModel();
+
+        return {
+            model: selection.model,
+            useHighMemoryModel: selection.useHighMemoryModel,
+            modelInfo: selection.modelInfo
+        };
+    }
+
+    /**
+     * Get the optimal chunk size based on the selected model's context length
+     */
+    private getOptimalChunkSize(): number {
+        const { modelInfo } = this.selectEmbeddingModel();
+
+        // If we have context length info, use it to calculate optimal chunk size
+        if (modelInfo && modelInfo.contextLength) {
+            // Use the safety factor to account for token/char ratio differences
+            // Most models use about 4-5 chars per token, but we're conservative
+            return Math.floor(modelInfo.contextLength * this.options.chunkSizeSafetyFactor);
+        }
+
+        // Fallback to the default chunk size
+        return this.options.chunkSize;
+    }
+
+    /**
+     * Calculate optimal worker count based on system resources
+     */
+    private calculateOptimalResources(): { workerCount: number, useHighMemoryModel: boolean } {
+        // Select the embedding model
+        const { useHighMemoryModel } = this.selectEmbeddingModel();
+
+        // Calculate optimal worker count using the resource detection service
+        const workerCount = this.resourceDetectionService.calculateOptimalWorkerCount(
+            useHighMemoryModel,
+            this.options.maxWorkers
+        );
+
         return { workerCount, useHighMemoryModel };
     }
 
@@ -205,13 +304,16 @@ export class IndexingService implements vscode.Disposable {
             // Create workers one by one to avoid race conditions in pipeline initialization
             for (let i = 0; i < workerCount; i++) {
                 console.log(`Initializing worker ${i + 1} of ${workerCount}`);
-                await this.createAndInitializeWorker(useHighMemoryModel);
+                await this.createAndInitializeWorker();
                 // Add a small delay between worker initializations to avoid resource contention
                 await new Promise(resolve => setTimeout(resolve, 500));
             }
 
             this.workersInitialized = true;
             this.updateStatusBar();
+
+            // Record that we've initialized with the current model
+            this.workspaceSettingsService.updateLastIndexingTimestamp();
         } catch (error) {
             console.error('Failed to initialize workers:', error);
             vscode.window.showErrorMessage(`Failed to initialize indexing workers: ${error instanceof Error ? error.message : String(error)}`);
@@ -230,7 +332,7 @@ export class IndexingService implements vscode.Disposable {
     /**
      * Create and initialize a single worker
      */
-    private createAndInitializeWorker(useHighMemoryModel: boolean): Promise<void> {
+    private createAndInitializeWorker(): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             try {
                 // Find the worker script path
@@ -272,30 +374,22 @@ export class IndexingService implements vscode.Disposable {
                 });
                 worker.on('exit', (code) => this.handleWorkerExit(worker, code));
 
-                // Determine model paths based on model option
-                const primaryModelPath = path.join(this.modelsPath, 'jinaai', 'jina-embeddings-v2-base-code');
-                const fallbackModelPath = path.join(this.modelsPath, 'Xenova', 'all-MiniLM-L6-v2');
-
-                // Choose which path to use
-                const cachePath = useHighMemoryModel ? primaryModelPath : fallbackModelPath;
-
-                // Initialize the worker with appropriate model
-                const modelName = useHighMemoryModel ?
-                    'jinaai/jina-embeddings-v2-base-code' :
-                    'Xenova/all-MiniLM-L6-v2';
+                // Get the selected model
+                const { model } = this.selectEmbeddingModel();
+                const modelPath = path.join(this.context.extensionPath, 'models', model);
 
                 // Check if models exist
-                if (!fs.existsSync(cachePath) || fs.readdirSync(cachePath).length === 0) {
-                    reject(new Error(`Model not found at ${cachePath}. Please run "npm run prepare-models" to download the required models.`));
+                if (!fs.existsSync(modelPath) || fs.readdirSync(modelPath).length === 0) {
+                    reject(new Error(`Model not found at ${modelPath}. Please reinstall the extension or download model files.`));
                     return;
                 }
 
                 // Send initialization message
-                console.log(`Initializing worker with model: ${modelName} at path: ${cachePath}`);
+                console.log(`Initializing worker with model: ${model} at path: ${modelPath}`);
                 worker.postMessage({
                     type: 'initialize',
-                    modelName,
-                    cachePath
+                    modelName: model,
+                    cachePath: modelPath
                 });
 
                 // Wait for worker to be ready (will be updated via message handler)
@@ -457,7 +551,7 @@ export class IndexingService implements vscode.Disposable {
             }
 
             // Create a new worker
-            await this.createAndInitializeWorker(useHighMemoryModel);
+            await this.createAndInitializeWorker();
 
             // Process next items if available
             this.processNextItem();
@@ -558,6 +652,9 @@ export class IndexingService implements vscode.Disposable {
         workerInfo.status = 'busy';
 
         try {
+            // Get optimal chunk size based on the selected model
+            const chunkSize = this.getOptimalChunkSize();
+
             // Send the work item to the worker
             workerInfo.worker.postMessage({
                 type: 'process',
@@ -566,7 +663,7 @@ export class IndexingService implements vscode.Disposable {
                 content: workItem.content,
                 options: {
                     ...this.options.embeddingOptions,
-                    chunkSize: this.options.chunkSize,
+                    chunkSize: chunkSize,
                     overlapSize: this.options.overlapSize
                 }
             });

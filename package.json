@@ -18,19 +18,19 @@
         "commands": [
             {
                 "command": "codelens-pr-analyzer.analyzePR",
-                "title": "Analyze Pull Request"
+                "title": "CodeLens PR: Analyze Pull Request"
             },
             {
-                "command": "codelens-pr-analyzer.configureModels",
-                "title": "Configure PR Analyzer Models"
+                "command": "codelens-pr-analyzer.selectEmbeddingModel",
+                "title": "CodeLens PR: Select PR Analyzer Model"
             },
             {
-                "command": "codelens-pr-analyzer.manageModelCache",
-                "title": "Manage PR Analyzer Model Cache"
+                "command": "codelens-pr-analyzer.showModelsInfo",
+                "title": "CodeLens PR: Show PR Analyzer Models Info"
             },
             {
                 "command": "codelens-pr-analyzer.manageIndexing",
-                "title": "Manage PR Analyzer Indexing"
+                "title": "CodeLens PR: Manage PR Analyzer Indexing"
             }
         ]
     },
