@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { env } from '@huggingface/transformers';
 import { ResourceDetectionService, SystemResources } from './resourceDetectionService';
 import { StatusBarService, StatusBarMessageType } from './statusBarService';
 
@@ -86,6 +87,12 @@ export class ModelSelectionService implements vscode.Disposable {
     ) {
         this.options = { ...this.defaultOptions, ...options };
         this.resources = new ResourceDetectionService();
+
+        // Set the cache directory to use the provided path
+        env.cacheDir = basePath;
+        env.allowLocalModels = true;
+        env.allowRemoteModels = false; // Don't allow remote models - use only local
+
 
         // Setup status bar
         const statusBarService = StatusBarService.getInstance();

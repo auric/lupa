@@ -5,7 +5,6 @@ import { pipeline, env } from '@huggingface/transformers';
 interface WorkerInitMessage {
     type: 'initialize';
     modelName: string;
-    cachePath: string;
 }
 
 interface WorkerProcessMessage {
@@ -95,12 +94,7 @@ async function _initializeModel(message: WorkerInitMessage): Promise<void> {
             modelName: message.modelName
         });
 
-        // Set the cache directory to use the provided path
-        env.cacheDir = message.cachePath;
-        env.allowLocalModels = true;
-        env.allowRemoteModels = false; // Don't allow remote models - use only local
-
-        console.log(`Worker: Initializing model ${message.modelName} from cache ${message.cachePath}`);
+        console.log(`Worker: Initializing model ${message.modelName}`);
 
         // Create the pipeline - this will load the model
         embeddingPipeline = await pipeline('feature-extraction', message.modelName, {

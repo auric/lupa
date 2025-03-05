@@ -388,8 +388,7 @@ export class IndexingService implements vscode.Disposable {
                 console.log(`Initializing worker with model: ${model} at path: ${modelPath}`);
                 worker.postMessage({
                     type: 'initialize',
-                    modelName: model,
-                    cachePath: modelPath
+                    modelName: model
                 });
 
                 // Wait for worker to be ready (will be updated via message handler)
