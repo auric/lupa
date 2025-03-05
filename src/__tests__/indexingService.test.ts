@@ -113,6 +113,16 @@ jest.mock('vscode', () => {
     };
 });
 
+jest.mock('os', () => {
+    const actual = jest.requireActual('os');
+    return {
+        ...actual, // Keep all original functions by default
+        cpus: jest.fn().mockImplementation(() => actual.cpus()),
+        totalmem: jest.fn().mockImplementation(() => actual.totalmem()),
+        freemem: jest.fn().mockImplementation(() => actual.freemem())
+    };
+});
+
 describe('IndexingService', () => {
     // Increase timeout to 30 seconds for model loading tests
     jest.setTimeout(60000);
@@ -123,8 +133,22 @@ describe('IndexingService', () => {
     let statusBarServiceInstance: any;
     let extensionPath: string;
 
+    let mockedCpus: jest.Mock;
+    let mockedTotalmem: jest.Mock;
+    let mockedFreemem: jest.Mock;
+
     beforeEach(() => {
         jest.clearAllMocks();
+
+        // Reset mock implementations to defaults before each test
+        mockedCpus = os.cpus as jest.Mock;
+        mockedTotalmem = os.totalmem as jest.Mock;
+        mockedFreemem = os.freemem as jest.Mock;
+
+        // Set default implementations
+        mockedCpus.mockReturnValue(Array(4).fill({} as os.CpuInfo));
+        mockedTotalmem.mockReturnValue(16 * 1024 * 1024 * 1024); // 16GB by default
+        mockedFreemem.mockReturnValue(8 * 1024 * 1024 * 1024);  // 8GB free by default
 
         // Reset StatusBarService instance
         StatusBarService.reset();
@@ -454,6 +478,47 @@ describe('IndexingService', () => {
         // Cleanup
         updateStatusBarSpy.mockRestore();
         setMainStatusBarTextSpy.mockRestore();
+    });
+
+    it('should correctly manage workers based on system resources', () => {
+        try {
+            // Mock a system with 4 CPUs and 32GB RAM with 16GB free
+            mockedCpus.mockImplementation(() => Array(4).fill({} as os.CpuInfo));
+            mockedTotalmem.mockImplementation(() => 32 * 1024 * 1024 * 1024); // 32GB
+            mockedFreemem.mockImplementation(() => 16 * 1024 * 1024 * 1024);  // 16GB free
+
+            // Create indexing service with custom options
+            const highMemService = new IndexingService(
+                context,
+                modelCacheService,
+                {
+                    maxWorkers: 8, // Higher than CPU count to test capping
+                    highMemoryThreshold: 8 // Use high-memory model since we have 16GB free
+                }
+            );
+
+            // Test worker count calculation
+            const result = (highMemService as any).calculateOptimalResources();
+            expect(result.workerCount).toBe(3); // Should be CPUs-1 (4-1=3), despite maxWorkers being higher
+            expect(result.useHighMemoryModel).toBe(true);
+
+            // Now test with limited memory
+            mockedFreemem.mockImplementation(() => 6 * 1024 * 1024 * 1024); // 6GB free
+            const result2 = (highMemService as any).calculateOptimalResources();
+            expect(result2.useHighMemoryModel).toBe(false); // Should use low-memory model now
+
+            // Verify worker count is appropriate for limited memory system
+            mockedCpus.mockImplementation(() => Array(16).fill({} as os.CpuInfo)); // 16 CPUs
+            mockedFreemem.mockImplementation(() => 4 * 1024 * 1024 * 1024); // Only 4GB free
+            const result3 = (highMemService as any).calculateOptimalResources();
+            expect(result3.workerCount).toBeLessThan(15); // Should be less than CPUs-1 due to memory constraints
+            expect(result3.useHighMemoryModel).toBe(false);
+        } finally {
+            // Restore original functions
+            mockedCpus.mockRestore();
+            mockedTotalmem.mockRestore();
+            mockedFreemem.mockRestore();
+        }
     });
 
     it('should handle management command actions', async () => {
