@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { env } from '@huggingface/transformers';
 import { ResourceDetectionService, SystemResources } from './resourceDetectionService';
-import { StatusBarService, StatusBarMessageType } from './statusBarService';
+import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 
 /**
  * Available embedding models
@@ -49,7 +49,6 @@ export interface ModelSelectionOptions {
  * Service for selecting the optimal embedding model based on system resources
  */
 export class ModelSelectionService implements vscode.Disposable {
-    private readonly statusBarId = 'prAnalyzer.model.selection';
     private readonly resources: ResourceDetectionService;
     private readonly modelInfos: Record<EmbeddingModel, ModelInfo> = {
         [EmbeddingModel.JinaEmbeddings]: {
@@ -75,6 +74,7 @@ export class ModelSelectionService implements vscode.Disposable {
     };
 
     private options: Required<ModelSelectionOptions>;
+    private statusBarService: StatusBarService;
 
     /**
      * Creates a new ModelSelectionService
@@ -87,23 +87,12 @@ export class ModelSelectionService implements vscode.Disposable {
     ) {
         this.options = { ...this.defaultOptions, ...options };
         this.resources = new ResourceDetectionService();
+        this.statusBarService = StatusBarService.getInstance();
 
         // Set the cache directory to use the provided path
         env.cacheDir = basePath;
         env.allowLocalModels = true;
         env.allowRemoteModels = false; // Don't allow remote models - use only local
-
-
-        // Setup status bar
-        const statusBarService = StatusBarService.getInstance();
-        const statusBar = statusBarService.getOrCreateItem(
-            this.statusBarId,
-            vscode.StatusBarAlignment.Right,
-            95
-        );
-        statusBar.command = 'codelens-pr-analyzer.selectEmbeddingModel';
-        statusBar.tooltip = 'PR Analyzer: Select embedding model';
-        statusBar.hide(); // Hide initially
     }
 
     /**
@@ -127,8 +116,8 @@ export class ModelSelectionService implements vscode.Disposable {
 
         const modelInfo = this.modelInfos[model];
 
-        // Update status bar
-        this.updateStatusBar(model, modelsInfo);
+        // Update status bar with model info
+        this.updateModelStatusInfo(model, modelsInfo);
 
         return {
             model,
@@ -206,30 +195,31 @@ export class ModelSelectionService implements vscode.Disposable {
     /**
      * Update the status bar with information about the selected model
      */
-    private updateStatusBar(
+    private updateModelStatusInfo(
         selectedModel: EmbeddingModel,
         modelsInfo: { primaryExists: boolean; fallbackExists: boolean; }
     ): void {
-        const statusBarService = StatusBarService.getInstance();
-        const statusBar = statusBarService.getOrCreateItem(this.statusBarId);
+        let modelInfo = '';
 
         if (modelsInfo.primaryExists && modelsInfo.fallbackExists) {
-            statusBar.text = selectedModel === EmbeddingModel.JinaEmbeddings ?
-                '$(database) Jina Embed' :
-                '$(database) MiniLM';
-            statusBar.tooltip = `PR Analyzer: Using ${selectedModel} (both models available)`;
+            modelInfo = selectedModel === EmbeddingModel.JinaEmbeddings ?
+                'Using Jina Embeddings' :
+                'Using MiniLM';
         } else if (modelsInfo.primaryExists) {
-            statusBar.text = '$(database) Jina Embed';
-            statusBar.tooltip = 'PR Analyzer: Using Jina Embeddings (primary model)';
+            modelInfo = 'Using Jina Embeddings';
         } else if (modelsInfo.fallbackExists) {
-            statusBar.text = '$(database) MiniLM';
-            statusBar.tooltip = 'PR Analyzer: Using MiniLM (fallback model)';
+            modelInfo = 'Using MiniLM';
         } else {
-            statusBar.text = '$(error) No Models';
-            statusBar.tooltip = 'PR Analyzer: No embedding models available';
+            this.statusBarService.setState(StatusBarState.Error, 'No embedding models available');
+            return;
         }
 
-        statusBar.show();
+        // Show temporary message about selected model
+        this.statusBarService.showTemporaryMessage(
+            modelInfo,
+            5000,
+            StatusBarMessageType.Info
+        );
     }
 
     /**
@@ -331,8 +321,6 @@ export class ModelSelectionService implements vscode.Disposable {
      * Clean up resources
      */
     public dispose(): void {
-        // Hide the status bar item
-        const statusBarService = StatusBarService.getInstance();
-        statusBarService.hideItem(this.statusBarId);
+        // No status bar items to clean up anymore - the central StatusBarService handles that
     }
 }

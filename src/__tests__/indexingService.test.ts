@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { IndexingService, FileToProcess } from '../services/indexingService';
-import { StatusBarService } from '../services/statusBarService';
+import { StatusBarService, StatusBarMessageType, StatusBarState } from '../services/statusBarService';
 import { ResourceDetectionService } from '../services/resourceDetectionService';
 import { ModelSelectionService, EmbeddingModel } from '../services/modelSelectionService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
@@ -14,19 +14,18 @@ jest.mock('../services/statusBarService', () => {
     const mockStatusBarItem = {
         text: '',
         tooltip: '',
-        command: '',
         show: jest.fn(),
         hide: jest.fn(),
         dispose: jest.fn()
     };
 
     const mockInstance = {
-        getOrCreateItem: jest.fn().mockReturnValue(mockStatusBarItem),
-        setMainStatusBarText: jest.fn(),
+        statusBarItem: mockStatusBarItem,
+        setState: jest.fn(),
         showTemporaryMessage: jest.fn(),
-        hideItem: jest.fn(),
-        showItem: jest.fn(),
-        clearTemporaryMessages: jest.fn(),
+        clearTemporaryMessage: jest.fn(),
+        show: jest.fn(),
+        hide: jest.fn(),
         dispose: jest.fn()
     };
 
@@ -41,6 +40,13 @@ jest.mock('../services/statusBarService', () => {
             Warning: 'warning',
             Error: 'error',
             Working: 'working'
+        },
+        StatusBarState: {
+            Ready: 'ready',
+            Indexing: 'indexing',
+            Analyzing: 'analyzing',
+            Error: 'error',
+            Inactive: 'inactive'
         }
     };
 });
@@ -66,7 +72,7 @@ jest.mock('../services/modelSelectionService', () => {
         name: 'Xenova/all-MiniLM-L6-v2',
         path: 'Xenova/all-MiniLM-L6-v2',
         memoryRequirementGB: 2,
-        contextLength: 512,
+        contextLength: 256,
         description: 'Test model'
     };
 
@@ -329,7 +335,8 @@ describe('IndexingService', () => {
     // Test that the service uses the StatusBarService singleton correctly
     it('should use StatusBarService for status updates', async () => {
         // Get StatusBarService mock instance
-        const getOrCreateItemSpy = jest.spyOn(statusBarServiceInstance, 'getOrCreateItem');
+        const setStateSpy = jest.spyOn(statusBarServiceInstance, 'setState');
+        const showTemporaryMessageSpy = jest.spyOn(statusBarServiceInstance, 'showTemporaryMessage');
 
         // Process a file
         await indexingService.processFiles([
@@ -337,7 +344,8 @@ describe('IndexingService', () => {
         ]);
 
         // Verify the status bar service was used
-        expect(getOrCreateItemSpy).toHaveBeenCalled();
+        expect(setStateSpy).toHaveBeenCalled();
+        expect(showTemporaryMessageSpy).toHaveBeenCalled();
     });
 
     // Test the model selection process
@@ -474,7 +482,7 @@ describe('IndexingService', () => {
     it('should test status bar updates during processing', async () => {
         // Spy on updateStatusBar method
         const updateStatusBarSpy = jest.spyOn(indexingService as any, 'updateStatusBar');
-        const setMainStatusBarTextSpy = jest.spyOn(statusBarServiceInstance, 'setMainStatusBarText');
+        const setStateSpy = jest.spyOn(statusBarServiceInstance, 'setState');
 
         // Create test files
         const files: FileToProcess[] = [
@@ -486,10 +494,11 @@ describe('IndexingService', () => {
 
         // Verify status bar was updated
         expect(updateStatusBarSpy).toHaveBeenCalled();
+        expect(setStateSpy).toHaveBeenCalled();
 
         // Cleanup
         updateStatusBarSpy.mockRestore();
-        setMainStatusBarTextSpy.mockRestore();
+        setStateSpy.mockRestore();
     });
 
     it('should correctly manage workers based on system resources', () => {

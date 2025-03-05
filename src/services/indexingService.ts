@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { Worker } from 'worker_threads';
-import { StatusBarService } from './statusBarService';
+import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { ResourceDetectionService } from './resourceDetectionService';
 import { ModelSelectionService, EmbeddingModel } from './modelSelectionService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
@@ -70,7 +70,6 @@ export class IndexingService implements vscode.Disposable {
     private workQueue: WorkItem[] = [];
     private activeProcessing: Map<string, WorkItem> = new Map(); // Track files that are actively being processed
     private isProcessing: boolean = false;
-    private readonly statusBarId = 'prAnalyzer.indexing';
     private cancelTokenSource?: vscode.CancellationTokenSource;
     private extensionPath: string;
     private totalItems: number = 0;
@@ -88,6 +87,7 @@ export class IndexingService implements vscode.Disposable {
     };
     private workersInitialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
+    private statusBarService: StatusBarService;
 
     /**
      * Create a new IndexingService
@@ -106,14 +106,7 @@ export class IndexingService implements vscode.Disposable {
     ) {
         this.options = { ...this.defaultOptions, ...options };
         this.extensionPath = context.extensionPath;
-
-        // Create a status bar item via StatusBarService
-        const statusBarService = StatusBarService.getInstance();
-        const statusBar = statusBarService.getOrCreateItem(this.statusBarId, vscode.StatusBarAlignment.Right, 90);
-        statusBar.text = "$(database) PR Indexer";
-        statusBar.tooltip = "PR Analyzer Indexing";
-        statusBar.command = "codelens-pr-analyzer.manageIndexing";
-        statusBar.hide(); // Hide initially until needed
+        this.statusBarService = StatusBarService.getInstance();
 
         // Register indexing management command
         const manageIndexingCommand = vscode.commands.registerCommand(
@@ -291,11 +284,8 @@ export class IndexingService implements vscode.Disposable {
      */
     private async _initializeWorkers(): Promise<void> {
         try {
-            const statusBarService = StatusBarService.getInstance();
-            const statusBar = statusBarService.getOrCreateItem(this.statusBarId);
-            statusBar.text = '$(sync~spin) PR Indexer [init]';
-            statusBar.tooltip = 'PR Analyzer: Initializing workers';
-            statusBar.show();
+            // Update status bar to indicate initialization
+            this.statusBarService.setState(StatusBarState.Indexing, 'initializing workers');
 
             const { workerCount, useHighMemoryModel } = this.calculateOptimalResources();
 
@@ -318,11 +308,8 @@ export class IndexingService implements vscode.Disposable {
             console.error('Failed to initialize workers:', error);
             vscode.window.showErrorMessage(`Failed to initialize indexing workers: ${error instanceof Error ? error.message : String(error)}`);
 
-            const statusBarService = StatusBarService.getInstance();
-            const statusBar = statusBarService.getOrCreateItem(this.statusBarId);
-            statusBar.text = '$(error) PR Indexer';
-            statusBar.tooltip = 'PR Analyzer: Failed to initialize workers';
-            statusBar.show();
+            // Update status bar with error
+            this.statusBarService.setState(StatusBarState.Error, 'Failed to initialize workers');
 
             // Re-throw so caller knows initialization failed
             throw error;
@@ -564,8 +551,10 @@ export class IndexingService implements vscode.Disposable {
      * Update status bar with worker status
      */
     private updateStatusBar(): void {
-        const statusBarService = StatusBarService.getInstance();
-        const statusBar = statusBarService.getOrCreateItem(this.statusBarId);
+        // Skip if no workers
+        if (this.workers.length === 0) {
+            return;
+        }
 
         const idleCount = this.workers.filter(w => w.status === 'idle').length;
         const busyCount = this.workers.filter(w => w.status === 'busy').length;
@@ -575,43 +564,42 @@ export class IndexingService implements vscode.Disposable {
         const queueLength = this.workQueue.length;
         const activeCount = this.activeProcessing.size;
 
+        // Create detailed status info for tooltip
+        let statusDetail = '';
+
         // Show busy indicator if we have busy workers or pending items
         if (busyCount > 0 || queueLength > 0 || activeCount > 0) {
-            // Show spinner, busy count, and queue length
-            statusBar.text = `$(sync~spin) PR Indexer [${busyCount}/${this.workers.length}] ${queueLength}q`;
-            statusBar.tooltip = `PR Analyzer: ${busyCount} busy, ${activeCount} active, ${idleCount} idle, ${queueLength} queued`;
-            statusBar.show();
+            statusDetail = `${busyCount} busy, ${activeCount} active, ${idleCount} idle, ${queueLength} queued`;
+            this.statusBarService.setState(StatusBarState.Indexing, `[${busyCount}/${this.workers.length}] ${queueLength}q`);
         } else if (initCount > 0) {
             // Show initializing indicator
-            statusBar.text = `$(sync~spin) PR Indexer [init]`;
-            statusBar.tooltip = `PR Analyzer: Initializing workers (${initCount}/${this.workers.length})`;
-            statusBar.show();
+            statusDetail = `Initializing workers (${initCount}/${this.workers.length})`;
+            this.statusBarService.setState(StatusBarState.Indexing, 'initializing');
         } else if (errorCount > 0) {
             // Show error indicator
-            statusBar.text = `$(error) PR Indexer [${errorCount} errors]`;
-            statusBar.tooltip = `PR Analyzer: ${errorCount} workers have errors. Click to manage.`;
-            statusBar.show();
-        } else if (this.workers.length > 0) {
-            // Show ready indicator only if workers exist
-            statusBar.text = `$(database) PR Indexer`;
-
+            statusDetail = `${errorCount} workers have errors`;
+            this.statusBarService.setState(StatusBarState.Error, `${errorCount} worker errors`);
+        } else {
+            // Show ready indicator with model info
             const primaryCount = this.workers.filter(w => w.modelName === 'jinaai/jina-embeddings-v2-base-code').length;
             const fallbackCount = this.workers.filter(w => w.modelName === 'Xenova/all-MiniLM-L6-v2').length;
 
             if (primaryCount > 0 && fallbackCount > 0) {
-                statusBar.tooltip = `PR Analyzer: ${primaryCount} primary, ${fallbackCount} fallback workers ready`;
+                statusDetail = `${primaryCount} primary, ${fallbackCount} fallback workers ready`;
             } else if (primaryCount > 0) {
-                statusBar.tooltip = `PR Analyzer: ${primaryCount} primary workers ready`;
+                statusDetail = `${primaryCount} primary workers ready`;
             } else if (fallbackCount > 0) {
-                statusBar.tooltip = `PR Analyzer: ${fallbackCount} fallback workers ready`;
+                statusDetail = `${fallbackCount} fallback workers ready`;
             } else {
-                statusBar.tooltip = `PR Analyzer: ${this.workers.length} workers ready`;
+                statusDetail = `${this.workers.length} workers ready`;
             }
 
-            statusBar.show();
-        } else {
-            // Hide status bar if no workers exist
-            statusBar.hide();
+            this.statusBarService.setState(StatusBarState.Ready);
+        }
+
+        // Use a temporary message to display detailed worker info
+        if (statusDetail) {
+            this.statusBarService.showTemporaryMessage(`Indexer: ${statusDetail}`, 5000);
         }
     }
 
@@ -624,7 +612,11 @@ export class IndexingService implements vscode.Disposable {
         }
 
         const percentage = Math.round((this.processedItems / this.totalItems) * 100);
-        vscode.window.setStatusBarMessage(`Indexing: ${percentage}% (${this.processedItems}/${this.totalItems})`, 3000);
+        this.statusBarService.showTemporaryMessage(
+            `Indexing: ${percentage}% (${this.processedItems}/${this.totalItems})`,
+            3000,
+            StatusBarMessageType.Working
+        );
     }
 
     /**
@@ -713,10 +705,8 @@ export class IndexingService implements vscode.Disposable {
         this.totalItems = files.length;
         this.processedItems = 0;
 
-        // Show indexer status bar during processing
-        const statusBarService = StatusBarService.getInstance();
-        const statusBar = statusBarService.getOrCreateItem(this.statusBarId);
-        statusBar.show();
+        // Update status to indexing
+        this.statusBarService.setState(StatusBarState.Indexing, `${files.length} files`);
 
         // Sort files by priority (if available) to process important files first
         const sortedFiles = [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0));
@@ -773,6 +763,9 @@ export class IndexingService implements vscode.Disposable {
             }
         }
 
+        // Set status back to ready when done
+        this.statusBarService.setState(StatusBarState.Ready);
+
         return resultMap;
     }
 
@@ -796,7 +789,12 @@ export class IndexingService implements vscode.Disposable {
 
         this.isProcessing = false;
         this.updateStatusBar();
-        vscode.window.setStatusBarMessage('Indexing cancelled', 3000);
+
+        this.statusBarService.showTemporaryMessage(
+            'Indexing cancelled',
+            3000,
+            StatusBarMessageType.Warning
+        );
     }
 
     /**
@@ -853,6 +851,9 @@ export class IndexingService implements vscode.Disposable {
             // Cancel any ongoing operations
             this.cancelProcessing();
 
+            // Set status to restarting workers
+            this.statusBarService.setState(StatusBarState.Indexing, 'restarting workers');
+
             // Terminate all workers
             await this.shutdownWorkers();
 
@@ -860,8 +861,15 @@ export class IndexingService implements vscode.Disposable {
             await this.initializeWorkers();
 
             vscode.window.showInformationMessage('Workers restarted successfully');
+            this.statusBarService.showTemporaryMessage(
+                'Workers restarted successfully',
+                3000,
+                StatusBarMessageType.Info
+            );
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to restart workers: ${error instanceof Error ? error.message : String(error)}`);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to restart workers: ${errorMsg}`);
+            this.statusBarService.setState(StatusBarState.Error, 'Failed to restart workers');
         }
     }
 
@@ -873,8 +881,11 @@ export class IndexingService implements vscode.Disposable {
             // Cancel any ongoing operations
             this.cancelProcessing();
 
-            // Reset initialization flag to prevent workers recriation
+            // Reset initialization flag to prevent workers recreation
             this.workersInitialized = false;
+
+            // Set status to shutting down workers
+            this.statusBarService.setState(StatusBarState.Indexing, 'shutting down workers');
 
             // Terminate all workers
             const workersCopy = [...this.workers];
@@ -890,11 +901,14 @@ export class IndexingService implements vscode.Disposable {
             this.workers = [];
 
             // Update status bar
-            this.updateStatusBar();
+            this.statusBarService.setState(StatusBarState.Ready);
 
             console.log('Workers shutdown successfully');
         } catch (error) {
             console.error('Error shutting down workers:', error);
+
+            // Show error in status bar
+            this.statusBarService.setState(StatusBarState.Error, 'Error shutting down workers');
         }
     }
 

@@ -11,13 +11,25 @@ export enum StatusBarMessageType {
 }
 
 /**
+ * Status information for the PR Analyzer
+ */
+export enum StatusBarState {
+    Ready = 'ready',
+    Indexing = 'indexing',
+    Analyzing = 'analyzing',
+    Error = 'error',
+    Inactive = 'inactive'
+}
+
+/**
  * Service to manage status bar items centrally.
- * Ensures we don't create duplicate status bar items for the same functionality.
+ * Ensures consistent status bar presentation across the extension.
  */
 export class StatusBarService {
     private static instance: StatusBarService;
-    private statusBarItems: Map<string, vscode.StatusBarItem> = new Map();
-    private temporaryMessages: Map<string, NodeJS.Timeout> = new Map();
+    private statusBarItem: vscode.StatusBarItem | undefined;
+    private temporaryMessageTimeout: NodeJS.Timeout | undefined;
+    private currentState: StatusBarState = StatusBarState.Ready;
 
     // Main status bar ID for the extension
     public static readonly MAIN_STATUS_BAR_ID = 'prAnalyzer.main';
@@ -25,7 +37,10 @@ export class StatusBarService {
     /**
      * Private constructor to enforce singleton pattern
      */
-    private constructor() { }
+    private constructor() {
+        this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+        this.updateStatusBar();
+    }
 
     /**
      * Get the singleton instance
@@ -48,43 +63,57 @@ export class StatusBarService {
     }
 
     /**
-     * Get or create a status bar item with the specified ID
-     * @param id Unique identifier for the status bar item
-     * @param alignment Alignment of the status bar item
-     * @param priority Priority of the status bar item
-     * @returns The status bar item
+     * Set the current state of the PR Analyzer
+     * @param state The current state
+     * @param detail Optional details about the state
      */
-    public getOrCreateItem(
-        id: string,
-        alignment: vscode.StatusBarAlignment = vscode.StatusBarAlignment.Right,
-        priority: number = 100
-    ): vscode.StatusBarItem {
-        if (this.statusBarItems.has(id)) {
-            return this.statusBarItems.get(id)!;
-        }
-
-        const item = vscode.window.createStatusBarItem(alignment, priority);
-        this.statusBarItems.set(id, item);
-        return item;
+    public setState(state: StatusBarState, detail?: string): void {
+        this.currentState = state;
+        this.updateStatusBar(detail);
     }
 
     /**
-     * Set the text and tooltip of the main status bar item
+     * Show a temporary message on the status bar
+     * @param message The message to show
+     * @param timeoutMs How long to show the message (in milliseconds)
+     * @param type The type of message
+     */
+    public showTemporaryMessage(
+        message: string,
+        timeoutMs: number = 3000,
+        type: StatusBarMessageType = StatusBarMessageType.Info
+    ): void {
+        if (!this.statusBarItem) return;
+
+        // Clear any existing temporary message timeout
+        this.clearTemporaryMessage();
+
+        // Remember current state
+        const currentState = this.currentState;
+
+        // Show temporary message
+        this.setStatusBarText(message, message, type);
+
+        // Set timeout to restore original state
+        this.temporaryMessageTimeout = setTimeout(() => {
+            this.currentState = currentState;
+            this.updateStatusBar();
+            this.temporaryMessageTimeout = undefined;
+        }, timeoutMs);
+    }
+
+    /**
+     * Set the text and tooltip of the status bar
      * @param text Status bar text
      * @param tooltip Tooltip text
      * @param type Type of message (affects icon)
      */
-    public setMainStatusBarText(
+    private setStatusBarText(
         text: string,
         tooltip: string = '',
         type: StatusBarMessageType = StatusBarMessageType.Info
     ): void {
-        // Get the main status bar item
-        const statusBar = this.getOrCreateItem(
-            StatusBarService.MAIN_STATUS_BAR_ID,
-            vscode.StatusBarAlignment.Right,
-            100
-        );
+        if (!this.statusBarItem) return;
 
         // Add appropriate icon based on type
         let icon = '$(database)';
@@ -105,85 +134,88 @@ export class StatusBarService {
         }
 
         // Set text and tooltip
-        statusBar.text = `${icon} ${text}`;
-        statusBar.tooltip = tooltip || text;
-        statusBar.show();
+        this.statusBarItem.text = `${icon} ${text}`;
+        this.statusBarItem.tooltip = tooltip || text;
+        this.statusBarItem.show();
     }
 
     /**
-     * Show a temporary message on the main status bar, then revert back
-     * @param message The message to show
-     * @param timeoutMs How long to show the message (in milliseconds)
-     * @param type The type of message
+     * Update the status bar based on current state
+     * @param detail Optional details to show with the state
      */
-    public showTemporaryMessage(
-        message: string,
-        timeoutMs: number = 3000,
-        type: StatusBarMessageType = StatusBarMessageType.Info
-    ): void {
-        // Remember current state to restore later
-        const statusBar = this.getOrCreateItem(StatusBarService.MAIN_STATUS_BAR_ID);
-        const originalText = statusBar.text;
-        const originalTooltip = statusBar.tooltip;
+    private updateStatusBar(detail?: string): void {
+        if (!this.statusBarItem) return;
 
-        // Show temporary message
-        this.setMainStatusBarText(message, message, type);
+        let text = 'PR Analyzer';
+        let tooltip = 'PR Analyzer';
+        let type = StatusBarMessageType.Info;
 
-        // Cancel any existing timeout for this status bar
-        if (this.temporaryMessages.has(StatusBarService.MAIN_STATUS_BAR_ID)) {
-            clearTimeout(this.temporaryMessages.get(StatusBarService.MAIN_STATUS_BAR_ID)!);
+        switch (this.currentState) {
+            case StatusBarState.Ready:
+                text = 'PR Analyzer - Ready';
+                tooltip = 'PR Analyzer is ready';
+                break;
+
+            case StatusBarState.Indexing:
+                text = detail ? `PR Analyzer - Indexing ${detail}` : 'PR Analyzer - Indexing';
+                tooltip = detail ? `Indexing: ${detail}` : 'Indexing workspace';
+                type = StatusBarMessageType.Working;
+                break;
+
+            case StatusBarState.Analyzing:
+                text = 'PR Analyzer - Analyzing';
+                tooltip = 'Analyzing pull request';
+                type = StatusBarMessageType.Working;
+                break;
+
+            case StatusBarState.Error:
+                text = 'PR Analyzer - Error';
+                tooltip = detail || 'An error occurred';
+                type = StatusBarMessageType.Error;
+                break;
+
+            case StatusBarState.Inactive:
+                text = 'PR Analyzer';
+                tooltip = 'PR Analyzer is inactive';
+                break;
         }
 
-        // Set timeout to restore original state
-        const timeout = setTimeout(() => {
-            statusBar.text = originalText;
-            statusBar.tooltip = originalTooltip;
-            this.temporaryMessages.delete(StatusBarService.MAIN_STATUS_BAR_ID);
-        }, timeoutMs);
-
-        // Store timeout so it can be cancelled if needed
-        this.temporaryMessages.set(StatusBarService.MAIN_STATUS_BAR_ID, timeout);
+        this.setStatusBarText(text, tooltip, type);
     }
 
     /**
-     * Hide a status bar item by ID
-     * @param id The ID of the status bar item to hide
+     * Clear any temporary message
      */
-    public hideItem(id: string): void {
-        if (this.statusBarItems.has(id)) {
-            this.statusBarItems.get(id)!.hide();
+    public clearTemporaryMessage(): void {
+        if (this.temporaryMessageTimeout) {
+            clearTimeout(this.temporaryMessageTimeout);
+            this.temporaryMessageTimeout = undefined;
         }
+
+        // Restore status based on current state
+        this.updateStatusBar();
     }
 
     /**
-     * Show a status bar item by ID
-     * @param id The ID of the status bar item to show
+     * Show the status bar
      */
-    public showItem(id: string): void {
-        if (this.statusBarItems.has(id)) {
-            this.statusBarItems.get(id)!.show();
-        }
+    public show(): void {
+        this.statusBarItem?.show();
     }
 
     /**
-     * Clear all temporary messages
+     * Hide the status bar
      */
-    public clearTemporaryMessages(): void {
-        for (const timeoutId of this.temporaryMessages.values()) {
-            clearTimeout(timeoutId);
-        }
-        this.temporaryMessages.clear();
+    public hide(): void {
+        this.statusBarItem?.hide();
     }
 
     /**
-     * Dispose all status bar items
+     * Dispose the status bar item
      */
     public dispose(): void {
-        // Clear any temporary messages
-        this.clearTemporaryMessages();
-
-        // Dispose all status bar items
-        this.statusBarItems.forEach(item => item.dispose());
-        this.statusBarItems.clear();
+        this.clearTemporaryMessage();
+        this.statusBarItem?.dispose();
+        this.statusBarItem = undefined;
     }
 }

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IndexingService, FileToProcess } from './indexingService';
-import { StatusBarService, StatusBarMessageType } from './statusBarService';
+import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { ResourceDetectionService } from './resourceDetectionService';
 import { ModelSelectionService } from './modelSelectionService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
@@ -14,6 +14,7 @@ export class PRAnalyzer implements vscode.Disposable {
     private resourceDetectionService: ResourceDetectionService;
     private modelSelectionService: ModelSelectionService;
     private workspaceSettingsService: WorkspaceSettingsService;
+    private statusBarService: StatusBarService;
 
     /**
      * Create a new PR Analyzer
@@ -41,15 +42,11 @@ export class PRAnalyzer implements vscode.Disposable {
             this.workspaceSettingsService
         );
 
-        // Set up the main status bar for PR Analyzer using the StatusBarService
-        const statusBarService = StatusBarService.getInstance();
+        // Get the status bar service
+        this.statusBarService = StatusBarService.getInstance();
 
-        // Set the main status bar text - this single status bar will be used for the whole extension
-        statusBarService.setMainStatusBarText("PR Analyzer", "PR Analyzer - Ready");
-
-        // Configure the main status bar to trigger analysis when clicked
-        const mainStatusBar = statusBarService.getOrCreateItem(StatusBarService.MAIN_STATUS_BAR_ID);
-        mainStatusBar.command = "codelens-pr-analyzer.analyzePR";
+        // Set the initial status
+        this.statusBarService.setState(StatusBarState.Ready);
 
         // Register analyze PR command
         this.context.subscriptions.push(
@@ -62,13 +59,14 @@ export class PRAnalyzer implements vscode.Disposable {
      */
     private async analyzePR(): Promise<void> {
         try {
-            // Get status bar service
-            const statusBarService = StatusBarService.getInstance();
+            // Set status to analyzing
+            this.statusBarService.setState(StatusBarState.Analyzing);
 
             // For now, just analyze current file
             const editor = vscode.window.activeTextEditor;
             if (!editor) {
                 vscode.window.showInformationMessage('No active editor found. Open a file to analyze.');
+                this.statusBarService.setState(StatusBarState.Ready);
                 return;
             }
 
@@ -76,13 +74,6 @@ export class PRAnalyzer implements vscode.Disposable {
             const document = editor.document;
             const filePath = document.uri.fsPath;
             const fileContent = document.getText();
-
-            // Show temporary status message
-            statusBarService.setMainStatusBarText(
-                `Analyzing ${path.basename(filePath)}`,
-                `Analyzing file: ${path.basename(filePath)}`,
-                StatusBarMessageType.Working
-            );
 
             // Create file to process
             const fileToProcess: FileToProcess = {
@@ -124,7 +115,7 @@ export class PRAnalyzer implements vscode.Disposable {
                     progress.report({ message: 'Embeddings generated successfully', increment: 100 });
 
                     // Update status bar with success message
-                    statusBarService.showTemporaryMessage(
+                    this.statusBarService.showTemporaryMessage(
                         `Generated ${result.embeddings.length} embeddings`,
                         5000,
                         StatusBarMessageType.Info
@@ -144,30 +135,35 @@ export class PRAnalyzer implements vscode.Disposable {
                             `First embedding vector (truncated): [${truncated}, ...]`
                         );
                     }
+
+                    // Reset status to ready
+                    this.statusBarService.setState(StatusBarState.Ready);
                 } catch (error) {
                     if (error instanceof Error && error.message === 'Operation cancelled') {
                         vscode.window.showInformationMessage('Analysis cancelled');
-                        statusBarService.showTemporaryMessage(
+                        this.statusBarService.showTemporaryMessage(
                             'Analysis cancelled',
                             3000,
                             StatusBarMessageType.Warning
                         );
+                        this.statusBarService.setState(StatusBarState.Ready);
                     } else {
                         const errorMessage = error instanceof Error ? error.message : String(error);
                         vscode.window.showErrorMessage(`Failed to analyze PR: ${errorMessage}`);
-                        statusBarService.showTemporaryMessage(
+                        this.statusBarService.showTemporaryMessage(
                             'Analysis failed',
                             5000,
                             StatusBarMessageType.Error
                         );
+                        this.statusBarService.setState(StatusBarState.Error, errorMessage);
                     }
                 }
             });
         } catch (error) {
-            const statusBarService = StatusBarService.getInstance();
             const errorMessage = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`PR analysis failed: ${errorMessage}`);
-            statusBarService.showTemporaryMessage('Analysis failed', 5000, StatusBarMessageType.Error);
+            this.statusBarService.showTemporaryMessage('Analysis failed', 5000, StatusBarMessageType.Error);
+            this.statusBarService.setState(StatusBarState.Error, errorMessage);
         }
     }
 
