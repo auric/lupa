@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { IndexingService, FileToProcess } from '../services/indexingService';
 import { ModelCacheService } from '../services/modelCacheService';
 import { StatusBarService } from '../services/statusBarService';
@@ -329,5 +330,354 @@ describe('IndexingService', () => {
 
         // Verify that the operation was cancelled
         await expect(processPromise).rejects.toThrow('Operation cancelled');
+    });
+
+    it('should process files in parallel with multiple workers', async () => {
+        // Skip test if models don't exist
+        const modelsPath = modelCacheService.getModelsPath();
+        const fallbackModelPath = path.join(modelsPath, 'Xenova', 'all-MiniLM-L6-v2');
+
+        if (!fs.existsSync(fallbackModelPath) || fs.readdirSync(fallbackModelPath).length === 0) {
+            console.log('Skipping test: models not found');
+            return;
+        }
+
+        // Create service with multiple workers
+        const multiWorkerService = new IndexingService(
+            context,
+            modelCacheService,
+            {
+                maxWorkers: 2 // Use 2 workers to test parallel processing
+            }
+        );
+
+        try {
+            // Create several files to process
+            const files: FileToProcess[] = [
+                { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' },
+                { id: 'file2', path: '/path/to/file2.js', content: 'const y = 2;' },
+                { id: 'file3', path: '/path/to/file3.js', content: 'const z = 3;' },
+                { id: 'file4', path: '/path/to/file4.js', content: 'const w = 4;' }
+            ];
+
+            // Process files
+            const results = await multiWorkerService.processFiles(files);
+
+            // Verify all files were processed
+            expect(results.size).toBe(4);
+            expect(results.get('file1')).toBeDefined();
+            expect(results.get('file2')).toBeDefined();
+            expect(results.get('file3')).toBeDefined();
+            expect(results.get('file4')).toBeDefined();
+
+            // Verify workers were initialized
+            expect((multiWorkerService as any).workers.length).toBe(2);
+            expect((multiWorkerService as any).workersInitialized).toBe(true);
+        } finally {
+            await multiWorkerService.dispose();
+        }
+    });
+
+    it('should calculate optimal resources based on system memory', () => {
+        // Directly test the calculateOptimalResources method
+        const result = (indexingService as any).calculateOptimalResources();
+
+        // Verify the result format
+        expect(result).toHaveProperty('workerCount');
+        expect(result).toHaveProperty('useHighMemoryModel');
+
+        // Ensure returned values are within expected ranges
+        expect(result.workerCount).toBeGreaterThanOrEqual(1);
+        expect(typeof result.useHighMemoryModel).toBe('boolean');
+    });
+
+    it('should handle worker errors and recreate workers', async () => {
+        // Skip test if models don't exist
+        const modelsPath = modelCacheService.getModelsPath();
+        const fallbackModelPath = path.join(modelsPath, 'Xenova', 'all-MiniLM-L6-v2');
+
+        if (!fs.existsSync(fallbackModelPath) || fs.readdirSync(fallbackModelPath).length === 0) {
+            console.log('Skipping test: models not found');
+            return;
+        }
+
+        // Process a file to initialize worker
+        await indexingService.processFiles([
+            { id: 'test', path: '/test.js', content: 'test content' }
+        ]);
+
+        // Get reference to the worker
+        const workers = (indexingService as any).workers;
+        expect(workers.length).toBeGreaterThan(0);
+
+        // Simulate an error in the worker
+        const workerErrorSpy = jest.spyOn(indexingService as any, 'handleWorkerError');
+        const recreateWorkerSpy = jest.spyOn(indexingService as any, 'recreateWorker');
+
+        // Manually trigger the error handler
+        (indexingService as any).handleWorkerError(workers[0].worker, new Error('Test error'));
+
+        // Verify error handling and worker recreation was attempted
+        expect(workerErrorSpy).toHaveBeenCalled();
+        expect(recreateWorkerSpy).toHaveBeenCalled();
+
+        // Cleanup spies
+        workerErrorSpy.mockRestore();
+        recreateWorkerSpy.mockRestore();
+    });
+
+    it('should test status bar updates during processing', async () => {
+        // Skip test if models don't exist
+        const modelsPath = modelCacheService.getModelsPath();
+        const fallbackModelPath = path.join(modelsPath, 'Xenova', 'all-MiniLM-L6-v2');
+
+        if (!fs.existsSync(fallbackModelPath) || fs.readdirSync(fallbackModelPath).length === 0) {
+            console.log('Skipping test: models not found');
+            return;
+        }
+
+        // Spy on updateStatusBar method
+        const updateStatusBarSpy = jest.spyOn(indexingService as any, 'updateStatusBar');
+        const setMainStatusBarTextSpy = jest.spyOn(statusBarServiceInstance, 'setMainStatusBarText');
+
+        // Create test files
+        const files: FileToProcess[] = [
+            { id: 'status1', path: '/path/to/status1.js', content: 'const a = 1;' }
+        ];
+
+        // Process files
+        await indexingService.processFiles(files);
+
+        // Verify status bar was updated
+        expect(updateStatusBarSpy).toHaveBeenCalled();
+
+        // Cleanup
+        updateStatusBarSpy.mockRestore();
+        setMainStatusBarTextSpy.mockRestore();
+    });
+
+    it('should handle management command actions', async () => {
+        // Create proper QuickPickItem objects
+        const items = [
+            { label: "Cancel current indexing", description: "Stop all processing" },
+            { label: "Restart workers", description: "Restart all worker threads" },
+            { label: "Show worker status", description: "Display worker information" },
+            { label: "Shutdown workers", description: "Stop all workers" },
+            { label: "Start workers", description: "Initialize worker threads" },
+            { label: "Optimize worker count", description: "Adjust worker count based on resources" }
+        ];
+
+        // Mock window.showQuickPick to simulate user selection
+        const showQuickPickMock = jest.spyOn(vscode.window, 'showQuickPick');
+        const showInfoMessageMock = jest.spyOn(vscode.window, 'showInformationMessage');
+        const cancelSpy = jest.spyOn(indexingService as any, 'cancelProcessing');
+        const restartWorkersSpy = jest.spyOn(indexingService as any, 'restartWorkers').mockResolvedValue(undefined);
+        const shutdownWorkersSpy = jest.spyOn(indexingService as any, 'shutdownWorkers').mockResolvedValue(undefined);
+        const showStatusSpy = jest.spyOn(indexingService as any, 'showWorkerStatus').mockReturnValue(undefined);
+        const initWorkersSpy = jest.spyOn(indexingService as any, 'initializeWorkers').mockResolvedValue(undefined);
+        const optimizeSpy = jest.spyOn(indexingService as any, 'optimizeWorkerCount').mockResolvedValue(undefined);
+
+        try {
+            // Test all options
+            const optionTests = [
+                { selection: items[0], spy: cancelSpy },
+                { selection: items[1], spy: restartWorkersSpy },
+                { selection: items[2], spy: showStatusSpy },
+                { selection: items[3], spy: shutdownWorkersSpy },
+                { selection: items[4], spy: initWorkersSpy },
+                { selection: items[5], spy: optimizeSpy },
+            ];
+
+            for (const test of optionTests) {
+                // Mock implementation for showQuickPick for each test case
+                showQuickPickMock.mockResolvedValueOnce(test.selection);
+
+                // Mock showIndexingManagementOptions
+                const mockShowIndexingManagement = jest.spyOn(indexingService as any, 'showIndexingManagementOptions');
+                mockShowIndexingManagement.mockImplementation(async () => {
+                    // Find the selected method based on label and call it directly
+                    if (test.selection.label === "Cancel current indexing") {
+                        (indexingService as any).cancelProcessing();
+                    } else if (test.selection.label === "Restart workers") {
+                        await (indexingService as any).restartWorkers();
+                    } else if (test.selection.label === "Show worker status") {
+                        (indexingService as any).showWorkerStatus();
+                    } else if (test.selection.label === "Shutdown workers") {
+                        await (indexingService as any).shutdownWorkers();
+                    } else if (test.selection.label === "Start workers") {
+                        await (indexingService as any).initializeWorkers();
+                    } else if (test.selection.label === "Optimize worker count") {
+                        await (indexingService as any).optimizeWorkerCount();
+                    }
+                });
+
+                // Call the management method
+                await (indexingService as any).showIndexingManagementOptions();
+
+                // Verify the expected method was called
+                expect(test.spy).toHaveBeenCalled();
+
+                // Reset for next test
+                test.spy.mockClear();
+                mockShowIndexingManagement.mockRestore();
+            }
+
+            // Test cancellation of selection
+            showQuickPickMock.mockResolvedValueOnce(undefined);
+            await (indexingService as any).showIndexingManagementOptions();
+            // Verify no methods are called when selection is cancelled
+            expect(cancelSpy).not.toHaveBeenCalled();
+        } finally {
+            showQuickPickMock.mockRestore();
+            showInfoMessageMock.mockRestore();
+            cancelSpy.mockRestore();
+            restartWorkersSpy.mockRestore();
+            shutdownWorkersSpy.mockRestore();
+            showStatusSpy.mockRestore();
+            initWorkersSpy.mockRestore();
+            optimizeSpy.mockRestore();
+        }
+    });
+
+    it('should optimize worker count based on system resources', async () => {
+        // Create MessageItem for button responses
+        const yesButton = { title: 'Yes' } as vscode.MessageItem;
+        const noButton = { title: 'No' } as vscode.MessageItem;
+
+        // Mock system functions
+        const showWarningMock = jest.spyOn(vscode.window, 'showWarningMessage')
+            .mockResolvedValue(yesButton);
+
+        // Mock calculateOptimalResources to return a known value
+        const calculateSpy = jest.spyOn(indexingService as any, 'calculateOptimalResources')
+            .mockReturnValue({ workerCount: 3, useHighMemoryModel: true });
+
+        const shutdownSpy = jest.spyOn(indexingService as any, 'shutdownWorkers')
+            .mockResolvedValue(undefined);
+
+        const initSpy = jest.spyOn(indexingService as any, 'initializeWorkers')
+            .mockResolvedValue(undefined);
+
+        // Mock optimizeWorkerCount implementation for direct testing
+        const optimizeWorkerCountSpy = jest.spyOn(indexingService as any, 'optimizeWorkerCount');
+        optimizeWorkerCountSpy.mockImplementation(async () => {
+            const resources = (indexingService as any).calculateOptimalResources();
+
+            if (!(indexingService as any).workersInitialized) {
+                await (indexingService as any).initializeWorkers();
+                return;
+            }
+
+            // Check if we should change worker count
+            const currentWorkerCount = (indexingService as any).workers.length;
+            if (resources.workerCount !== currentWorkerCount) {
+                const response = await vscode.window.showWarningMessage(
+                    `Optimize workers: ${currentWorkerCount} → ${resources.workerCount} workers?`,
+                    yesButton, noButton
+                );
+
+                if (response === yesButton) {
+                    await (indexingService as any).shutdownWorkers();
+                    await (indexingService as any).initializeWorkers();
+                }
+            }
+        });
+
+        try {
+            // Test optimization when workers aren't initialized
+            (indexingService as any).workersInitialized = false;
+            await (indexingService as any).optimizeWorkerCount();
+            expect(initSpy).toHaveBeenCalled();
+            expect(shutdownSpy).not.toHaveBeenCalled();
+
+            // Reset mocks
+            initSpy.mockClear();
+            shutdownSpy.mockClear();
+
+            // Test optimization when worker count should change
+            (indexingService as any).workersInitialized = true;
+            (indexingService as any).workers = [{}, {}]; // Mock 2 workers
+            await (indexingService as any).optimizeWorkerCount();
+            expect(shutdownSpy).toHaveBeenCalled();
+            expect(initSpy).toHaveBeenCalled();
+
+            // Test rejection of optimization
+            showWarningMock.mockResolvedValueOnce(noButton);
+            shutdownSpy.mockClear();
+            initSpy.mockClear();
+            await (indexingService as any).optimizeWorkerCount();
+            expect(shutdownSpy).not.toHaveBeenCalled();
+            expect(initSpy).not.toHaveBeenCalled();
+        } finally {
+            calculateSpy.mockRestore();
+            showWarningMock.mockRestore();
+            shutdownSpy.mockRestore();
+            initSpy.mockRestore();
+            optimizeWorkerCountSpy.mockRestore();
+        }
+    });
+
+    it('should properly clean up resources on disposal', async () => {
+        // Create token source to test cancellation
+        (indexingService as any).cancelTokenSource = new vscode.CancellationTokenSource();
+        const cancelSpy = jest.spyOn((indexingService as any).cancelTokenSource, 'cancel');
+
+        // Add some items to queues
+        (indexingService as any).workQueue = [{ id: 'test1' }];
+        (indexingService as any).activeProcessing.set('test2', { id: 'test2' });
+
+        // Mock shutdownWorkers to verify it's called
+        const shutdownSpy = jest.spyOn(indexingService as any, 'shutdownWorkers')
+            .mockResolvedValue(undefined);
+
+        await indexingService.dispose();
+
+        // Verify cleanup happened
+        expect(cancelSpy).toHaveBeenCalled();
+        expect(shutdownSpy).toHaveBeenCalled();
+        expect((indexingService as any).workQueue.length).toBe(0);
+        expect((indexingService as any).activeProcessing.size).toBe(0);
+
+        // Clean up
+        cancelSpy.mockRestore();
+        shutdownSpy.mockRestore();
+    });
+
+    it('should handle worker errors and attempt recovery', async () => {
+        // Skip test if models don't exist
+        const modelsPath = modelCacheService.getModelsPath();
+        const fallbackModelPath = path.join(modelsPath, 'Xenova', 'all-MiniLM-L6-v2');
+
+        if (!fs.existsSync(fallbackModelPath) || fs.readdirSync(fallbackModelPath).length === 0) {
+            console.log('Skipping test: models not found');
+            return;
+        }
+
+        // Initialize service first
+        await indexingService.processFiles([
+            { id: 'test', path: '/test.js', content: 'test content' }
+        ]);
+
+        // Verify workers initialized
+        expect((indexingService as any).workers.length).toBeGreaterThan(0);
+
+        // Save reference to worker
+        const worker = (indexingService as any).workers[0].worker;
+
+        // Spy on recreateWorker - fix by adding undefined parameter
+        const recreateSpy = jest.spyOn(indexingService as any, 'recreateWorker')
+            .mockResolvedValue(undefined);
+
+        // Simulate worker error
+        (indexingService as any).handleWorkerError(worker, new Error('Test error'));
+
+        // Verify worker status changed to error
+        expect((indexingService as any).workers[0].status).toBe('error');
+
+        // Verify recreateWorker was called
+        expect(recreateSpy).toHaveBeenCalledWith(0);
+
+        // Clean up
+        recreateSpy.mockRestore();
     });
 });

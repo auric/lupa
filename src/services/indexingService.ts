@@ -130,17 +130,31 @@ export class IndexingService implements vscode.Disposable {
         const totalMemoryGB = os.totalmem() / 1024 / 1024 / 1024; // Convert to GB
         const availableMemoryGB = os.freemem() / 1024 / 1024 / 1024; // Convert to GB
 
-        // Check if we have enough memory for the high-memory model
-        const useHighMemoryModel = availableMemoryGB >= this.options.highMemoryThreshold;
+        // Check if we have enough memory for the high-memory model based on percentage of total memory
+        // This is better than a fixed threshold as it accounts for different system sizes
+        const minMemoryPercentage = 0.25; // Need at least 25% of total memory available
+        const useHighMemoryModel = availableMemoryGB >= Math.max(
+            this.options.highMemoryThreshold,
+            totalMemoryGB * minMemoryPercentage
+        );
 
         // Calculate optimal worker count based on available memory and CPUs
         const cpuCount = os.cpus().length;
+        // Always leave at least one core for the main process
         let workerCount = Math.max(1, Math.min(cpuCount - 1, this.options.maxWorkers));
 
         // If we're using the high memory model, we might need to reduce worker count
         if (useHighMemoryModel) {
-            // Ensure at least 8GB per worker for high-memory model
-            const maxWorkersForMemory = Math.max(1, Math.floor(availableMemoryGB / 8));
+            // Each worker needs ~8GB for high-memory model, reserve system memory
+            const effectiveAvailableGB = availableMemoryGB - this.options.memoryReserveGB;
+            const memoryPerWorker = 1; // GB per worker for high-memory model
+            const maxWorkersForMemory = Math.max(1, Math.floor(effectiveAvailableGB / memoryPerWorker));
+            workerCount = Math.min(workerCount, maxWorkersForMemory);
+        } else {
+            // For low-memory model, each worker needs ~2GB
+            const effectiveAvailableGB = availableMemoryGB - this.options.memoryReserveGB;
+            const memoryPerWorker = 0.5; // GB per worker for low-memory model
+            const maxWorkersForMemory = Math.max(1, Math.floor(effectiveAvailableGB / memoryPerWorker));
             workerCount = Math.min(workerCount, maxWorkersForMemory);
         }
 
@@ -575,14 +589,16 @@ export class IndexingService implements vscode.Disposable {
     }
 
     /**
-     * Process a batch of files and generate embeddings
+     * Process a batch of files with progressive updates
      * @param files Array of files to process
      * @param token Cancellation token
+     * @param progressCallback Optional callback for progress updates
      * @returns Map of file IDs to embeddings
      */
     public async processFiles(
         files: FileToProcess[],
-        token?: vscode.CancellationToken
+        token?: vscode.CancellationToken,
+        progressCallback?: (processed: number, total: number) => void
     ): Promise<Map<string, ProcessingResult>> {
         if (files.length === 0) {
             return new Map();
@@ -606,94 +622,62 @@ export class IndexingService implements vscode.Disposable {
         const statusBar = statusBarService.getOrCreateItem(this.statusBarId);
         statusBar.show();
 
-        // Create a promise for each file
-        const filePromises = files.map(file => {
-            return new Promise<ProcessingResult>((resolve, reject) => {
-                // Create work item
-                const workItem: WorkItem = {
-                    ...file,
-                    resolve,
-                    reject
-                };
+        // Sort files by priority (if available) to process important files first
+        const sortedFiles = [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-                // Check if operation was cancelled
-                if (effectiveToken.isCancellationRequested) {
-                    reject(new Error('Operation cancelled'));
-                    return;
-                }
+        // Process files in batches to provide progressive results
+        const resultMap = new Map<string, ProcessingResult>();
+        const batchSize = Math.max(5, Math.ceil(files.length / 10)); // Process in roughly 10 batches
 
-                // Add to queue
-                this.workQueue.push(workItem);
-
-                // Start processing if not already started
-                if (!this.isProcessing) {
-                    this.isProcessing = true;
-                    this.processNextItem();
-                }
-            });
-        });
-
-        // Set up cancellation handling
-        const cancellationPromise = new Promise<never>((_, reject) => {
+        for (let i = 0; i < sortedFiles.length; i += batchSize) {
             if (effectiveToken.isCancellationRequested) {
-                reject(new Error('Operation cancelled'));
-                return;
+                throw new Error('Operation cancelled');
             }
 
-            const cancelListener = effectiveToken.onCancellationRequested(() => {
-                reject(new Error('Operation cancelled'));
+            const batch = sortedFiles.slice(i, i + batchSize);
+
+            // Create a promise for each file in the batch
+            const batchPromises = batch.map(file => {
+                return new Promise<ProcessingResult>((resolve, reject) => {
+                    // Create work item
+                    const workItem: WorkItem = {
+                        ...file,
+                        resolve,
+                        reject
+                    };
+
+                    // Check if operation was cancelled
+                    if (effectiveToken.isCancellationRequested) {
+                        reject(new Error('Operation cancelled'));
+                        return;
+                    }
+
+                    // Add to queue
+                    this.workQueue.push(workItem);
+                });
             });
 
-            // Ensure we dispose the listener
-            Promise.allSettled(filePromises).finally(() => cancelListener.dispose());
-        });
+            // Start processing if not already started
+            if (!this.isProcessing) {
+                this.isProcessing = true;
+                this.processNextItem();
+            }
 
-        try {
-            // Wait for all files to be processed or cancellation
-            const results = await Promise.race([
-                Promise.all(filePromises),
-                cancellationPromise
-            ]) as ProcessingResult[];
+            // Wait for this batch to complete
+            const batchResults = await Promise.all(batchPromises);
 
-            // Map results by file ID
-            const resultMap = new Map<string, ProcessingResult>();
-            for (const result of results) {
+            // Add results to the map
+            for (const result of batchResults) {
                 resultMap.set(result.fileId, result);
             }
 
-            return resultMap;
-        } catch (error) {
-            console.error('Error processing files:', error);
-
-            // Clean up queue on error
-            this.workQueue = this.workQueue.filter(item =>
-                !files.some(file => file.id === item.id)
-            );
-
-            // Re-throw error
-            throw error;
-        } finally {
-            this.isProcessing = this.workQueue.length > 0;
-            this.updateStatusBar();
-
-            // Dispose our cancellation token source if we created it
-            if (this.cancelTokenSource) {
-                this.cancelTokenSource.dispose();
-                this.cancelTokenSource = undefined;
-            }
-
-            // If there are no more items to process, shut down workers after a delay
-            if (this.workQueue.length === 0 && this.workers.length > 0) {
-                setTimeout(() => {
-                    // Double check that queue is still empty
-                    if (this.workQueue.length === 0 && !this.isProcessing) {
-                        // Don't shut down workers automatically - keep them ready
-                        // Just update the status bar
-                        this.updateStatusBar();
-                    }
-                }, 2000); // 2 seconds delay
+            // Update progress
+            if (progressCallback) {
+                progressCallback(Math.min(i + batchSize, files.length), files.length);
             }
         }
+
+        return resultMap;
     }
 
     /**

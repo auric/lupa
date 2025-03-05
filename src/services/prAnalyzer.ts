@@ -83,7 +83,13 @@ export class PRAnalyzer implements vscode.Disposable {
 
                 try {
                     // Process the file
-                    const results = await this.indexingService.processFiles([fileToProcess], token);
+                    const results = await this.indexingService.processFiles([fileToProcess], token, (processed, total) => {
+                        const percentage = Math.round((processed / total) * 100);
+                        progress.report({
+                            message: `${processed}/${total} files (${percentage}%)`,
+                            increment: (1 / total) * 100
+                        });
+                    });
 
                     // Get the result for our file
                     const result = results.get(filePath);
