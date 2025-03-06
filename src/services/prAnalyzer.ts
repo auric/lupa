@@ -25,16 +25,17 @@ export class PRAnalyzer implements vscode.Disposable {
     constructor(
         private readonly context: vscode.ExtensionContext
     ) {
+        this.workspaceSettingsService = new WorkspaceSettingsService(context);
+
         // Initialize the required services
         this.resourceDetectionService = new ResourceDetectionService({
             memoryReserveGB: 4 // 4GB reserve for other processes
         });
 
         this.modelSelectionService = new ModelSelectionService(
-            path.join(context.extensionPath, 'models')
+            path.join(context.extensionPath, 'models'),
+            this.workspaceSettingsService
         );
-
-        this.workspaceSettingsService = new WorkspaceSettingsService(context);
 
         // Initialize the indexing service with our dependencies
         this.initializeIndexingService();
@@ -71,38 +72,21 @@ export class PRAnalyzer implements vscode.Disposable {
             this.indexingService = null;
         }
 
-        // Get the selected model from settings or use optimal model selection
-        const savedModel = this.workspaceSettingsService.getSelectedEmbeddingModel();
-        let modelName: string;
-        let contextLength: number | undefined;
+        // Get the selected model from ModelSelectionService
+        // It will check workspace settings internally and handle model selection
+        const { model, modelInfo } = this.modelSelectionService.selectOptimalModel();
 
-        if (savedModel) {
-            // User has explicitly selected a model
-            modelName = savedModel;
-
-            // Set context length based on known model properties
-            if (savedModel === EmbeddingModel.JinaEmbeddings) {
-                contextLength = 8192; // Jina has larger context
-            } else {
-                contextLength = 256; // MiniLM has smaller context
-            }
-        } else {
-            // Use automatic model selection
-            const { model, modelInfo } = this.modelSelectionService.selectOptimalModel();
-            modelName = model;
-            contextLength = modelInfo?.contextLength;
-        }
-
-        this.selectedModel = modelName;
+        this.selectedModel = model;
 
         // Calculate optimal worker count
-        const workerCount = this.calculateOptimalWorkerCount(modelName === EmbeddingModel.JinaEmbeddings);
+        const isHighMemoryModel = model === EmbeddingModel.JinaEmbeddings;
+        const workerCount = this.calculateOptimalWorkerCount(isHighMemoryModel);
 
         // Create options for indexing service
         const options: IndexingServiceOptions = {
-            modelName,
+            modelName: model,
             maxWorkers: workerCount,
-            contextLength
+            contextLength: modelInfo?.contextLength // Let ModelSelectionService provide the context length
         };
 
         // Create the indexing service
@@ -112,7 +96,7 @@ export class PRAnalyzer implements vscode.Disposable {
             options
         );
 
-        console.log(`Initialized IndexingService with model: ${modelName}, workers: ${workerCount}`);
+        console.log(`Initialized IndexingService with model: ${model}, workers: ${workerCount}, context length: ${modelInfo?.contextLength || 'unknown'}`);
     }
 
     /**

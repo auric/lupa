@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { env } from '@huggingface/transformers';
 import { ResourceDetectionService, SystemResources } from './resourceDetectionService';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
+import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
  * Available embedding models
@@ -83,6 +84,7 @@ export class ModelSelectionService implements vscode.Disposable {
      */
     constructor(
         private readonly basePath: string,
+        private readonly workspaceSettingsService: WorkspaceSettingsService,
         options?: ModelSelectionOptions
     ) {
         this.options = { ...this.defaultOptions, ...options };
@@ -103,6 +105,16 @@ export class ModelSelectionService implements vscode.Disposable {
         modelInfo: ModelInfo;
         useHighMemoryModel: boolean;
     } {
+        const savedModel = this.workspaceSettingsService.getSelectedEmbeddingModel();
+        if (savedModel && savedModel in this.modelInfos) {
+            const modelInfo = this.modelInfos[savedModel];
+            return {
+                model: savedModel,
+                modelInfo,
+                useHighMemoryModel: savedModel === EmbeddingModel.JinaEmbeddings
+            };
+        }
+
         const systemResources = this.resources.detectSystemResources();
         const modelsInfo = this.checkModelsAvailability();
 
