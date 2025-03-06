@@ -1,5 +1,4 @@
-import { pipeline } from '@huggingface/transformers';
-import { Worker } from 'worker_threads';
+import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
 
 // Define interfaces for clear typing
 interface EmbeddingOptions {
@@ -9,7 +8,7 @@ interface EmbeddingOptions {
     overlapSize?: number;
 }
 
-interface ProcessFileTask {
+export interface ProcessFileTask {
     fileId: string;
     filePath: string;
     content: string;
@@ -30,48 +29,24 @@ interface ProcessingResult {
 const DEFAULT_CHUNK_SIZE = 4096; // Smaller than model's context length for safety
 const DEFAULT_OVERLAP_SIZE = 200; // Overlap between chunks to maintain context
 
-// Module-level state
-const modelCache = new Map<string, any>();
-const modelInitPromises = new Map<string, Promise<any>>();
+// Module-level state - we initialize the model only once per worker instance
+let embeddingPipeline: FeatureExtractionPipeline | null = null;
+let currentModelName: string | null = null;
 
 /**
- * Initialize the model only once per model name
+ * Initialize the embedding model once per worker
  */
-async function getOrInitializeModel(modelName: string): Promise<any> {
-    // Return cached pipeline if available
-    if (modelCache.has(modelName)) {
-        return modelCache.get(modelName);
+async function initializeModel(modelName: string): Promise<FeatureExtractionPipeline> {
+    // If model is already initialized with the same name, reuse it
+    if (embeddingPipeline && currentModelName === modelName) {
+        return embeddingPipeline;
     }
 
-    // If initialization is in progress, wait for it
-    if (modelInitPromises.has(modelName)) {
-        return await modelInitPromises.get(modelName);
-    }
-
-    // Start new initialization
-    const initPromise = initializeModel(modelName);
-    modelInitPromises.set(modelName, initPromise);
-
-    try {
-        const model = await initPromise;
-        // Cache the result
-        modelCache.set(modelName, model);
-        return model;
-    } finally {
-        // Clean up promise reference
-        modelInitPromises.delete(modelName);
-    }
-}
-
-/**
- * Initialize the embedding model
- */
-async function initializeModel(modelName: string): Promise<any> {
     try {
         console.log(`Worker: Initializing model ${modelName}`);
 
         // Create the pipeline
-        const embeddingPipeline = await pipeline('feature-extraction', modelName, {
+        embeddingPipeline = await pipeline('feature-extraction', modelName, {
             revision: 'main',
             dtype: 'q4'
         });
@@ -80,10 +55,16 @@ async function initializeModel(modelName: string): Promise<any> {
             throw new Error(`Failed to initialize embedding pipeline for ${modelName}`);
         }
 
+        // Store the current model name
+        currentModelName = modelName;
         console.log(`Worker: Model ${modelName} initialized successfully`);
+
         return embeddingPipeline;
     } catch (error) {
         console.error(`Worker: Failed to initialize model:`, error);
+        // Reset state on failure
+        embeddingPipeline = null;
+        currentModelName = null;
         throw error;
     }
 }
@@ -147,7 +128,7 @@ function chunkText(text: string, chunkSize: number = DEFAULT_CHUNK_SIZE, overlap
  */
 async function generateEmbeddings(
     text: string,
-    embeddingPipeline: any,
+    pipe: FeatureExtractionPipeline,
     options: EmbeddingOptions = {},
     signal?: AbortSignal
 ): Promise<{ embeddings: Float32Array[], chunkOffsets: number[] }> {
@@ -177,7 +158,7 @@ async function generateEmbeddings(
             }
 
             // Generate embedding for this chunk
-            const output = await embeddingPipeline(chunk, {
+            const output = await pipe(chunk, {
                 pooling: poolingStrategy,
                 normalize: shouldNormalize
             });
@@ -210,8 +191,19 @@ async function generateEmbeddings(
  */
 export default async function processFile(task: ProcessFileTask): Promise<ProcessingResult> {
     try {
-        // Get or initialize the model
-        const embeddingPipeline = await getOrInitializeModel(task.modelName);
+        // Check for early cancellation
+        if (task.signal?.aborted) {
+            return {
+                fileId: task.fileId,
+                embeddings: [],
+                chunkOffsets: [],
+                success: false,
+                error: 'Operation was cancelled'
+            };
+        }
+
+        // Initialize model if needed
+        const pipe = await initializeModel(task.modelName);
 
         // Check if operation was cancelled during model initialization
         if (task.signal?.aborted) {
@@ -227,7 +219,7 @@ export default async function processFile(task: ProcessFileTask): Promise<Proces
         // Generate embeddings for the file content
         const { embeddings, chunkOffsets } = await generateEmbeddings(
             task.content,
-            embeddingPipeline,
+            pipe,
             task.options,
             task.signal
         );

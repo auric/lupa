@@ -5,9 +5,8 @@ import * as os from 'os';
 import { EventEmitter } from 'events';
 import Piscina from 'piscina';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
-import { ResourceDetectionService } from './resourceDetectionService';
-import { ModelSelectionService, EmbeddingModel } from './modelSelectionService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
+import { type ProcessFileTask } from '../workers/indexingWorker';
 
 /**
  * Interface representing a file to be processed
@@ -47,6 +46,8 @@ export interface IndexingServiceOptions {
     chunkSize?: number;                  // Size of text chunks
     overlapSize?: number;                // Overlap between chunks
     chunkSizeSafetyFactor?: number;      // Safety factor for chunk size (to account for token/character ratio)
+    modelName: string;                   // Name of the embedding model to use
+    contextLength?: number;              // Context length of the model (if known)
 }
 
 /**
@@ -56,8 +57,9 @@ export class IndexingService implements vscode.Disposable {
     private piscina: Piscina | null = null;
     private readonly statusBarService: StatusBarService;
     private currentCancellationEmitter: EventEmitter | null = null;
-    private readonly defaultOptions: Required<IndexingServiceOptions> = {
-        maxWorkers: Math.max(1, Math.floor((os.cpus().length + 1) / 2)), // Default to half of CPU cores
+
+    private readonly defaultOptions: Required<Omit<IndexingServiceOptions, 'modelName'>> = {
+        maxWorkers: Math.max(1, Math.floor(os.availableParallelism ? os.availableParallelism() : (os.cpus().length + 1) / 2)),
         embeddingOptions: {
             pooling: 'mean',
             normalize: true
@@ -65,26 +67,36 @@ export class IndexingService implements vscode.Disposable {
         chunkSize: 3000,               // Default chunk size (smaller than model context length)
         overlapSize: 200,              // Overlap between chunks
         chunkSizeSafetyFactor: 0.75,   // Use 75% of model's context length to account for token/char differences
+        contextLength: 256,            // Minimal context length for the low level model
     };
     private readonly options: Required<IndexingServiceOptions>;
 
     /**
      * Create a new IndexingService
      * @param context VS Code extension context
-     * @param resourceDetectionService Service for detecting system resources
-     * @param modelSelectionService Service for selecting optimal embedding model
      * @param workspaceSettingsService Service for persisting workspace settings
-     * @param options Configuration options
+     * @param options Configuration options including model name
      */
     constructor(
         private readonly context: vscode.ExtensionContext,
-        private readonly resourceDetectionService: ResourceDetectionService,
-        private readonly modelSelectionService: ModelSelectionService,
         private readonly workspaceSettingsService: WorkspaceSettingsService,
-        options?: IndexingServiceOptions
+        options: IndexingServiceOptions
     ) {
-        this.options = { ...this.defaultOptions, ...options };
+        // Ensure modelName is provided
+        if (!options.modelName) {
+            throw new Error('Model name must be provided to IndexingService');
+        }
+
+        this.options = {
+            ...this.defaultOptions,
+            ...options,
+            modelName: options.modelName
+        } as Required<IndexingServiceOptions>;
+
         this.statusBarService = StatusBarService.getInstance();
+
+        // Create shared cancellation emitter for all operations
+        this.currentCancellationEmitter = new EventEmitter();
 
         // Register indexing management command
         const manageIndexingCommand = vscode.commands.registerCommand(
@@ -92,13 +104,6 @@ export class IndexingService implements vscode.Disposable {
             () => this.showIndexingManagementOptions()
         );
         context.subscriptions.push(manageIndexingCommand);
-
-        // Register command to change model
-        const selectModelCommand = vscode.commands.registerCommand(
-            'codelens-pr-analyzer.selectEmbeddingModel',
-            () => this.showModelSelectionOptions()
-        );
-        context.subscriptions.push(selectModelCommand);
     }
 
     /**
@@ -122,128 +127,22 @@ export class IndexingService implements vscode.Disposable {
             });
 
             console.log(`Created Piscina with ${this.options.maxWorkers} max workers`);
-
-            // Update settings after creating Piscina
-            this.workspaceSettingsService.updateLastIndexingTimestamp();
         }
         return this.piscina;
-    }
-
-    /**
-     * Show options for selecting embedding model
-     */
-    private async showModelSelectionOptions(): Promise<void> {
-        // Show model info first
-        this.modelSelectionService.showModelsInfo();
-
-        // Show options
-        const options = [
-            'Use optimal model (automatic selection)',
-            'Force high-memory model (Jina Embeddings)',
-            'Force low-memory model (MiniLM)'
-        ];
-
-        const selected = await vscode.window.showQuickPick(options, {
-            placeHolder: 'Select embedding model preference'
-        });
-
-        if (!selected) {
-            return;
-        }
-
-        // Update settings based on selection
-        switch (selected) {
-            case options[0]: // Automatic
-                this.workspaceSettingsService.setSelectedEmbeddingModel(undefined);
-                break;
-
-            case options[1]: // Force high-memory
-                this.workspaceSettingsService.setSelectedEmbeddingModel(EmbeddingModel.JinaEmbeddings);
-                break;
-
-            case options[2]: // Force low-memory
-                this.workspaceSettingsService.setSelectedEmbeddingModel(EmbeddingModel.MiniLM);
-                break;
-        }
-
-        // If piscina exists, offer to restart it
-        if (this.piscina) {
-            const restartResponse = await vscode.window.showInformationMessage(
-                'Restart workers to apply new model selection?',
-                'Yes', 'No'
-            );
-
-            if (restartResponse === 'Yes') {
-                await this.restartWorkers();
-            }
-        }
-    }
-
-    /**
-     * Select the embedding model to use based on workspace settings and system resources
-     */
-    private selectEmbeddingModel(): {
-        model: string;
-        useHighMemoryModel: boolean;
-        modelInfo: any;
-    } {
-        // First check if a specific model is specified in workspace settings
-        const savedModel = this.workspaceSettingsService.getSelectedEmbeddingModel();
-
-        if (savedModel) {
-            // User has explicitly selected a model
-            const selection = this.modelSelectionService.selectOptimalModel();
-            const modelInfo = selection.modelInfo;
-
-            const isHighMemory = savedModel === EmbeddingModel.JinaEmbeddings;
-
-            return {
-                model: savedModel,
-                useHighMemoryModel: isHighMemory,
-                modelInfo
-            };
-        }
-
-        // Otherwise use the model selection service
-        const selection = this.modelSelectionService.selectOptimalModel();
-
-        return {
-            model: selection.model,
-            useHighMemoryModel: selection.useHighMemoryModel,
-            modelInfo: selection.modelInfo
-        };
     }
 
     /**
      * Get the optimal chunk size based on the selected model's context length
      */
     private getOptimalChunkSize(): number {
-        const { modelInfo } = this.selectEmbeddingModel();
-
         // If we have context length info, use it to calculate optimal chunk size
-        if (modelInfo?.contextLength) {
+        if (this.options.contextLength) {
             // Use the safety factor to account for token/char ratio differences
-            return Math.floor(modelInfo.contextLength * this.options.chunkSizeSafetyFactor);
+            return Math.floor(this.options.contextLength * this.options.chunkSizeSafetyFactor);
         }
 
         // Fallback to the default chunk size
         return this.options.chunkSize;
-    }
-
-    /**
-     * Calculate optimal worker count based on system resources
-     */
-    private calculateOptimalResources(): { workerCount: number, useHighMemoryModel: boolean } {
-        // Select the embedding model
-        const { useHighMemoryModel } = this.selectEmbeddingModel();
-
-        // Calculate optimal worker count using the resource detection service
-        const workerCount = this.resourceDetectionService.calculateOptimalWorkerCount(
-            useHighMemoryModel,
-            this.options.maxWorkers
-        );
-
-        return { workerCount, useHighMemoryModel };
     }
 
     /**
@@ -265,16 +164,14 @@ export class IndexingService implements vscode.Disposable {
         // Get Piscina instance
         const piscina = this.getPiscina();
 
-        // Create a cancellation emitter that can be passed to workers
-        this.cancelProcessing();  // Cancel any previous operation first
-        this.currentCancellationEmitter = new EventEmitter();
-        const cancellationEmitter = this.currentCancellationEmitter;
+        // Reset cancellation if needed (will abort any previous operations)
+        this.resetCancellation();
 
         // If token was provided, listen for cancellation
         if (token) {
             token.onCancellationRequested(() => {
-                if (this.currentCancellationEmitter === cancellationEmitter) {
-                    cancellationEmitter.emit('abort');
+                if (this.currentCancellationEmitter) {
+                    this.currentCancellationEmitter.emit('abort');
                 }
             });
         }
@@ -285,27 +182,25 @@ export class IndexingService implements vscode.Disposable {
         // Sort files by priority (if available) to process important files first
         const sortedFiles = [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-        // Get the selected model
-        const { model } = this.selectEmbeddingModel();
-
         // Get optimal chunk size
         const chunkSize = this.getOptimalChunkSize();
 
         try {
             // Create a task for each file
             const tasks = sortedFiles.map(file => {
-                return {
+                const task: ProcessFileTask = {
                     fileId: file.id,
                     filePath: file.path,
                     content: file.content,
-                    modelName: model,
+                    modelName: this.options.modelName,
                     options: {
                         ...this.options.embeddingOptions,
                         chunkSize,
                         overlapSize: this.options.overlapSize
                     },
-                    signal: cancellationEmitter  // Using EventEmitter as signal
+                    //signal: this.currentCancellationEmitter
                 };
+                return task;
             });
 
             // Process all files in parallel with progress tracking
@@ -322,7 +217,7 @@ export class IndexingService implements vscode.Disposable {
                 }
 
                 const batch = tasks.slice(i, i + BATCH_SIZE);
-                const promises = batch.map(task => piscina.run(task));
+                const promises = batch.map(task => piscina.run(task, { signal: this.currentCancellationEmitter }));
 
                 // Wait for batch to complete
                 const results = await Promise.all(promises);
@@ -347,6 +242,9 @@ export class IndexingService implements vscode.Disposable {
                 );
             }
 
+            // Update last indexing timestamp after successful completion
+            this.workspaceSettingsService.updateLastIndexingTimestamp();
+
             // Set status back to ready when done
             this.statusBarService.setState(StatusBarState.Ready);
 
@@ -358,9 +256,17 @@ export class IndexingService implements vscode.Disposable {
                 error instanceof Error ? error.message : 'Unknown error');
 
             throw error;
-        } finally {
-            // Clean up
-            this.currentCancellationEmitter = null;
+        }
+    }
+
+    /**
+     * Reset cancellation by signaling abort on current operations
+     * and preparing for new operations
+     */
+    private resetCancellation(): void {
+        // If we have an existing emitter, trigger abort to cancel any ongoing operations
+        if (this.currentCancellationEmitter) {
+            this.currentCancellationEmitter.emit('abort');
         }
     }
 
@@ -370,7 +276,6 @@ export class IndexingService implements vscode.Disposable {
     public cancelProcessing(): void {
         if (this.currentCancellationEmitter) {
             this.currentCancellationEmitter.emit('abort');
-            this.currentCancellationEmitter = null;
 
             this.statusBarService.showTemporaryMessage(
                 'Indexing cancelled',
@@ -390,8 +295,7 @@ export class IndexingService implements vscode.Disposable {
             "Cancel current indexing",
             "Restart workers",
             "Show worker status",
-            "Shutdown workers",
-            "Optimize worker count"
+            "Shutdown workers"
         ];
 
         const selected = await vscode.window.showQuickPick(options, {
@@ -415,10 +319,6 @@ export class IndexingService implements vscode.Disposable {
 
             case "Shutdown workers":
                 await this.shutdownPiscina();
-                break;
-
-            case "Optimize worker count":
-                await this.optimizeWorkerCount();
                 break;
         }
     }
@@ -496,7 +396,7 @@ export class IndexingService implements vscode.Disposable {
             completed: piscina.completed,
             duration: piscina.duration,
             utilization: piscina.utilization,
-            model: this.selectEmbeddingModel().model
+            model: this.options.modelName
         };
 
         const memoryUsage = process.memoryUsage();
@@ -517,44 +417,6 @@ export class IndexingService implements vscode.Disposable {
     }
 
     /**
-     * Optimize the number of workers based on system resources
-     */
-    private async optimizeWorkerCount(): Promise<void> {
-        try {
-            const { workerCount } = this.calculateOptimalResources();
-
-            // Store current count for comparison
-            const currentCount = this.options.maxWorkers;
-
-            if (workerCount === currentCount) {
-                vscode.window.showInformationMessage(`Already using optimal worker count (${workerCount})`);
-                return;
-            }
-
-            // Ask for confirmation
-            const action = workerCount > currentCount ? 'increase' : 'decrease';
-            const confirmation = await vscode.window.showWarningMessage(
-                `This will ${action} the number of workers from ${currentCount} to ${workerCount}. Continue?`,
-                'Yes', 'No'
-            );
-
-            if (confirmation !== 'Yes') {
-                return;
-            }
-
-            // Update max workers option
-            this.options.maxWorkers = workerCount;
-
-            // Restart piscina with new worker count
-            await this.restartWorkers();
-
-            vscode.window.showInformationMessage(`Worker count adjusted to ${workerCount}`);
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to optimize worker count: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-
-    /**
      * Dispose resources
      */
     public async dispose(): Promise<void> {
@@ -570,5 +432,8 @@ export class IndexingService implements vscode.Disposable {
                 console.error('Error destroying piscina during dispose:', error);
             }
         }
+
+        // Clean up the cancellation emitter
+        this.currentCancellationEmitter = null;
     }
 }
