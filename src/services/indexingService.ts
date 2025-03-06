@@ -2,11 +2,10 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { EventEmitter } from 'events';
 import Piscina from 'piscina';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
-import { type ProcessFileTask } from '../workers/indexingWorker';
+import { type ProcessFileTask, type ProcessingResult } from '../workers/indexingWorker';
 
 /**
  * Interface representing a file to be processed
@@ -16,17 +15,6 @@ export interface FileToProcess {
     path: string;        // File system path
     content: string;     // File content
     priority?: number;   // Priority (higher numbers = higher priority)
-}
-
-/**
- * Result of processing a file
- */
-export interface ProcessingResult {
-    fileId: string;
-    embeddings: Float32Array[];
-    chunkOffsets: number[];
-    success: boolean;
-    error?: string;
 }
 
 /**
@@ -51,12 +39,24 @@ export interface IndexingServiceOptions {
 }
 
 /**
+ * Tracks an active processing operation
+ */
+interface ProcessingOperation {
+    abortController: AbortController;
+    files: FileToProcess[];
+}
+
+/**
  * IndexingService manages multi-threaded embedding generation using Piscina
  */
 export class IndexingService implements vscode.Disposable {
     private piscina: Piscina | null = null;
     private readonly statusBarService: StatusBarService;
-    private currentCancellationEmitter: EventEmitter | null = null;
+
+    // Track current processing operation
+    private currentOperation: ProcessingOperation | null = null;
+    // For tracking multiple ongoing operations if needed
+    // private activeOperations: Map<string, ProcessingOperation> = new Map();
 
     private readonly defaultOptions: Required<Omit<IndexingServiceOptions, 'modelName'>> = {
         maxWorkers: Math.max(1, Math.floor(os.availableParallelism ? os.availableParallelism() : (os.cpus().length + 1) / 2)),
@@ -94,9 +94,6 @@ export class IndexingService implements vscode.Disposable {
         } as Required<IndexingServiceOptions>;
 
         this.statusBarService = StatusBarService.getInstance();
-
-        // Create shared cancellation emitter for all operations
-        this.currentCancellationEmitter = new EventEmitter();
 
         // Register indexing management command
         const manageIndexingCommand = vscode.commands.registerCommand(
@@ -161,17 +158,28 @@ export class IndexingService implements vscode.Disposable {
             return new Map();
         }
 
+        // Cancel any existing operation
+        this.cancelProcessing();
+
+        // Create a new operation
+        const abortController = new AbortController();
+        this.currentOperation = { abortController, files };
+
         // Get Piscina instance
         const piscina = this.getPiscina();
 
-        // Reset cancellation if needed (will abort any previous operations)
-        this.resetCancellation();
-
-        // If token was provided, listen for cancellation
+        // Link VS Code cancellation token to our AbortController if provided
         if (token) {
             token.onCancellationRequested(() => {
-                if (this.currentCancellationEmitter) {
-                    this.currentCancellationEmitter.emit('abort');
+                // Only cancel if this is still the current operation
+                if (this.currentOperation?.abortController === abortController) {
+                    abortController.abort();
+                    this.statusBarService.showTemporaryMessage(
+                        'Indexing cancelled',
+                        3000,
+                        StatusBarMessageType.Warning
+                    );
+                    this.statusBarService.setState(StatusBarState.Ready);
                 }
             });
         }
@@ -198,7 +206,7 @@ export class IndexingService implements vscode.Disposable {
                         chunkSize,
                         overlapSize: this.options.overlapSize
                     },
-                    //signal: this.currentCancellationEmitter
+                    signal: abortController.signal
                 };
                 return task;
             });
@@ -211,20 +219,30 @@ export class IndexingService implements vscode.Disposable {
             const BATCH_SIZE = 10;
 
             for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
-                // Check if cancelled
+                // Check if cancelled via VS Code token
                 if (token?.isCancellationRequested) {
                     throw new Error('Operation cancelled');
                 }
 
+                // Check if cancelled via AbortController
+                if (abortController.signal.aborted) {
+                    throw new Error('Operation cancelled');
+                }
+
                 const batch = tasks.slice(i, i + BATCH_SIZE);
-                const promises = batch.map(task => piscina.run(task, { signal: this.currentCancellationEmitter }));
+                const promises: Array<Promise<ProcessingResult>> = batch.map(task =>
+                    // Don't pass AbortSignal to Piscina tasks, since it may lead to crashes
+                    piscina.run(task)
+                );
 
                 // Wait for batch to complete
                 const results = await Promise.all(promises);
 
                 // Add results to map
                 for (const result of results) {
-                    resultMap.set(result.fileId, result);
+                    if (result.success) {
+                        resultMap.set(result.fileId, result);
+                    }
                 }
 
                 // Update progress
@@ -256,17 +274,11 @@ export class IndexingService implements vscode.Disposable {
                 error instanceof Error ? error.message : 'Unknown error');
 
             throw error;
-        }
-    }
-
-    /**
-     * Reset cancellation by signaling abort on current operations
-     * and preparing for new operations
-     */
-    private resetCancellation(): void {
-        // If we have an existing emitter, trigger abort to cancel any ongoing operations
-        if (this.currentCancellationEmitter) {
-            this.currentCancellationEmitter.emit('abort');
+        } finally {
+            // Clean up the current operation if it's still the active one
+            if (this.currentOperation?.abortController === abortController) {
+                this.currentOperation = null;
+            }
         }
     }
 
@@ -274,8 +286,10 @@ export class IndexingService implements vscode.Disposable {
      * Cancel any in-progress indexing operations
      */
     public cancelProcessing(): void {
-        if (this.currentCancellationEmitter) {
-            this.currentCancellationEmitter.emit('abort');
+        if (this.currentOperation) {
+            // Abort the operation
+            this.currentOperation.abortController.abort();
+            this.currentOperation = null;
 
             this.statusBarService.showTemporaryMessage(
                 'Indexing cancelled',
@@ -346,6 +360,9 @@ export class IndexingService implements vscode.Disposable {
                 3000,
                 StatusBarMessageType.Info
             );
+
+            // Set status back to ready
+            this.statusBarService.setState(StatusBarState.Ready);
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Failed to restart workers: ${errorMsg}`);
@@ -396,7 +413,8 @@ export class IndexingService implements vscode.Disposable {
             completed: piscina.completed,
             duration: piscina.duration,
             utilization: piscina.utilization,
-            model: this.options.modelName
+            model: this.options.modelName,
+            activeOperation: this.currentOperation ? true : false
         };
 
         const memoryUsage = process.memoryUsage();
@@ -407,6 +425,7 @@ export class IndexingService implements vscode.Disposable {
             `Active threads: ${stats.threadsCount}`,
             `Queue size: ${stats.queueSize}`,
             `Tasks completed: ${stats.completed}`,
+            `Active operation: ${stats.activeOperation ? 'Yes' : 'No'}`,
             `Utilization: ${Math.round(stats.utilization * 100)}%`,
             `Model: ${stats.model}`,
             memoryInfo,
@@ -432,8 +451,5 @@ export class IndexingService implements vscode.Disposable {
                 console.error('Error destroying piscina during dispose:', error);
             }
         }
-
-        // Clean up the cancellation emitter
-        this.currentCancellationEmitter = null;
     }
 }

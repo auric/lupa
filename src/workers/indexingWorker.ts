@@ -14,10 +14,10 @@ export interface ProcessFileTask {
     content: string;
     options?: EmbeddingOptions;
     modelName: string;
-    signal?: AbortSignal;
+    signal: AbortSignal;
 }
 
-interface ProcessingResult {
+export interface ProcessingResult {
     fileId: string;
     embeddings: Float32Array[];
     chunkOffsets: number[];
@@ -35,8 +35,18 @@ let currentModelName: string | null = null;
 
 /**
  * Initialize the embedding model once per worker
+ * @param modelName Name of the model to initialize
+ * @param signal AbortSignal for cancellation
  */
-async function initializeModel(modelName: string): Promise<FeatureExtractionPipeline> {
+async function initializeModel(
+    modelName: string,
+    signal?: AbortSignal
+): Promise<FeatureExtractionPipeline> {
+    // Check for cancellation
+    if (signal?.aborted) {
+        throw new Error('Operation was cancelled during model initialization');
+    }
+
     // If model is already initialized with the same name, reuse it
     if (embeddingPipeline && currentModelName === modelName) {
         return embeddingPipeline;
@@ -44,6 +54,11 @@ async function initializeModel(modelName: string): Promise<FeatureExtractionPipe
 
     try {
         console.log(`Worker: Initializing model ${modelName}`);
+
+        // Check for cancellation before starting expensive operation
+        if (signal?.aborted) {
+            throw new Error('Operation was cancelled before model initialization');
+        }
 
         // Create the pipeline
         embeddingPipeline = await pipeline('feature-extraction', modelName, {
@@ -61,6 +76,12 @@ async function initializeModel(modelName: string): Promise<FeatureExtractionPipe
 
         return embeddingPipeline;
     } catch (error) {
+        // Check if the error is due to cancellation
+        if (signal?.aborted) {
+            console.log(`Worker: Model initialization cancelled for ${modelName}`);
+            throw new Error('Operation was cancelled');
+        }
+
         console.error(`Worker: Failed to initialize model:`, error);
         // Reset state on failure
         embeddingPipeline = null;
@@ -163,6 +184,11 @@ async function generateEmbeddings(
                 normalize: shouldNormalize
             });
 
+            // Check for cancellation after expensive operation
+            if (signal?.aborted) {
+                throw new Error('Operation was cancelled');
+            }
+
             // Extract the embedding (usually in data property)
             const embedding = output.data;
             if (!(embedding instanceof Float32Array)) {
@@ -171,6 +197,7 @@ async function generateEmbeddings(
 
             embeddings.push(embedding);
         } catch (error) {
+            // Check if this is a cancellation
             if (signal?.aborted) {
                 throw new Error('Operation was cancelled');
             }
@@ -188,32 +215,27 @@ async function generateEmbeddings(
 /**
  * Main worker function that processes a file and generates embeddings
  * This is the function that will be called by Piscina
+ *
+ * The AbortSignal is now received from Piscina's run options
  */
-export default async function processFile(task: ProcessFileTask): Promise<ProcessingResult> {
+export default async function processFile(
+    task: ProcessFileTask
+): Promise<ProcessingResult> {
+
+    const signal = task.signal;
+
     try {
         // Check for early cancellation
-        if (task.signal?.aborted) {
-            return {
-                fileId: task.fileId,
-                embeddings: [],
-                chunkOffsets: [],
-                success: false,
-                error: 'Operation was cancelled'
-            };
+        if (signal.aborted) {
+            throw new Error('Operation was cancelled');
         }
 
         // Initialize model if needed
-        const pipe = await initializeModel(task.modelName);
+        const pipe = await initializeModel(task.modelName, signal);
 
         // Check if operation was cancelled during model initialization
-        if (task.signal?.aborted) {
-            return {
-                fileId: task.fileId,
-                embeddings: [],
-                chunkOffsets: [],
-                success: false,
-                error: 'Operation was cancelled'
-            };
+        if (signal.aborted) {
+            throw new Error('Operation was cancelled');
         }
 
         // Generate embeddings for the file content
@@ -221,7 +243,7 @@ export default async function processFile(task: ProcessFileTask): Promise<Proces
             task.content,
             pipe,
             task.options,
-            task.signal
+            signal
         );
 
         return {
@@ -231,7 +253,10 @@ export default async function processFile(task: ProcessFileTask): Promise<Proces
             success: true
         };
     } catch (error) {
-        console.error('Error processing file:', error);
+        // Log the error unless it's a cancellation
+        if (!(signal.aborted && error instanceof Error && error.message.includes('cancelled'))) {
+            console.error('Error processing file:', error);
+        }
 
         // Return error result
         return {
