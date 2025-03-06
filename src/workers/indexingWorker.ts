@@ -1,4 +1,5 @@
 import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
+import { MessagePort } from 'worker_threads';
 
 // Define interfaces for clear typing
 interface EmbeddingOptions {
@@ -9,12 +10,13 @@ interface EmbeddingOptions {
 }
 
 export interface ProcessFileTask {
+    index: number;
     fileId: string;
     filePath: string;
     content: string;
     options?: EmbeddingOptions;
     modelName: string;
-    signal: AbortSignal;
+    messagePort: MessagePort;
 }
 
 export interface ProcessingResult {
@@ -40,10 +42,10 @@ let currentModelName: string | null = null;
  */
 async function initializeModel(
     modelName: string,
-    signal?: AbortSignal
+    signal: AbortSignal
 ): Promise<FeatureExtractionPipeline> {
     // Check for cancellation
-    if (signal?.aborted) {
+    if (signal.aborted) {
         throw new Error('Operation was cancelled during model initialization');
     }
 
@@ -56,7 +58,7 @@ async function initializeModel(
         console.log(`Worker: Initializing model ${modelName}`);
 
         // Check for cancellation before starting expensive operation
-        if (signal?.aborted) {
+        if (signal.aborted) {
             throw new Error('Operation was cancelled before model initialization');
         }
 
@@ -77,7 +79,7 @@ async function initializeModel(
         return embeddingPipeline;
     } catch (error) {
         // Check if the error is due to cancellation
-        if (signal?.aborted) {
+        if (signal.aborted) {
             console.log(`Worker: Model initialization cancelled for ${modelName}`);
             throw new Error('Operation was cancelled');
         }
@@ -210,14 +212,18 @@ async function generateEmbeddings(
 /**
  * Main worker function that processes a file and generates embeddings
  * This is the function that will be called by Piscina
- *
- * The AbortSignal is now received from Piscina's run options
  */
 export default async function processFile(
     task: ProcessFileTask
 ): Promise<ProcessingResult> {
 
-    const signal = task.signal;
+    const abortController = new AbortController();
+    task.messagePort.on('message', (message: string) => {
+        if (message === 'abort') {
+            abortController.abort();
+        }
+    });
+    const signal = abortController.signal;
 
     try {
         // Check for early cancellation

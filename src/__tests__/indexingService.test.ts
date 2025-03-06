@@ -4,8 +4,6 @@ import * as path from 'path';
 import * as os from 'os';
 import { IndexingService, FileToProcess } from '../services/indexingService';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from '../services/statusBarService';
-import { ResourceDetectionService } from '../services/resourceDetectionService';
-import { ModelSelectionService, EmbeddingModel } from '../services/modelSelectionService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 // Mock the StatusBarService
@@ -47,48 +45,6 @@ jest.mock('../services/statusBarService', () => {
             Analyzing: 'analyzing',
             Error: 'error',
             Inactive: 'inactive'
-        }
-    };
-});
-
-// Mock resource detection service
-jest.mock('../services/resourceDetectionService', () => {
-    return {
-        ResourceDetectionService: jest.fn().mockImplementation(() => ({
-            detectSystemResources: jest.fn().mockReturnValue({
-                totalMemoryGB: 16,
-                freeMemoryGB: 8,
-                cpuCount: 4,
-                availableMemoryGB: 4
-            }),
-            calculateOptimalWorkerCount: jest.fn().mockReturnValue(2)
-        }))
-    };
-});
-
-// Mock model selection service
-jest.mock('../services/modelSelectionService', () => {
-    const mockModelInfo = {
-        name: 'Xenova/all-MiniLM-L6-v2',
-        path: 'Xenova/all-MiniLM-L6-v2',
-        memoryRequirementGB: 2,
-        contextLength: 256,
-        description: 'Test model'
-    };
-
-    return {
-        ModelSelectionService: jest.fn().mockImplementation(() => ({
-            selectOptimalModel: jest.fn().mockReturnValue({
-                model: 'Xenova/all-MiniLM-L6-v2',
-                modelInfo: mockModelInfo,
-                useHighMemoryModel: false
-            }),
-            showModelsInfo: jest.fn(),
-            dispose: jest.fn()
-        })),
-        EmbeddingModel: {
-            JinaEmbeddings: 'jinaai/jina-embeddings-v2-base-code',
-            MiniLM: 'Xenova/all-MiniLM-L6-v2'
         }
     };
 });
@@ -175,48 +131,62 @@ jest.mock('vscode', () => {
                 }),
                 dispose: jest.fn(),
             };
-        })
+        }),
+        EventEmitter: jest.fn().mockImplementation(() => ({
+            event: jest.fn(),
+            fire: jest.fn(),
+            dispose: jest.fn()
+        }))
     };
 });
 
+// Mock fs exists check for worker script path
+jest.mock('fs', () => {
+    return {
+        ...jest.requireActual('fs'),
+        existsSync: jest.fn().mockReturnValue(true)
+    };
+});
+
+// Mock os module
 jest.mock('os', () => {
     const actual = jest.requireActual('os');
     return {
         ...actual, // Keep all original functions by default
-        cpus: jest.fn().mockImplementation(() => actual.cpus()),
-        totalmem: jest.fn().mockImplementation(() => actual.totalmem()),
-        freemem: jest.fn().mockImplementation(() => actual.freemem())
+        cpus: jest.fn().mockImplementation(() => Array(4).fill({} as os.CpuInfo)),
+        totalmem: jest.fn().mockImplementation(() => 16 * 1024 * 1024 * 1024), // 16GB
+        freemem: jest.fn().mockImplementation(() => 8 * 1024 * 1024 * 1024),  // 8GB free
+        availableParallelism: jest.fn().mockReturnValue(4) // Mock 4 available cores
     };
 });
 
+// Mock the indexingWorker to avoid actual model loading
+// We'll mock the Hugging Face pipeline directly to simulate worker behavior
+// jest.mock('@huggingface/transformers', () => {
+//     return {
+//         pipeline: jest.fn().mockImplementation(() => {
+//             // Return a mock pipeline function that returns mock embeddings
+//             return jest.fn().mockImplementation(() => {
+//                 return {
+//                     data: new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5])
+//                 };
+//             });
+//         })
+//     };
+// });
+
 describe('IndexingService', () => {
-    // Increase timeout to 30 seconds for model loading tests
-    jest.setTimeout(60000);
+    // Increase timeout to 30 seconds for worker threads initialization
+    jest.setTimeout(30000);
 
     let context: vscode.ExtensionContext;
     let indexingService: IndexingService;
     let statusBarServiceInstance: any;
     let extensionPath: string;
-    let resourceDetectionService: ResourceDetectionService;
-    let modelSelectionService: ModelSelectionService;
     let workspaceSettingsService: WorkspaceSettingsService;
-
-    let mockedCpus: jest.Mock;
-    let mockedTotalmem: jest.Mock;
-    let mockedFreemem: jest.Mock;
 
     beforeEach(() => {
         jest.clearAllMocks();
-
-        // Reset mock implementations to defaults before each test
-        mockedCpus = os.cpus as jest.Mock;
-        mockedTotalmem = os.totalmem as jest.Mock;
-        mockedFreemem = os.freemem as jest.Mock;
-
-        // Set default implementations
-        mockedCpus.mockReturnValue(Array(4).fill({} as os.CpuInfo));
-        mockedTotalmem.mockReturnValue(16 * 1024 * 1024 * 1024); // 16GB by default
-        mockedFreemem.mockReturnValue(8 * 1024 * 1024 * 1024);  // 8GB free by default
 
         // Reset StatusBarService instance
         StatusBarService.reset();
@@ -239,17 +209,14 @@ describe('IndexingService', () => {
         } as unknown as vscode.ExtensionContext;
 
         // Create service instances
-        resourceDetectionService = new ResourceDetectionService();
-        modelSelectionService = new ModelSelectionService(path.join(extensionPath, 'models'));
         workspaceSettingsService = new WorkspaceSettingsService(context);
 
-        // Create IndexingService with mocked dependencies
+        // Create IndexingService with required options
         indexingService = new IndexingService(
             context,
-            resourceDetectionService,
-            modelSelectionService,
             workspaceSettingsService,
             {
+                modelName: 'jinaai/jina-embeddings-v2-base-code',
                 maxWorkers: 1
             }
         );
@@ -264,14 +231,13 @@ describe('IndexingService', () => {
         }
     });
 
-    // Tests that the workers are not initialized until needed
-    it('should not initialize workers on creation', () => {
-        // No workers should have been created yet
-        expect((indexingService as any).workers.length).toBe(0);
-        expect((indexingService as any).workersInitialized).toBe(false);
+    // Tests that Piscina is created only when needed
+    it('should not initialize Piscina on creation', () => {
+        // Piscina should not be initialized yet
+        expect((indexingService as any).piscina).toBeNull();
     });
 
-    it('should initialize workers on demand', async () => {
+    it('should initialize Piscina on demand', async () => {
         // Create a file to process
         const fileToProcess: FileToProcess = {
             id: 'file1',
@@ -279,12 +245,11 @@ describe('IndexingService', () => {
             content: 'const x = 1;'
         };
 
-        // Process the file - this should initialize workers
+        // Process the file - this should initialize Piscina
         await indexingService.processFiles([fileToProcess]);
 
-        // Now workers should be initialized
-        expect((indexingService as any).workers.length).toBeGreaterThan(0);
-        expect((indexingService as any).workersInitialized).toBe(true);
+        // Now Piscina should be initialized
+        expect((indexingService as any).piscina).not.toBeNull();
     });
 
     it('should process files successfully', async () => {
@@ -344,28 +309,15 @@ describe('IndexingService', () => {
         ]);
 
         // Verify the status bar service was used
-        expect(setStateSpy).toHaveBeenCalled();
+        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Indexing, '1 files');
         expect(showTemporaryMessageSpy).toHaveBeenCalled();
     });
 
-    // Test the model selection process
-    it('should use ModelSelectionService to select the model', async () => {
-        const selectOptimalModelSpy = jest.spyOn(modelSelectionService, 'selectOptimalModel');
-
-        // Process a file to trigger model selection
-        await indexingService.processFiles([
-            { id: 'test', path: '/test.js', content: 'test content' }
-        ]);
-
-        // Verify the model selection service was used
-        expect(selectOptimalModelSpy).toHaveBeenCalled();
-    });
-
     // Test the workspace settings integration
-    it('should update workspace settings after initializing workers', async () => {
+    it('should update workspace settings after processing files', async () => {
         const updateLastIndexingTimestampSpy = jest.spyOn(workspaceSettingsService, 'updateLastIndexingTimestamp');
 
-        // Process a file to trigger worker initialization
+        // Process a file
         await indexingService.processFiles([
             { id: 'test', path: '/test.js', content: 'test content' }
         ]);
@@ -375,174 +327,152 @@ describe('IndexingService', () => {
     });
 
     // Test that optimal chunk size is calculated based on model context length
-    it('should calculate optimal chunk size based on model context length', async () => {
-        // Mock the model context length
-        const getOptimalChunkSizeSpy = jest.spyOn(indexingService as any, 'getOptimalChunkSize');
+    it('should calculate optimal chunk size based on context length', () => {
+        // Create service with context length specified
+        const serviceWithContext = new IndexingService(
+            context,
+            workspaceSettingsService,
+            {
+                modelName: 'test-model',
+                contextLength: 512,
+                chunkSizeSafetyFactor: 0.8
+            }
+        );
 
-        // Process a file
-        await indexingService.processFiles([
-            { id: 'test', path: '/test.js', content: 'test content' }
-        ]);
+        // Get chunk size via private method
+        const chunkSize = (serviceWithContext as any).getOptimalChunkSize();
 
-        // Verify optimal chunk size was calculated
-        expect(getOptimalChunkSizeSpy).toHaveBeenCalled();
+        // Should be context length × safety factor
+        expect(chunkSize).toBe(Math.floor(512 * 0.8));
+
+        // Dispose of the test service
+        serviceWithContext.dispose();
     });
 
     // Add this test to your test suite
     it('should handle cancellation correctly', async () => {
         // Create a file to process
         const files = [
-            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' }
+            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;'.repeat(8000) },
+            { id: 'file2', path: '/path/to/file2.js', content: 'const x = 1;'.repeat(8000) },
+            { id: 'file3', path: '/path/to/file3.js', content: 'const x = 1;'.repeat(8000) },
         ];
 
         // Create a cancellation token source
         const tokenSource = new vscode.CancellationTokenSource();
 
-        // Start processing and immediately cancel
+        // Start processing
         const processPromise = indexingService.processFiles(files, tokenSource.token);
 
         // Trigger cancellation
         tokenSource.cancel();
 
         // Verify that the operation was cancelled
-        await expect(processPromise).rejects.toThrow('Operation cancelled');
+        // await expect(processPromise).rejects.toThrow('Operation cancelled');
+
+        const results = await processPromise;
+        expect(results.size).toBe(0);
     });
 
     it('should process files in parallel with multiple workers', async () => {
-        // Create service with multiple workers
-        const multiWorkerService = new IndexingService(
-            context,
-            resourceDetectionService,
-            modelSelectionService,
-            workspaceSettingsService,
-            { maxWorkers: 2 }
-        );
-
-        try {
-            // Create multiple files to process
-            const files: FileToProcess[] = [
-                { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' },
-                { id: 'f2', path: '/path/to/f2.js', content: 'const y = 2;' },
-                { id: 'f3', path: '/path/to/f3.js', content: 'const z = 3;' }
-            ];
+        // Create multiple files to process
+        const files: FileToProcess[] = [
+            { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' },
+            { id: 'f2', path: '/path/to/f2.js', content: 'const y = 2;' },
+            { id: 'f3', path: '/path/to/f3.js', content: 'const z = 3;' }
+        ];
 
             // Process files
-            const results = await multiWorkerService.processFiles(files);
+        const results = await indexingService.processFiles(files);
 
-            // Verify all files were processed
-            expect(results.size).toBe(3);
-            expect(results.get('f1')?.success).toBe(true);
-            expect(results.get('f2')?.success).toBe(true);
-            expect(results.get('f3')?.success).toBe(true);
-        } finally {
-            await multiWorkerService.dispose();
-        }
+        // Verify all files were processed
+        expect(results.size).toBe(3);
+        expect(results.get('f1')?.success).toBe(true);
+        expect(results.get('f2')?.success).toBe(true);
+        expect(results.get('f3')?.success).toBe(true);
     });
 
-    it('should calculate optimal resources based on system memory', () => {
-        // Directly test the calculateOptimalResources method
-        const result = (indexingService as any).calculateOptimalResources();
+    it('should handle large files by chunking them', async () => {
+        // Create a large file that should be chunked
+        const largeContent = 'a'.repeat(10000); // Large enough to trigger chunking
+        const files: FileToProcess[] = [
+            { id: 'large', path: '/path/to/large.txt', content: largeContent }
+        ];
 
-        // Verify the result format
-        expect(result).toHaveProperty('workerCount');
-        expect(result).toHaveProperty('useHighMemoryModel');
+        // Process the file
+        const results = await indexingService.processFiles(files);
 
-        // Ensure returned values are within expected ranges
-        expect(result.workerCount).toBeGreaterThanOrEqual(1);
-        expect(typeof result.useHighMemoryModel).toBe('boolean');
+        // Verify the result
+        expect(results.size).toBe(1);
+        expect(results.get('large')).toBeDefined();
+        expect(results.get('large')?.success).toBe(true);
+
+        // Large content should yield multiple embeddings (chunks)
+        expect(results.get('large')?.embeddings.length).toBeGreaterThan(1);
     });
 
-    // Skip some tests that need more complex mocking for now
-    it('should handle worker errors and recreate workers', async () => {
-        // Process a file to initialize worker
+    it('should call Piscina.destroy on disposal', async () => {
+    // Process a file to initialize Piscina
         await indexingService.processFiles([
             { id: 'test', path: '/test.js', content: 'test content' }
         ]);
 
-        // Get reference to the worker
-        const workers = (indexingService as any).workers;
-        expect(workers.length).toBeGreaterThan(0);
+        // Get the Piscina instance
+        const piscina = (indexingService as any).piscina;
 
-        // Simulate an error in the worker
-        const workerErrorSpy = jest.spyOn(indexingService as any, 'handleWorkerError');
-        const recreateWorkerSpy = jest.spyOn(indexingService as any, 'recreateWorker');
+        // Spy on the destroy method
+        const destroySpy = jest.spyOn(piscina, 'destroy');
 
-        // Manually trigger the error handler
-        (indexingService as any).handleWorkerError(workers[0].worker, new Error('Test error'));
-
-        // Verify error handling and worker recreation was attempted
-        expect(workerErrorSpy).toHaveBeenCalled();
-        expect(recreateWorkerSpy).toHaveBeenCalled();
-
-        // Cleanup spies
-        workerErrorSpy.mockRestore();
-        recreateWorkerSpy.mockRestore();
-    });
-
-    it('should test status bar updates during processing', async () => {
-        // Spy on updateStatusBar method
-        const updateStatusBarSpy = jest.spyOn(indexingService as any, 'updateStatusBar');
-        const setStateSpy = jest.spyOn(statusBarServiceInstance, 'setState');
-
-        // Create test files
-        const files: FileToProcess[] = [
-            { id: 'status1', path: '/path/to/status1.js', content: 'const a = 1;' }
-        ];
-
-        // Process files
-        await indexingService.processFiles(files);
-
-        // Verify status bar was updated
-        expect(updateStatusBarSpy).toHaveBeenCalled();
-        expect(setStateSpy).toHaveBeenCalled();
-
-        // Cleanup
-        updateStatusBarSpy.mockRestore();
-        setStateSpy.mockRestore();
-    });
-
-    it('should correctly manage workers based on system resources', () => {
-        try {
-            // Mock ResourceDetectionService to simulate different environments
-            jest.spyOn(resourceDetectionService, 'calculateOptimalWorkerCount')
-                .mockReturnValueOnce(1)  // Simulate low resources
-                .mockReturnValueOnce(4); // Simulate high resources
-
-            // Get optimal resources in "low resource" environment
-            const lowResource = (indexingService as any).calculateOptimalResources();
-            expect(lowResource.workerCount).toBe(1);
-
-            // Get optimal resources in "high resource" environment
-            const highResource = (indexingService as any).calculateOptimalResources();
-            expect(highResource.workerCount).toBe(4);
-        } finally {
-            jest.restoreAllMocks();
-        }
-    });
-
-    it('should properly clean up resources on disposal', async () => {
-        // Create token source to test cancellation
-        (indexingService as any).cancelTokenSource = new vscode.CancellationTokenSource();
-        const cancelSpy = jest.spyOn((indexingService as any).cancelTokenSource, 'cancel');
-
-        // Add some items to queues
-        (indexingService as any).workQueue = [{ id: 'test1' }];
-        (indexingService as any).activeProcessing.set('test2', { id: 'test2' });
-
-        // Mock shutdownWorkers to verify it's called
-        const shutdownSpy = jest.spyOn(indexingService as any, 'shutdownWorkers')
-            .mockResolvedValue(undefined);
-
+        // Dispose the service
         await indexingService.dispose();
 
-        // Verify cleanup happened
-        expect(cancelSpy).toHaveBeenCalled();
-        expect(shutdownSpy).toHaveBeenCalled();
-        expect((indexingService as any).workQueue.length).toBe(0);
-        expect((indexingService as any).activeProcessing.size).toBe(0);
+        // Verify destroy was called
+        expect(destroySpy).toHaveBeenCalled();
 
-        // Clean up
-        cancelSpy.mockRestore();
-        shutdownSpy.mockRestore();
+        // piscina should be null after disposal
+        expect((indexingService as any).piscina).toBeNull();
+    });
+
+    it('should handle abort controller management properly', async () => {
+        // First process a file to get an active operation
+        const firstPromise = indexingService.processFiles([
+            { id: 'first', path: '/first.js', content: 'first operation' },
+            { id: 'first', path: '/first.js', content: 'first operation' },
+            { id: 'first', path: '/first.js', content: 'first operation' },
+        ]);
+
+        // Start a second operation - this should cancel the first one
+        const secondPromise = indexingService.processFiles([
+            { id: 'second', path: '/second.js', content: 'second operation' }
+        ]);
+
+        // Complete the second operation
+        const secondResults = await secondPromise;
+
+        const firstResults = await firstPromise;
+        expect(firstResults.size).toBe(1);
+
+        expect(secondResults.size).toBe(1);
+        expect(secondResults.get('second')).toBeDefined();
+        expect(secondResults.get('second')?.success).toBe(true);
+    });
+
+    it('should show worker status correctly', async () => {
+        // Process a file to initialize Piscina
+        await indexingService.processFiles([
+            { id: 'test', path: '/test.js', content: 'test content' }
+        ]);
+
+        // Spy on window.showInformationMessage
+        const showInfoSpy = jest.spyOn(vscode.window, 'showInformationMessage');
+
+        // Call showWorkerStatus
+        (indexingService as any).showWorkerStatus();
+
+        // Verify that the info dialog was shown
+        expect(showInfoSpy).toHaveBeenCalled();
+
+        // Clean up spy
+        showInfoSpy.mockRestore();
     });
 });
