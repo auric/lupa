@@ -151,7 +151,7 @@ async function generateEmbeddings(
     text: string,
     pipe: FeatureExtractionPipeline,
     options: EmbeddingOptions = {},
-    signal?: AbortSignal
+    signal: AbortSignal
 ): Promise<{ embeddings: Float32Array[], chunkOffsets: number[] }> {
     // Use provided options or defaults
     const chunkSize = options.chunkSize || DEFAULT_CHUNK_SIZE;
@@ -166,7 +166,7 @@ async function generateEmbeddings(
     const embeddings: Float32Array[] = [];
     for (const chunk of chunks) {
         // Check for cancellation before processing each chunk
-        if (signal?.aborted) {
+        if (signal.aborted) {
             throw new Error('Operation was cancelled');
         }
 
@@ -184,11 +184,6 @@ async function generateEmbeddings(
                 normalize: shouldNormalize
             });
 
-            // Check for cancellation after expensive operation
-            if (signal?.aborted) {
-                throw new Error('Operation was cancelled');
-            }
-
             // Extract the embedding (usually in data property)
             const embedding = output.data;
             if (!(embedding instanceof Float32Array)) {
@@ -198,7 +193,7 @@ async function generateEmbeddings(
             embeddings.push(embedding);
         } catch (error) {
             // Check if this is a cancellation
-            if (signal?.aborted) {
+            if (signal.aborted) {
                 throw new Error('Operation was cancelled');
             }
             console.error('Error generating embedding for chunk:', error);
