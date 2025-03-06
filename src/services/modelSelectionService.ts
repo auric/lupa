@@ -186,7 +186,7 @@ export class ModelSelectionService implements vscode.Disposable {
         // Check if we have enough memory for the high-memory model based on percentage of total memory
         // This is better than a fixed threshold as it accounts for different system sizes
         const minMemoryPercentage = 0.25; // Need at least 25% of total memory available
-        return systemResources.availableMemoryGB >= Math.max(
+        return systemResources.totalMemoryGB >= Math.max(
             this.options.highMemoryThreshold,
             systemResources.totalMemoryGB * minMemoryPercentage
         );

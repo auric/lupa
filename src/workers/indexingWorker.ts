@@ -1,139 +1,89 @@
-import { parentPort } from 'worker_threads';
-import { pipeline, env } from '@huggingface/transformers';
+import { pipeline } from '@huggingface/transformers';
+import { Worker } from 'worker_threads';
 
-// Define message types for worker communication
-interface WorkerInitMessage {
-    type: 'initialize';
-    modelName: string;
+// Define interfaces for clear typing
+interface EmbeddingOptions {
+    pooling?: 'mean' | 'cls' | 'none';
+    normalize?: boolean;
+    chunkSize?: number;
+    overlapSize?: number;
 }
 
-interface WorkerProcessMessage {
-    type: 'process';
+interface ProcessFileTask {
     fileId: string;
     filePath: string;
     content: string;
-    options?: {
-        pooling?: 'mean' | 'cls' | 'none';
-        normalize?: boolean;
-        chunkSize?: number;
-        overlapSize?: number;
-    };
+    options?: EmbeddingOptions;
+    modelName: string;
+    signal?: AbortSignal;
 }
 
-interface WorkerResultMessage {
-    type: 'result';
+interface ProcessingResult {
     fileId: string;
-    embeddings?: Float32Array[];
-    chunkOffsets?: number[];
+    embeddings: Float32Array[];
+    chunkOffsets: number[];
     success: boolean;
     error?: string;
 }
-
-interface WorkerStatusMessage {
-    type: 'status';
-    status: 'idle' | 'busy' | 'ready' | 'error';
-    modelName?: string;
-    error?: string;
-}
-
-type WorkerMessage = WorkerInitMessage | WorkerProcessMessage;
-type WorkerResponseMessage = WorkerResultMessage | WorkerStatusMessage;
 
 // Setup constants
 const DEFAULT_CHUNK_SIZE = 4096; // Smaller than model's context length for safety
 const DEFAULT_OVERLAP_SIZE = 200; // Overlap between chunks to maintain context
 
-// Worker global state
-let embeddingPipeline: any = null;
-let currentModelName: string = '';
-let isInitializing: boolean = false;
-let initializationPromise: Promise<void> | null = null;
+// Module-level state
+const modelCache = new Map<string, any>();
+const modelInitPromises = new Map<string, Promise<any>>();
 
 /**
- * Safely initialize the embedding model with mutex-like pattern
- * to prevent multiple simultaneous initializations
+ * Initialize the model only once per model name
  */
-async function initializeModel(message: WorkerInitMessage): Promise<void> {
-    // If already initialized with the same model, return immediately
-    if (embeddingPipeline && currentModelName === message.modelName) {
-        sendMessage({
-            type: 'status',
-            status: 'ready',
-            modelName: currentModelName
-        });
-        return;
+async function getOrInitializeModel(modelName: string): Promise<any> {
+    // Return cached pipeline if available
+    if (modelCache.has(modelName)) {
+        return modelCache.get(modelName);
     }
 
-    // If initialization is already in progress, wait for it
-    if (isInitializing && initializationPromise) {
-        await initializationPromise;
-        return;
+    // If initialization is in progress, wait for it
+    if (modelInitPromises.has(modelName)) {
+        return await modelInitPromises.get(modelName);
     }
 
-    // Set initializing flag and create promise
-    isInitializing = true;
-    initializationPromise = _initializeModel(message);
+    // Start new initialization
+    const initPromise = initializeModel(modelName);
+    modelInitPromises.set(modelName, initPromise);
 
     try {
-        await initializationPromise;
+        const model = await initPromise;
+        // Cache the result
+        modelCache.set(modelName, model);
+        return model;
     } finally {
-        isInitializing = false;
-        initializationPromise = null;
+        // Clean up promise reference
+        modelInitPromises.delete(modelName);
     }
 }
 
 /**
- * Actual implementation of model initialization
+ * Initialize the embedding model
  */
-async function _initializeModel(message: WorkerInitMessage): Promise<void> {
+async function initializeModel(modelName: string): Promise<any> {
     try {
-        // Update status to initializing
-        sendMessage({
-            type: 'status',
-            status: 'busy',
-            modelName: message.modelName
-        });
+        console.log(`Worker: Initializing model ${modelName}`);
 
-        console.log(`Worker: Initializing model ${message.modelName}`);
-
-        // Create the pipeline - this will load the model
-        embeddingPipeline = await pipeline('feature-extraction', message.modelName, {
+        // Create the pipeline
+        const embeddingPipeline = await pipeline('feature-extraction', modelName, {
             revision: 'main',
             dtype: 'q4'
         });
 
         if (!embeddingPipeline) {
-            throw new Error(`Failed to initialize embedding pipeline for ${message.modelName}`);
+            throw new Error(`Failed to initialize embedding pipeline for ${modelName}`);
         }
 
-        // Store the current model name
-        currentModelName = message.modelName;
-
-        // Send ready status message
-        sendMessage({
-            type: 'status',
-            status: 'ready',
-            modelName: message.modelName
-        });
-
-        // Also send idle status to indicate we're ready for work
-        sendMessage({
-            type: 'status',
-            status: 'idle'
-        });
-
-        console.log(`Worker: Model ${message.modelName} initialized successfully`);
+        console.log(`Worker: Model ${modelName} initialized successfully`);
+        return embeddingPipeline;
     } catch (error) {
         console.error(`Worker: Failed to initialize model:`, error);
-
-        // Send error status
-        sendMessage({
-            type: 'status',
-            status: 'error',
-            error: error instanceof Error ? error.message : String(error)
-        });
-
-        // Rethrow to ensure worker terminates
         throw error;
     }
 }
@@ -195,11 +145,12 @@ function chunkText(text: string, chunkSize: number = DEFAULT_CHUNK_SIZE, overlap
 /**
  * Generate embeddings for chunks of code
  */
-async function generateEmbeddings(text: string, options: WorkerProcessMessage['options'] = {}): Promise<{ embeddings: Float32Array[], chunkOffsets: number[] }> {
-    if (!embeddingPipeline) {
-        throw new Error('Embedding model not initialized');
-    }
-
+async function generateEmbeddings(
+    text: string,
+    embeddingPipeline: any,
+    options: EmbeddingOptions = {},
+    signal?: AbortSignal
+): Promise<{ embeddings: Float32Array[], chunkOffsets: number[] }> {
     // Use provided options or defaults
     const chunkSize = options.chunkSize || DEFAULT_CHUNK_SIZE;
     const overlapSize = options.overlapSize || DEFAULT_OVERLAP_SIZE;
@@ -212,6 +163,11 @@ async function generateEmbeddings(text: string, options: WorkerProcessMessage['o
     // Generate embeddings for each chunk
     const embeddings: Float32Array[] = [];
     for (const chunk of chunks) {
+        // Check for cancellation before processing each chunk
+        if (signal?.aborted) {
+            throw new Error('Operation was cancelled');
+        }
+
         try {
             // Skip empty chunks
             if (chunk.trim().length === 0) {
@@ -234,6 +190,9 @@ async function generateEmbeddings(text: string, options: WorkerProcessMessage['o
 
             embeddings.push(embedding);
         } catch (error) {
+            if (signal?.aborted) {
+                throw new Error('Operation was cancelled');
+            }
             console.error('Error generating embedding for chunk:', error);
             throw error;
         }
@@ -246,102 +205,49 @@ async function generateEmbeddings(text: string, options: WorkerProcessMessage['o
 }
 
 /**
- * Process a file and generate embeddings
+ * Main worker function that processes a file and generates embeddings
+ * This is the function that will be called by Piscina
  */
-async function processFile(message: WorkerProcessMessage): Promise<void> {
-    // Make sure we're in idle state at start
-    sendMessage({
-        type: 'status',
-        status: 'busy'
-    });
-
+export default async function processFile(task: ProcessFileTask): Promise<ProcessingResult> {
     try {
-        // Generate embeddings for the file content
-        const { embeddings, chunkOffsets } = await generateEmbeddings(message.content, message.options);
+        // Get or initialize the model
+        const embeddingPipeline = await getOrInitializeModel(task.modelName);
 
-        // Send result back to main thread
-        sendMessage({
-            type: 'result',
-            fileId: message.fileId,
+        // Check if operation was cancelled during model initialization
+        if (task.signal?.aborted) {
+            return {
+                fileId: task.fileId,
+                embeddings: [],
+                chunkOffsets: [],
+                success: false,
+                error: 'Operation was cancelled'
+            };
+        }
+
+        // Generate embeddings for the file content
+        const { embeddings, chunkOffsets } = await generateEmbeddings(
+            task.content,
+            embeddingPipeline,
+            task.options,
+            task.signal
+        );
+
+        return {
+            fileId: task.fileId,
             embeddings,
             chunkOffsets,
             success: true
-        });
-
-        // Update status back to idle
-        sendMessage({
-            type: 'status',
-            status: 'idle'
-        });
+        };
     } catch (error) {
         console.error('Error processing file:', error);
 
-        // Send error result
-        sendMessage({
-            type: 'result',
-            fileId: message.fileId,
+        // Return error result
+        return {
+            fileId: task.fileId,
+            embeddings: [],
+            chunkOffsets: [],
             success: false,
             error: error instanceof Error ? error.message : String(error)
-        });
-
-        // Update status to error but still set idle so we can get more work
-        sendMessage({
-            type: 'status',
-            status: 'error',
-            error: error instanceof Error ? error.message : String(error)
-        });
-
-        sendMessage({
-            type: 'status',
-            status: 'idle'
-        });
+        };
     }
 }
-
-/**
- * Send message back to main thread
- */
-function sendMessage(message: WorkerResponseMessage): void {
-    if (parentPort) {
-        parentPort.postMessage(message);
-    } else {
-        console.error('No parent port available to send message');
-    }
-}
-
-// Set up message handling
-parentPort?.on('message', async (message: WorkerMessage) => {
-    try {
-        if (!message || !message.type) {
-            throw new Error('Invalid message format');
-        }
-
-        switch (message.type) {
-            case 'initialize':
-                await initializeModel(message);
-                break;
-
-            case 'process':
-                await processFile(message);
-                break;
-
-            default:
-                console.warn('Unknown message type:', (message as any).type);
-        }
-    } catch (error) {
-        console.error('Error handling message:', error);
-
-        // Send error status
-        sendMessage({
-            type: 'status',
-            status: 'error',
-            error: error instanceof Error ? error.message : String(error)
-        });
-
-        // Still set to idle so we can receive more work
-        sendMessage({
-            type: 'status',
-            status: 'idle'
-        });
-    }
-});
