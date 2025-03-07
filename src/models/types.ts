@@ -42,3 +42,24 @@ export interface AnalysisOptions {
     modelVersion?: string;
     provider?: ModelProvider;
 }
+
+// Define interfaces for clear typing
+export interface EmbeddingOptions {
+    pooling?: 'mean' | 'cls' | 'none';
+    normalize?: boolean;
+    overlapSize?: number;
+}
+
+export interface TokenEstimatorOptions {
+    modelName: string;
+    contextLength: number;
+}
+
+export interface ChunkingResult {
+    chunks: string[];
+    offsets: number[];
+}
+
+export interface CodeChunkingOptions {
+    overlapSize?: number;
+}

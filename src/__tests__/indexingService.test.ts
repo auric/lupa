@@ -202,7 +202,8 @@ describe('IndexingService', () => {
             workspaceSettingsService,
             {
                 modelName: 'jinaai/jina-embeddings-v2-base-code',
-                maxWorkers: 2
+                maxWorkers: 2,
+                contextLength: 8192
             }
         );
     });
@@ -267,7 +268,7 @@ describe('IndexingService', () => {
 
     it('should handle file chunking correctly', async () => {
         // Create a file that would need to be chunked (large content)
-        const largeContent = 'x'.repeat(8000); // Larger than default chunk size
+        const largeContent = 'x'.repeat(10000); // Larger than default chunk size
         const files: FileToProcess[] = [
             { id: 'large', path: '/path/to/large.js', content: largeContent }
         ];
@@ -309,29 +310,6 @@ describe('IndexingService', () => {
 
         // Verify the workspace settings were updated
         expect(updateLastIndexingTimestampSpy).toHaveBeenCalled();
-    });
-
-    // Test that optimal chunk size is calculated based on model context length
-    it('should calculate optimal chunk size based on context length', () => {
-        // Create service with context length specified
-        const serviceWithContext = new IndexingService(
-            context,
-            workspaceSettingsService,
-            {
-                modelName: 'test-model',
-                contextLength: 512,
-                chunkSizeSafetyFactor: 0.8
-            }
-        );
-
-        // Get chunk size via private method
-        const chunkSize = (serviceWithContext as any).getOptimalChunkSize();
-
-        // Should be context length × safety factor
-        expect(chunkSize).toBe(Math.floor(512 * 0.8));
-
-        // Dispose of the test service
-        serviceWithContext.dispose();
     });
 
     // Add this test to your test suite
@@ -570,7 +548,10 @@ describe('IndexingService Management Functions', () => {
         indexingService = new IndexingService(
             context,
             workspaceSettingsService,
-            { modelName: 'test-model' }
+            {
+                modelName: 'Xenova/all-MiniLM-L6-v2',
+                contextLength: 256
+            }
         );
     });
 
@@ -655,39 +636,6 @@ describe('IndexingService Configuration', () => {
         } as unknown as vscode.ExtensionContext;
 
         workspaceSettingsService = new WorkspaceSettingsService(context);
-    });
-
-    it('should initialize with different chunk sizes based on context length', () => {
-        // Create multiple services with different configurations
-        const defaultService = new IndexingService(
-            context,
-            workspaceSettingsService,
-            { modelName: 'default-model' }
-        );
-
-        const smallContextService = new IndexingService(
-            context,
-            workspaceSettingsService,
-            {
-                modelName: 'small-model',
-                contextLength: 512,
-                chunkSizeSafetyFactor: 0.5
-            }
-        );
-
-        // Access private method to test different branches
-        const defaultChunkSize = (defaultService as any).getOptimalChunkSize();
-        const smallChunkSize = (smallContextService as any).getOptimalChunkSize();
-
-        // Default should use defaultOptions.chunkSize
-        expect(defaultChunkSize).toBe(192); // 256 * 0.75
-
-        // Small should use contextLength * safety factor
-        expect(smallChunkSize).toBe(256); // 512 * 0.5
-
-        // Cleanup
-        defaultService.dispose();
-        smallContextService.dispose();
     });
 
     it('should throw error when model name is not provided', () => {

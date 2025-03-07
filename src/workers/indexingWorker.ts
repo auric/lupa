@@ -1,14 +1,16 @@
 import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
 import { MessagePort } from 'worker_threads';
+import { EmbeddingOptions } from '../models/types';
+import { WorkerTokenEstimator } from './workerTokenEstimator';
+import { WorkerCodeChunker } from './workerCodeChunker';
+
+// Module-level variables for caching
+let embeddingPipeline: FeatureExtractionPipeline | null = null;
+let tokenEstimator: WorkerTokenEstimator | null = null;
+let codeChunker: WorkerCodeChunker | null = null;
+let currentModelName: string | null = null;
 
 // Define interfaces for clear typing
-interface EmbeddingOptions {
-    pooling?: 'mean' | 'cls' | 'none';
-    normalize?: boolean;
-    chunkSize?: number;
-    overlapSize?: number;
-}
-
 export interface ProcessFileTask {
     index: number;
     fileId: string;
@@ -16,6 +18,7 @@ export interface ProcessFileTask {
     content: string;
     options?: EmbeddingOptions;
     modelName: string;
+    contextLength: number;
     messagePort: MessagePort;
 }
 
@@ -27,14 +30,6 @@ export interface ProcessingResult {
     error?: string;
 }
 
-// Setup constants
-const DEFAULT_CHUNK_SIZE = 4096; // Smaller than model's context length for safety
-const DEFAULT_OVERLAP_SIZE = 200; // Overlap between chunks to maintain context
-
-// Module-level state - we initialize the model only once per worker instance
-let embeddingPipeline: FeatureExtractionPipeline | null = null;
-let currentModelName: string | null = null;
-
 /**
  * Initialize the embedding model once per worker
  * @param modelName Name of the model to initialize
@@ -42,6 +37,7 @@ let currentModelName: string | null = null;
  */
 async function initializeModel(
     modelName: string,
+    contextWindow: number,
     signal: AbortSignal
 ): Promise<FeatureExtractionPipeline> {
     // Check for cancellation
@@ -74,6 +70,13 @@ async function initializeModel(
 
         // Store the current model name
         currentModelName = modelName;
+
+        // Initialize token estimator
+        tokenEstimator = new WorkerTokenEstimator(
+            modelName,
+            contextWindow
+        );
+        codeChunker = new WorkerCodeChunker(tokenEstimator);
         console.log(`Worker: Model ${modelName} initialized successfully`);
 
         return embeddingPipeline;
@@ -93,60 +96,6 @@ async function initializeModel(
 }
 
 /**
- * Split text into smaller chunks for processing
- */
-function chunkText(text: string, chunkSize: number = DEFAULT_CHUNK_SIZE, overlapSize: number = DEFAULT_OVERLAP_SIZE): { chunks: string[], offsets: number[] } {
-    const chunks: string[] = [];
-    const offsets: number[] = [];
-
-    if (text.length === 0) {
-        return { chunks: [], offsets: [] };
-    }
-
-    let position = 0;
-
-    while (position < text.length) {
-        // Record the starting offset
-        offsets.push(position);
-
-        // Take a chunk of text
-        let end = Math.min(position + chunkSize, text.length);
-
-        // Try to end at a newline or punctuation if possible
-        if (end < text.length) {
-            const nearbyNewline = text.lastIndexOf('\n', end);
-            const nearbyPeriod = text.lastIndexOf('.', end);
-            const nearbyBreak = Math.max(nearbyNewline, nearbyPeriod);
-
-            if (nearbyBreak > position && nearbyBreak > position + chunkSize - overlapSize) {
-                end = nearbyBreak + 1; // Include the newline or period
-            }
-        }
-
-        // Add the chunk to our list
-        chunks.push(text.substring(position, end));
-
-        // Move to next position with overlap
-        const nextPosition = end - overlapSize;
-
-        // Ensure we're making progress
-        if (nextPosition <= position) {
-            // If we're not making progress, move position by at least 1 character
-            position = Math.min(end + 1, text.length);
-        } else {
-            position = nextPosition;
-        }
-
-        // Safety check - if we've reached the end, break out
-        if (position >= text.length) {
-            break;
-        }
-    }
-
-    return { chunks, offsets };
-}
-
-/**
  * Generate embeddings for chunks of code
  */
 async function generateEmbeddings(
@@ -156,13 +105,11 @@ async function generateEmbeddings(
     signal: AbortSignal
 ): Promise<{ embeddings: Float32Array[], chunkOffsets: number[] }> {
     // Use provided options or defaults
-    const chunkSize = options.chunkSize || DEFAULT_CHUNK_SIZE;
-    const overlapSize = options.overlapSize || DEFAULT_OVERLAP_SIZE;
     const poolingStrategy = options.pooling || 'mean';
     const shouldNormalize = options.normalize !== false; // Default to true if not specified
 
-    // Split text into chunks
-    const { chunks, offsets } = chunkText(text, chunkSize, overlapSize);
+    // Chunk the text using smart code-aware chunking
+    const { chunks, offsets } = await codeChunker!.chunkCode(text, options);
 
     // Generate embeddings for each chunk
     const embeddings: Float32Array[] = [];
@@ -175,7 +122,6 @@ async function generateEmbeddings(
         try {
             // Skip empty chunks
             if (chunk.trim().length === 0) {
-                // Push an empty embedding for placeholding
                 embeddings.push(new Float32Array(0));
                 continue;
             }
@@ -186,7 +132,7 @@ async function generateEmbeddings(
                 normalize: shouldNormalize
             });
 
-            // Extract the embedding (usually in data property)
+            // Extract the embedding
             const embedding = output.data;
             if (!(embedding instanceof Float32Array)) {
                 throw new Error('Embedding output not in expected format');
@@ -216,7 +162,6 @@ async function generateEmbeddings(
 export default async function processFile(
     task: ProcessFileTask
 ): Promise<ProcessingResult> {
-
     const abortController = new AbortController();
     task.messagePort.on('message', (message: string) => {
         if (message === 'abort') {
@@ -231,15 +176,20 @@ export default async function processFile(
             throw new Error('Operation was cancelled');
         }
 
-        // Initialize model if needed
-        const pipe = await initializeModel(task.modelName, signal);
+        // Ensure contextLength is provided
+        if (!task.contextLength) {
+            throw new Error('Context length must be provided');
+        }
 
-        // Check if operation was cancelled during model initialization
+        // Initialize model if needed
+        const pipe = await initializeModel(task.modelName, task.contextLength, signal);
+
+        // Check if operation was cancelled during initialization
         if (signal.aborted) {
             throw new Error('Operation was cancelled');
         }
 
-        // Generate embeddings for the file content
+        // Generate embeddings for the file content using our token-aware chunking
         const { embeddings, chunkOffsets } = await generateEmbeddings(
             task.content,
             pipe,

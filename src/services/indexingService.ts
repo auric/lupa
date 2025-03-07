@@ -24,6 +24,7 @@ export interface FileToProcess {
 export interface EmbeddingOptions {
     pooling?: 'mean' | 'cls' | 'none';
     normalize?: boolean;
+    overlapSize?: number;
 }
 
 /**
@@ -32,11 +33,8 @@ export interface EmbeddingOptions {
 export interface IndexingServiceOptions {
     maxWorkers?: number;                 // Maximum number of workers
     embeddingOptions?: EmbeddingOptions; // Options for embedding generation
-    chunkSize?: number;                  // Size of text chunks
-    overlapSize?: number;                // Overlap between chunks
-    chunkSizeSafetyFactor?: number;      // Safety factor for chunk size (to account for token/character ratio)
     modelName: string;                   // Name of the embedding model to use
-    contextLength?: number;              // Context length of the model (if known)
+    contextLength: number;               // Context length of the model (required)
 }
 
 /**
@@ -57,19 +55,13 @@ export class IndexingService implements vscode.Disposable {
 
     // Track current processing operation
     private currentOperation: ProcessingOperation | null = null;
-    // For tracking multiple ongoing operations if needed
-    // private activeOperations: Map<string, ProcessingOperation> = new Map();
 
-    private readonly defaultOptions: Required<Omit<IndexingServiceOptions, 'modelName'>> = {
+    private readonly defaultOptions: Required<Omit<IndexingServiceOptions, 'modelName' | 'contextLength'>> = {
         maxWorkers: Math.max(1, Math.floor(os.availableParallelism ? os.availableParallelism() : (os.cpus().length + 1) / 2)),
         embeddingOptions: {
             pooling: 'mean',
             normalize: true
-        },
-        chunkSize: 3000,               // Default chunk size (smaller than model context length)
-        overlapSize: 200,              // Overlap between chunks
-        chunkSizeSafetyFactor: 0.75,   // Use 75% of model's context length to account for token/char differences
-        contextLength: 256,            // Minimal context length for the low level model
+        }
     };
     private readonly options: Required<IndexingServiceOptions>;
 
@@ -77,22 +69,26 @@ export class IndexingService implements vscode.Disposable {
      * Create a new IndexingService
      * @param context VS Code extension context
      * @param workspaceSettingsService Service for persisting workspace settings
-     * @param options Configuration options including model name
+     * @param options Configuration options including model name and context length
      */
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly workspaceSettingsService: WorkspaceSettingsService,
         options: IndexingServiceOptions
     ) {
-        // Ensure modelName is provided
+        // Ensure required parameters are provided
         if (!options.modelName) {
             throw new Error('Model name must be provided to IndexingService');
+        }
+        if (!options.contextLength) {
+            throw new Error('Context length must be provided to IndexingService');
         }
 
         this.options = {
             ...this.defaultOptions,
             ...options,
-            modelName: options.modelName
+            modelName: options.modelName,
+            contextLength: options.contextLength
         } as Required<IndexingServiceOptions>;
 
         this.statusBarService = StatusBarService.getInstance();
@@ -128,20 +124,6 @@ export class IndexingService implements vscode.Disposable {
             console.log(`Created Piscina with ${this.options.maxWorkers} max workers`);
         }
         return this.piscina;
-    }
-
-    /**
-     * Get the optimal chunk size based on the selected model's context length
-     */
-    private getOptimalChunkSize(): number {
-        // If we have context length info, use it to calculate optimal chunk size
-        if (this.options.contextLength) {
-            // Use the safety factor to account for token/char ratio differences
-            return Math.floor(this.options.contextLength * this.options.chunkSizeSafetyFactor);
-        }
-
-        // Fallback to the default chunk size
-        return this.options.chunkSize;
     }
 
     /**
@@ -186,9 +168,6 @@ export class IndexingService implements vscode.Disposable {
         // Sort files by priority (if available) to process important files first
         const sortedFiles = [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
-        // Get optimal chunk size
-        const chunkSize = this.getOptimalChunkSize();
-
         try {
             // Create a task for each file
             const tasks = sortedFiles.map((file, index) => {
@@ -198,10 +177,9 @@ export class IndexingService implements vscode.Disposable {
                     filePath: file.path,
                     content: file.content,
                     modelName: this.options.modelName,
+                    contextLength: this.options.contextLength, // Pass context length to the worker
                     options: {
-                        ...this.options.embeddingOptions,
-                        chunkSize,
-                        overlapSize: this.options.overlapSize
+                        ...this.options.embeddingOptions
                     },
                     messagePort: this.currentOperation!.messageChannels[index].port2
                 };
@@ -406,6 +384,7 @@ export class IndexingService implements vscode.Disposable {
             duration: piscina.duration,
             utilization: piscina.utilization,
             model: this.options.modelName,
+            contextLength: this.options.contextLength,
             activeOperation: this.currentOperation ? true : false
         };
 
@@ -420,6 +399,7 @@ export class IndexingService implements vscode.Disposable {
             `Active operation: ${stats.activeOperation ? 'Yes' : 'No'}`,
             `Utilization: ${Math.round(stats.utilization * 100)}%`,
             `Model: ${stats.model}`,
+            `Context length: ${stats.contextLength}`,
             memoryInfo,
             osMemInfo
         ].join('\n');
