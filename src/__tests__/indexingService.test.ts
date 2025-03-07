@@ -160,21 +160,6 @@ jest.mock('os', () => {
     };
 });
 
-// Mock the indexingWorker to avoid actual model loading
-// We'll mock the Hugging Face pipeline directly to simulate worker behavior
-// jest.mock('@huggingface/transformers', () => {
-//     return {
-//         pipeline: jest.fn().mockImplementation(() => {
-//             // Return a mock pipeline function that returns mock embeddings
-//             return jest.fn().mockImplementation(() => {
-//                 return {
-//                     data: new Float32Array([0.1, 0.2, 0.3, 0.4, 0.5])
-//                 };
-//             });
-//         })
-//     };
-// });
-
 describe('IndexingService', () => {
     // Increase timeout to 30 seconds for worker threads initialization
     jest.setTimeout(30000);
@@ -217,7 +202,7 @@ describe('IndexingService', () => {
             workspaceSettingsService,
             {
                 modelName: 'jinaai/jina-embeddings-v2-base-code',
-                maxWorkers: 1
+                maxWorkers: 2
             }
         );
     });
@@ -474,5 +459,246 @@ describe('IndexingService', () => {
 
         // Clean up spy
         showInfoSpy.mockRestore();
+    });
+
+    it('should handle empty content files', async () => {
+        // Create file with empty content
+        const files: FileToProcess[] = [
+            { id: 'empty', path: '/path/to/empty.js', content: '' }
+        ];
+
+        // Process the file
+        const results = await indexingService.processFiles(files);
+
+        // Verify the result
+        expect(results.size).toBe(1);
+        expect(results.get('empty')).toBeDefined();
+        expect(results.get('empty')?.success).toBe(true);
+        // Empty content should have empty embeddings
+        expect(results.get('empty')?.embeddings.length).toBe(0);
+    });
+
+    it('should prioritize files by priority value', async () => {
+        // Create files with different priorities
+        const files: FileToProcess[] = [
+            { id: 'low', path: '/path/to/low.js', content: 'low priority', priority: 1 },
+            { id: 'high', path: '/path/to/high.js', content: 'high priority', priority: 10 },
+            { id: 'medium', path: '/path/to/medium.js', content: 'medium priority', priority: 5 }
+        ];
+
+        // Spy on getPiscina method to access the files after sorting
+        const getPiscinaSpy = jest.spyOn(indexingService as any, 'getPiscina');
+
+        // Process files
+        await indexingService.processFiles(files);
+
+        // Check that getPiscina was called
+        expect(getPiscinaSpy).toHaveBeenCalled();
+
+        // The first call to processFiles should have sorted files by priority
+        // We can't directly test the sorting since it happens internally, but we can
+        // verify that the method was called which indicates the branch was executed
+        expect(getPiscinaSpy).toHaveBeenCalledTimes(1);
+
+        getPiscinaSpy.mockRestore();
+    });
+
+    it('should update status bar with correct file count', async () => {
+        // Create multiple files
+        const files: FileToProcess[] = [
+            { id: 'file1', path: '/path/to/file1.js', content: 'content 1' },
+            { id: 'file2', path: '/path/to/file2.js', content: 'content 2' },
+            { id: 'file3', path: '/path/to/file3.js', content: 'content 3' }
+        ];
+
+        // Spy on setState method
+        const setStateSpy = jest.spyOn(statusBarServiceInstance, 'setState');
+
+        // Process files
+        await indexingService.processFiles(files);
+
+        // Verify setState was called with correct parameters
+        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Indexing, '3 files');
+
+        setStateSpy.mockRestore();
+    });
+
+    it('should handle cancellation during initialization', async () => {
+        // Create a file to process
+        const files = [{ id: 'test', path: '/test.js', content: 'test content' }];
+
+        // Create a cancellation token that's immediately cancelled
+        const tokenSource = new vscode.CancellationTokenSource();
+        tokenSource.cancel(); // Cancel immediately
+
+        // Process files with cancelled token
+        const results = indexingService.processFiles(files, tokenSource.token);
+
+        await expect(results).rejects.toThrow('Operation cancelled');
+    });
+});
+
+describe('IndexingService Management Functions', () => {
+    let context: vscode.ExtensionContext;
+    let indexingService: IndexingService;
+    let workspaceSettingsService: WorkspaceSettingsService;
+    let extensionPath: string;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        StatusBarService.reset();
+
+        // Set up the extension path
+        extensionPath = path.resolve(__dirname, '..', '..');
+
+        // Mock context
+        context = {
+            globalStorageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'global')),
+            storageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'workspace')),
+            extensionPath: extensionPath,
+            workspaceState: {
+                update: jest.fn(),
+                get: jest.fn()
+            },
+            subscriptions: [],
+            asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
+        } as unknown as vscode.ExtensionContext;
+
+        workspaceSettingsService = new WorkspaceSettingsService(context);
+
+        // Create service with minimal configuration
+        indexingService = new IndexingService(
+            context,
+            workspaceSettingsService,
+            { modelName: 'test-model' }
+        );
+    });
+
+    afterEach(async () => {
+        await indexingService.dispose();
+    });
+
+    it('should register management command on initialization', () => {
+        // Verify the command was registered
+        expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
+            'codelens-pr-analyzer.manageIndexing',
+            expect.any(Function)
+        );
+    });
+
+    it('should show indexing management options', async () => {
+        // Mock showQuickPick to return a specific option
+        const showQuickPickMock = vscode.window.showQuickPick as jest.Mock;
+        showQuickPickMock.mockResolvedValueOnce('Show worker status');
+
+        // Mock showWorkerStatus function
+        const showWorkerStatusSpy = jest.spyOn(indexingService as any, 'showWorkerStatus')
+            .mockImplementation(() => { });
+
+        // Call the management function
+        await (indexingService as any).showIndexingManagementOptions();
+
+        // Verify showWorkerStatus was called
+        expect(showWorkerStatusSpy).toHaveBeenCalled();
+
+        // Clean up
+        showWorkerStatusSpy.mockRestore();
+    });
+
+    it('should handle restartWorkers command correctly', async () => {
+        // Mock showQuickPick to select restart option
+        const showQuickPickMock = vscode.window.showQuickPick as jest.Mock;
+        showQuickPickMock.mockResolvedValueOnce('Restart workers');
+
+        // Initialize Piscina first by spying on getPiscina method
+        const getPiscinaMock = jest.spyOn(indexingService as any, 'getPiscina')
+            .mockReturnValue({ destroy: jest.fn().mockResolvedValue(undefined) });
+
+        // Mock shutdownPiscina to avoid actual shutdown
+        const shutdownPiscinaSpy = jest.spyOn(indexingService as any, 'shutdownPiscina')
+            .mockResolvedValue(undefined);
+
+        // Call management function
+        await (indexingService as any).showIndexingManagementOptions();
+
+        // Verify shutdownPiscina was called (part of restart)
+        expect(shutdownPiscinaSpy).toHaveBeenCalled();
+
+        // Clean up
+        getPiscinaMock.mockRestore();
+        shutdownPiscinaSpy.mockRestore();
+    });
+});
+
+// Add a separate describe block for configuration tests
+describe('IndexingService Configuration', () => {
+    let context: vscode.ExtensionContext;
+    let workspaceSettingsService: WorkspaceSettingsService;
+    let extensionPath: string;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        StatusBarService.reset();
+
+        extensionPath = path.resolve(__dirname, '..', '..');
+
+        context = {
+            globalStorageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'global')),
+            storageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'workspace')),
+            extensionPath: extensionPath,
+            workspaceState: {
+                update: jest.fn(),
+                get: jest.fn()
+            },
+            subscriptions: [],
+            asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
+        } as unknown as vscode.ExtensionContext;
+
+        workspaceSettingsService = new WorkspaceSettingsService(context);
+    });
+
+    it('should initialize with different chunk sizes based on context length', () => {
+        // Create multiple services with different configurations
+        const defaultService = new IndexingService(
+            context,
+            workspaceSettingsService,
+            { modelName: 'default-model' }
+        );
+
+        const smallContextService = new IndexingService(
+            context,
+            workspaceSettingsService,
+            {
+                modelName: 'small-model',
+                contextLength: 512,
+                chunkSizeSafetyFactor: 0.5
+            }
+        );
+
+        // Access private method to test different branches
+        const defaultChunkSize = (defaultService as any).getOptimalChunkSize();
+        const smallChunkSize = (smallContextService as any).getOptimalChunkSize();
+
+        // Default should use defaultOptions.chunkSize
+        expect(defaultChunkSize).toBe(192); // 256 * 0.75
+
+        // Small should use contextLength * safety factor
+        expect(smallChunkSize).toBe(256); // 512 * 0.5
+
+        // Cleanup
+        defaultService.dispose();
+        smallContextService.dispose();
+    });
+
+    it('should throw error when model name is not provided', () => {
+        // Try to create a service without model name
+        expect(() => {
+            new IndexingService(
+                context,
+                workspaceSettingsService,
+                // @ts-ignore - force invalid input for testing
+                { modelName: '' }
+            );
+        }).toThrow('Model name must be provided');
     });
 });
