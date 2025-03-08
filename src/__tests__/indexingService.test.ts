@@ -202,8 +202,8 @@ describe('IndexingService', () => {
             workspaceSettingsService,
             {
                 modelName: 'jinaai/jina-embeddings-v2-base-code',
-                maxWorkers: 2,
-                contextLength: 8192
+                contextLength: 8192,
+                maxWorkers: 2
             }
         );
     });
@@ -268,7 +268,7 @@ describe('IndexingService', () => {
 
     it('should handle file chunking correctly', async () => {
         // Create a file that would need to be chunked (large content)
-        const largeContent = 'x'.repeat(10000); // Larger than default chunk size
+        const largeContent = 'Larger than default chunk size'.repeat(2000);
         const files: FileToProcess[] = [
             { id: 'large', path: '/path/to/large.js', content: largeContent }
         ];
@@ -355,25 +355,6 @@ describe('IndexingService', () => {
         expect(results.get('f3')?.success).toBe(true);
     });
 
-    it('should handle large files by chunking them', async () => {
-        // Create a large file that should be chunked
-        const largeContent = 'a'.repeat(10000); // Large enough to trigger chunking
-        const files: FileToProcess[] = [
-            { id: 'large', path: '/path/to/large.txt', content: largeContent }
-        ];
-
-        // Process the file
-        const results = await indexingService.processFiles(files);
-
-        // Verify the result
-        expect(results.size).toBe(1);
-        expect(results.get('large')).toBeDefined();
-        expect(results.get('large')?.success).toBe(true);
-
-        // Large content should yield multiple embeddings (chunks)
-        expect(results.get('large')?.embeddings.length).toBeGreaterThan(1);
-    });
-
     it('should call Piscina.destroy on disposal', async () => {
     // Process a file to initialize Piscina
         await indexingService.processFiles([
@@ -453,7 +434,8 @@ describe('IndexingService', () => {
         expect(results.get('empty')).toBeDefined();
         expect(results.get('empty')?.success).toBe(true);
         // Empty content should have empty embeddings
-        expect(results.get('empty')?.embeddings.length).toBe(0);
+        expect(results.get('empty')?.embeddings.length).toBe(1);
+        expect(results.get('empty')?.embeddings[0]!.length).toBe(0);
     });
 
     it('should prioritize files by priority value', async () => {

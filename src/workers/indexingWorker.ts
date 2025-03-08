@@ -60,7 +60,6 @@ async function initializeModel(
 
         // Create the pipeline
         embeddingPipeline = await pipeline('feature-extraction', modelName, {
-            revision: 'main',
             dtype: 'q4'
         });
 
