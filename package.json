@@ -42,7 +42,7 @@
         "pretest": "npm run build",
         "prepare-models": "node ./scripts/prepare-models.js",
         "check-types": "tsc --noEmit",
-        "clean": "rimraf -g ./*.vsix && rimraf ./dist && rimraf ./models",
+        "clean": "rimraf -g ./*.vsix && rimraf ./dist",
         "test": "jest"
     },
     "dependencies": {
