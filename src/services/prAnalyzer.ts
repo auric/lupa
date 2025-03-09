@@ -250,7 +250,7 @@ export class PRAnalyzer implements vscode.Disposable {
                     // Reset status to ready
                     this.statusBarService.setState(StatusBarState.Ready);
                 } catch (error) {
-                    if (error instanceof Error && error.message === 'Operation cancelled') {
+                    if (error instanceof Error && error.message.includes('cancelled')) {
                         vscode.window.showInformationMessage('Analysis cancelled');
                         this.statusBarService.showTemporaryMessage(
                             'Analysis cancelled',

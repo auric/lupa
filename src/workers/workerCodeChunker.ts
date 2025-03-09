@@ -22,9 +22,10 @@ export class WorkerCodeChunker {
      * Chunks code into pieces that respect natural boundaries and fit within token limits
      * @param text The code text to chunk
      * @param options Optional embedding options that may include overlap size
+     * @param signal AbortSignal for cancellation
      * @returns ChunkingResult with chunks and their offsets in the original text
      */
-    async chunkCode(text: string, options: EmbeddingOptions): Promise<ChunkingResult> {
+    async chunkCode(text: string, options: EmbeddingOptions, signal: AbortSignal): Promise<ChunkingResult> {
         const overlapSize = options.overlapSize !== undefined ?
             options.overlapSize :
             this.defaultOverlapSize;
@@ -43,8 +44,12 @@ export class WorkerCodeChunker {
             }
 
             // For large files, use optimized token chunking
-            return this.createOptimizedTokenChunks(text, safeTokenLimit, overlapSize);
+            return this.createOptimizedTokenChunks(text, safeTokenLimit, overlapSize, signal);
         } catch (error) {
+            if (signal.aborted && error instanceof Error && error.message.includes('cancelled')) {
+                throw error;
+            }
+
             console.error('Worker: Error during token-based chunking:', error);
 
             // Fallback to simple chunking
@@ -261,7 +266,8 @@ export class WorkerCodeChunker {
     async createOptimizedTokenChunks(
         text: string,
         maxTokens: number,
-        overlap: number
+        overlap: number,
+        signal: AbortSignal
     ): Promise<ChunkingResult> {
         // Early return for empty text
         if (!text || text.length === 0) {
@@ -271,92 +277,90 @@ export class WorkerCodeChunker {
         console.log(`Worker: Starting token-based chunking for ${text.length} characters`);
         const startTime = performance.now();
 
-        try {
-            // Initialize tokenizer
-            const tokenizer = await this.tokenEstimator.initialize();
+        // Initialize tokenizer
+        const tokenizer = await this.tokenEstimator.initialize();
 
-            // Get all tokens first
-            const tokens = await this.tokenEstimator.tokenize(text);
-            console.log(`Worker: Text tokenized into ${tokens.length} tokens`);
+        // Get all tokens first
+        const tokens = await this.tokenEstimator.tokenize(text);
+        console.log(`Worker: Text tokenized into ${tokens.length} tokens`);
 
-            // Map tokens to their positions in the text
-            const tokenPositions = await this.mapTokensToPositions(text, tokens, tokenizer);
-            console.log(`Worker: Mapped ${tokenPositions.length} token positions`);
+        // Map tokens to their positions in the text
+        const tokenPositions = await this.mapTokensToPositions(text, tokens, tokenizer);
+        console.log(`Worker: Mapped ${tokenPositions.length} token positions`);
 
-            // If it fits in one chunk, return as is
-            if (tokens.length <= maxTokens) {
-                return {
-                    chunks: [text],
-                    offsets: [0]
-                };
-            }
-
-            // Find code structure break points
-            const breakPoints = this.findCodeBreakPoints(text);
-            console.log(`Worker: Found ${breakPoints.length} potential break points`);
-
-            // Create chunks with token-awareness and code structure
-            const chunks: string[] = [];
-            const offsets: number[] = [];
-            let startTokenIdx = 0;
-
-            while (startTokenIdx < tokens.length) {
-                // Determine target end index
-                const targetEndTokenIdx = Math.min(startTokenIdx + maxTokens, tokens.length);
-                console.log(`Worker: Chunking progress - processing tokens ${startTokenIdx}/${tokens.length}`);
-
-                // If we're at the end, add final chunk
-                if (targetEndTokenIdx >= tokens.length) {
-                    const chunkText = text.substring(tokenPositions[startTokenIdx].start);
-                    chunks.push(chunkText);
-                    offsets.push(tokenPositions[startTokenIdx].start);
-                    break;
-                }
-
-                // Find best break point near target end
-                const targetCharPos = tokenPositions[targetEndTokenIdx - 1].end;
-                const searchWindow = 500; // Look 500 chars around target
-
-                const bestBreakPoint = this.findBestBreakPoint(
-                    breakPoints,
-                    targetCharPos - searchWindow,
-                    targetCharPos + searchWindow
-                );
-
-                // If no good break point, use target token boundary
-                const breakPos = bestBreakPoint !== null ?
-                    bestBreakPoint.pos :
-                    tokenPositions[targetEndTokenIdx - 1].end;
-
-                // Create chunk
-                const chunkText = text.substring(tokenPositions[startTokenIdx].start, breakPos);
-                if (chunkText.trim().length > 0) {
-                    chunks.push(chunkText);
-                    offsets.push(tokenPositions[startTokenIdx].start);
-                }
-
-                // Find overlap in tokens rather than characters for more accuracy
-                const overlapTokens = Math.min(overlap, Math.floor((targetEndTokenIdx - startTokenIdx) / 3));
-                const nextStartTokenIdx = this.findTokenIndexNearPosition(
-                    tokenPositions,
-                    breakPos - 100 // Look back ~100 chars for good overlap
-                );
-
-                // Ensure we always make forward progress
-                startTokenIdx = Math.max(startTokenIdx + 1, nextStartTokenIdx);
-
-                console.log(`Worker: Created chunk of ${chunkText.length} chars (${chunkText.split('\n').length} lines), next start at token ${startTokenIdx}/${tokens.length}`);
-            }
-
-            const endTime = performance.now();
-            console.log(`Worker: Chunking completed in ${(endTime - startTime).toFixed(2)}ms - created ${chunks.length} chunks`);
-
-            return { chunks, offsets };
-        } catch (error) {
-            console.error('Worker: Error in optimized token chunking:', error);
-            // Fall back to simpler chunking approach
-            return this.createSimpleChunks(text, overlap);
+        // If it fits in one chunk, return as is
+        if (tokens.length <= maxTokens) {
+            return {
+                chunks: [text],
+                offsets: [0]
+            };
         }
+
+        // Find code structure break points
+        const breakPoints = this.findCodeBreakPoints(text);
+        console.log(`Worker: Found ${breakPoints.length} potential break points`);
+
+        // Create chunks with token-awareness and code structure
+        const chunks: string[] = [];
+        const offsets: number[] = [];
+        let startTokenIdx = 0;
+
+        while (startTokenIdx < tokens.length) {
+            if (signal.aborted) {
+                throw new Error('Operation was cancelled');
+            }
+            // Determine target end index
+            const targetEndTokenIdx = Math.min(startTokenIdx + maxTokens, tokens.length);
+            console.log(`Worker: Chunking progress - processing tokens ${startTokenIdx}/${tokens.length}`);
+
+            // If we're at the end, add final chunk
+            if (targetEndTokenIdx >= tokens.length) {
+                const chunkText = text.substring(tokenPositions[startTokenIdx].start);
+                chunks.push(chunkText);
+                offsets.push(tokenPositions[startTokenIdx].start);
+                break;
+            }
+
+            // Find best break point near target end
+            const targetCharPos = tokenPositions[targetEndTokenIdx - 1].end;
+            const searchWindow = 500; // Look 500 chars around target
+
+            const bestBreakPoint = this.findBestBreakPoint(
+                breakPoints,
+                targetCharPos - searchWindow,
+                targetCharPos + searchWindow
+            );
+
+            // If no good break point, use target token boundary
+            const breakPos = bestBreakPoint !== null ?
+                bestBreakPoint.pos :
+                tokenPositions[targetEndTokenIdx - 1].end;
+
+            // Create chunk
+            const chunkText = text.substring(tokenPositions[startTokenIdx].start, breakPos);
+            if (chunkText.trim().length > 0) {
+                chunks.push(chunkText);
+                offsets.push(tokenPositions[startTokenIdx].start);
+            }
+
+            // Find overlap in tokens rather than characters for more accuracy
+            const overlapTokens = Math.min(overlap, Math.floor((targetEndTokenIdx - startTokenIdx) / 3));
+            const nextStartTokenIdx = this.findTokenIndexNearPosition(
+                tokenPositions,
+                breakPos - 100, // Look back ~100 chars for good overlap
+                signal
+            );
+
+            // Ensure we always make forward progress
+            startTokenIdx = Math.max(startTokenIdx + 1, nextStartTokenIdx);
+
+            console.log(`Worker: Created chunk of ${chunkText.length} chars (${chunkText.split('\n').length} lines), next start at token ${startTokenIdx}/${tokens.length}`);
+        }
+
+        const endTime = performance.now();
+        console.log(`Worker: Chunking completed in ${(endTime - startTime).toFixed(2)}ms - created ${chunks.length} chunks`);
+
+        return { chunks, offsets };
     }
 
     /**
@@ -544,13 +548,18 @@ export class WorkerCodeChunker {
      */
     private findTokenIndexNearPosition(
         tokenPositions: Array<{ start: number, end: number }>,
-        targetPos: number
+        targetPos: number,
+        signal: AbortSignal
     ): number {
         // Binary search for efficiency with large token arrays
         let left = 0;
         let right = tokenPositions.length - 1;
 
         while (left <= right) {
+            if (signal.aborted) {
+                throw new Error('Operation was cancelled');
+            }
+
             const mid = Math.floor((left + right) / 2);
 
             // Check if we found the position

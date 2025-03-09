@@ -108,7 +108,10 @@ async function generateEmbeddings(
     const shouldNormalize = options.normalize !== false; // Default to true if not specified
 
     // Chunk the text using smart code-aware chunking
-    const { chunks, offsets } = await codeChunker!.chunkCode(text, options);
+    const { chunks, offsets } = await codeChunker!.chunkCode(text, options, signal);
+
+    // Yield to the event loop to process any pending messages
+    await new Promise(resolve => setTimeout(resolve, 0));
 
     // Generate embeddings for each chunk
     const embeddings: Float32Array[] = [];
@@ -139,10 +142,6 @@ async function generateEmbeddings(
 
             embeddings.push(embedding);
         } catch (error) {
-            // Check if this is a cancellation
-            if (signal.aborted) {
-                throw new Error('Operation was cancelled');
-            }
             console.error('Error generating embedding for chunk:', error);
             throw error;
         }

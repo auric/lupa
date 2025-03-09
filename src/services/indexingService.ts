@@ -147,6 +147,12 @@ export class IndexingService implements vscode.Disposable {
             await this.cancelProcessing();
         }
 
+        if (token) {
+            token.onCancellationRequested(async () => {
+                await this.cancelProcessing();
+            });
+        }
+
         const messageChannels = files.map(() => new MessageChannel());
 
         // Create a new operation
@@ -154,13 +160,6 @@ export class IndexingService implements vscode.Disposable {
 
         // Get Piscina instance
         const piscina = this.getPiscina();
-
-        // Link VS Code cancellation token to our AbortController if provided
-        if (token) {
-            token.onCancellationRequested(() => {
-                this.cancelProcessing();
-            });
-        }
 
         // Update status to indexing
         this.statusBarService.setState(StatusBarState.Indexing, `${files.length} files`);

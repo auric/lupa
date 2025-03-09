@@ -394,7 +394,7 @@ describe('IndexingService', () => {
         const secondResults = await secondPromise;
 
         const firstResults = await firstPromise;
-        expect(firstResults.size).toBe(1);
+        expect(firstResults.size).toBe(0);
 
         expect(secondResults.size).toBe(1);
         expect(secondResults.get('second')).toBeDefined();
