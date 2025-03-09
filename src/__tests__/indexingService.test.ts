@@ -201,7 +201,7 @@ describe('IndexingService', () => {
             context,
             workspaceSettingsService,
             {
-                modelName: 'jinaai/jina-embeddings-v2-base-code',
+                modelName: 'Xenova/all-MiniLM-L6-v2',
                 contextLength: 8192,
                 maxWorkers: 2
             }
@@ -345,7 +345,7 @@ describe('IndexingService', () => {
             { id: 'f3', path: '/path/to/f3.js', content: 'const z = 3;' }
         ];
 
-            // Process files
+        // Process files
         const results = await indexingService.processFiles(files);
 
         // Verify all files were processed
@@ -356,7 +356,7 @@ describe('IndexingService', () => {
     });
 
     it('should call Piscina.destroy on disposal', async () => {
-    // Process a file to initialize Piscina
+        // Process a file to initialize Piscina
         await indexingService.processFiles([
             { id: 'test', path: '/test.js', content: 'test content' }
         ]);
@@ -591,6 +591,116 @@ describe('IndexingService Management Functions', () => {
         getPiscinaMock.mockRestore();
         shutdownPiscinaSpy.mockRestore();
     });
+
+    it('should handle shutdown workers command correctly', async () => {
+        // Mock showQuickPick to select shutdown option
+        const showQuickPickMock = vscode.window.showQuickPick as jest.Mock;
+        showQuickPickMock.mockResolvedValueOnce('Shutdown workers');
+
+        // Initialize Piscina first by processing a file
+        await indexingService.processFiles([
+            { id: 'test', path: '/test.js', content: 'test content' }
+        ]);
+
+        // Mock and spy on shutdownPiscina method
+        const shutdownPiscinaSpy = jest.spyOn(indexingService as any, 'shutdownPiscina');
+
+        // Call management function
+        await (indexingService as any).showIndexingManagementOptions();
+
+        // Verify shutdownPiscina was called
+        expect(shutdownPiscinaSpy).toHaveBeenCalled();
+
+        // Clean up
+        shutdownPiscinaSpy.mockRestore();
+    });
+
+    it('should handle cancel current indexing command correctly', async () => {
+        // Mock showQuickPick to select cancel option
+        const showQuickPickMock = vscode.window.showQuickPick as jest.Mock;
+        showQuickPickMock.mockResolvedValueOnce('Cancel current indexing');
+
+        // Spy on cancelProcessing method
+        const cancelProcessingSpy = jest.spyOn(indexingService, 'cancelProcessing')
+            .mockResolvedValueOnce();
+
+        // Call management function
+        await (indexingService as any).showIndexingManagementOptions();
+
+        // Verify cancelProcessing was called
+        expect(cancelProcessingSpy).toHaveBeenCalled();
+
+        // Clean up
+        cancelProcessingSpy.mockRestore();
+    });
+
+    it('should show worker status when no workers are running', async () => {
+        // Make sure Piscina is null
+        (indexingService as any).piscina = null;
+
+        // Spy on window.showInformationMessage
+        const showInfoSpy = jest.spyOn(vscode.window, 'showInformationMessage');
+
+        // Call showWorkerStatus
+        (indexingService as any).showWorkerStatus();
+
+        // Verify the right message was shown
+        expect(showInfoSpy).toHaveBeenCalledWith('No workers are currently running.');
+
+        showInfoSpy.mockRestore();
+    });
+
+    it('should handle error when restarting workers', async () => {
+        // Mock showQuickPick to select restart option
+        const showQuickPickMock = vscode.window.showQuickPick as jest.Mock;
+        showQuickPickMock.mockResolvedValueOnce('Restart workers');
+
+        // Force error during worker restart
+        const cancelProcessingSpy = jest.spyOn(indexingService, 'cancelProcessing')
+            .mockRejectedValueOnce(new Error('Test error during restart'));
+
+        // Spy on window.showErrorMessage
+        const showErrorSpy = jest.spyOn(vscode.window, 'showErrorMessage');
+
+        // Call management function
+        await (indexingService as any).showIndexingManagementOptions();
+
+        // Verify error message was shown
+        expect(showErrorSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Failed to restart workers')
+        );
+
+        // Clean up
+        cancelProcessingSpy.mockRestore();
+        showErrorSpy.mockRestore();
+    });
+
+    it('should handle error during piscina shutdown', async () => {
+        // Make sure Piscina is initialized
+        await indexingService.processFiles([
+            { id: 'test', path: '/test.js', content: 'test content' }
+        ]);
+
+        // Get the Piscina instance
+        const piscina = (indexingService as any).piscina;
+
+        // Mock destroy to throw an error
+        jest.spyOn(piscina, 'destroy').mockRejectedValueOnce(new Error('Destroy failed'));
+
+        // Spy on console.error
+        const consoleErrorSpy = jest.spyOn(console, 'error');
+
+        // Call shutdownPiscina
+        await (indexingService as any).shutdownPiscina();
+
+        // Verify error was logged
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            'Error shutting down piscina:',
+            expect.any(Error)
+        );
+
+        consoleErrorSpy.mockRestore();
+    });
 });
 
 // Add a separate describe block for configuration tests
@@ -630,5 +740,106 @@ describe('IndexingService Configuration', () => {
                 { modelName: '' }
             );
         }).toThrow('Model name must be provided');
+    });
+});
+
+describe('IndexingService Error Handling', () => {
+    let context: vscode.ExtensionContext;
+    let indexingService: IndexingService;
+    let workspaceSettingsService: WorkspaceSettingsService;
+    let extensionPath: string;
+    let statusBarServiceInstance: any;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        StatusBarService.reset();
+        statusBarServiceInstance = StatusBarService.getInstance();
+
+        extensionPath = path.resolve(__dirname, '..', '..');
+
+        // Mock context
+        context = {
+            globalStorageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'global')),
+            storageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'workspace')),
+            extensionPath: extensionPath,
+            workspaceState: {
+                update: jest.fn(),
+                get: jest.fn()
+            },
+            subscriptions: [],
+            asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
+        } as unknown as vscode.ExtensionContext;
+
+        workspaceSettingsService = new WorkspaceSettingsService(context);
+
+        // Create service with minimal configuration
+        indexingService = new IndexingService(
+            context,
+            workspaceSettingsService,
+            {
+                modelName: 'test-model',
+                contextLength: 256
+            }
+        );
+    });
+
+    afterEach(async () => {
+        await indexingService.dispose();
+    });
+
+    it('should handle worker errors during file processing', async () => {
+        // Mock getPiscina to return a mock Piscina
+        const mockRun = jest.fn().mockRejectedValue(new Error('Worker error'));
+        const mockPiscina = {
+            run: mockRun,
+            destroy: jest.fn().mockResolvedValue(undefined)
+        };
+
+        jest.spyOn(indexingService as any, 'getPiscina').mockReturnValue(mockPiscina);
+
+        // Spy on status bar methods
+        const setStateSpy = jest.spyOn(statusBarServiceInstance, 'setState');
+
+        // Process a file
+        await expect(indexingService.processFiles([
+            { id: 'error-file', path: '/error.js', content: 'content' }
+        ])).rejects.toThrow('Worker error');
+
+        // Verify error status was set
+        expect(setStateSpy).toHaveBeenCalledWith(
+            StatusBarState.Error,
+            expect.any(String)
+        );
+    });
+
+    it('should throw error when context length is not provided', () => {
+        // Clean up existing service
+        indexingService.dispose();
+
+        // Try to create a service without context length
+        expect(() => {
+            new IndexingService(
+                context,
+                workspaceSettingsService,
+                {
+                    modelName: 'test-model',
+                    // @ts-ignore - force invalid input for testing
+                    contextLength: undefined
+                }
+            );
+        }).toThrow('Context length must be provided');
+    });
+
+    it('should handle errors when worker script does not exist', () => {
+        // Mock fs.existsSync to return false for the worker script
+        const existsSyncSpy = jest.spyOn(fs, 'existsSync').mockReturnValueOnce(false);
+
+        // Expect getPiscina to throw
+        expect(() => {
+            (indexingService as any).getPiscina();
+        }).toThrow('Worker script not found');
+
+        // Restore original implementation
+        existsSyncSpy.mockRestore();
     });
 });
