@@ -843,3 +843,398 @@ describe('IndexingService Error Handling', () => {
         existsSyncSpy.mockRestore();
     });
 });
+
+describe('IndexingService Additional Coverage Tests', () => {
+    let context: vscode.ExtensionContext;
+    let indexingService: IndexingService;
+    let workspaceSettingsService: WorkspaceSettingsService;
+    let extensionPath: string;
+    let statusBarServiceInstance: any;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        StatusBarService.reset();
+        statusBarServiceInstance = StatusBarService.getInstance();
+
+        extensionPath = path.resolve(__dirname, '..', '..');
+
+        context = {
+            globalStorageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'global')),
+            storageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'workspace')),
+            extensionPath: extensionPath,
+            workspaceState: {
+                update: jest.fn(),
+                get: jest.fn()
+            },
+            subscriptions: [],
+            asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
+        } as unknown as vscode.ExtensionContext;
+
+        workspaceSettingsService = new WorkspaceSettingsService(context);
+
+        indexingService = new IndexingService(
+            context,
+            workspaceSettingsService,
+            {
+                modelName: 'test-model',
+                contextLength: 256
+            }
+        );
+    });
+
+    afterEach(async () => {
+        await indexingService.dispose();
+    });
+
+    it('should call progress callback during file processing', async () => {
+        // Create some test files
+        const files = Array.from({ length: 5 }, (_, i) => ({
+            id: `file${i}`,
+            path: `/path/to/file${i}.js`,
+            content: `// Content for file ${i}`
+        }));
+
+        // Create a mock progress callback function
+        const progressCallback = jest.fn();
+
+        // Mock Piscina run to immediately resolve
+        const mockPiscina = {
+            run: jest.fn().mockImplementation((task) => Promise.resolve({
+                fileId: task.fileId,
+                embeddings: [new Float32Array(5)],
+                chunkOffsets: [0],
+                success: true
+            })),
+            threads: [{}], // mock one thread
+            destroy: jest.fn().mockResolvedValue(undefined),
+            queueSize: 0,
+            completed: 1,
+            duration: 100,
+            utilization: 0.5
+        };
+
+        jest.spyOn(indexingService as any, 'getPiscina').mockReturnValue(mockPiscina);
+
+        // Process files with progress callback
+        await indexingService.processFiles(files, undefined, progressCallback);
+
+        // Fix: With batch size of 10 and only 5 files, the callback is only called once
+        // after all files are processed in a single batch
+        expect(progressCallback).toHaveBeenCalledTimes(1);
+
+        // The callback should be called with (5, 5) - all five files processed
+        expect(progressCallback).toHaveBeenCalledWith(5, 5);
+    });
+
+    it('should handle progress callback edge cases', async () => {
+        // Mock fs.existsSync to return true for any worker script path
+        const existsSyncSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+        // Mock Piscina instance with a run method that returns a successful result
+        const mockPiscina = {
+            run: jest.fn().mockResolvedValue({
+                fileId: 'single',
+                embeddings: [new Float32Array(5)],
+                chunkOffsets: [0],
+                success: true
+            }),
+            threads: [{}], // mock one thread
+            destroy: jest.fn().mockResolvedValue(undefined),
+            queueSize: 0,
+            completed: 1,
+            duration: 100,
+            utilization: 0.5
+        };
+
+        // Spy on getPiscina to return our mock instance
+        jest.spyOn(indexingService as any, 'getPiscina').mockReturnValue(mockPiscina);
+
+        // Process a single file with no progress callback
+        const result = await indexingService.processFiles([
+            { id: 'single', path: '/path/to/single.js', content: 'single file test' }
+        ]);
+
+        // Should complete successfully without error
+        expect(result.has('single')).toBe(true);
+        expect(result.get('single')?.success).toBe(true);
+
+        // Restore the original implementation
+        existsSyncSpy.mockRestore();
+    });
+
+    it('should handle token cancellation during batch processing', async () => {
+        // Create 15 files to ensure multiple batches (with batch size of 10)
+        const files = Array.from({ length: 15 }, (_, i) => ({
+            id: `batch${i}`,
+            path: `/path/to/batch${i}.js`,
+            content: `// Batch file ${i}`
+        }));
+
+        // Create a cancellation token
+        const tokenSource = new vscode.CancellationTokenSource();
+
+        // Mock Piscina.run to delay on the first batch but resolve quickly for others
+        // This gives us time to cancel during processing
+        const mockRun = jest.fn()
+            .mockImplementationOnce(task => {
+                // First call - delay 100ms then resolve
+                return new Promise(resolve => {
+                    setTimeout(() => {
+                        resolve({
+                            fileId: task.fileId,
+                            embeddings: [new Float32Array(5)],
+                            chunkOffsets: [0],
+                            success: true
+                        });
+                    }, 100);
+                });
+            })
+            .mockImplementation(task => {
+                // Subsequent calls - resolve immediately
+                return Promise.resolve({
+                    fileId: task.fileId,
+                    embeddings: [new Float32Array(5)],
+                    chunkOffsets: [0],
+                    success: true
+                });
+            });
+
+        const mockPiscina = {
+            run: mockRun,
+            threads: [{}], // mock one thread
+            destroy: jest.fn().mockResolvedValue(undefined),
+            queueSize: 0,
+            completed: 1,
+            duration: 100,
+            utilization: 0.5
+        };
+
+        jest.spyOn(indexingService as any, 'getPiscina').mockReturnValue(mockPiscina);
+
+        // Start processing
+        const processPromise = indexingService.processFiles(files, tokenSource.token);
+
+        // Cancel after a short delay (less than the 100ms delay of the first batch)
+        setTimeout(() => tokenSource.cancel(), 50);
+
+        // Wait for processing to complete
+        await expect(processPromise).rejects.toThrow();
+
+        // Verify cancellation was handled
+        const setStateSpy = jest.spyOn(statusBarServiceInstance, 'setState');
+        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Ready);
+    });
+
+    it('should handle batch processing with errors in some files', async () => {
+        // Create 3 files
+        const files = [
+            { id: 'success1', path: '/path/to/success1.js', content: 'this will succeed' },
+            { id: 'error', path: '/path/to/error.js', content: 'this will fail' },
+            { id: 'success2', path: '/path/to/success2.js', content: 'this will also succeed' }
+        ];
+
+        // Mock Piscina.run to succeed for first and third files but fail for second
+        const mockRun = jest.fn()
+            .mockImplementationOnce(task => {
+                return Promise.resolve({
+                    fileId: task.fileId,
+                    embeddings: [new Float32Array(5)],
+                    chunkOffsets: [0],
+                    success: true
+                });
+            })
+            .mockImplementationOnce(() => {
+                return Promise.resolve({
+                    fileId: 'error',
+                    embeddings: [],
+                    chunkOffsets: [],
+                    success: false,
+                    error: 'Test error message'
+                });
+            })
+            .mockImplementationOnce(task => {
+                return Promise.resolve({
+                    fileId: task.fileId,
+                    embeddings: [new Float32Array(5)],
+                    chunkOffsets: [0],
+                    success: true
+                });
+            });
+
+        const mockPiscina = {
+            run: mockRun,
+            threads: [{}],
+            destroy: jest.fn().mockResolvedValue(undefined),
+            queueSize: 0,
+            completed: 3,
+            duration: 100,
+            utilization: 0.5
+        };
+
+        jest.spyOn(indexingService as any, 'getPiscina').mockReturnValue(mockPiscina);
+
+        // Fix: Make fs.existsSync return true
+        const existsSyncSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+        // Process files
+        const results = await indexingService.processFiles(files);
+
+        // Fix: Based on the implementation, only successful results are included
+        expect(results.size).toBe(2);
+
+        // First and third should be successful
+        expect(results.get('success1')?.success).toBe(true);
+        expect(results.get('success2')?.success).toBe(true);
+
+        // Second should have failed and not be in the results
+        expect(results.has('error')).toBe(false);
+
+        existsSyncSpy.mockRestore();
+    });
+
+    it('should correctly dispose resources when error occurs during cancellation', async () => {
+        // Create a mock MessageChannel
+        const mockChannel = {
+            port1: {
+                postMessage: jest.fn().mockImplementation(() => {
+                    throw new Error('Port closed');
+                })
+            },
+            port2: {}
+        };
+
+        // Mock console.log to prevent error output in test
+        const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => { });
+
+        // Set up a situation where postMessage fails during cancellation
+        (indexingService as any).currentOperation = {
+            files: [{ id: 'test', path: '/test.js', content: 'test content' }],
+            results: [Promise.resolve()],
+            messageChannels: [mockChannel]
+        };
+
+        // Spy on status bar
+        const showTempMsgSpy = jest.spyOn(statusBarServiceInstance, 'showTemporaryMessage');
+
+        // Call cancelProcessing - should not throw thanks to our implementation fix
+        await indexingService.cancelProcessing();
+
+        // Should still show cancellation message even though port1.postMessage threw
+        expect(showTempMsgSpy).toHaveBeenCalledWith(
+            'Indexing cancelled',
+            expect.any(Number),
+            StatusBarMessageType.Warning
+        );
+
+        // Operation should be cleaned up
+        expect((indexingService as any).currentOperation).toBeNull();
+
+        consoleLogSpy.mockRestore();
+    });
+
+    it('should update worker status and display additional information', async () => {
+        // Mock fs.existsSync to return true
+        const existsSyncSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+
+        // Process a file to initialize Piscina
+        await indexingService.processFiles([
+            { id: 'test', path: '/test.js', content: 'test content' }
+        ]);
+
+        // Set a current operation to test that branch
+        (indexingService as any).currentOperation = {
+            files: [{ id: 'active', path: '/active.js', content: 'active content' }],
+            results: [Promise.resolve()],
+            messageChannels: [{ port1: { postMessage: jest.fn() }, port2: {} }]
+        };
+
+        // Spy on window.showInformationMessage with modal parameter
+        const showInfoSpy = jest.spyOn(vscode.window, 'showInformationMessage');
+
+        // Call showWorkerStatus
+        (indexingService as any).showWorkerStatus();
+
+        // Verify called with activeOperation: true in the stats
+        expect(showInfoSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Active operation: Yes'),
+            { modal: true }
+        );
+
+        // Clean up
+        showInfoSpy.mockRestore();
+        existsSyncSpy.mockRestore();
+        (indexingService as any).currentOperation = null;
+    });
+
+    it('should sort files by priority when no priority is specified', async () => {
+        // Create files without explicit priority
+        const files = [
+            { id: 'file1', path: '/path/to/file1.js', content: 'content 1' },
+            { id: 'file2', path: '/path/to/file2.js', content: 'content 2' }
+        ];
+
+        // Mock Piscina to capture task order
+        const capturedTasks: any[] = [];
+        const mockPiscina = {
+            run: jest.fn().mockImplementation((task) => {
+                capturedTasks.push(task);
+                return Promise.resolve({
+                    fileId: task.fileId,
+                    embeddings: [new Float32Array(5)],
+                    chunkOffsets: [0],
+                    success: true
+                });
+            }),
+            threads: [{}],
+            destroy: jest.fn().mockResolvedValue(undefined),
+            queueSize: 0,
+            completed: 0,
+            duration: 0,
+            utilization: 0
+        };
+
+        jest.spyOn(indexingService as any, 'getPiscina').mockReturnValue(mockPiscina);
+
+        // Process files
+        await indexingService.processFiles(files);
+
+        // Files should be processed in original order when no priority is specified
+        expect(capturedTasks[0].fileId).toBe('file1');
+        expect(capturedTasks[1].fileId).toBe('file2');
+    });
+
+    it('should execute all worker management options', async () => {
+        // Create spy functions for all the management methods
+        const cancelSpy = jest.spyOn(indexingService, 'cancelProcessing')
+            .mockResolvedValue();
+        const restartSpy = jest.spyOn(indexingService as any, 'restartWorkers')
+            .mockResolvedValue(undefined);
+        const statusSpy = jest.spyOn(indexingService as any, 'showWorkerStatus')
+            .mockImplementation(() => { });
+        const shutdownSpy = jest.spyOn(indexingService as any, 'shutdownPiscina')
+            .mockResolvedValue(undefined);
+
+        // Mock showQuickPick to return each option in sequence
+        const showQuickPickMock = vscode.window.showQuickPick as jest.Mock;
+
+        // Test "Cancel current indexing" option
+        showQuickPickMock.mockResolvedValueOnce("Cancel current indexing");
+        await (indexingService as any).showIndexingManagementOptions();
+        expect(cancelSpy).toHaveBeenCalled();
+
+        // Test "Restart workers" option
+        showQuickPickMock.mockResolvedValueOnce("Restart workers");
+        await (indexingService as any).showIndexingManagementOptions();
+        expect(restartSpy).toHaveBeenCalled();
+
+        // Test "Show worker status" option
+        showQuickPickMock.mockResolvedValueOnce("Show worker status");
+        await (indexingService as any).showIndexingManagementOptions();
+        expect(statusSpy).toHaveBeenCalled();
+
+        // Test "Shutdown workers" option
+        showQuickPickMock.mockResolvedValueOnce("Shutdown workers");
+        await (indexingService as any).showIndexingManagementOptions();
+        expect(shutdownSpy).toHaveBeenCalled();
+    });
+});

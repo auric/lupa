@@ -255,9 +255,23 @@ export class IndexingService implements vscode.Disposable {
      */
     public async cancelProcessing(): Promise<void> {
         if (this.currentOperation) {
-            // Abort the operation
-            this.currentOperation.messageChannels.forEach(channel => channel.port1.postMessage('abort'));
-            await Promise.all(this.currentOperation.results);
+            // Abort the operation - add try/catch to handle errors
+            this.currentOperation.messageChannels.forEach(channel => {
+                try {
+                    channel.port1.postMessage('abort');
+                } catch (error) {
+                    // Ignore errors from posting to closed ports
+                    console.log('Error posting abort message:', error);
+                }
+            });
+
+            try {
+                await Promise.all(this.currentOperation.results);
+            } catch (error) {
+                // Ignore errors from promises that may be rejected due to cancellation
+                console.log('Error waiting for operation results:', error);
+            }
+
             this.currentOperation = null;
 
             this.statusBarService.showTemporaryMessage(
