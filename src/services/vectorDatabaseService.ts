@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { hash } from 'crypto';
-import Database from 'better-sqlite3';
-import SQL from 'sql-template-strings';
+import { createHash } from 'crypto';
+import * as sqlite3 from '@vscode/sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import { similarity } from 'ml-distance';
 import {
@@ -21,9 +20,11 @@ import {
  * with efficient similarity search capabilities.
  */
 export class VectorDatabaseService implements vscode.Disposable {
-    private db: Database.Database;
+    private db: sqlite3.Database | null = null;
     private readonly config: Required<DatabaseConfig>;
     private static instance: VectorDatabaseService | null = null;
+    private isInitialized = false;
+    private initPromise: Promise<void> | null = null;
 
     // Default configuration values
     private static readonly DEFAULT_CONFIG: Required<Omit<DatabaseConfig, 'dbPath'>> = {
@@ -84,28 +85,71 @@ export class VectorDatabaseService implements vscode.Disposable {
 
         // Initialize database
         console.log(`Initializing vector database at ${this.config.dbPath}`);
-        this.db = new Database(this.config.dbPath, {
-            fileMustExist: false,
-            readonly: false,
-            timeout: this.config.busyTimeout
+        this.initPromise = this.initializeDatabase();
+    }
+
+    /**
+     * Initialize the database connection and schema
+     */
+    private async initializeDatabase(): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            // Create the database connection
+            this.db = new sqlite3.Database(this.config.dbPath, (err) => {
+                if (err) {
+                    reject(new Error(`Failed to open database: ${err.message}`));
+                    return;
+                }
+
+                // Configure pragmas for performance
+                this.runPragmas().then(() => {
+                    // Initialize schema
+                    this.initializeSchema()
+                        .then(() => {
+                            this.isInitialized = true;
+                            resolve();
+                        })
+                        .catch(reject);
+                }).catch(reject);
+            });
         });
+    }
 
-        // Optimize for performance
-        this.db.pragma('journal_mode = WAL');
-        this.db.pragma('synchronous = NORMAL');
-        this.db.pragma('cache_size = 10000');
-        this.db.pragma('foreign_keys = ON');
+    /**
+     * Run database pragmas to optimize performance
+     */
+    private async runPragmas(): Promise<void> {
+        const pragmas = [
+            'PRAGMA journal_mode = WAL',
+            'PRAGMA synchronous = NORMAL',
+            'PRAGMA cache_size = 10000',
+            'PRAGMA foreign_keys = ON',
+            `PRAGMA busy_timeout = ${this.config.busyTimeout}`
+        ];
 
-        // Initialize schema
-        this.initializeSchema();
+        for (const pragma of pragmas) {
+            await this.run(pragma, []);
+        }
+    }
+
+    /**
+     * Ensure database is initialized before proceeding with operations
+     */
+    private async ensureInitialized(): Promise<void> {
+        if (!this.isInitialized && this.initPromise) {
+            await this.initPromise;
+        }
+
+        if (!this.db) {
+            throw new Error('Database connection is not available');
+        }
     }
 
     /**
      * Initialize database schema if it doesn't exist
      */
-    private initializeSchema(): void {
+    private async initializeSchema(): Promise<void> {
         // Files table - stores information about indexed files
-        this.db.exec(`
+        await this.run(`
             CREATE TABLE IF NOT EXISTS files (
                 id TEXT PRIMARY KEY,
                 path TEXT NOT NULL UNIQUE,
@@ -114,13 +158,14 @@ export class VectorDatabaseService implements vscode.Disposable {
                 language TEXT,
                 is_indexed BOOLEAN NOT NULL DEFAULT 0,
                 size INTEGER NOT NULL DEFAULT 0
-            );
-            CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
-            CREATE INDEX IF NOT EXISTS idx_files_indexed ON files(is_indexed);
-        `);
+            )
+        `, []);
+
+        await this.run('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)', []);
+        await this.run('CREATE INDEX IF NOT EXISTS idx_files_indexed ON files(is_indexed)', []);
 
         // Chunks table - stores code chunks from files
-        this.db.exec(`
+        await this.run(`
             CREATE TABLE IF NOT EXISTS chunks (
                 id TEXT PRIMARY KEY,
                 file_id TEXT NOT NULL,
@@ -129,12 +174,13 @@ export class VectorDatabaseService implements vscode.Disposable {
                 end_offset INTEGER NOT NULL,
                 token_count INTEGER,
                 FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id);
-        `);
+            )
+        `, []);
+
+        await this.run('CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)', []);
 
         // Embeddings table - stores vector embeddings of chunks
-        this.db.exec(`
+        await this.run(`
             CREATE TABLE IF NOT EXISTS embeddings (
                 id TEXT PRIMARY KEY,
                 chunk_id TEXT NOT NULL,
@@ -143,20 +189,98 @@ export class VectorDatabaseService implements vscode.Disposable {
                 dimension INTEGER NOT NULL,
                 created_at INTEGER NOT NULL,
                 FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_embeddings_chunk_id ON embeddings(chunk_id);
-            CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model);
-        `);
+            )
+        `, []);
+
+        await this.run('CREATE INDEX IF NOT EXISTS idx_embeddings_chunk_id ON embeddings(chunk_id)', []);
+        await this.run('CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model)', []);
 
         // Metadata table - stores database metadata
-        this.db.exec(`
+        await this.run(`
             CREATE TABLE IF NOT EXISTS metadata (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
-            );
-        `);
+            )
+        `, []);
 
         console.log('Database schema initialized successfully');
+    }
+
+    /**
+     * Helper function to run SQL statements
+     */
+    private async run(sql: string, params: any[]): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (!this.db) {
+                reject(new Error('Database connection is not available'));
+                return;
+            }
+
+            this.db.run(sql, params, function (err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
+
+    /**
+     * Helper function to get all rows from a query
+     */
+    private async all<T>(sql: string, params: any[]): Promise<T[]> {
+        return new Promise<T[]>((resolve, reject) => {
+            if (!this.db) {
+                reject(new Error('Database connection is not available'));
+                return;
+            }
+
+            this.db.all(sql, params, (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows as T[]);
+                }
+            });
+        });
+    }
+
+    /**
+     * Helper function to get a single row from a query
+     */
+    private async get<T>(sql: string, params: any[]): Promise<T | undefined> {
+        return new Promise<T | undefined>((resolve, reject) => {
+            if (!this.db) {
+                reject(new Error('Database connection is not available'));
+                return;
+            }
+
+            this.db.get(sql, params, (err, row) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(row as T | undefined);
+                }
+            });
+        });
+    }
+
+    /**
+     * Execute a transaction
+     */
+    private async transaction<T>(callback: () => Promise<T>): Promise<T> {
+        await this.ensureInitialized();
+        await this.run('BEGIN TRANSACTION', []);
+
+        try {
+            const result = await callback();
+            await this.run('COMMIT', []);
+            return result;
+        } catch (error) {
+            await this.run('ROLLBACK', []).catch(() => { });
+            throw error;
+        }
     }
 
     /**
@@ -166,14 +290,19 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @returns File record
      */
     async storeFile(filePath: string, content: string): Promise<FileRecord> {
+        await this.ensureInitialized();
+
         // Get file metadata
         const fileStats = fs.statSync(filePath);
 
         // Calculate file hash
-        const hashValue = await hash('sha256', content, 'hex');
+        const hashValue = createHash('sha256').update(content).digest('hex');
 
         // Check if file already exists in database
-        const existingFile = this.db.prepare('SELECT * FROM files WHERE path = ?').get(filePath) as FileRecord | undefined;
+        const existingFile = await this.get<FileRecord>(
+            'SELECT * FROM files WHERE path = ?',
+            [filePath]
+        );
 
         if (existingFile && existingFile.hash === hashValue) {
             // File exists and hasn't changed, just return it
@@ -188,24 +317,22 @@ export class VectorDatabaseService implements vscode.Disposable {
         const language = this.getLanguageFromExtension(fileExt);
 
         // Insert or update file
-        const stmt = this.db.prepare(`
+        await this.run(`
             INSERT OR REPLACE INTO files
             (id, path, hash, last_modified, language, is_indexed, size)
             VALUES (?, ?, ?, ?, ?, 0, ?)
-        `);
-
-        stmt.run(
+        `, [
             fileId,
             filePath,
             hashValue,
             fileStats.mtimeMs,
             language,
             fileStats.size
-        );
+        ]);
 
         // If file existed before, delete any associated chunks and embeddings
         if (existingFile) {
-            this.deleteChunksForFile(fileId);
+            await this.deleteChunksForFile(fileId);
         }
 
         return {
@@ -226,31 +353,30 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @param offsets Array of offsets for each chunk in the original file
      * @returns Array of chunk records
      */
-    storeChunks(fileId: string, chunks: string[], offsets: number[]): ChunkRecord[] {
+    async storeChunks(fileId: string, chunks: string[], offsets: number[]): Promise<ChunkRecord[]> {
+        await this.ensureInitialized();
+
         if (chunks.length !== offsets.length) {
             throw new Error('Chunks and offsets arrays must have the same length');
         }
 
-        // Begin transaction
-        const transaction = this.db.transaction((chunksData: { fileId: string, chunks: string[], offsets: number[] }) => {
-            const insertChunk = this.db.prepare(`
-                INSERT INTO chunks (id, file_id, content, start_offset, end_offset)
-                VALUES (?, ?, ?, ?, ?)
-            `);
-
+        return this.transaction(async () => {
             const records: ChunkRecord[] = [];
 
-            for (let i = 0; i < chunksData.chunks.length; i++) {
+            for (let i = 0; i < chunks.length; i++) {
                 const chunkId = uuidv4();
-                const content = chunksData.chunks[i];
-                const startOffset = chunksData.offsets[i];
+                const content = chunks[i];
+                const startOffset = offsets[i];
                 const endOffset = startOffset + content.length;
 
-                insertChunk.run(chunkId, chunksData.fileId, content, startOffset, endOffset);
+                await this.run(`
+                    INSERT INTO chunks (id, file_id, content, start_offset, end_offset)
+                    VALUES (?, ?, ?, ?, ?)
+                `, [chunkId, fileId, content, startOffset, endOffset]);
 
                 records.push({
                     id: chunkId,
-                    fileId: chunksData.fileId,
+                    fileId,
                     content,
                     startOffset,
                     endOffset
@@ -259,51 +385,45 @@ export class VectorDatabaseService implements vscode.Disposable {
 
             return records;
         });
-
-        // Execute the transaction
-        return transaction({ fileId, chunks, offsets });
     }
 
     /**
      * Store embeddings for chunks
      * @param embeddings Array of embedding records
      */
-    storeEmbeddings(embeddings: Array<Omit<EmbeddingRecord, 'id' | 'createdAt'>>): void {
-        // Begin transaction
-        const transaction = this.db.transaction((embeddingsData: Array<Omit<EmbeddingRecord, 'id' | 'createdAt'>>) => {
-            const insertEmbedding = this.db.prepare(`
-                INSERT INTO embeddings (id, chunk_id, vector, model, dimension, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            `);
+    async storeEmbeddings(embeddings: Array<Omit<EmbeddingRecord, 'id' | 'createdAt'>>): Promise<void> {
+        await this.ensureInitialized();
 
-            for (const embedding of embeddingsData) {
+        return this.transaction(async () => {
+            for (const embedding of embeddings) {
                 const embeddingId = uuidv4();
                 const now = Date.now();
 
                 // Serialize the Float32Array to a Buffer
                 const buffer = Buffer.from(embedding.vector.buffer);
 
-                insertEmbedding.run(
+                await this.run(`
+                    INSERT INTO embeddings (id, chunk_id, vector, model, dimension, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                `, [
                     embeddingId,
                     embedding.chunkId,
                     buffer,
                     embedding.model,
                     embedding.dimension,
                     now
-                );
+                ]);
             }
         });
-
-        // Execute the transaction
-        transaction(embeddings);
     }
 
     /**
      * Mark a file as fully indexed
      * @param fileId ID of the file
      */
-    markFileAsIndexed(fileId: string): void {
-        this.db.prepare('UPDATE files SET is_indexed = 1 WHERE id = ?').run(fileId);
+    async markFileAsIndexed(fileId: string): Promise<void> {
+        await this.ensureInitialized();
+        await this.run('UPDATE files SET is_indexed = 1 WHERE id = ?', [fileId]);
     }
 
     /**
@@ -318,31 +438,37 @@ export class VectorDatabaseService implements vscode.Disposable {
         model: string,
         options: SimilaritySearchOptions = {}
     ): Promise<SimilaritySearchResult[]> {
+        await this.ensureInitialized();
+
         // Default options
         const limit = options.limit || 5;
         const minScore = options.minScore || 0.65;
 
-        // Retrieve all embeddings for the specified model
-        const embeddingsQuery = SQL`
+        // Build the query
+        let sql = `
             SELECT e.id, e.chunk_id, e.vector, e.dimension, c.content, c.file_id, c.start_offset, c.end_offset, f.path
             FROM embeddings e
             INNER JOIN chunks c ON e.chunk_id = c.id
             INNER JOIN files f ON c.file_id = f.id
-            WHERE e.model = ${model}
+            WHERE e.model = ?
         `;
+
+        const params: any[] = [model];
 
         // Add file filter if provided
         if (options.fileFilter && options.fileFilter.length > 0) {
-            embeddingsQuery.append(SQL` AND f.path IN (${options.fileFilter.join(',')})`);
+            sql += ` AND f.path IN (${options.fileFilter.map(() => '?').join(',')})`;
+            params.push(...options.fileFilter);
         }
 
         // Add language filter if provided
         if (options.languageFilter && options.languageFilter.length > 0) {
-            embeddingsQuery.append(SQL` AND f.language IN (${options.languageFilter.join(',')})`);
+            sql += ` AND f.language IN (${options.languageFilter.map(() => '?').join(',')})`;
+            params.push(...options.languageFilter);
         }
 
         // Execute the query
-        const embeddings = this.db.prepare(embeddingsQuery.text).all(...embeddingsQuery.values) as Array<{
+        type EmbeddingRow = {
             id: string;
             chunk_id: string;
             vector: Buffer;
@@ -352,7 +478,9 @@ export class VectorDatabaseService implements vscode.Disposable {
             start_offset: number;
             end_offset: number;
             path: string;
-        }>;
+        };
+
+        const embeddings = await this.all<EmbeddingRow>(sql, params);
 
         // Calculate similarity scores
         const results: SimilaritySearchResult[] = [];
@@ -392,19 +520,24 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @param chunkId ID of the chunk
      * @returns Embedding record
      */
-    getEmbedding(chunkId: string): EmbeddingRecord | null {
-        const embedding = this.db.prepare(`
-            SELECT id, chunk_id, vector, model, dimension, created_at
-            FROM embeddings
-            WHERE chunk_id = ?
-        `).get(chunkId) as {
+    async getEmbedding(chunkId: string): Promise<EmbeddingRecord | null> {
+        await this.ensureInitialized();
+
+        type EmbeddingRow = {
             id: string;
             chunk_id: string;
             vector: Buffer;
             model: string;
             dimension: number;
             created_at: number;
-        } | undefined;
+        };
+
+        const embedding = await this.get<EmbeddingRow>(
+            `SELECT id, chunk_id, vector, model, dimension, created_at
+             FROM embeddings
+             WHERE chunk_id = ?`,
+            [chunkId]
+        );
 
         if (!embedding) return null;
 
@@ -430,12 +563,15 @@ export class VectorDatabaseService implements vscode.Disposable {
      * Get all files that need to be indexed
      * @returns Array of file records
      */
-    getFilesToIndex(): FileRecord[] {
-        return this.db.prepare(`
-            SELECT id, path, hash, last_modified as lastModified, language, is_indexed as isIndexed, size
-            FROM files
-            WHERE is_indexed = 0
-        `).all() as FileRecord[];
+    async getFilesToIndex(): Promise<FileRecord[]> {
+        await this.ensureInitialized();
+
+        return this.all<FileRecord>(
+            `SELECT id, path, hash, last_modified as lastModified, language, is_indexed as isIndexed, size
+             FROM files
+             WHERE is_indexed = 0`,
+            []
+        );
     }
 
     /**
@@ -443,18 +579,21 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @param globPattern Glob pattern to match file paths
      * @returns Array of file records
      */
-    getFilesByGlob(globPattern: string): FileRecord[] {
+    async getFilesByGlob(globPattern: string): Promise<FileRecord[]> {
+        await this.ensureInitialized();
+
         // SQLite doesn't have built-in glob support for full paths,
         // so we'll use a simple LIKE pattern as an approximation
         const likePattern = globPattern
             .replace(/\*/g, '%')
             .replace(/\?/g, '_');
 
-        return this.db.prepare(`
-            SELECT id, path, hash, last_modified as lastModified, language, is_indexed as isIndexed, size
-            FROM files
-            WHERE path LIKE ?
-        `).all(likePattern) as FileRecord[];
+        return this.all<FileRecord>(
+            `SELECT id, path, hash, last_modified as lastModified, language, is_indexed as isIndexed, size
+             FROM files
+             WHERE path LIKE ?`,
+            [likePattern]
+        );
     }
 
     /**
@@ -462,12 +601,15 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @param path File path
      * @returns File record or undefined if not found
      */
-    getFileByPath(path: string): FileRecord | undefined {
-        return this.db.prepare(`
-            SELECT id, path, hash, last_modified as lastModified, language, is_indexed as isIndexed, size
-            FROM files
-            WHERE path = ?
-        `).get(path) as FileRecord | undefined;
+    async getFileByPath(path: string): Promise<FileRecord | undefined> {
+        await this.ensureInitialized();
+
+        return this.get<FileRecord>(
+            `SELECT id, path, hash, last_modified as lastModified, language, is_indexed as isIndexed, size
+             FROM files
+             WHERE path = ?`,
+            [path]
+        );
     }
 
     /**
@@ -475,75 +617,97 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @param fileId ID of the file
      * @returns Array of chunk records
      */
-    getFileChunks(fileId: string): ChunkRecord[] {
-        return this.db.prepare(`
-            SELECT id, file_id as fileId, content, start_offset as startOffset, end_offset as endOffset, token_count as tokenCount
-            FROM chunks
-            WHERE file_id = ?
-            ORDER BY start_offset ASC
-        `).all(fileId) as ChunkRecord[];
+    async getFileChunks(fileId: string): Promise<ChunkRecord[]> {
+        await this.ensureInitialized();
+
+        return this.all<ChunkRecord>(
+            `SELECT id, file_id as fileId, content, start_offset as startOffset, end_offset as endOffset, token_count as tokenCount
+             FROM chunks
+             WHERE file_id = ?
+             ORDER BY start_offset ASC`,
+            [fileId]
+        );
     }
 
     /**
      * Delete chunks and embeddings for a file
      * @param fileId ID of the file
      */
-    deleteChunksForFile(fileId: string): void {
+    async deleteChunksForFile(fileId: string): Promise<void> {
+        await this.ensureInitialized();
+
         // Due to foreign key constraints, deleting chunks will also delete embeddings
-        this.db.prepare('DELETE FROM chunks WHERE file_id = ?').run(fileId);
+        await this.run('DELETE FROM chunks WHERE file_id = ?', [fileId]);
     }
 
     /**
      * Delete a file and all associated chunks and embeddings
      * @param filePath Path of the file
      */
-    deleteFile(filePath: string): void {
+    async deleteFile(filePath: string): Promise<void> {
+        await this.ensureInitialized();
+
         // Due to foreign key constraints, deleting the file will cascade
-        this.db.prepare('DELETE FROM files WHERE path = ?').run(filePath);
+        await this.run('DELETE FROM files WHERE path = ?', [filePath]);
     }
 
     /**
      * Delete all embeddings generated with a specific model
      * @param model Model name
      */
-    deleteEmbeddingsByModel(model: string): void {
-        this.db.prepare('DELETE FROM embeddings WHERE model = ?').run(model);
+    async deleteEmbeddingsByModel(model: string): Promise<void> {
+        await this.ensureInitialized();
+
+        await this.run('DELETE FROM embeddings WHERE model = ?', [model]);
 
         // Reset indexed status for all files
-        this.db.prepare('UPDATE files SET is_indexed = 0').run();
+        await this.run('UPDATE files SET is_indexed = 0', []);
     }
 
     /**
      * Get database storage statistics
      * @returns Storage statistics
      */
-    getStorageStats(): StorageStats {
+    async getStorageStats(): Promise<StorageStats> {
+        await this.ensureInitialized();
+
         // Get file count
-        const fileCount = this.db.prepare('SELECT COUNT(*) as count FROM files').get() as { count: number };
+        const fileCount = await this.get<{ count: number }>(
+            'SELECT COUNT(*) as count FROM files',
+            []
+        );
 
         // Get chunk count
-        const chunkCount = this.db.prepare('SELECT COUNT(*) as count FROM chunks').get() as { count: number };
+        const chunkCount = await this.get<{ count: number }>(
+            'SELECT COUNT(*) as count FROM chunks',
+            []
+        );
 
         // Get embedding count
-        const embeddingCount = this.db.prepare('SELECT COUNT(*) as count FROM embeddings').get() as { count: number };
+        const embeddingCount = await this.get<{ count: number }>(
+            'SELECT COUNT(*) as count FROM embeddings',
+            []
+        );
 
         // Get last indexed timestamp
-        const lastIndexed = this.db.prepare(`
-            SELECT value FROM metadata WHERE key = 'last_indexed'
-        `).get() as { value: string } | undefined;
+        const lastIndexed = await this.get<{ value: string }>(
+            'SELECT value FROM metadata WHERE key = ?',
+            ['last_indexed']
+        );
 
         // Get embedding model
-        const embeddingModel = this.db.prepare(`
-            SELECT value FROM metadata WHERE key = 'embedding_model'
-        `).get() as { value: string } | undefined;
+        const embeddingModel = await this.get<{ value: string }>(
+            'SELECT value FROM metadata WHERE key = ?',
+            ['embedding_model']
+        );
 
         // Get database size
         const dbSizeBytes = fs.statSync(this.config.dbPath).size;
 
         return {
-            fileCount: fileCount.count,
-            chunkCount: chunkCount.count,
-            embeddingCount: embeddingCount.count,
+            fileCount: fileCount?.count || 0,
+            chunkCount: chunkCount?.count || 0,
+            embeddingCount: embeddingCount?.count || 0,
             databaseSizeBytes: dbSizeBytes,
             lastIndexed: lastIndexed ? parseInt(lastIndexed.value, 10) : null,
             embeddingModel: embeddingModel?.value || 'unknown'
@@ -553,34 +717,46 @@ export class VectorDatabaseService implements vscode.Disposable {
     /**
      * Update last indexing timestamp
      */
-    updateLastIndexingTimestamp(): void {
+    async updateLastIndexingTimestamp(): Promise<void> {
+        await this.ensureInitialized();
+
         const now = Date.now();
-        this.db.prepare(`
-            INSERT OR REPLACE INTO metadata (key, value)
-            VALUES ('last_indexed', ?)
-        `).run(now.toString());
+        await this.run(
+            'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+            ['last_indexed', now.toString()]
+        );
     }
 
     /**
      * Set current embedding model
      * @param model Model name
      */
-    setEmbeddingModel(model: string): void {
-        this.db.prepare(`
-            INSERT OR REPLACE INTO metadata (key, value)
-            VALUES ('embedding_model', ?)
-        `).run(model);
+    async setEmbeddingModel(model: string): Promise<void> {
+        await this.ensureInitialized();
+
+        await this.run(
+            'INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)',
+            ['embedding_model', model]
+        );
     }
 
     /**
      * Optimize the database (vacuum and analyze)
      */
-    optimizeDatabase(): void {
+    async optimizeDatabase(): Promise<void> {
+        await this.ensureInitialized();
+
         console.log('Optimizing database...');
-        this.db.pragma('optimize');
-        this.db.exec('VACUUM;');
-        this.db.exec('ANALYZE;');
-        console.log('Database optimization complete');
+
+        try {
+            await this.run('PRAGMA optimize', []);
+            await this.run('VACUUM', []);
+            await this.run('ANALYZE', []);
+            console.log('Database optimization complete');
+        } catch (error) {
+            console.error('Error during database optimization:', error);
+            throw error;
+        }
     }
 
     /**
@@ -621,20 +797,30 @@ export class VectorDatabaseService implements vscode.Disposable {
     /**
      * Dispose resources
      */
-    dispose(): void {
+    async dispose(): Promise<void> {
         if (this.db) {
             // Optimize before closing
             try {
-                this.optimizeDatabase();
+                await this.optimizeDatabase();
             } catch (error) {
                 console.error('Error optimizing database during disposal:', error);
             }
 
-            try {
-                this.db.close();
-            } catch (error) {
-                console.error('Error closing database:', error);
-            }
+            // Close the database connection
+            return new Promise<void>((resolve) => {
+                if (!this.db) {
+                    resolve();
+                    return;
+                }
+
+                this.db.close((err) => {
+                    if (err) {
+                        console.error('Error closing database:', err);
+                    }
+                    this.db = null;
+                    resolve();
+                });
+            });
         }
 
         // Clear singleton instance

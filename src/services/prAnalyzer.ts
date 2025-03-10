@@ -214,7 +214,7 @@ export class PRAnalyzer implements vscode.Disposable {
      */
     private async showDatabaseManagementOptions(): Promise<void> {
         // Show database stats first
-        const stats = this.embeddingDatabaseAdapter.getStorageStats();
+        const stats = await this.embeddingDatabaseAdapter.getStorageStats();
         vscode.window.showInformationMessage(stats, { modal: true });
 
         // Show management options
@@ -242,7 +242,7 @@ export class PRAnalyzer implements vscode.Disposable {
                 break;
 
             case options[2]: // Stats
-                const detailedStats = this.embeddingDatabaseAdapter.getStorageStats();
+                const detailedStats = await this.embeddingDatabaseAdapter.getStorageStats();
                 vscode.window.showInformationMessage(detailedStats, { modal: true });
                 break;
         }

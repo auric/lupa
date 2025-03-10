@@ -101,7 +101,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                     }
 
                     // Store chunks with their offsets
-                    const chunkRecords = this.vectorDb.storeChunks(
+                    const chunkRecords = await this.vectorDb.storeChunks(
                         fileRecord.id,
                         chunks,
                         result.chunkOffsets
@@ -221,7 +221,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
     async needsReindexing(filePath: string, content: string): Promise<boolean> {
         try {
             // Get the file record
-            const fileRecord = this.vectorDb.getFileByPath(filePath);
+            const fileRecord = await this.vectorDb.getFileByPath(filePath);
 
             // If file doesn't exist in database, it needs indexing
             if (!fileRecord) {
@@ -257,8 +257,8 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
      * Get database storage statistics
      * @returns Formatted statistics as a string
      */
-    getStorageStats(): string {
-        const stats = this.vectorDb.getStorageStats();
+    async getStorageStats(): Promise<string> {
+        const stats = await this.vectorDb.getStorageStats();
 
         const formatSize = (bytes: number): string => {
             if (bytes < 1024) return `${bytes} bytes`;
