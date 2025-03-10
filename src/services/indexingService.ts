@@ -31,10 +31,11 @@ export interface EmbeddingOptions {
  * Options for the indexing service
  */
 export interface IndexingServiceOptions {
-    maxWorkers?: number;                 // Maximum number of workers
-    embeddingOptions?: EmbeddingOptions; // Options for embedding generation
+    modelBasePath: string;               // Base path for the embedding model
     modelName: string;                   // Name of the embedding model to use
     contextLength: number;               // Context length of the model (required)
+    maxWorkers?: number;                 // Maximum number of workers
+    embeddingOptions?: EmbeddingOptions; // Options for embedding generation
 }
 
 /**
@@ -56,7 +57,7 @@ export class IndexingService implements vscode.Disposable {
     // Track current processing operation
     private currentOperation: ProcessingOperation | null = null;
 
-    private readonly defaultOptions: Required<Omit<IndexingServiceOptions, 'modelName' | 'contextLength'>> = {
+    private readonly defaultOptions: Required<Omit<IndexingServiceOptions, 'modelBasePath' | 'modelName' | 'contextLength'>> = {
         maxWorkers: Math.max(1, Math.floor(os.availableParallelism ? os.availableParallelism() : (os.cpus().length + 1) / 2)),
         embeddingOptions: {
             pooling: 'mean',
@@ -86,9 +87,7 @@ export class IndexingService implements vscode.Disposable {
 
         this.options = {
             ...this.defaultOptions,
-            ...options,
-            modelName: options.modelName,
-            contextLength: options.contextLength
+            ...options
         } as Required<IndexingServiceOptions>;
 
         this.statusBarService = StatusBarService.getInstance();
@@ -99,6 +98,14 @@ export class IndexingService implements vscode.Disposable {
             () => this.showIndexingManagementOptions()
         );
         context.subscriptions.push(manageIndexingCommand);
+    }
+
+    /**
+     * Get the current embedding model name
+     * @returns The model name currently being used for embeddings
+     */
+    public getModelName(): string {
+        return this.options.modelName;
     }
 
     /**
@@ -175,8 +182,9 @@ export class IndexingService implements vscode.Disposable {
                     fileId: file.id,
                     filePath: file.path,
                     content: file.content,
+                    modelBasePath: this.options.modelBasePath,
                     modelName: this.options.modelName,
-                    contextLength: this.options.contextLength, // Pass context length to the worker
+                    contextLength: this.options.contextLength,
                     options: {
                         ...this.options.embeddingOptions
                     },

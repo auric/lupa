@@ -1,5 +1,6 @@
 .vscode/**
 .vscode-test/**
+**/*.js.map
 src/**
 node_modules/**
 .gitignore

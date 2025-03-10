@@ -47,16 +47,22 @@
     },
     "dependencies": {
         "@huggingface/transformers": "^3.4.0",
+        "better-sqlite3": "^11.8.1",
+        "ml-distance": "^4.0.1",
         "onnxruntime-node": "^1.20.1",
         "piscina": "^4.8.0",
         "react": "^19.0.0",
-        "react-dom": "^19.0.0"
+        "react-dom": "^19.0.0",
+        "sql-template-strings": "^2.2.2",
+        "uuid": "^11.1.0"
     },
     "devDependencies": {
+        "@types/better-sqlite3": "^7.6.12",
         "@types/jest": "^29.5.14",
         "@types/node": "^22.13.8",
         "@types/react": "^19.0.10",
         "@types/react-dom": "^19.0.4",
+        "@types/uuid": "^10.0.0",
         "@types/vscode": "^1.97.0",
         "esbuild": "^0.25.0",
         "esbuild-native-node-modules-plugin": "^1.0.3",
@@ -68,7 +74,6 @@
         "typescript": "^5.8.2"
     },
     "files": [
-        "dist/**/*",
-        "models/**/*"
+        "dist/**/*"
     ]
 }

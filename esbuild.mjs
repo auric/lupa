@@ -57,6 +57,10 @@ const buildOptions = {
                     to: ["./dist/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/"],
                 },
                 {
+                    from: ["./node_modules/better-sqlite3/build/Release/*"],
+                    to: ["./dist/"],
+                },
+                {
                     from: ["./models/**/*"],
                     to: ["./dist/models/"],
                 }

@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { env } from '@huggingface/transformers';
 import { ResourceDetectionService, SystemResources } from './resourceDetectionService';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
@@ -21,6 +20,7 @@ export interface ModelInfo {
     name: EmbeddingModel;
     path: string;
     memoryRequirementGB: number;
+    dimensions: number;
     contextLength: number;
     description: string;
 }
@@ -57,6 +57,7 @@ export class ModelSelectionService implements vscode.Disposable {
             path: 'jinaai/jina-embeddings-v2-base-code',
             memoryRequirementGB: 8,
             contextLength: 8192,
+            dimensions: 768,
             description: 'High-quality code embeddings (Apache 2.0 license)'
         },
         [EmbeddingModel.MiniLM]: {
@@ -64,6 +65,7 @@ export class ModelSelectionService implements vscode.Disposable {
             path: 'Xenova/all-MiniLM-L6-v2',
             memoryRequirementGB: 2,
             contextLength: 256,
+            dimensions: 384,
             description: 'Lightweight general-purpose embeddings (MIT license)'
         }
     };
@@ -90,11 +92,10 @@ export class ModelSelectionService implements vscode.Disposable {
         this.options = { ...this.defaultOptions, ...options };
         this.resources = new ResourceDetectionService();
         this.statusBarService = StatusBarService.getInstance();
+    }
 
-        // Set the cache directory to use the provided path
-        env.cacheDir = basePath;
-        env.allowLocalModels = true;
-        env.allowRemoteModels = false; // Don't allow remote models - use only local
+    public getBasePath(): string {
+        return this.basePath;
     }
 
     /**

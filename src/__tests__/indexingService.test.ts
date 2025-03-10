@@ -201,6 +201,7 @@ describe('IndexingService', () => {
             context,
             workspaceSettingsService,
             {
+                modelBasePath: path.join(extensionPath, 'models'),
                 modelName: 'Xenova/all-MiniLM-L6-v2',
                 contextLength: 8192,
                 maxWorkers: 2
@@ -531,6 +532,7 @@ describe('IndexingService Management Functions', () => {
             context,
             workspaceSettingsService,
             {
+                modelBasePath: path.join(extensionPath, 'models'),
                 modelName: 'Xenova/all-MiniLM-L6-v2',
                 contextLength: 256
             }
@@ -777,6 +779,7 @@ describe('IndexingService Error Handling', () => {
             context,
             workspaceSettingsService,
             {
+                modelBasePath: path.join(extensionPath, 'models'),
                 modelName: 'test-model',
                 contextLength: 256
             }
@@ -876,6 +879,7 @@ describe('IndexingService Additional Coverage Tests', () => {
             context,
             workspaceSettingsService,
             {
+                modelBasePath: path.join(extensionPath, 'models'),
                 modelName: 'test-model',
                 contextLength: 256
             }

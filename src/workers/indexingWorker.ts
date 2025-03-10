@@ -1,4 +1,4 @@
-import { pipeline, type FeatureExtractionPipeline } from '@huggingface/transformers';
+import { pipeline, env as transformersEnv, type FeatureExtractionPipeline } from '@huggingface/transformers';
 import { MessagePort } from 'worker_threads';
 import { EmbeddingOptions } from '../models/types';
 import { WorkerTokenEstimator } from './workerTokenEstimator';
@@ -16,10 +16,11 @@ export interface ProcessFileTask {
     fileId: string;
     filePath: string;
     content: string;
-    options?: EmbeddingOptions;
+    modelBasePath: string;
     modelName: string;
     contextLength: number;
     messagePort: MessagePort;
+    options?: EmbeddingOptions;
 }
 
 export interface ProcessingResult {
@@ -36,6 +37,7 @@ export interface ProcessingResult {
  * @param signal AbortSignal for cancellation
  */
 async function initializeModel(
+    modelBasePath: string,
     modelName: string,
     contextWindow: number,
     signal: AbortSignal
@@ -57,6 +59,10 @@ async function initializeModel(
         if (signal.aborted) {
             throw new Error('Operation was cancelled before model initialization');
         }
+
+        transformersEnv.allowRemoteModels = false;
+        transformersEnv.allowLocalModels = true;
+        transformersEnv.cacheDir = modelBasePath;
 
         // Create the pipeline
         embeddingPipeline = await pipeline('feature-extraction', modelName, {
@@ -180,7 +186,9 @@ export default async function processFile(
         }
 
         // Initialize model if needed
-        const pipe = await initializeModel(task.modelName, task.contextLength, signal);
+        const pipe = await initializeModel(
+            task.modelBasePath, task.modelName, task.contextLength, signal
+        );
 
         // Check if operation was cancelled during initialization
         if (signal.aborted) {
