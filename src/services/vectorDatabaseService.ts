@@ -25,6 +25,7 @@ export class VectorDatabaseService implements vscode.Disposable {
     private static instance: VectorDatabaseService | null = null;
     private isInitialized = false;
     private initPromise: Promise<void> | null = null;
+    private inTransaction = false; // Track if we're already in a transaction
 
     // Default configuration values
     private static readonly DEFAULT_CONFIG: Required<Omit<DatabaseConfig, 'dbPath'>> = {
@@ -271,14 +272,36 @@ export class VectorDatabaseService implements vscode.Disposable {
      */
     private async transaction<T>(callback: () => Promise<T>): Promise<T> {
         await this.ensureInitialized();
-        await this.run('BEGIN TRANSACTION', []);
+
+        // Check if we're already in a transaction
+        const startedTransaction = !this.inTransaction;
+
+        if (startedTransaction) {
+            this.inTransaction = true;
+            await this.run('BEGIN TRANSACTION', []);
+        }
 
         try {
             const result = await callback();
-            await this.run('COMMIT', []);
+
+            // Only commit if we started the transaction
+            if (startedTransaction) {
+                await this.run('COMMIT', []);
+                this.inTransaction = false;
+            }
+
             return result;
         } catch (error) {
-            await this.run('ROLLBACK', []).catch(() => { });
+            // Only rollback if we started the transaction
+            if (startedTransaction) {
+                try {
+                    await this.run('ROLLBACK', []);
+                } catch (rollbackError) {
+                    console.error('Error during rollback:', rollbackError);
+                } finally {
+                    this.inTransaction = false;
+                }
+            }
             throw error;
         }
     }
