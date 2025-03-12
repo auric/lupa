@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { SimilaritySearchOptions } from '../models/types';
+import { SimilaritySearchOptions, SUPPORTED_LANGUAGES } from '../models/types';
 
 /**
  * ContextProvider is responsible for retrieving relevant code context
@@ -87,28 +87,13 @@ export class ContextProvider implements vscode.Disposable {
                 })
                 .filter(ext => ext !== null) as string[];
 
-            // Map extensions to languages
+            // Map extensions to languages using the shared definition
             const languageSet = new Set<string>();
-            const extensionMap: Record<string, string> = {
-                'js': 'javascript',
-                'jsx': 'javascript',
-                'ts': 'typescript',
-                'tsx': 'typescript',
-                'py': 'python',
-                'java': 'java',
-                'go': 'go',
-                'rb': 'ruby',
-                'php': 'php',
-                'c': 'c',
-                'cpp': 'cpp',
-                'h': 'cpp',
-                'hpp': 'cpp',
-                'cs': 'csharp'
-            };
 
             for (const ext of fileExtensions) {
-                if (extensionMap[ext]) {
-                    languageSet.add(extensionMap[ext]);
+                const language = SUPPORTED_LANGUAGES[ext];
+                if (language) {
+                    languageSet.add(language);
                 }
             }
 

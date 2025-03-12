@@ -9,6 +9,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
+import { getSupportedFilesGlob, getExcludePattern } from '../models/types';
 
 /**
  * PRAnalyzer handles the main functionality of analyzing pull requests
@@ -110,7 +111,7 @@ export class PRAnalyzer implements vscode.Disposable {
         const options: IndexingServiceOptions = {
             modelBasePath: this.modelSelectionService.getBasePath(),
             modelName: model,
-            maxWorkers: workerCount,
+            maxWorkers: 1,
             contextLength: modelInfo.contextLength
         };
 
@@ -214,8 +215,8 @@ export class PRAnalyzer implements vscode.Disposable {
      */
     private async showDatabaseManagementOptions(): Promise<void> {
         // Show database stats first
-        const stats = await this.embeddingDatabaseAdapter.getStorageStats();
-        vscode.window.showInformationMessage(stats, { modal: true });
+        // const stats = await this.embeddingDatabaseAdapter.getStorageStats();
+        // vscode.window.showInformationMessage(stats, { modal: true });
 
         // Show management options
         const options = [
@@ -382,8 +383,8 @@ export class PRAnalyzer implements vscode.Disposable {
      */
     private async findSourceFiles(rootPath: string): Promise<string[]> {
         // Use VS Code API to find files
-        const include = '**/*.{js,jsx,ts,tsx,py,java,c,cpp,cs,go,rb,php}';
-        const excludePattern = '**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.vscode/**';
+        const include = getSupportedFilesGlob();
+        const excludePattern = getExcludePattern();
 
         const files = await vscode.workspace.findFiles(include, excludePattern);
         return files.map(file => file.fsPath);
