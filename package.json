@@ -35,6 +35,14 @@
             {
                 "command": "codelens-pr-analyzer.manageDatabase",
                 "title": "CodeLens PR: Manage PR Analyzer Database"
+            },
+            {
+                "command": "codelens-pr-analyzer.startContinuousIndexing",
+                "title": "CodeLens PR: Start Continuous File Indexing"
+            },
+            {
+                "command": "codelens-pr-analyzer.stopContinuousIndexing",
+                "title": "CodeLens PR: Stop Continuous File Indexing"
             }
         ]
     },

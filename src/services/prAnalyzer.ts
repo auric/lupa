@@ -24,6 +24,8 @@ export class PRAnalyzer implements vscode.Disposable {
     private workspaceSettingsService: WorkspaceSettingsService;
     private statusBarService: StatusBarService;
     private selectedModel: string | null = null;
+    private continuousIndexingInProgress: boolean = false;
+    private continuousIndexingCancellationToken: vscode.CancellationTokenSource | null = null;
 
     /**
      * Create a new PR Analyzer
@@ -85,6 +87,16 @@ export class PRAnalyzer implements vscode.Disposable {
         // Register database management command
         this.context.subscriptions.push(
             vscode.commands.registerCommand('codelens-pr-analyzer.manageDatabase', () => this.showDatabaseManagementOptions())
+        );
+
+        // Register continuous indexing command
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('codelens-pr-analyzer.startContinuousIndexing', () => this.startContinuousIndexing())
+        );
+
+        // Register stop continuous indexing command
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('codelens-pr-analyzer.stopContinuousIndexing', () => this.stopContinuousIndexing())
         );
     }
 
@@ -591,6 +603,200 @@ export class PRAnalyzer implements vscode.Disposable {
             // File paths with relevance scores
             .replace(/### File: `([^`]+)` \(Relevance: ([0-9.]+)%\)/g,
                 '<h3>File: <code>$1</code> <span class="relevance">(Relevance: $2%)</span></h3>');
+    }
+
+    /**
+     * Start continuous indexing of workspace files
+     * This will keep running in the background, indexing files that have not been indexed yet
+     * or files that have been modified since they were last indexed
+     */
+    public async startContinuousIndexing(): Promise<void> {
+        // Don't start if already in progress
+        if (this.continuousIndexingInProgress) {
+            vscode.window.showInformationMessage('Continuous indexing is already in progress');
+            return;
+        }
+
+        // Ensure indexing service is initialized
+        if (!this.indexingService) {
+            this.initializeIndexingService();
+        }
+
+        // Create a cancellation token source
+        this.continuousIndexingCancellationToken = new vscode.CancellationTokenSource();
+
+        // Set flag to indicate indexing is in progress
+        this.continuousIndexingInProgress = true;
+
+        // Update status bar
+        this.statusBarService.setState(StatusBarState.Indexing, 'continuous');
+
+        try {
+            // Find files to process
+            if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+                vscode.window.showErrorMessage('No workspace folder open');
+                this.continuousIndexingInProgress = false;
+                this.statusBarService.setState(StatusBarState.Ready);
+                return;
+            }
+
+            const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+
+            // Find source files in workspace
+            vscode.window.showInformationMessage('Starting continuous file indexing...');
+            const sourceFiles = await this.findSourceFiles(workspaceRoot);
+
+            if (sourceFiles.length === 0) {
+                vscode.window.showInformationMessage('No files found to index');
+                this.continuousIndexingInProgress = false;
+                this.statusBarService.setState(StatusBarState.Ready);
+                return;
+            }
+
+            vscode.window.showInformationMessage(`Found ${sourceFiles.length} files, checking which need indexing...`);
+
+            // Process files in batches to keep memory usage under control
+            const batchSize = 20;
+            let totalFilesProcessed = 0;
+            let totalFilesChecked = 0;
+            let totalFilesNeededIndexing = 0;
+
+            // Create a progress notification
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Continuous Indexing',
+                cancellable: true
+            }, async (progress, token) => {
+                // Link our cancellation token with the progress token
+                token.onCancellationRequested(() => {
+                    if (this.continuousIndexingCancellationToken) {
+                        this.continuousIndexingCancellationToken.cancel();
+                    }
+                });
+
+                // Create a merged cancellation token
+                const mergedToken = this.continuousIndexingCancellationToken!.token;
+
+                for (let i = 0; i < sourceFiles.length; i += batchSize) {
+                    // Check if operation was cancelled
+                    if (mergedToken.isCancellationRequested) {
+                        vscode.window.showInformationMessage('Continuous indexing cancelled');
+                        break;
+                    }
+
+                    // Get batch of files
+                    const fileBatch = sourceFiles.slice(i, i + batchSize);
+
+                    // Process this batch of files - check if they need indexing
+                    const filesToProcess: FileToProcess[] = [];
+
+                    for (const filePath of fileBatch) {
+                        try {
+                            // Check if operation was cancelled
+                            if (mergedToken.isCancellationRequested) {
+                                break;
+                            }
+
+                            // Read file content
+                            const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+                            const fileContent = Buffer.from(content).toString('utf8');
+
+                            // Check if file needs to be indexed
+                            const needsIndexing = await this.embeddingDatabaseAdapter.needsReindexing(filePath, fileContent);
+
+                            // Increment total checked files counter
+                            totalFilesChecked++;
+
+                            // Update progress based on total files checked
+                            const checkingProgressPercent = Math.round((totalFilesChecked / sourceFiles.length) * 100);
+                            progress.report({
+                                message: `Checked ${totalFilesChecked} of ${sourceFiles.length} files (${totalFilesNeededIndexing} need indexing)`,
+                                increment: 100 / sourceFiles.length // Increment by percentage of one file
+                            });
+
+                            if (needsIndexing) {
+                                // Add file to batch for processing
+                                filesToProcess.push({
+                                    id: filePath,
+                                    path: filePath,
+                                    content: fileContent
+                                });
+                                totalFilesNeededIndexing++;
+                            }
+                        } catch (error) {
+                            console.error(`Error processing file ${filePath}:`, error);
+                            totalFilesChecked++; // Still count as checked even if there was an error
+                        }
+                    }
+
+                    // If there are files to index in this batch, process them
+                    if (filesToProcess.length > 0) {
+                        // Process files and get embeddings
+                        const results = await this.indexingService!.processFiles(
+                            filesToProcess,
+                            mergedToken,
+                            (processed, total) => {
+                                // Don't report incremental progress here, just update message
+                                // to avoid double-counting progress increments
+                                progress.report({
+                                    message: `Checked ${totalFilesChecked} of ${sourceFiles.length} files. ` +
+                                        `Indexing ${processed}/${total} files in current batch...`
+                                });
+                            }
+                        );
+
+                        // Store embeddings in database
+                        await this.embeddingDatabaseAdapter.storeEmbeddingResults(filesToProcess, results);
+
+                        // Update counters
+                        totalFilesProcessed += filesToProcess.length;
+
+                        // Show overall progress based on files checked and indexed
+                        progress.report({
+                            message: `Checked ${totalFilesChecked}/${sourceFiles.length} files. ` +
+                                `Indexed ${totalFilesProcessed}/${totalFilesNeededIndexing} files that needed indexing.`
+                        });
+                    }
+                }
+
+                // Finalize operation
+                if (mergedToken.isCancellationRequested) {
+                    vscode.window.showInformationMessage(
+                        `Continuous indexing stopped. ` +
+                        `Checked ${totalFilesChecked}/${sourceFiles.length} files. ` +
+                        `Indexed ${totalFilesProcessed}/${totalFilesNeededIndexing} files.`
+                    );
+                } else {
+                    vscode.window.showInformationMessage(
+                        `Continuous indexing complete. ` +
+                        `Checked ${totalFilesChecked}/${sourceFiles.length} files. ` +
+                        `Indexed ${totalFilesProcessed}/${totalFilesNeededIndexing} files.`
+                    );
+                }
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Continuous indexing error: ${errorMessage}`);
+        } finally {
+            // Reset state
+            this.continuousIndexingInProgress = false;
+            this.continuousIndexingCancellationToken = null;
+
+            // Update status bar
+            this.statusBarService.setState(StatusBarState.Ready);
+        }
+    }
+
+    /**
+     * Stop continuous indexing if it's currently running
+     */
+    public stopContinuousIndexing(): void {
+        if (this.continuousIndexingInProgress && this.continuousIndexingCancellationToken) {
+            this.continuousIndexingCancellationToken.cancel();
+            vscode.window.showInformationMessage('Stopping continuous indexing...');
+        } else {
+            vscode.window.showInformationMessage('No continuous indexing is currently running');
+        }
     }
 
     /**
