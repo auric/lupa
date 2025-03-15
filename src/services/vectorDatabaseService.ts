@@ -13,7 +13,7 @@ import {
     SimilaritySearchResult,
     DatabaseConfig,
     StorageStats
-} from '../models/types';
+} from '../types/embeddingTypes';
 
 /**
  * VectorDatabaseService implements a SQLite-based storage system for code embeddings

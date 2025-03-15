@@ -1,5 +1,5 @@
 import { PreTrainedTokenizer } from '@huggingface/transformers';
-import { EmbeddingOptions, ChunkingResult } from '../models/types';
+import { EmbeddingOptions, ChunkingResult } from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from './workerTokenEstimator';
 
 /**

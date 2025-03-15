@@ -4,7 +4,7 @@ import { VectorDatabaseService } from './vectorDatabaseService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { IndexingService } from './indexingService';
 import { ProcessingResult } from '../workers/indexingWorker';
-import { SimilaritySearchOptions, SimilaritySearchResult } from '../models/types';
+import { SimilaritySearchOptions, SimilaritySearchResult } from '../types/embeddingTypes';
 
 /**
  * EmbeddingDatabaseAdapter provides high-level operations to integrate

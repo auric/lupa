@@ -1,6 +1,6 @@
 import { pipeline, env as transformersEnv, type FeatureExtractionPipeline } from '@huggingface/transformers';
 import { MessagePort } from 'worker_threads';
-import { EmbeddingOptions } from '../models/types';
+import { EmbeddingOptions } from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from './workerTokenEstimator';
 import { WorkerCodeChunker } from './workerCodeChunker';
 

@@ -1,11 +1,15 @@
 import * as vscode from 'vscode';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import {
-    AnalysisMode,
-    SimilaritySearchOptions,
-    SimilaritySearchResult,
     SUPPORTED_LANGUAGES
-} from '../models/types';
+} from '../types/types';
+import {
+    AnalysisMode
+} from '../types/modelTypes';
+import {
+    SimilaritySearchOptions,
+    SimilaritySearchResult
+} from '../types/embeddingTypes';
 
 /**
  * ContextProvider is responsible for retrieving relevant code context

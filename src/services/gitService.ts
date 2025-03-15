@@ -1,6 +1,7 @@
 // filepath: d:\dev\copilot-review\src\services\gitService.ts
 import * as vscode from 'vscode';
 import * as child_process from 'child_process';
+import { API, GitExtension, Repository, RefType } from '../types/vscodeGitExtension';
 
 /**
  * Represents a Git commit
@@ -39,62 +40,18 @@ export interface GitDiffResult {
 }
 
 /**
- * Interface for the VS Code Git extension API
- */
-interface GitExtensionAPI {
-    repositories: GitRepository[];
-    getAPI(version: number): GitExtensionAPI;
-}
-
-/**
- * Interface for a Git repository from VS Code Git extension
- */
-interface GitRepository {
-    rootUri: vscode.Uri;
-    state: GitRepositoryState;
-}
-
-/**
- * Interface for Git repository state
- */
-interface GitRepositoryState {
-    HEAD?: GitRef;
-    remotes: GitRemote[];
-    refs: GitRef[];
-}
-
-/**
- * Interface for Git remote
- */
-interface GitRemote {
-    name: string;
-    fetchUrl?: string;
-    pushUrl?: string;
-}
-
-/**
- * Interface for Git reference (branch, tag, etc.)
- */
-interface GitRef {
-    name: string;
-    commit: string;
-    type: number; // 0 = local branch, 1 = remote branch, 2 = tag
-    remote?: string;
-}
-
-/**
  * Repository option for selection UI
  */
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
-    repository: GitRepository;
+    repository: Repository;
 }
 
 /**
  * GitService handles Git operations for the PR Analyzer
  */
 export class GitService {
-    private gitApi: GitExtensionAPI | null = null;
-    private repository: GitRepository | null = null;
+    private gitApi: API | null = null;
+    private repository: Repository | null = null;
     private static instance: GitService | null = null;
     private defaultBranchCache: string | null = null;
 
@@ -119,9 +76,14 @@ export class GitService {
      */
     public async initialize(): Promise<boolean> {
         try {
-            const gitExtension = vscode.extensions.getExtension<{ getAPI: (version: number) => GitExtensionAPI }>('vscode.git')?.exports;
+            const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
             if (!gitExtension) {
                 console.log('Git extension not available');
+                return false;
+            }
+
+            if (!gitExtension.enabled) {
+                console.log('Git extension is disabled');
                 return false;
             }
 
@@ -169,12 +131,12 @@ export class GitService {
      * Allow user to select a repository when multiple are available
      * @returns The selected repository or undefined if selection was canceled
      */
-    private async selectRepository(): Promise<GitRepository | undefined> {
+    private async selectRepository(): Promise<Repository | undefined> {
         // Get list of repositories
         const repositories = this.gitApi!.repositories;
 
         // Create QuickPick items for each repository
-        const items: RepositoryQuickPickItem[] = repositories.map((repo: GitRepository) => {
+        const items: RepositoryQuickPickItem[] = repositories.map((repo: Repository) => {
             // Get the repository root path
             const rootPath = repo.rootUri.fsPath;
             // Get repository name (last segment of path)
@@ -237,7 +199,7 @@ export class GitService {
     /**
      * Get the current repository
      */
-    public getRepository(): GitRepository | null {
+    public getRepository(): Repository | null {
         return this.repository;
     }
 
@@ -255,7 +217,20 @@ export class GitService {
             }
 
             // Try to get the default branch from upstream remote
-            const remote = this.repository.state.remotes.find((r) => r.name === 'origin');
+            const remotes = await this.repository.getConfigs();
+            const originHead = remotes.find(config => config.key === 'remote.origin.head');
+
+            if (originHead) {
+                // Extract branch name from value like 'refs/heads/main'
+                const match = originHead.value.match(/refs\/heads\/(.+)/);
+                if (match) {
+                    this.defaultBranchCache = match[1];
+                    return match[1];
+                }
+            }
+
+            // Try to get the default branch from origin remote via git command
+            const remote = this.repository.state.remotes.find(r => r.name === 'origin');
             if (remote) {
                 // Execute git command to get the default branch info
                 const result = await vscode.window.withProgress(
@@ -275,11 +250,16 @@ export class GitService {
 
             // Fallback to common default branch names
             const commonDefaults = ['develop', 'main', 'master', 'dev'];
-            for (const branch of commonDefaults) {
-                const exists = this.repository.state.refs.find((ref) => ref.name === branch && ref.type === 0);
-                if (exists) {
-                    this.defaultBranchCache = branch;
-                    return branch;
+            const branchRefs = await this.repository.getRefs({
+                pattern: commonDefaults,
+                count: 1
+            });
+
+            if (branchRefs.length > 0) {
+                const defaultBranch = branchRefs[0].name;
+                if (defaultBranch) {
+                    this.defaultBranchCache = defaultBranch;
+                    return defaultBranch;
                 }
             }
 
@@ -296,29 +276,27 @@ export class GitService {
      */
     public async getBranches(): Promise<GitBranch[]> {
         try {
-            if (!this.isInitialized()) {
+            if (!this.isInitialized() || !this.repository) {
                 throw new Error('Git service not initialized');
-            }
-
-            if (!this.repository) {
-                throw new Error('Git repository not initialized');
             }
 
             const defaultBranch = await this.getDefaultBranch();
             const currentBranch = this.repository.state.HEAD?.name;
 
-            // Get local branches from the repository state
-            const branches: GitBranch[] = [];
-
-            this.repository.state.refs.forEach((ref) => {
-                if (ref.type === 0) { // Local branch
-                    branches.push({
-                        name: ref.name,
-                        isDefault: ref.name === defaultBranch,
-                        isCurrent: ref.name === currentBranch
-                    });
-                }
+            // Get local branches from the repository
+            const branchRefs = await this.repository.getRefs({
+                pattern: '*',
+                includeCommitDetails: false
             });
+
+            // Filter to only include local branches (type = HEAD)
+            const branches: GitBranch[] = branchRefs
+                .filter(ref => ref.type === RefType.Head)
+                .map(ref => ({
+                    name: ref.name || '',
+                    isDefault: ref.name === defaultBranch,
+                    isCurrent: ref.name === currentBranch
+                }));
 
             return branches;
         } catch (error) {
@@ -333,25 +311,22 @@ export class GitService {
      */
     public async getRecentCommits(limit: number = 30): Promise<GitCommit[]> {
         try {
-            if (!this.isInitialized()) {
+            if (!this.isInitialized() || !this.repository) {
                 throw new Error('Git service not initialized');
             }
 
-            const gitOutput = await this.executeGitCommand(
-                ['log', '--pretty=format:%H||%s||%an||%at', '-n', limit.toString()]
-            );
+            // Use the VS Code Git API to get commits
+            const commits = await this.repository.log({
+                maxEntries: limit
+            });
 
-            return gitOutput.split('\n')
-                .filter(line => line.trim().length > 0)
-                .map(line => {
-                    const [hash, message, author, timestamp] = line.split('||');
-                    return {
-                        hash,
-                        message,
-                        author,
-                        date: parseInt(timestamp) * 1000 // Convert to milliseconds
-                    };
-                });
+            // Convert to our GitCommit format
+            return commits.map(commit => ({
+                hash: commit.hash,
+                message: commit.message,
+                author: commit.authorName || 'Unknown',
+                date: commit.authorDate ? commit.authorDate.getTime() : Date.now()
+            }));
         } catch (error) {
             console.error('Error getting recent commits:', error);
             return [];
@@ -364,21 +339,18 @@ export class GitService {
      */
     public async getCommit(hash: string): Promise<GitCommit | undefined> {
         try {
-            if (!this.isInitialized()) {
+            if (!this.isInitialized() || !this.repository) {
                 throw new Error('Git service not initialized');
             }
 
-            const gitOutput = await this.executeGitCommand(
-                ['show', '--pretty=format:%H||%s||%an||%at', '-s', hash]
-            );
-
-            const [commitHash, message, author, timestamp] = gitOutput.split('||');
+            // Use repository API to get commit details
+            const commit = await this.repository.getCommit(hash);
 
             return {
-                hash: commitHash,
-                message,
-                author,
-                date: parseInt(timestamp) * 1000 // Convert to milliseconds
+                hash: commit.hash,
+                message: commit.message,
+                author: commit.authorName || 'Unknown',
+                date: commit.authorDate ? commit.authorDate.getTime() : Date.now()
             };
         } catch (error) {
             console.error(`Error getting commit ${hash}:`, error);
@@ -415,6 +387,7 @@ export class GitService {
                 };
             }
 
+            // Use Git command directly for three-dot diff format
             const diffText = await this.executeGitCommand(['diff', `${base}...${compare}`]);
 
             return {
@@ -437,11 +410,13 @@ export class GitService {
      */
     public async getCommitDiff(hash: string): Promise<GitDiffResult> {
         try {
-            if (!this.isInitialized()) {
+            if (!this.isInitialized() || !this.repository) {
                 throw new Error('Git service not initialized');
             }
 
             const commit = await this.getCommit(hash);
+
+            // Use Git command to show the commit with diff
             const diffText = await this.executeGitCommand(['show', hash]);
 
             return {
@@ -463,13 +438,16 @@ export class GitService {
      */
     public async getUncommittedChanges(): Promise<GitDiffResult> {
         try {
-            if (!this.isInitialized()) {
+            if (!this.isInitialized() || !this.repository) {
                 throw new Error('Git service not initialized');
             }
 
-            // First check if there are any changes
-            const status = await this.executeGitCommand(['status', '--porcelain']);
-            if (!status) {
+            // Check if there are any changes using repository state
+            const hasChanges =
+                this.repository.state.workingTreeChanges.length > 0 ||
+                this.repository.state.indexChanges.length > 0;
+
+            if (!hasChanges) {
                 return {
                     diffText: '',
                     refName: 'uncommitted changes',
@@ -477,11 +455,11 @@ export class GitService {
                 };
             }
 
-            // Get staged changes
-            const stagedDiff = await this.executeGitCommand(['diff', '--staged']);
+            // Get staged changes using VS Code API
+            const stagedDiff = await this.repository.diff(true);
 
-            // Get unstaged changes
-            const unstagedDiff = await this.executeGitCommand(['diff']);
+            // Get unstaged changes using VS Code API
+            const unstagedDiff = await this.repository.diff(false);
 
             // Combine them
             const diffText = `${stagedDiff ? `Staged changes:\n${stagedDiff}\n\n` : ''}${unstagedDiff ? `Unstaged changes:\n${unstagedDiff}` : ''}`.trim();

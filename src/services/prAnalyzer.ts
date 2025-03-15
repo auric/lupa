@@ -10,7 +10,7 @@ import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
 import { GitService, GitBranch, GitCommit } from './gitService';
-import { getSupportedFilesGlob, getExcludePattern } from '../models/types';
+import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
 
 /**
  * PRAnalyzer handles the main functionality of analyzing pull requests
