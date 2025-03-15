@@ -46,6 +46,14 @@
             {
                 "command": "codelens-pr-analyzer.stopContinuousIndexing",
                 "title": "CodeLens PR: Stop Continuous File Indexing"
+            },
+            {
+                "command": "codelens-pr-analyzer.showLanguageModelsInfo",
+                "title": "CodeLens PR: Show Language Models Info"
+            },
+            {
+                "command": "codelens-pr-analyzer.selectLanguageModel",
+                "title": "CodeLens PR: Select Language Model"
             }
         ]
     },

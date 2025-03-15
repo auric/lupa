@@ -9,8 +9,19 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
-import { GitService, GitBranch, GitCommit } from './gitService';
+import { GitService } from './gitService';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
+import { CopilotModelManager } from '../models/copilotModelManager';
+
+/**
+ * Analysis mode for PR analysis
+ */
+export enum AnalysisMode {
+    Critical = 'critical',
+    Comprehensive = 'comprehensive',
+    Security = 'security',
+    Performance = 'performance'
+}
 
 /**
  * PRAnalyzer handles the main functionality of analyzing pull requests
@@ -25,6 +36,7 @@ export class PRAnalyzer implements vscode.Disposable {
     private workspaceSettingsService: WorkspaceSettingsService;
     private statusBarService: StatusBarService;
     private gitService: GitService;
+    private modelManager: CopilotModelManager;
     private selectedModel: string | null = null;
     private continuousIndexingInProgress: boolean = false;
     private continuousIndexingCancellationToken: vscode.CancellationTokenSource | null = null;
@@ -47,6 +59,9 @@ export class PRAnalyzer implements vscode.Disposable {
             path.join(context.extensionPath, 'models'),
             this.workspaceSettingsService
         );
+
+        // Initialize the language model manager
+        this.modelManager = new CopilotModelManager(this.workspaceSettingsService);
 
         // Initialize the vector database service
         this.vectorDatabaseService = VectorDatabaseService.getInstance(context);
@@ -87,6 +102,16 @@ export class PRAnalyzer implements vscode.Disposable {
         // Register model info command
         this.context.subscriptions.push(
             vscode.commands.registerCommand('codelens-pr-analyzer.showModelsInfo', () => this.modelSelectionService.showModelsInfo())
+        );
+
+        // Register language model info command
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('codelens-pr-analyzer.showLanguageModelsInfo', () => this.modelManager.showModelsInfo())
+        );
+
+        // Register language model selection command
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand('codelens-pr-analyzer.selectLanguageModel', () => this.showLanguageModelSelectionOptions())
         );
 
         // Register database management command
@@ -224,6 +249,101 @@ export class PRAnalyzer implements vscode.Disposable {
                 // Delete existing embeddings for old model
                 await this.rebuildDatabase();
             }
+        }
+    }
+
+    /**
+     * Show options for selecting language model
+     */
+    private async showLanguageModelSelectionOptions(): Promise<void> {
+        try {
+            // First show available models
+            await this.modelManager.showModelsInfo();
+
+            // Get available model families
+            const models = await this.modelManager.listAvailableModels();
+            const families = Array.from(new Set(models.map(m => m.family)));
+
+            if (families.length === 0) {
+                vscode.window.showInformationMessage('No language models available. Please ensure GitHub Copilot is installed and authorized.');
+                return;
+            }
+
+            // Create quickpick options for model families
+            const options = [
+                { label: 'Auto (best available)', description: 'Automatically select the best available model' },
+                ...families.map(family => ({
+                    label: family,
+                    description: `Select a specific version of ${family}`
+                }))
+            ];
+
+            // Ask user to select model family
+            const selectedFamilyOption = await vscode.window.showQuickPick(options, {
+                placeHolder: 'Select language model family',
+                matchOnDescription: true
+            });
+
+            if (!selectedFamilyOption) {
+                return;
+            }
+
+            if (selectedFamilyOption.label === 'Auto (best available)') {
+                // Clear saved preferences if "Auto" is selected
+                this.workspaceSettingsService.setPreferredModelFamily(undefined);
+                this.workspaceSettingsService.setPreferredModelVersion(undefined);
+                vscode.window.showInformationMessage('Language model preference set to automatic selection.');
+                return;
+            }
+
+            const selectedFamily = selectedFamilyOption.label;
+
+            // Get versions for the selected family
+            const versionsForFamily = models
+                .filter(m => m.family === selectedFamily)
+                .map(m => m.version)
+                .filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+
+            // Add "Any version" option
+            const versionOptions = [
+                { label: 'Any version', description: `Use any available version of ${selectedFamily}` },
+                ...versionsForFamily.map(version => ({
+                    label: version,
+                    description: `Use ${selectedFamily} ${version}`
+                }))
+            ];
+
+            // Ask user to select version
+            const selectedVersionOption = await vscode.window.showQuickPick(versionOptions, {
+                placeHolder: `Select version for ${selectedFamily}`,
+                matchOnDescription: true
+            });
+
+            if (!selectedVersionOption) {
+                return;
+            }
+
+            // Save selected model preferences
+            this.workspaceSettingsService.setPreferredModelFamily(selectedFamily);
+
+            if (selectedVersionOption.label !== 'Any version') {
+                this.workspaceSettingsService.setPreferredModelVersion(selectedVersionOption.label);
+                vscode.window.showInformationMessage(`Language model set to ${selectedFamily} ${selectedVersionOption.label}`);
+            } else {
+                // Clear version preference if "Any version" is selected
+                this.workspaceSettingsService.setPreferredModelVersion(undefined);
+                vscode.window.showInformationMessage(`Language model set to ${selectedFamily} (any version)`);
+            }
+
+            // Try to select the model to verify it's available
+            await this.modelManager.selectModel({
+                family: selectedFamily,
+                version: selectedVersionOption.label !== 'Any version' ? selectedVersionOption.label : undefined
+            });
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Error selecting language model: ${errorMessage}`);
         }
     }
 
@@ -468,6 +588,14 @@ export class PRAnalyzer implements vscode.Disposable {
                 return;
             }
 
+            // Select analysis mode
+            const analysisMode = await this.selectAnalysisMode();
+
+            if (!analysisMode) {
+                this.statusBarService.setState(StatusBarState.Ready);
+                return;
+            }
+
             // Show progress notification
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
@@ -483,20 +611,25 @@ export class PRAnalyzer implements vscode.Disposable {
 
                     // Get context for the diff
                     const context = await this.contextProvider.getContextForDiff(diffText);
-                    progress.report({ message: 'Context analysis complete', increment: 25 });
+                    progress.report({ message: 'Context analysis complete', increment: 15 });
+
+                    // Run analysis using language model
+                    progress.report({ message: 'Performing AI analysis...', increment: 0 });
+                    const analysis = await this.analyzeWithLanguageModel(diffText, context, analysisMode);
+                    progress.report({ message: 'AI analysis complete', increment: 10 });
 
                     // Create a title based on the reference
                     const title = `PR Analysis: ${refName}`;
 
-                    // Display the context in a webview
+                    // Display the results in a webview
                     const panel = vscode.window.createWebviewPanel(
-                        'prAnalyzerContext',
+                        'prAnalyzerResults',
                         title,
                         vscode.ViewColumn.Beside,
                         { enableScripts: true }
                     );
 
-                    panel.webview.html = this.generatePRContextHtml(title, diffText, context);
+                    panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis);
                     progress.report({ message: 'Analysis displayed', increment: 25 });
 
                     // Update status bar
@@ -635,9 +768,133 @@ export class PRAnalyzer implements vscode.Disposable {
     }
 
     /**
-     * Generate HTML to display PR analysis context
+     * Select analysis mode for PR analysis
      */
-    private generatePRContextHtml(title: string, diffText: string, context: string): string {
+    private async selectAnalysisMode(): Promise<AnalysisMode | undefined> {
+        const options = [
+            {
+                label: 'Critical Issues',
+                description: 'Focus only on high-impact problems',
+                detail: 'Identifies bugs, errors, security vulnerabilities, and performance issues that could cause failures.',
+                mode: AnalysisMode.Critical
+            },
+            {
+                label: 'Comprehensive Review',
+                description: 'Full analysis of all aspects of code',
+                detail: 'Examines logic errors, security, performance, style, architecture, and testing coverage.',
+                mode: AnalysisMode.Comprehensive
+            },
+            {
+                label: 'Security Focus',
+                description: 'Analyze for security vulnerabilities',
+                detail: 'Identifies injection risks, auth issues, data exposure, insecure dependencies, and more.',
+                mode: AnalysisMode.Security
+            },
+            {
+                label: 'Performance Focus',
+                description: 'Optimize code performance',
+                detail: 'Finds algorithmic issues, resource leaks, I/O bottlenecks, and other performance concerns.',
+                mode: AnalysisMode.Performance
+            }
+        ];
+
+        const selected = await vscode.window.showQuickPick(options, {
+            placeHolder: 'Select analysis focus mode',
+            matchOnDetail: true,
+            matchOnDescription: true
+        });
+
+        return selected?.mode;
+    }
+
+    /**
+     * Get system prompt for analysis mode
+     */
+    private getSystemPromptForMode(mode: AnalysisMode): string {
+        switch (mode) {
+            case AnalysisMode.Critical:
+                return `You are a code review assistant focused on identifying critical issues in pull requests.
+                        Analyze the code changes for bugs, errors, security vulnerabilities, and performance issues.
+                        Focus only on high-impact problems that could lead to application failures, security breaches, or significant performance degradation.`;
+
+            case AnalysisMode.Comprehensive:
+                return `You are a thorough code review assistant. Analyze the pull request for all types of issues, including:
+                        - Logic errors and bugs
+                        - Security vulnerabilities
+                        - Performance concerns
+                        - Code style and best practices
+                        - Architecture and design issues
+                        - Testing coverage and quality
+                        Provide detailed explanations and suggestions for improvement.`;
+
+            case AnalysisMode.Security:
+                return `You are a security-focused code review assistant. Analyze the pull request specifically for security vulnerabilities and risks, including:
+                        - Injection vulnerabilities (SQL, NoSQL, command, etc.)
+                        - Authentication and authorization issues
+                        - Data exposure risks
+                        - Insecure dependencies
+                        - Cryptographic failures
+                        - Security misconfiguration
+                        Provide detailed explanations of each security risk and recommendations for remediation.`;
+
+            case AnalysisMode.Performance:
+                return `You are a performance optimization specialist. Analyze the pull request for performance issues and inefficiencies, including:
+                        - Algorithmic complexity problems
+                        - Resource leaks
+                        - Unnecessary computations
+                        - I/O bottlenecks
+                        - Memory usage issues
+                        - Database query performance
+                        Provide detailed explanations of each performance concern and suggestions for optimization.`;
+
+            default:
+                return `You are a code review assistant. Analyze the pull request changes and provide insights about potential issues, improvements, and general feedback.`;
+        }
+    }
+
+    /**
+     * Analyze PR using language models
+     */
+    private async analyzeWithLanguageModel(diffText: string, context: string, mode: AnalysisMode): Promise<string> {
+        try {
+            const model = await this.modelManager.getCurrentModel();
+
+            // Prepare system prompt
+            const systemPrompt = 'SYSTEM PROMPT BEGIN' +
+                '\n' + this.getSystemPromptForMode(mode) +
+                '\n' + 'SYSTEM PROMPT END';
+
+            // Prepare user message
+            const userMessage = `Analyze the following pull request changes with the provided context:\n\n${diffText}\n\nContext:\n${context}`;
+
+            // Create messages for the model
+            const messages = [
+                vscode.LanguageModelChatMessage.User(systemPrompt + '\n' + userMessage)
+            ];
+
+            // Send request to model
+            const response = await model.sendRequest(
+                messages,
+                {},
+                new vscode.CancellationTokenSource().token
+            );
+
+            // Return the response text
+            let responseText = '';
+            for await (const chunk of response.text) {
+                responseText += chunk;
+            }
+
+            return responseText;
+        } catch (error) {
+            throw new Error(`Language model analysis failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
+     * Generate PR analysis with HTML
+     */
+    private generatePRAnalysisHtml(title: string, diffText: string, context: string, analysis: string): string {
         return `
         <!DOCTYPE html>
         <html>
@@ -723,11 +980,19 @@ export class PRAnalyzer implements vscode.Disposable {
             <h1>${title}</h1>
 
             <div class="tabs">
-                <div class="tab active" onclick="switchTab('context')">Context Analysis</div>
+                <div class="tab active" onclick="switchTab('analysis')">AI Analysis</div>
+                <div class="tab" onclick="switchTab('context')">Context</div>
                 <div class="tab" onclick="switchTab('diff')">Changes</div>
             </div>
 
-            <div id="context" class="tab-content active">
+            <div id="analysis" class="tab-content active">
+                <div class="hint">AI analysis of the pull request</div>
+                <div class="analysis-content">
+                    ${this.markdownToHtml(analysis)}
+                </div>
+            </div>
+
+            <div id="context" class="tab-content">
                 <div class="hint">Showing relevant code context found for the changes</div>
                 <div class="context-content">
                     ${this.markdownToHtml(context)}

@@ -18,6 +18,16 @@ export interface WorkspaceSettings {
     lastIndexingTimestamp?: number;
 
     /**
+     * Preferred language model family
+     */
+    preferredModelFamily?: string;
+
+    /**
+     * Preferred language model version
+     */
+    preferredModelVersion?: string;
+
+    /**
      * Other workspace-specific settings can be added here
      */
     [key: string]: any;
@@ -199,6 +209,38 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
+     * Get the preferred language model family
+     */
+    public getPreferredModelFamily(): string | undefined {
+        return this.settings.preferredModelFamily;
+    }
+
+    /**
+     * Set the preferred language model family
+     * @param family The model family to set as preferred
+     */
+    public setPreferredModelFamily(family: string | undefined): void {
+        this.settings.preferredModelFamily = family;
+        this.debouncedSaveSettings();
+    }
+
+    /**
+     * Get the preferred language model version
+     */
+    public getPreferredModelVersion(): string | undefined {
+        return this.settings.preferredModelVersion;
+    }
+
+    /**
+     * Set the preferred language model version
+     * @param version The model version to set as preferred
+     */
+    public setPreferredModelVersion(version: string | undefined): void {
+        this.settings.preferredModelVersion = version;
+        this.debouncedSaveSettings();
+    }
+
+    /**
      * Get the last indexing timestamp
      */
     public getLastIndexingTimestamp(): number | undefined {
@@ -214,25 +256,35 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Clear all workspace settings (except for selected model)
+     * Clear all workspace settings (except for selected models)
      */
     public clearWorkspaceSettings(): void {
-        // Keep the selected model to maintain compatibility
-        const selectedModel = this.settings.selectedEmbeddingModel;
+        // Keep the selected models to maintain compatibility
+        const selectedEmbeddingModel = this.settings.selectedEmbeddingModel;
+        const preferredModelFamily = this.settings.preferredModelFamily;
+        const preferredModelVersion = this.settings.preferredModelVersion;
 
         // Reset settings
         this.settings = {};
 
-        // Restore selected model
-        if (selectedModel) {
-            this.settings.selectedEmbeddingModel = selectedModel;
+        // Restore selected models
+        if (selectedEmbeddingModel) {
+            this.settings.selectedEmbeddingModel = selectedEmbeddingModel;
+        }
+
+        if (preferredModelFamily) {
+            this.settings.preferredModelFamily = preferredModelFamily;
+        }
+
+        if (preferredModelVersion) {
+            this.settings.preferredModelVersion = preferredModelVersion;
         }
 
         this.saveSettings();
     }
 
     /**
-     * Reset all workspace settings including selected model
+     * Reset all workspace settings including selected models
      * Use with caution - changing model may cause incompatibility with existing data
      */
     public resetAllSettings(): void {
