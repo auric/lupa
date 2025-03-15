@@ -9,6 +9,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
+import { GitService, GitBranch, GitCommit } from './gitService';
 import { getSupportedFilesGlob, getExcludePattern } from '../models/types';
 
 /**
@@ -23,6 +24,7 @@ export class PRAnalyzer implements vscode.Disposable {
     private modelSelectionService: ModelSelectionService;
     private workspaceSettingsService: WorkspaceSettingsService;
     private statusBarService: StatusBarService;
+    private gitService: GitService;
     private selectedModel: string | null = null;
     private continuousIndexingInProgress: boolean = false;
     private continuousIndexingCancellationToken: vscode.CancellationTokenSource | null = null;
@@ -48,6 +50,9 @@ export class PRAnalyzer implements vscode.Disposable {
 
         // Initialize the vector database service
         this.vectorDatabaseService = VectorDatabaseService.getInstance(context);
+
+        // Initialize the Git service
+        this.gitService = GitService.getInstance();
 
         // Initialize the indexing service first so we can pass it to the adapter
         this.initializeIndexingService();
@@ -403,7 +408,7 @@ export class PRAnalyzer implements vscode.Disposable {
     }
 
     /**
-     * Analyze a pull request or the currently open file
+     * Analyze a pull request by selecting a Git branch or commit
      */
     private async analyzePR(): Promise<void> {
         // Ensure indexing service is initialized
@@ -415,21 +420,53 @@ export class PRAnalyzer implements vscode.Disposable {
             // Set status to analyzing
             this.statusBarService.setState(StatusBarState.Analyzing);
 
-            // For now, just analyze current file
-            const editor = vscode.window.activeTextEditor;
-            if (!editor) {
-                vscode.window.showInformationMessage('No active editor found. Open a file to analyze.');
+            // Initialize Git service
+            const isGitAvailable = await this.gitService.initialize();
+            if (!isGitAvailable) {
+                vscode.window.showErrorMessage('Git extension not available or no Git repository found in workspace.');
                 this.statusBarService.setState(StatusBarState.Ready);
                 return;
             }
 
-            // Get current file
-            const document = editor.document;
-            const filePath = document.uri.fsPath;
-            const fileContent = document.getText();
+            // Offer options for analysis type
+            const analysisOptions = [
+                { label: 'Current Branch vs Default Branch', description: 'Compare the current branch with the default branch' },
+                { label: 'Select Branch', description: 'Select a branch to compare with the default branch' },
+                { label: 'Select Commit', description: 'Select a specific commit to analyze' },
+                { label: 'Current Changes', description: 'Analyze uncommitted changes' }
+            ];
 
-            // Check if file needs indexing
-            const needsIndexing = await this.embeddingDatabaseAdapter.needsReindexing(filePath, fileContent);
+            const selectedOption = await vscode.window.showQuickPick(analysisOptions, {
+                placeHolder: 'Select what to analyze',
+                matchOnDescription: true
+            });
+
+            if (!selectedOption) {
+                this.statusBarService.setState(StatusBarState.Ready);
+                return;
+            }
+
+            // Get diff based on selected option
+            const diffResult = await this.getDiffFromSelection(selectedOption.label);
+
+            if (!diffResult) {
+                this.statusBarService.setState(StatusBarState.Ready);
+                return;
+            }
+
+            const { diffText, refName, error } = diffResult;
+
+            if (error) {
+                vscode.window.showErrorMessage(error);
+                this.statusBarService.setState(StatusBarState.Ready);
+                return;
+            }
+
+            if (!diffText || diffText.trim() === '') {
+                vscode.window.showInformationMessage('No changes found to analyze.');
+                this.statusBarService.setState(StatusBarState.Ready);
+                return;
+            }
 
             // Show progress notification
             await vscode.window.withProgress({
@@ -437,56 +474,30 @@ export class PRAnalyzer implements vscode.Disposable {
                 title: 'PR Analyzer',
                 cancellable: true
             }, async (progress, token) => {
-                // Step 1: Index the file if needed
-                if (needsIndexing) {
-                    progress.report({ message: 'Generating embeddings...' });
-
-                    // Create file to process
-                    const fileToProcess: FileToProcess = {
-                        id: filePath,
-                        path: filePath,
-                        content: fileContent,
-                        priority: 10
-                    };
-
-                    try {
-                    // Process the file
-                        const results = await this.indexingService!.processFiles([fileToProcess], token);
-
-                        // Store the embeddings in the database
-                        await this.embeddingDatabaseAdapter.storeEmbeddingResults([fileToProcess], results);
-
-                        progress.report({ message: 'Embeddings generated and stored', increment: 40 });
-                    } catch (error) {
-                        if (token.isCancellationRequested) {
-                            throw new Error('Operation cancelled');
-                        }
-                        throw new Error(`Failed to generate embeddings: ${error instanceof Error ? error.message : String(error)}`);
-                    }
-                } else {
-                    progress.report({ message: 'Using existing embeddings', increment: 40 });
-                }
-
-                // Step 2: Find relevant code context
-                progress.report({ message: 'Finding relevant code context...', increment: 10 });
+                // Step 1: Generate embeddings for the diff
+                progress.report({ message: 'Analyzing changes...', increment: 10 });
 
                 try {
-                    // Find related code
-                    const context = await this.contextProvider.getContextForDiff(fileContent);
+                    // Find relevant code context for the diff
+                    progress.report({ message: 'Finding relevant code context...', increment: 40 });
 
-                    progress.report({ message: 'Context found', increment: 25 });
+                    // Get context for the diff
+                    const context = await this.contextProvider.getContextForDiff(diffText);
+                    progress.report({ message: 'Context analysis complete', increment: 25 });
 
-                    // Display the context
+                    // Create a title based on the reference
+                    const title = `PR Analysis: ${refName}`;
+
+                    // Display the context in a webview
                     const panel = vscode.window.createWebviewPanel(
                         'prAnalyzerContext',
-                        'PR Analysis Context',
+                        title,
                         vscode.ViewColumn.Beside,
                         { enableScripts: true }
                     );
 
-                    panel.webview.html = this.generateContextHtml(filePath, context);
-
-                    progress.report({ message: 'Analysis complete', increment: 25 });
+                    panel.webview.html = this.generatePRContextHtml(title, diffText, context);
+                    progress.report({ message: 'Analysis displayed', increment: 25 });
 
                     // Update status bar
                     this.statusBarService.showTemporaryMessage(
@@ -495,7 +506,10 @@ export class PRAnalyzer implements vscode.Disposable {
                         StatusBarMessageType.Info
                     );
                 } catch (error) {
-                    throw new Error(`Failed to analyze context: ${error instanceof Error ? error.message : String(error)}`);
+                    if (token.isCancellationRequested) {
+                        throw new Error('Operation cancelled');
+                    }
+                    throw new Error(`Failed to analyze PR: ${error instanceof Error ? error.message : String(error)}`);
                 }
 
                 // Reset status to ready
@@ -509,7 +523,6 @@ export class PRAnalyzer implements vscode.Disposable {
                     3000,
                     StatusBarMessageType.Warning
                 );
-                this.statusBarService.setState(StatusBarState.Ready);
             } else {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 vscode.window.showErrorMessage(`Failed to analyze PR: ${errorMessage}`);
@@ -520,20 +533,118 @@ export class PRAnalyzer implements vscode.Disposable {
                 );
                 this.statusBarService.setState(StatusBarState.Error, errorMessage);
             }
+            this.statusBarService.setState(StatusBarState.Ready);
         }
     }
 
     /**
-     * Generate HTML to display analysis context
+     * Get diff based on user selection
+     * @param selection The user's selected analysis type
      */
-    private generateContextHtml(filePath: string, context: string): string {
+    private async getDiffFromSelection(selection: string): Promise<{ diffText: string, refName: string, error?: string } | undefined> {
+        switch (selection) {
+            case 'Current Branch vs Default Branch': {
+                const repository = this.gitService.getRepository();
+                if (!repository) {
+                    vscode.window.showErrorMessage('No Git repository found in workspace.');
+                    return undefined;
+                }
+
+                const currentBranch = repository.state.HEAD?.name;
+                if (!currentBranch) {
+                    vscode.window.showErrorMessage('Not currently on a branch.');
+                    return undefined;
+                }
+
+                const defaultBranch = await this.gitService.getDefaultBranch();
+                if (!defaultBranch) {
+                    vscode.window.showErrorMessage('Could not determine default branch.');
+                    return undefined;
+                }
+
+                return await this.gitService.compareBranches({ base: defaultBranch, compare: currentBranch });
+            }
+
+            case 'Select Branch': {
+                // Fetch available branches
+                const defaultBranch = await this.gitService.getDefaultBranch();
+                if (!defaultBranch) {
+                    vscode.window.showErrorMessage('Could not determine default branch.');
+                    return undefined;
+                }
+
+                const branches = await this.gitService.getBranches();
+                const branchItems = branches.map(branch => ({
+                    label: branch.name,
+                    description: branch.isDefault ? '(default branch)' : '',
+                    picked: branch.isCurrent
+                }));
+
+                const selectedBranch = await vscode.window.showQuickPick(branchItems, {
+                    placeHolder: 'Select a branch to analyze',
+                });
+
+                if (!selectedBranch) {
+                    return undefined;
+                }
+
+                return await this.gitService.compareBranches({ base: defaultBranch, compare: selectedBranch.label });
+            }
+
+            case 'Select Commit': {
+                // Get recent commits
+                const commits = await this.gitService.getRecentCommits();
+
+                if (commits.length === 0) {
+                    vscode.window.showErrorMessage('No commits found in the repository.');
+                    return undefined;
+                }
+
+                const commitItems = commits.map(commit => ({
+                    label: commit.hash.substring(0, 7),
+                    description: `${commit.message} (${new Date(commit.date).toLocaleDateString()})`,
+                    detail: commit.author
+                }));
+
+                const selectedCommit = await vscode.window.showQuickPick(commitItems, {
+                    placeHolder: 'Select a commit to analyze',
+                });
+
+                if (!selectedCommit) {
+                    return undefined;
+                }
+
+                const fullCommitHash = commits.find(c => c.hash.startsWith(selectedCommit.label))?.hash;
+                if (!fullCommitHash) {
+                    vscode.window.showErrorMessage('Could not find the selected commit.');
+                    return undefined;
+                }
+
+                // Get the diff for a single commit
+                return await this.gitService.getCommitDiff(fullCommitHash);
+            }
+
+            case 'Current Changes': {
+                // Get uncommitted changes
+                return await this.gitService.getUncommittedChanges();
+            }
+
+            default:
+                return undefined;
+        }
+    }
+
+    /**
+     * Generate HTML to display PR analysis context
+     */
+    private generatePRContextHtml(title: string, diffText: string, context: string): string {
         return `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>PR Analysis Context</title>
+            <title>${title}</title>
             <style>
                 body {
                     font-family: var(--vscode-font-family);
@@ -565,6 +676,7 @@ export class PRAnalyzer implements vscode.Disposable {
                     border-radius: 5px;
                     overflow: auto;
                     font-family: var(--vscode-editor-font-family);
+                    max-height: 300px;
                 }
                 code {
                     font-family: var(--vscode-editor-font-family);
@@ -573,13 +685,77 @@ export class PRAnalyzer implements vscode.Disposable {
                     color: var(--vscode-charts-green);
                     font-size: 0.9em;
                 }
+                .diff-stats {
+                    color: var(--vscode-textLink-foreground);
+                    margin-bottom: 20px;
+                }
+                .tabs {
+                    display: flex;
+                    margin-bottom: 20px;
+                    border-bottom: 1px solid var(--vscode-panel-border);
+                }
+                .tab {
+                    padding: 10px 15px;
+                    cursor: pointer;
+                    background-color: var(--vscode-button-secondaryBackground);
+                    color: var(--vscode-button-secondaryForeground);
+                    margin-right: 5px;
+                    border-radius: 5px 5px 0 0;
+                }
+                .tab.active {
+                    background-color: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                }
+                .tab-content {
+                    display: none;
+                }
+                .tab-content.active {
+                    display: block;
+                }
+                .hint {
+                    font-style: italic;
+                    color: var(--vscode-descriptionForeground);
+                    margin-top: 10px;
+                }
             </style>
         </head>
         <body>
-            <h1>Analysis Context for: ${path.basename(filePath)}</h1>
-            <div class="context-content">
-                ${this.markdownToHtml(context)}
+            <h1>${title}</h1>
+
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('context')">Context Analysis</div>
+                <div class="tab" onclick="switchTab('diff')">Changes</div>
             </div>
+
+            <div id="context" class="tab-content active">
+                <div class="hint">Showing relevant code context found for the changes</div>
+                <div class="context-content">
+                    ${this.markdownToHtml(context)}
+                </div>
+            </div>
+
+            <div id="diff" class="tab-content">
+                <div class="hint">Showing raw diff of the changes</div>
+                <pre><code>${this.escapeHtml(diffText)}</code></pre>
+            </div>
+
+            <script>
+                function switchTab(tabId) {
+                    // Hide all tab content
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+
+                    // Deactivate all tabs
+                    document.querySelectorAll('.tab').forEach(tab => {
+                        tab.classList.remove('active');
+                    });
+
+                    // Activate selected tab and content
+                    document.getElementById(tabId).classList.add('active');
+                    document.querySelector('.tab[onclick*="' + tabId + '"]').classList.add('active');
+                }
+            </script>
         </body>
         </html>
         `;
@@ -603,6 +779,18 @@ export class PRAnalyzer implements vscode.Disposable {
             // File paths with relevance scores
             .replace(/### File: `([^`]+)` \(Relevance: ([0-9.]+)%\)/g,
                 '<h3>File: <code>$1</code> <span class="relevance">(Relevance: $2%)</span></h3>');
+    }
+
+    /**
+     * Escape HTML special characters
+     */
+    private escapeHtml(text: string): string {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
     /**
