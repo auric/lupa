@@ -1,7 +1,12 @@
 /**
- * Available analysis modes for PR reviews
+ * Analysis mode for PR analysis
  */
-export type AnalysisMode = 'critical' | 'comprehensive' | 'security' | 'performance';
+export enum AnalysisMode {
+    Critical = 'critical',
+    Comprehensive = 'comprehensive',
+    Security = 'security',
+    Performance = 'performance'
+}
 
 /**
  * Model provider types

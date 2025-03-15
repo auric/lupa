@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { EmbeddingModel } from './modelSelectionService';
+import { EmbeddingModel } from './embeddingModelSelectionService';
 
 /**
  * Workspace settings for PR Analyzer

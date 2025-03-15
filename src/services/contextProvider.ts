@@ -108,7 +108,7 @@ export class ContextProvider implements vscode.Disposable {
     async getContextForDiff(
         diff: string,
         options?: SimilaritySearchOptions,
-        analysisMode: AnalysisMode = 'comprehensive'
+        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
     ): Promise<string> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
 
@@ -342,7 +342,7 @@ export class ContextProvider implements vscode.Disposable {
      */
     async getContextForFiles(
         files: string[],
-        analysisMode: AnalysisMode = 'comprehensive'
+        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
     ): Promise<string> {
         try {
             // Extract file extensions to determine languages
@@ -521,7 +521,7 @@ export class ContextProvider implements vscode.Disposable {
         prDescription: string,
         diff: string,
         changedFiles: string[],
-        analysisMode: AnalysisMode = 'comprehensive'
+        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
     ): Promise<string> {
         console.log(`Getting PR context for analysis mode: ${analysisMode}`);
 

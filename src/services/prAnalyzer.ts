@@ -4,24 +4,15 @@ import * as os from 'os';
 import { IndexingService, FileToProcess, IndexingServiceOptions } from './indexingService';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { ResourceDetectionService } from './resourceDetectionService';
-import { ModelSelectionService, EmbeddingModel } from './modelSelectionService';
+import { EmbeddingModelSelectionService, EmbeddingModel } from './embeddingModelSelectionService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
 import { GitService } from './gitService';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
+import { AnalysisMode } from '../types/modelTypes';
 import { CopilotModelManager } from '../models/copilotModelManager';
-
-/**
- * Analysis mode for PR analysis
- */
-export enum AnalysisMode {
-    Critical = 'critical',
-    Comprehensive = 'comprehensive',
-    Security = 'security',
-    Performance = 'performance'
-}
 
 /**
  * PRAnalyzer handles the main functionality of analyzing pull requests
@@ -32,7 +23,7 @@ export class PRAnalyzer implements vscode.Disposable {
     private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter;
     private contextProvider: ContextProvider;
     private resourceDetectionService: ResourceDetectionService;
-    private modelSelectionService: ModelSelectionService;
+    private modelSelectionService: EmbeddingModelSelectionService;
     private workspaceSettingsService: WorkspaceSettingsService;
     private statusBarService: StatusBarService;
     private gitService: GitService;
@@ -55,7 +46,7 @@ export class PRAnalyzer implements vscode.Disposable {
             memoryReserveGB: 4 // 4GB reserve for other processes
         });
 
-        this.modelSelectionService = new ModelSelectionService(
+        this.modelSelectionService = new EmbeddingModelSelectionService(
             path.join(context.extensionPath, 'models'),
             this.workspaceSettingsService
         );
@@ -139,7 +130,7 @@ export class PRAnalyzer implements vscode.Disposable {
             this.indexingService.dispose();
         }
 
-        // Get the selected model from ModelSelectionService
+        // Get the selected model from EmbeddingModelSelectionService
         // It will check workspace settings internally and handle model selection
         const { model, modelInfo } = this.modelSelectionService.selectOptimalModel();
 

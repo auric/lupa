@@ -49,7 +49,7 @@ export interface ModelSelectionOptions {
 /**
  * Service for selecting the optimal embedding model based on system resources
  */
-export class ModelSelectionService implements vscode.Disposable {
+export class EmbeddingModelSelectionService implements vscode.Disposable {
     private readonly resources: ResourceDetectionService;
     private readonly modelInfos: Record<EmbeddingModel, ModelInfo> = {
         [EmbeddingModel.JinaEmbeddings]: {
@@ -80,7 +80,7 @@ export class ModelSelectionService implements vscode.Disposable {
     private statusBarService: StatusBarService;
 
     /**
-     * Creates a new ModelSelectionService
+     * Creates a new EmbeddingModelSelectionService
      * @param basePath Base path to the models directory
      * @param options Configuration options
      */
