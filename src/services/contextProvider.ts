@@ -359,7 +359,7 @@ export class ContextProvider implements vscode.Disposable {
             for (const ext of fileExtensions) {
                 const language = SUPPORTED_LANGUAGES[ext];
                 if (language) {
-                    languageSet.add(language);
+                    languageSet.add(language.language);
                 }
             }
 

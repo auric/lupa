@@ -1,6 +1,8 @@
+import * as vscode from 'vscode';
 import { PreTrainedTokenizer } from '@huggingface/transformers';
 import { EmbeddingOptions, ChunkingResult } from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from './workerTokenEstimator';
+import { TreeStructureAnalyzer } from '../services/treeStructureAnalyzer';
 
 /**
  * WorkerCodeChunker provides intelligent code chunking capabilities within worker threads.
@@ -9,13 +11,32 @@ import { WorkerTokenEstimator } from './workerTokenEstimator';
 export class WorkerCodeChunker {
     private readonly tokenEstimator: WorkerTokenEstimator;
     private readonly defaultOverlapSize = 100;
+    private treeStructureAnalyzer: TreeStructureAnalyzer | null = null;
 
     /**
      * Creates a new worker code chunker
      * @param tokenEstimator The token estimator to use for token counting
      */
-    constructor(tokenEstimator: WorkerTokenEstimator) {
+    constructor(
+        readonly extensionPath: string,
+        tokenEstimator: WorkerTokenEstimator
+    ) {
         this.tokenEstimator = tokenEstimator;
+    }
+
+    /**
+     * Initialize the tree structure analyzer if available
+     */
+    private async getTreeStructureAnalyzer(): Promise<TreeStructureAnalyzer | null> {
+        if (!this.treeStructureAnalyzer) {
+            try {
+                this.treeStructureAnalyzer = TreeStructureAnalyzer.getInstance(this.extensionPath);
+            } catch (error) {
+                console.warn('Tree-sitter not available, falling back to regex-based chunking:', error);
+                return null;
+            }
+        }
+        return this.treeStructureAnalyzer;
     }
 
     /**
@@ -23,9 +44,15 @@ export class WorkerCodeChunker {
      * @param text The code text to chunk
      * @param options Optional embedding options that may include overlap size
      * @param signal AbortSignal for cancellation
+     * @param language Optional language for structure-aware chunking
      * @returns ChunkingResult with chunks and their offsets in the original text
      */
-    async chunkCode(text: string, options: EmbeddingOptions, signal: AbortSignal): Promise<ChunkingResult> {
+    async chunkCode(
+        text: string,
+        options: EmbeddingOptions,
+        signal: AbortSignal,
+        language?: string
+    ): Promise<ChunkingResult> {
         const overlapSize = options.overlapSize !== undefined ?
             options.overlapSize :
             this.defaultOverlapSize;
@@ -43,6 +70,25 @@ export class WorkerCodeChunker {
                 };
             }
 
+            // Try to use tree-sitter for language-aware chunking if language is provided
+            if (language) {
+                const analyzer = await this.getTreeStructureAnalyzer();
+                if (analyzer) {
+                    const structureResult = await this.createStructureAwareChunks(
+                        text,
+                        language,
+                        safeTokenLimit,
+                        overlapSize,
+                        analyzer,
+                        signal
+                    );
+
+                    if (structureResult) {
+                        return structureResult;
+                    }
+                }
+            }
+
             // For large files, use optimized token chunking
             return this.createOptimizedTokenChunks(text, safeTokenLimit, overlapSize, signal);
         } catch (error) {
@@ -55,6 +101,134 @@ export class WorkerCodeChunker {
             // Fallback to simple chunking
             console.log('Worker: Falling back to simple chunking method');
             return this.createSimpleChunks(text, overlapSize);
+        }
+    }
+
+    /**
+     * Creates chunks based on code structure analysis using Tree-sitter
+     * This ensures that function boundaries are respected
+     */
+    private async createStructureAwareChunks(
+        text: string,
+        language: string,
+        maxTokens: number,
+        overlapSize: number,
+        analyzer: TreeStructureAnalyzer,
+        signal: AbortSignal
+    ): Promise<ChunkingResult | null> {
+        try {
+            console.log(`Worker: Starting structure-aware chunking for ${language}`);
+
+            // Find all structure break points (function/method/class boundaries)
+            const breakPoints = await analyzer.findStructureBreakPoints(text, language);
+
+            if (breakPoints.length === 0) {
+                console.log('Worker: No structure break points found, falling back to token chunking');
+                return null;
+            }
+
+            console.log(`Worker: Found ${breakPoints.length} structure break points`);
+
+            // Generate chunks based on structure break points and token limits
+            const chunks: string[] = [];
+            const offsets: number[] = [];
+
+            let startPos = 0;
+            let breakPointIndex = 0;
+
+            while (startPos < text.length) {
+                if (signal.aborted) {
+                    throw new Error('Operation was cancelled');
+                }
+
+                offsets.push(startPos);
+
+                // Find the next viable break point
+                let endPos = text.length;
+                let foundBreakPoint = false;
+
+                // Loop through break points to find one that keeps us under the token limit
+                while (breakPointIndex < breakPoints.length) {
+                    const breakPoint = breakPoints[breakPointIndex];
+                    const potentialChunk = text.substring(startPos, breakPoint.position);
+
+                    try {
+                        const tokenCount = await this.tokenEstimator.countTokens(potentialChunk);
+
+                        if (tokenCount <= maxTokens) {
+                            // This break point keeps us under the token limit
+                            endPos = breakPoint.position;
+                            foundBreakPoint = true;
+                            breakPointIndex++;
+                        } else {
+                            // This chunk would exceed token limit, try another strategy
+                            break;
+                        }
+                    } catch (error) {
+                        console.warn('Error estimating tokens:', error);
+                        break;
+                    }
+                }
+
+                // If no viable break point was found, we need to force a break based on tokens
+                if (!foundBreakPoint) {
+                    // Find the largest possible chunk under token limit
+                    const estCharsPerToken = 4; // Conservative estimate
+                    const estMaxChars = maxTokens * estCharsPerToken;
+
+                    // Try increasingly larger chunks until we hit token limit
+                    let tokenCount = 0;
+                    let testEndPos = Math.min(startPos + estMaxChars, text.length);
+
+                    while (testEndPos > startPos) {
+                        const testChunk = text.substring(startPos, testEndPos);
+
+                        try {
+                            tokenCount = await this.tokenEstimator.countTokens(testChunk);
+
+                            if (tokenCount <= maxTokens) {
+                                // This fits within token limit
+                                endPos = testEndPos;
+                                break;
+                            }
+
+                            // Reduce chunk size and try again
+                            testEndPos = Math.floor(startPos + (testEndPos - startPos) * 0.8);
+                        } catch (error) {
+                            console.warn('Error during token estimation:', error);
+                            testEndPos = Math.floor(startPos + (testEndPos - startPos) * 0.8);
+                        }
+                    }
+
+                    // Skip past this break point index
+                    while (breakPointIndex < breakPoints.length &&
+                        breakPoints[breakPointIndex].position <= endPos) {
+                        breakPointIndex++;
+                    }
+                }
+
+                // Add the chunk
+                const chunk = text.substring(startPos, endPos);
+                chunks.push(chunk);
+
+                // Calculate next start position with overlap
+                startPos = Math.max(
+                    startPos,
+                    endPos - overlapSize
+                );
+
+                // If we didn't make progress, force movement
+                if (endPos === startPos) {
+                    startPos += Math.max(1, Math.floor(maxTokens / 10));
+                }
+
+                console.log(`Worker: Created structure-aware chunk of ${chunk.length} chars, next start at ${startPos}/${text.length}`);
+            }
+
+            return { chunks, offsets };
+        } catch (error) {
+            console.error('Error creating structure-aware chunks:', error);
+            return null;
         }
     }
 

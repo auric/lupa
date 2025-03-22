@@ -185,6 +185,7 @@ export class IndexingService implements vscode.Disposable {
                     modelBasePath: this.options.modelBasePath,
                     modelName: this.options.modelName,
                     contextLength: this.options.contextLength,
+                    extensionPath: this.context.extensionPath,
                     options: {
                         ...this.options.embeddingOptions
                     },

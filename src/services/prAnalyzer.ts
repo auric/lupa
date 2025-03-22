@@ -47,7 +47,7 @@ export class PRAnalyzer implements vscode.Disposable {
         });
 
         this.modelSelectionService = new EmbeddingModelSelectionService(
-            path.join(context.extensionPath, 'models'),
+            path.join(context.extensionPath, 'dist', 'models'),
             this.workspaceSettingsService
         );
 

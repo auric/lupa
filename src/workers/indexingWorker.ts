@@ -1,8 +1,10 @@
+import * as path from 'path';
 import { pipeline, env as transformersEnv, type FeatureExtractionPipeline } from '@huggingface/transformers';
 import { MessagePort } from 'worker_threads';
 import { EmbeddingOptions } from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from './workerTokenEstimator';
 import { WorkerCodeChunker } from './workerCodeChunker';
+import { getLanguageForExtension } from '../types/types';
 
 // Module-level variables for caching
 let embeddingPipeline: FeatureExtractionPipeline | null = null;
@@ -19,6 +21,7 @@ export interface ProcessFileTask {
     modelBasePath: string;
     modelName: string;
     contextLength: number;
+    extensionPath: string;
     messagePort: MessagePort;
     options?: EmbeddingOptions;
 }
@@ -32,6 +35,17 @@ export interface ProcessingResult {
 }
 
 /**
+ * Get language from file path
+ * @param filePath File path
+ * @returns Language identifier or undefined if not recognized
+ */
+function getLanguageFromFilePath(filePath: string): string | undefined {
+    const extension = path.extname(filePath).substring(1).toLowerCase();
+    const langData = getLanguageForExtension(extension);
+    return langData?.language;
+}
+
+/**
  * Initialize the embedding model once per worker
  * @param modelName Name of the model to initialize
  * @param signal AbortSignal for cancellation
@@ -40,6 +54,7 @@ async function initializeModel(
     modelBasePath: string,
     modelName: string,
     contextWindow: number,
+    extensionPath: string,
     signal: AbortSignal
 ): Promise<FeatureExtractionPipeline> {
     // Check for cancellation
@@ -81,7 +96,7 @@ async function initializeModel(
             modelName,
             contextWindow
         );
-        codeChunker = new WorkerCodeChunker(tokenEstimator);
+        codeChunker = new WorkerCodeChunker(extensionPath, tokenEstimator);
         console.log(`Worker: Model ${modelName} initialized successfully`);
 
         return embeddingPipeline;
@@ -105,6 +120,7 @@ async function initializeModel(
  */
 async function generateEmbeddings(
     text: string,
+    filePath: string,
     pipe: FeatureExtractionPipeline,
     options: EmbeddingOptions = {},
     signal: AbortSignal
@@ -113,8 +129,11 @@ async function generateEmbeddings(
     const poolingStrategy = options.pooling || 'mean';
     const shouldNormalize = options.normalize !== false; // Default to true if not specified
 
+    // Detect language from file path for better structure-aware chunking
+    const language = getLanguageFromFilePath(filePath);
+
     // Chunk the text using smart code-aware chunking
-    const { chunks, offsets } = await codeChunker!.chunkCode(text, options, signal);
+    const { chunks, offsets } = await codeChunker!.chunkCode(text, options, signal, language);
 
     // Yield to the event loop to process any pending messages
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -187,7 +206,11 @@ export default async function processFile(
 
         // Initialize model if needed
         const pipe = await initializeModel(
-            task.modelBasePath, task.modelName, task.contextLength, signal
+            task.modelBasePath,
+            task.modelName,
+            task.contextLength,
+            task.extensionPath,
+            signal
         );
 
         // Check if operation was cancelled during initialization
@@ -198,6 +221,7 @@ export default async function processFile(
         // Generate embeddings for the file content using our token-aware chunking
         const { embeddings, chunkOffsets } = await generateEmbeddings(
             task.content,
+            task.filePath,
             pipe,
             task.options,
             signal

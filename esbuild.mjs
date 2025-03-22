@@ -61,6 +61,14 @@ const buildOptions = {
                     to: ["./dist/"],
                 },
                 {
+                    from: ["./node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-*.wasm"],
+                    to: ["./dist/grammars/"],
+                },
+                {
+                    from: ["./node_modules/web-tree-sitter/tree-sitter.wasm"],
+                    to: ["./dist/"],
+                },
+                {
                     from: ["./models/**/*"],
                     to: ["./dist/models/"],
                 }
