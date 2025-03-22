@@ -135,6 +135,7 @@ export class WorkerCodeChunker {
 
             let startPos = 0;
             let breakPointIndex = 0;
+            let lastEndPos = -1; // Track the last ending position to detect lack of progress
 
             while (startPos < text.length) {
                 if (signal.aborted) {
@@ -150,6 +151,13 @@ export class WorkerCodeChunker {
                 // Loop through break points to find one that keeps us under the token limit
                 while (breakPointIndex < breakPoints.length) {
                     const breakPoint = breakPoints[breakPointIndex];
+
+                    // Skip break points that are before or at our current position
+                    if (breakPoint.position <= startPos) {
+                        breakPointIndex++;
+                        continue;
+                    }
+
                     const potentialChunk = text.substring(startPos, breakPoint.position);
 
                     try {
@@ -160,6 +168,7 @@ export class WorkerCodeChunker {
                             endPos = breakPoint.position;
                             foundBreakPoint = true;
                             breakPointIndex++;
+                            break; // Exit the while loop once we find a valid break point
                         } else {
                             // This chunk would exceed token limit, try another strategy
                             break;
@@ -212,15 +221,34 @@ export class WorkerCodeChunker {
                 chunks.push(chunk);
 
                 // Calculate next start position with overlap
-                startPos = Math.max(
-                    startPos,
-                    endPos - overlapSize
-                );
+                let nextStartPos = endPos - overlapSize;
 
-                // If we didn't make progress, force movement
-                if (endPos === startPos) {
-                    startPos += Math.max(1, Math.floor(maxTokens / 10));
+                // Fix the infinite loop issue by ensuring we always make progress
+                if (nextStartPos <= startPos) {
+                    // If we wouldn't make any progress due to a large overlap, force progress
+                    // Move forward by at least 1/4 of the chunk size or 100 characters, whichever is larger
+                    const minProgress = Math.max(Math.floor((endPos - startPos) / 4), 100);
+                    nextStartPos = startPos + minProgress;
+
+                    // If we're near the end, make sure we don't get stuck in a loop
+                    if (nextStartPos >= text.length - 100) {
+                        nextStartPos = text.length;
+                    }
                 }
+
+                // Extra safety check: if we're somehow not making progress, force it
+                if (endPos === lastEndPos) {
+                    console.warn('Worker: Detected potential infinite loop - forcing progress');
+                    nextStartPos = endPos + 1;
+
+                    // If we're at the end of text, break out
+                    if (nextStartPos >= text.length) {
+                        break;
+                    }
+                }
+
+                lastEndPos = endPos;
+                startPos = nextStartPos;
 
                 console.log(`Worker: Created structure-aware chunk of ${chunk.length} chars, next start at ${startPos}/${text.length}`);
             }

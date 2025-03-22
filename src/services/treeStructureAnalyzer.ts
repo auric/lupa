@@ -294,13 +294,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         try {
             const tree = await this.parseContent(content, language, variant);
             if (!tree) {
-                // Handle the case where parsing failed and returned null
                 console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
                 return [];
             }
 
             const config = this.languageConfigs[language];
-
             if (!config) {
                 throw new Error(`Language '${language}' is not supported`);
             }
@@ -309,13 +307,18 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const functions: CodeStructure[] = [];
 
             for (const queryString of config.functionQueries) {
-                // Get the currently set language from the parser
-                const currentLang = await this.loadLanguageParser(language, variant);
-                const query = currentLang.query(queryString);
-                const matches = query.matches(rootNode);
+                try {
+                    // Get the currently set language from the parser
+                    const currentLang = await this.loadLanguageParser(language, variant);
+                    const query = currentLang.query(queryString);
 
-                for (const match of matches) {
-                    for (const capture of match.captures) {
+                    // For older web-tree-sitter API, we need to use captures()
+                    // instead of matches()
+                    const captures = query.captures(rootNode);
+
+                    // The older API returns an array of capture objects
+                    for (let i = 0; i < captures.length; i++) {
+                        const capture = captures[i];
                         const node = capture.node;
 
                         // Find the function name
@@ -327,9 +330,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             case 'typescript':
                                 // For function declarations
                                 if (node.type === 'function_declaration') {
-                                    const nameNodes = node.descendantsOfType('identifier');
-                                    if (nameNodes.length > 0) {
-                                        name = nameNodes[0]!.text;
+                                    const nameNode = node.childForFieldName('name');
+                                    if (nameNode) {
+                                        name = nameNode.text;
                                     }
                                 }
                                 // For method definitions
@@ -337,6 +340,21 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                                     const nameNode = node.childForFieldName('name');
                                     if (nameNode) {
                                         name = nameNode.text;
+                                    }
+                                }
+                                // For arrow functions
+                                else if (node.type === 'arrow_function') {
+                                    // Try to find a parent assignment or variable declaration
+                                    let parent = node.parent;
+                                    while (parent) {
+                                        if (parent.type === 'variable_declarator') {
+                                            const nameNode = parent.childForFieldName('name');
+                                            if (nameNode) {
+                                                name = nameNode.text;
+                                                break;
+                                            }
+                                        }
+                                        parent = parent.parent;
                                     }
                                 }
                                 break;
@@ -367,7 +385,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                                     if (declarator) {
                                         const nameNodes = declarator.descendantsOfType('identifier');
                                         if (nameNodes.length > 0) {
-                                            name = nameNodes[0]!.text;
+                                            name = nameNodes[0].text;
                                         }
                                     }
                                 }
@@ -387,7 +405,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                                     name = node.text;
                                 }
                                 break;
-                            // Additional language handlers would go here
                         }
 
                         functions.push({
@@ -407,6 +424,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             text: content.substring(node.startIndex, node.endIndex)
                         });
                     }
+                } catch (error) {
+                    console.error(`Error running query "${queryString}" for ${language}:`, error);
+                // Continue with other queries even if one fails
                 }
             }
 
@@ -449,13 +469,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const classes: CodeStructure[] = [];
 
             for (const queryString of config.classQueries) {
-                // Get the currently set language from the parser
-                const currentLang = await this.loadLanguageParser(language, variant);
-                const query = currentLang.query(queryString);
-                const matches = query.matches(rootNode);
+                try {
+                    // Get the currently set language from the parser
+                    const currentLang = await this.loadLanguageParser(language, variant);
+                    const query = currentLang.query(queryString);
 
-                for (const match of matches) {
-                    for (const capture of match.captures) {
+                    // Fix: Use the captures method with the rootNode for older web-tree-sitter API
+                    const captures = query.captures(rootNode);
+
+                    for (const capture of captures) {
                         const node = capture.node;
 
                         // Find the class name
@@ -529,6 +551,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             text: content.substring(node.startIndex, node.endIndex)
                         });
                     }
+                } catch (error) {
+                    console.error(`Error running query "${queryString}" for ${language}:`, error);
+                // Continue with other queries even if one fails
                 }
             }
 
