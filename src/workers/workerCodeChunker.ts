@@ -129,6 +129,33 @@ export class WorkerCodeChunker {
 
             console.log(`Worker: Found ${breakPoints.length} structure break points`);
 
+            // Get functions and classes to prioritize preserving whole structures
+            const functions = await analyzer.findFunctions(text, language);
+            const classes = await analyzer.findClasses(text, language);
+
+            console.log(`Worker: Found ${functions.length} functions and ${classes.length} classes`);
+
+            // Create a map of important code structures with their ranges
+            const codeStructures = new Map<number, { end: number, type: string }>();
+
+            // Add function boundaries (more important to preserve)
+            for (const func of functions) {
+                const start = this.positionToOffset(text, func.range.startPosition.row, func.range.startPosition.column);
+                const end = this.positionToOffset(text, func.range.endPosition.row, func.range.endPosition.column);
+                if (start !== null && end !== null) {
+                    codeStructures.set(start, { end, type: 'function' });
+                }
+            }
+
+            // Add class boundaries (also important to preserve)
+            for (const cls of classes) {
+                const start = this.positionToOffset(text, cls.range.startPosition.row, cls.range.startPosition.column);
+                const end = this.positionToOffset(text, cls.range.endPosition.row, cls.range.endPosition.column);
+                if (start !== null && end !== null) {
+                    codeStructures.set(start, { end, type: 'class' });
+                }
+            }
+
             // Generate chunks based on structure break points and token limits
             const chunks: string[] = [];
             const offsets: number[] = [];
@@ -143,6 +170,41 @@ export class WorkerCodeChunker {
                 }
 
                 offsets.push(startPos);
+
+                // Check if we're at the start of an important structure
+                const structure = codeStructures.get(startPos);
+                if (structure) {
+                    // Create a chunk for this entire function/class if it fits with some flexibility
+                    const structureChunk = text.substring(startPos, structure.end);
+
+                    try {
+                        const tokenCount = await this.tokenEstimator.countTokens(structureChunk);
+
+                        // Allow up to 25% over the token limit for important structures
+                        // This ensures functions and classes stay intact when possible
+                        const flexibleTokenLimit = Math.min(maxTokens * 1.25, maxTokens + 500);
+
+                        if (tokenCount <= flexibleTokenLimit) {
+                            // This structure fits within our flexible token limit, use it as a chunk
+                            chunks.push(structureChunk);
+
+                            // Update position and continue
+                            startPos = structure.end;
+
+                            // Advance break point index beyond this structure's end
+                            while (breakPointIndex < breakPoints.length &&
+                                breakPoints[breakPointIndex].position <= structure.end) {
+                                breakPointIndex++;
+                            }
+
+                            continue; // Skip the normal chunking logic for this iteration
+                        }
+                        // If structure doesn't fit even with flexibility, fall through to normal chunking
+                    } catch (error) {
+                        console.warn('Error estimating tokens for structure:', error);
+                        // Fall through to normal chunking
+                    }
+                }
 
                 // Find the next viable break point
                 let endPos = text.length;
@@ -163,7 +225,11 @@ export class WorkerCodeChunker {
                     try {
                         const tokenCount = await this.tokenEstimator.countTokens(potentialChunk);
 
-                        if (tokenCount <= maxTokens) {
+                        // Allow a small amount of flexibility (10%) for good quality break points
+                        const flexibleLimit = breakPoint.quality >= 8 ?
+                            Math.min(maxTokens * 1.1, maxTokens + 200) : maxTokens;
+
+                        if (tokenCount <= flexibleLimit) {
                             // This break point keeps us under the token limit
                             endPos = breakPoint.position;
                             foundBreakPoint = true;
@@ -258,6 +324,33 @@ export class WorkerCodeChunker {
             console.error('Error creating structure-aware chunks:', error);
             return null;
         }
+    }
+
+    /**
+     * Convert position (row, column) to character offset
+     * @param text Source text
+     * @param row Zero-based row
+     * @param column Zero-based column
+     * @returns Character offset or null if invalid
+     */
+    private positionToOffset(text: string, row: number, column: number): number | null {
+        const lines = text.split('\n');
+
+        if (row >= lines.length) {
+            return null;
+        }
+
+        let offset = 0;
+        for (let i = 0; i < row; i++) {
+            offset += lines[i].length + 1; // +1 for the newline
+        }
+
+        if (column > lines[row].length) {
+            return null;
+        }
+
+        offset += column;
+        return offset;
     }
 
     /**

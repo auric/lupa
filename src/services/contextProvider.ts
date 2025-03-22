@@ -756,36 +756,144 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
-     * Format similar code results into a readable context block
+     * Format similar code results into a readable context block with structure awareness
      * @param results Array of similarity search results
      * @returns Formatted context string
      */
     private formatContextResults(
         results: SimilaritySearchResult[]
     ): string {
-        // Format each result with file path, score, and content
-        const formattedResults = results.map(result => {
-            // Truncate content if too long
-            let content = result.content;
-            if (content.length > 1000) {
-                content = content.substring(0, 997) + '...';
+        // Group results by file path for better organization
+        const fileGroups = new Map<string, SimilaritySearchResult[]>();
+
+        for (const result of results) {
+            const filePath = result.filePath;
+            if (!fileGroups.has(filePath)) {
+                fileGroups.set(filePath, []);
+            }
+            fileGroups.get(filePath)!.push(result);
+        }
+
+        // Format each file with all its relevant chunks
+        const formattedFiles: string[] = [];
+
+        // Sort file groups by best score in each group
+        const sortedFilePaths = [...fileGroups.entries()]
+            .sort((a, b) => {
+                const aMaxScore = Math.max(...a[1].map(r => r.score));
+                const bMaxScore = Math.max(...b[1].map(r => r.score));
+                return bMaxScore - aMaxScore;
+            })
+            .map(entry => entry[0]);
+
+        for (const filePath of sortedFilePaths) {
+            const fileResults = fileGroups.get(filePath)!;
+
+            // Sort chunks within the file by position if they're from the same file
+            fileResults.sort((a, b) => a.startOffset - b.startOffset);
+
+            // Calculate the maximum score for this file
+            const maxScore = Math.max(...fileResults.map(r => r.score));
+            const scoreDisplay = (maxScore * 100).toFixed(1);
+
+            // Format header with file path and best relevance score
+            const fileHeader = `### File: \`${filePath}\` (Relevance: ${scoreDisplay}%)`;
+
+            // Analyze if chunks are functions/classes or fragments
+            let isStructuredContent = false;
+            for (const result of fileResults) {
+                // Simple heuristic: If content contains a complete function or class definition
+                if (
+                    (result.content.includes('function') && result.content.includes('{') && result.content.includes('}')) ||
+                    (result.content.includes('class') && result.content.includes('{') && result.content.includes('}'))
+                ) {
+                    isStructuredContent = true;
+                    break;
+                }
+            }
+
+            // Add structured content indicator if applicable
+            const contentDescription = isStructuredContent ?
+                ' (Complete structures shown)' : '';
+
+            // Combine all chunks from the file, removing duplicated content
+            let combinedContent = '';
+            const seenContentHashCodes = new Set<number>();
+
+            for (const result of fileResults) {
+                // Simple content hash to avoid including identical code blocks
+                const contentHash = this.quickHash(result.content);
+
+                if (!seenContentHashCodes.has(contentHash)) {
+                    if (combinedContent) {
+                        combinedContent += '\n\n// ...\n\n';
+                    }
+                    combinedContent += result.content;
+                    seenContentHashCodes.add(contentHash);
+                }
+            }
+
+            // Truncate content if too long, being careful not to break code structures
+            if (combinedContent.length > 1500) {
+                // Try to find a good break point near the 1500 char mark
+                let breakPoint = 1500;
+                const safeBreakPoints = [
+                    combinedContent.lastIndexOf('}\n', 1500),
+                    combinedContent.lastIndexOf(';\n', 1500),
+                    combinedContent.lastIndexOf('\n\n', 1500)
+                ].filter(point => point > 0);
+
+                if (safeBreakPoints.length > 0) {
+                    breakPoint = Math.max(...safeBreakPoints) + 1;
+                }
+
+                combinedContent = combinedContent.substring(0, breakPoint) +
+                    '\n\n// ... [additional content truncated for brevity] ...';
             }
 
             // Format with markdown for better readability
-            return [
-                `### File: \`${result.filePath}\` (Relevance: ${(result.score * 100).toFixed(1)}%)`,
+            formattedFiles.push([
+                `${fileHeader}${contentDescription}`,
                 '```',
-                content,
+                combinedContent,
                 '```',
                 '' // Empty line for spacing
-            ].join('\n');
-        });
+            ].join('\n'));
+        }
+
+        // Create a summary of the context provided
+        const summary = [
+            `## Context Summary`,
+            `- ${results.length} relevant code snippets found across ${fileGroups.size} files`,
+            `- Includes complete code structures where possible`,
+            `- Files sorted by relevance to the changes`,
+            ``
+        ].join('\n');
 
         // Combine all formatted results
         return [
+            summary,
             '## Related Code Context',
-            ...formattedResults
+            ...formattedFiles
         ].join('\n\n');
+    }
+
+    /**
+     * Generate a simple hash for deduplication purposes
+     * @param content Content to hash
+     * @returns Simple hash value
+     */
+    private quickHash(content: string): number {
+        let hash = 0;
+        if (content.length === 0) return hash;
+
+        for (let i = 0; i < content.length; i++) {
+            const char = content.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+
+        return hash;
     }
 
     /**

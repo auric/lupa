@@ -154,15 +154,130 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             }
 
             // Find similar code using the vector database
-            return await this.vectorDb.findSimilarCode(
+            const initialResults = await this.vectorDb.findSimilarCode(
                 diffEmbedding,
                 this.embeddingModel,
                 options
             );
+
+            // Return empty results if nothing found
+            if (initialResults.length === 0) {
+                return [];
+            }
+
+            // Enhance results with complete code structures
+            const enhancedResults: SimilaritySearchResult[] = [];
+
+            // Process each result to get complete code structures where possible
+            for (const result of initialResults) {
+                try {
+                    // Try to find a complete structure containing this chunk
+                    const completeStructure = await this.vectorDb.getCompleteStructureForChunk(result.chunkId);
+
+                    if (completeStructure) {
+                        // Use the complete structure instead of the fragment
+                        enhancedResults.push({
+                            ...result,
+                            content: completeStructure.content,
+                            startOffset: completeStructure.startOffset,
+                            endOffset: completeStructure.endOffset,
+                            chunkId: completeStructure.id,
+                            // Preserve the original score but add a small boost for complete structures
+                            score: Math.min(1.0, result.score * 1.05)
+                        });
+                    } else {
+                        // If no complete structure found, try to get adjacent chunks
+                        const adjacentChunks = await this.vectorDb.getAdjacentChunks(result.chunkId);
+
+                        if (adjacentChunks.length > 0) {
+                            // Join the adjacent chunks into a larger context
+                            // Sort by start offset to ensure correct order
+                            const allChunks = [result, ...adjacentChunks.map(chunk => ({
+                                chunkId: chunk.id,
+                                fileId: chunk.fileId,
+                                filePath: result.filePath,
+                                content: chunk.content,
+                                startOffset: chunk.startOffset,
+                                endOffset: chunk.endOffset,
+                                score: result.score * 0.9 // Slightly lower score for adjacent chunks
+                            }))].sort((a, b) => a.startOffset - b.startOffset);
+
+                            // Combine chunks into a single context
+                            const combinedContent = allChunks.map(c => c.content).join('\n// ...\n');
+
+                            enhancedResults.push({
+                                ...result,
+                                content: combinedContent,
+                                startOffset: allChunks[0].startOffset,
+                                endOffset: allChunks[allChunks.length - 1].endOffset
+                            });
+                        } else {
+                            // No adjacent chunks, keep the original result
+                            enhancedResults.push(result);
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Error enhancing result for chunk ${result.chunkId}:`, error);
+                    // Include the original result if enhancement fails
+                    enhancedResults.push(result);
+                }
+            }
+
+            // Remove any duplicate content which might have been introduced
+            // through the structure completion process
+            const uniqueResults = this.removeDuplicateResults(enhancedResults);
+
+            // Resort by score since we might have adjusted scores during enhancement
+            return uniqueResults.sort((a, b) => b.score - a.score);
         } catch (error) {
             console.error('Error finding relevant code context:', error);
             return [];
         }
+    }
+
+    /**
+     * Remove duplicate results based on content overlap
+     * @param results Array of search results that might contain duplicates
+     * @returns Deduplicated results array
+     */
+    private removeDuplicateResults(results: SimilaritySearchResult[]): SimilaritySearchResult[] {
+        const unique: SimilaritySearchResult[] = [];
+        const seen = new Set<string>();
+
+        for (const result of results) {
+            // Create a key based on file path and content hash
+            const contentHash = this.quickHash(result.content);
+            const key = `${result.filePath}:${contentHash}`;
+
+            // Skip if we've already seen this content
+            if (seen.has(key)) {
+                continue;
+            }
+
+            // Otherwise, mark as seen and add to unique results
+            seen.add(key);
+            unique.push(result);
+        }
+
+        return unique;
+    }
+
+    /**
+     * Generate a simple hash for deduplication purposes
+     * @param content Content to hash
+     * @returns Simple hash value
+     */
+    private quickHash(content: string): number {
+        let hash = 0;
+        if (content.length === 0) return hash;
+
+        for (let i = 0; i < content.length; i++) {
+            const char = content.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+        }
+
+        return hash;
     }
 
     /**

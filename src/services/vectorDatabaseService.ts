@@ -653,6 +653,130 @@ export class VectorDatabaseService implements vscode.Disposable {
     }
 
     /**
+     * Get chunks that are adjacent to a given chunk
+     * @param chunkId ID of the chunk to find neighbors for
+     * @param window Number of adjacent chunks to fetch (before and after)
+     * @returns Array of adjacent chunk records
+     */
+    async getAdjacentChunks(chunkId: string, window: number = 2): Promise<ChunkRecord[]> {
+        await this.ensureInitialized();
+
+        // First, get the current chunk to find its position and file
+        const currentChunk = await this.get<{
+            id: string,
+            file_id: string,
+            start_offset: number,
+            end_offset: number
+        }>(
+            `SELECT id, file_id, start_offset, end_offset
+             FROM chunks
+             WHERE id = ?`,
+            [chunkId]
+        );
+
+        if (!currentChunk) {
+            return [];
+        }
+
+        // Get adjacent chunks from the same file
+        const adjacentChunks = await this.all<ChunkRecord>(
+            `SELECT id, file_id as fileId, content, start_offset as startOffset, end_offset as endOffset, token_count as tokenCount
+             FROM chunks
+             WHERE file_id = ?
+               AND id != ?
+               AND (
+                 -- Chunks that come before the target chunk
+                 (end_offset <= ? ORDER BY start_offset DESC LIMIT ?)
+                 OR
+                 -- Chunks that come after the target chunk
+                 (start_offset >= ? ORDER BY start_offset ASC LIMIT ?)
+               )
+             ORDER BY start_offset ASC`,
+            [
+                currentChunk.file_id,
+                chunkId,
+                currentChunk.start_offset, window,
+                currentChunk.end_offset, window
+            ]
+        );
+
+        return adjacentChunks;
+    }
+
+    /**
+     * Get complete function or class containing a chunk
+     * This attempts to find a chunk that contains a complete code structure
+     * @param chunkId ID of the chunk that might be part of a larger structure
+     * @returns A complete structure chunk if found, or null if not
+     */
+    async getCompleteStructureForChunk(chunkId: string): Promise<ChunkRecord | null> {
+        await this.ensureInitialized();
+
+        // First, get the current chunk to find its file
+        const currentChunk = await this.get<{
+            id: string,
+            file_id: string,
+            content: string,
+            start_offset: number,
+            end_offset: number
+        }>(
+            `SELECT id, file_id, content, start_offset, end_offset
+             FROM chunks
+             WHERE id = ?`,
+            [chunkId]
+        );
+
+        if (!currentChunk) {
+            return null;
+        }
+
+        // Look for chunks that fully contain this chunk
+        // This might be a larger chunk that contains a complete function/class
+        const containerChunks = await this.all<ChunkRecord>(
+            `SELECT id, file_id as fileId, content, start_offset as startOffset, end_offset as endOffset, token_count as tokenCount
+             FROM chunks
+             WHERE file_id = ?
+               AND id != ?
+               AND start_offset <= ?
+               AND end_offset >= ?
+             ORDER BY (end_offset - start_offset) ASC
+             LIMIT 1`,
+            [
+                currentChunk.file_id,
+                chunkId,
+                currentChunk.start_offset,
+                currentChunk.end_offset
+            ]
+        );
+
+        if (containerChunks.length > 0) {
+            return containerChunks[0];
+        }
+
+        // If we don't find a container chunk, try to detect if this chunk starts/ends
+        // with incomplete structures like partial brackets
+        const content = currentChunk.content;
+
+        // Simple heuristic: check opening/closing brace balance
+        const openBraces = (content.match(/{/g) || []).length;
+        const closeBraces = (content.match(/}/g) || []).length;
+
+        // If balanced, this might be a complete structure already
+        if (openBraces === closeBraces) {
+            return {
+                id: currentChunk.id,
+                fileId: currentChunk.file_id,
+                content: currentChunk.content,
+                startOffset: currentChunk.start_offset,
+                endOffset: currentChunk.end_offset,
+                tokenCount: undefined
+            };
+        }
+
+        return null;
+    }
+
+    /**
      * Delete chunks and embeddings for a file
      * @param fileId ID of the file
      */
@@ -793,6 +917,7 @@ export class VectorDatabaseService implements vscode.Disposable {
             '.ts': 'typescript',
             '.tsx': 'typescript',
             '.py': 'python',
+            '.pyw': 'python',
             '.java': 'java',
             '.c': 'c',
             '.cpp': 'cpp',
@@ -811,7 +936,8 @@ export class VectorDatabaseService implements vscode.Disposable {
             '.bat': 'batch',
             '.ps1': 'powershell',
             '.yaml': 'yaml',
-            '.yml': 'yaml'
+            '.yml': 'yaml',
+            '.rs': 'rust'
         };
 
         return extensionMap[extension] || 'unknown';
