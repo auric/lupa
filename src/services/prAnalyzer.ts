@@ -13,6 +13,7 @@ import { GitService } from './gitService';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
 import { AnalysisMode } from '../types/modelTypes';
 import { CopilotModelManager } from '../models/copilotModelManager';
+import { TokenManagerService } from './tokenManagerService';
 
 /**
  * PRAnalyzer handles the main functionality of analyzing pull requests
@@ -72,7 +73,7 @@ export class PRAnalyzer implements vscode.Disposable {
         );
 
         // Initialize the context provider
-        this.contextProvider = ContextProvider.getInstance(this.embeddingDatabaseAdapter);
+        this.contextProvider = ContextProvider.createSingleton(this.embeddingDatabaseAdapter, this.modelManager);
 
         // Get the status bar service
         this.statusBarService = StatusBarService.getInstance();
@@ -168,7 +169,7 @@ export class PRAnalyzer implements vscode.Disposable {
             );
 
             // Recreate the context provider with the updated adapter
-            this.contextProvider = ContextProvider.getInstance(this.embeddingDatabaseAdapter);
+            this.contextProvider = ContextProvider.createSingleton(this.embeddingDatabaseAdapter, this.modelManager);
         }
     }
 
@@ -262,74 +263,35 @@ export class PRAnalyzer implements vscode.Disposable {
 
             // Create quickpick options for model families
             const options = [
-                { label: 'Auto (best available)', description: 'Automatically select the best available model' },
-                ...families.map(family => ({
-                    label: family,
-                    description: `Select a specific version of ${family}`
+                ...models.map(model => ({
+                    label: `${model.name}`,
+                    description: model.version
                 }))
             ];
 
             // Ask user to select model family
-            const selectedFamilyOption = await vscode.window.showQuickPick(options, {
-                placeHolder: 'Select language model family',
+            const selectedModelOption = await vscode.window.showQuickPick(options, {
+                placeHolder: 'Select language model',
                 matchOnDescription: true
             });
 
-            if (!selectedFamilyOption) {
+            if (!selectedModelOption) {
                 return;
             }
 
-            if (selectedFamilyOption.label === 'Auto (best available)') {
-                // Clear saved preferences if "Auto" is selected
-                this.workspaceSettingsService.setPreferredModelFamily(undefined);
-                this.workspaceSettingsService.setPreferredModelVersion(undefined);
-                vscode.window.showInformationMessage('Language model preference set to automatic selection.');
-                return;
-            }
-
-            const selectedFamily = selectedFamilyOption.label;
-
-            // Get versions for the selected family
-            const versionsForFamily = models
-                .filter(m => m.family === selectedFamily)
-                .map(m => m.version)
-                .filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
-
-            // Add "Any version" option
-            const versionOptions = [
-                { label: 'Any version', description: `Use any available version of ${selectedFamily}` },
-                ...versionsForFamily.map(version => ({
-                    label: version,
-                    description: `Use ${selectedFamily} ${version}`
-                }))
-            ];
-
-            // Ask user to select version
-            const selectedVersionOption = await vscode.window.showQuickPick(versionOptions, {
-                placeHolder: `Select version for ${selectedFamily}`,
-                matchOnDescription: true
-            });
-
-            if (!selectedVersionOption) {
-                return;
-            }
+            const selectedModel = models.find(m => {
+                return m.name === selectedModelOption.label;
+            })!;
 
             // Save selected model preferences
-            this.workspaceSettingsService.setPreferredModelFamily(selectedFamily);
-
-            if (selectedVersionOption.label !== 'Any version') {
-                this.workspaceSettingsService.setPreferredModelVersion(selectedVersionOption.label);
-                vscode.window.showInformationMessage(`Language model set to ${selectedFamily} ${selectedVersionOption.label}`);
-            } else {
-                // Clear version preference if "Any version" is selected
-                this.workspaceSettingsService.setPreferredModelVersion(undefined);
-                vscode.window.showInformationMessage(`Language model set to ${selectedFamily} (any version)`);
-            }
+            this.workspaceSettingsService.setPreferredModelFamily(selectedModel.family);
+            this.workspaceSettingsService.setPreferredModelVersion(selectedModel.version);
+            vscode.window.showInformationMessage(`Language model set to ${selectedModel.name} (version: ${selectedModel.version})`);
 
             // Try to select the model to verify it's available
             await this.modelManager.selectModel({
-                family: selectedFamily,
-                version: selectedVersionOption.label !== 'Any version' ? selectedVersionOption.label : undefined
+                family: selectedModel.family,
+                version: selectedModel.version
             });
 
         } catch (error) {
@@ -848,17 +810,49 @@ export class PRAnalyzer implements vscode.Disposable {
      */
     private async analyzeWithLanguageModel(diffText: string, context: string, mode: AnalysisMode): Promise<string> {
         try {
+            // Get current model
             const model = await this.modelManager.getCurrentModel();
 
             // Prepare system prompt
-            const systemPrompt = 'SYSTEM PROMPT BEGIN' +
-                '\n' + this.getSystemPromptForMode(mode) +
-                '\n' + 'SYSTEM PROMPT END';
+            const systemPrompt = this.getSystemPromptForMode(mode);
 
-            // Prepare user message
-            const userMessage = `Analyze the following pull request changes with the provided context:\n\n${diffText}\n\nContext:\n${context}`;
+            // Create TokenManagerService for optimizing token usage
+            const tokenManager = new TokenManagerService(this.modelManager);
 
-            // Create messages for the model
+            // Calculate token allocation for all components
+            const tokenComponents = {
+                systemPrompt,
+                diffText,
+                context
+            };
+
+            const allocation = await tokenManager.calculateTokenAllocation(tokenComponents, mode);
+
+            console.log(`Token allocation: ${JSON.stringify({
+                systemPrompt: allocation.systemPromptTokens,
+                diff: allocation.diffTextTokens,
+                context: allocation.contextTokens,
+                available: allocation.totalAvailableTokens,
+                total: allocation.totalRequiredTokens,
+                contextAllocation: allocation.contextAllocationTokens,
+                fits: allocation.fitsWithinLimit
+            })}`);
+
+            // Check if we need to optimize the context
+            let optimizedContext = context;
+            if (!allocation.fitsWithinLimit) {
+                console.log(`Total tokens (${allocation.totalRequiredTokens}) exceed limit (${allocation.totalAvailableTokens})`);
+                console.log(`Context can use up to ${allocation.contextAllocationTokens} tokens`);
+
+                // Optimize the context to fit within the available token allocation
+                optimizedContext = await tokenManager.optimizeContext(context, allocation.contextAllocationTokens);
+                console.log('Context optimized to fit within token limit');
+            }
+
+            // Prepare user message with optimized context
+            const userMessage = `Analyze the following pull request changes with the provided context:\n\n${diffText}\n\nContext:\n${optimizedContext}`;
+
+            // Create messages for the model using a standard approach (system message in user content)
             const messages = [
                 vscode.LanguageModelChatMessage.User(systemPrompt + '\n' + userMessage)
             ];

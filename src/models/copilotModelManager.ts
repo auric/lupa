@@ -40,7 +40,7 @@ export class CopilotModelManager {
     /**
      * Create a new model manager
      */
-    constructor(private readonly workspaceSettingsService?: WorkspaceSettingsService) {
+    constructor(private readonly workspaceSettingsService: WorkspaceSettingsService) {
         // Watch for model changes
         vscode.lm.onDidChangeChatModels(() => {
             // Clear cache when available models change
@@ -152,118 +152,6 @@ export class CopilotModelManager {
     }
 
     /**
-     * Select a model with specific thinking capabilities (Claude Sonnet 3.7)
-     * This is useful for complex reasoning tasks
-     */
-    async selectModelWithThinking(): Promise<vscode.LanguageModelChat> {
-        try {
-            // Try Claude Sonnet 3.7 first, which is known for thinking capabilities
-            const claudeModels = await vscode.lm.selectChatModels({
-                vendor: 'copilot',
-                family: 'claude-3-sonnet',
-                version: '3.7'
-            });
-
-            if (claudeModels.length === 0) {
-                // Try Claude-3-Sonnet without specific version
-                const claudeGenericModels = await vscode.lm.selectChatModels({
-                    vendor: 'copilot',
-                    family: 'claude-3-sonnet'
-                });
-
-                if (claudeGenericModels.length > 0) {
-                    this.currentModel = claudeGenericModels[0];
-                    return claudeGenericModels[0];
-                }
-
-                // Try GPT-4o if Claude is not available
-                const gpt4Models = await vscode.lm.selectChatModels({
-                    vendor: 'copilot',
-                    family: 'gpt-4o'
-                });
-
-                if (gpt4Models.length > 0) {
-                    this.currentModel = gpt4Models[0];
-                    return gpt4Models[0];
-                }
-
-                // If both failed, use fallback
-                console.log('Neither Claude Sonnet nor GPT-4o models are available');
-                return this.selectFallbackModel();
-            }
-
-            this.currentModel = claudeModels[0];
-            return claudeModels[0];
-        } catch (err) {
-            console.error('Failed to select model with thinking capabilities:', err);
-            return this.selectFallbackModel();
-        }
-    }
-
-    /**
-     * Select a model by task compatibility requirements
-     */
-    async selectModelForTask(compatibility: TaskCompatibility): Promise<vscode.LanguageModelChat> {
-        try {
-            // Start with a basic selection criteria
-            const selector: any = {
-                vendor: 'copilot'
-            };
-
-            // Get all models
-            const allModels = await vscode.lm.selectChatModels(selector);
-
-            if (allModels.length === 0) {
-                throw new Error('No models available');
-            }
-
-            // Filter models based on compatibility requirements
-            let compatibleModels = allModels;
-
-            if (compatibility.minTokenLimit) {
-                compatibleModels = compatibleModels.filter(model =>
-                    model.maxInputTokens >= compatibility.minTokenLimit!
-                );
-            }
-
-            // Add additional filters for thinking capabilities if needed
-            if (compatibility.requiresThinking) {
-                // Prefer Claude models which are better at thinking
-                const claudeModels = compatibleModels.filter(model =>
-                    model.family.toLowerCase().includes('claude')
-                );
-
-                if (claudeModels.length > 0) {
-                    // Use the Claude model with the highest token limit
-                    const bestModel = claudeModels.reduce((best, current) =>
-                        current.maxInputTokens > best.maxInputTokens ? current : best
-                        , claudeModels[0]);
-
-                    this.currentModel = bestModel;
-                    return bestModel;
-                }
-            }
-
-            // If we have compatible models after filtering
-            if (compatibleModels.length > 0) {
-                // Select the model with the highest token limit
-                const bestModel = compatibleModels.reduce((best, current) =>
-                    current.maxInputTokens > best.maxInputTokens ? current : best
-                    , compatibleModels[0]);
-
-                this.currentModel = bestModel;
-                return bestModel;
-            }
-
-            // If no models meet the specific requirements, try a less strict selection
-            return this.selectFallbackModel();
-        } catch (err) {
-            console.error('Failed to select model for task:', err);
-            return this.selectFallbackModel();
-        }
-    }
-
-    /**
      * Select a generic fallback model
      * This method tries to select any available model
      */
@@ -281,61 +169,6 @@ export class CopilotModelManager {
         } catch (err) {
             console.error('Failed to select any model:', err);
             throw new Error('No language models available');
-        }
-    }
-
-    /**
-     * Parse and provide information about a model's capabilities
-     */
-    getModelCapabilities(model: vscode.LanguageModelChat): {
-        maxTokens: number;
-        supportsThinking: boolean;
-        modelTier: 'basic' | 'advanced' | 'premium';
-    } {
-        // Get the max token limit
-        const maxTokens = model.maxInputTokens;
-
-        // Check if model supports "thinking" (currently assumes Claude models do)
-        const supportsThinking = model.family.toLowerCase().includes('claude');
-
-        // Determine the model tier based on family and token limit
-        let modelTier: 'basic' | 'advanced' | 'premium' = 'basic';
-
-        if (
-            model.family.toLowerCase().includes('claude-3-sonnet') ||
-            model.family.toLowerCase().includes('gpt-4o') ||
-            model.family.toLowerCase().includes('o1')
-        ) {
-            modelTier = 'premium';
-        } else if (
-            model.family.toLowerCase().includes('claude') ||
-            model.family.toLowerCase().includes('gpt-4') ||
-            maxTokens > 16000
-        ) {
-            modelTier = 'advanced';
-        }
-
-        return {
-            maxTokens,
-            supportsThinking,
-            modelTier
-        };
-    }
-
-    /**
-     * Check if a particular model family is available
-     */
-    async isModelFamilyAvailable(family: string): Promise<boolean> {
-        try {
-            const models = await vscode.lm.selectChatModels({
-                vendor: 'copilot',
-                family
-            });
-
-            return models.length > 0;
-        } catch (error) {
-            console.error(`Error checking availability of ${family}:`, error);
-            return false;
         }
     }
 

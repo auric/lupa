@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { encoding_for_model as tiktokenCountTokens, TiktokenModel } from 'tiktoken';
+import { countTokens as anthropicCountTokens } from '@anthropic-ai/tokenizer';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import {
     SUPPORTED_LANGUAGES
@@ -10,6 +12,100 @@ import {
     SimilaritySearchOptions,
     SimilaritySearchResult
 } from '../types/embeddingTypes';
+import { CopilotModelManager } from '../models/copilotModelManager';
+import { TokenManagerService } from './tokenManagerService';
+
+/**
+ * Token estimation functions for different model families
+ */
+export class TokenEstimator {
+    // OpenAI models use tiktoken (cl100k_base for GPT-4, etc.)
+    static estimateOpenAITokens(text: string, modelName: string = 'gpt-4'): number {
+        try {
+            try {
+                const encoding = tiktokenCountTokens(modelName as TiktokenModel);
+                const tokens = encoding.encode(text);
+                const tokenCount = tokens.length;
+
+                // Free the encoding when done
+                if (typeof encoding.free === 'function') {
+                    encoding.free();
+                }
+
+                return tokenCount;
+            } catch (error) {
+                console.warn(`Error using tiktoken for ${modelName} token calculation:`, error);
+                // Fallback to approximation
+            }
+
+            // Character-based approximation for OpenAI models
+            return Math.ceil(text.length / 4);
+        } catch (error) {
+            console.error('Error in OpenAI token estimation:', error);
+            // Safe fallback
+            return Math.ceil(text.length / 3.5);
+        }
+    }
+
+    // Anthropic Claude models use their own tokenizer
+    static estimateClaudeTokens(text: string): number {
+        try {
+            try {
+                const tokens = anthropicCountTokens(text);
+                return tokens;
+            } catch (error) {
+                console.warn('Error using Anthropic tokenizer:', error);
+                // Fallback to approximation
+            }
+
+            // Character-based approximation for Claude models
+            return Math.ceil(text.length / 5);
+        } catch (error) {
+            console.error('Error in Claude token estimation:', error);
+            // Safe fallback
+            return Math.ceil(text.length / 4);
+        }
+    }
+
+    // Google Gemini models use SentencePiece tokenizer
+    static estimateGeminiTokens(text: string): number {
+        try {
+            // Need API key for this, use fallback
+            // Character-based approximation for Gemini models
+            return Math.ceil(text.length / 4.5);
+        } catch (error) {
+            console.error('Error in Gemini token estimation:', error);
+            // Safe fallback
+            return Math.ceil(text.length / 4);
+        }
+    }
+
+    // Code is typically more token-dense than natural language
+    static estimateCodeTokens(text: string): number {
+        return Math.ceil(text.length / 3.5);
+    }
+
+    // Fallback estimator when model family is unknown
+    static estimateGenericTokens(text: string): number {
+        return Math.ceil(text.length / 3.5);
+    }
+
+    // Select the appropriate estimator based on model family
+    static estimateTokensByModelFamily(text: string, modelFamily: string, modelName: string = ''): number {
+        const lowerFamily = modelFamily.toLowerCase();
+
+        if (lowerFamily.includes('gpt') || lowerFamily.includes('openai')) {
+            return this.estimateOpenAITokens(text, modelName || 'gpt-4o');
+        } else if (lowerFamily.includes('claude') || lowerFamily.includes('anthropic')) {
+            return this.estimateClaudeTokens(text);
+        } else if (lowerFamily.includes('gemini') || lowerFamily.includes('google')) {
+            return this.estimateGeminiTokens(text);
+        } else {
+            // For unknown models, use the generic estimator
+            return this.estimateGenericTokens(text);
+        }
+    }
+}
 
 /**
  * ContextProvider is responsible for retrieving relevant code context
@@ -18,24 +114,31 @@ import {
 export class ContextProvider implements vscode.Disposable {
     private static instance: ContextProvider | null = null;
     private readonly MAX_CONTENT_LENGTH = 800000; // Characters limit to avoid excessive token use
-    private readonly DEFAULT_TOKEN_LIMIT = 16000; // Default token limit for most LLM models
 
-    // Different context sizes based on analysis mode
-    private readonly CONTEXT_LIMITS = {
-        critical: 12000,
-        comprehensive: 16000,
-        security: 14000,
-        performance: 14000
-    };
+    private readonly modelManager: CopilotModelManager;
+    private readonly tokenManager: TokenManagerService;
 
     /**
      * Get singleton instance of ContextProvider
      */
-    public static getInstance(
-        embeddingDatabaseAdapter: EmbeddingDatabaseAdapter
-    ): ContextProvider {
+    public static getInstance(): ContextProvider {
         if (!this.instance) {
-            this.instance = new ContextProvider(embeddingDatabaseAdapter);
+            throw new Error('ContextProvider has not been initialized. Use createSingleton() instead.');
+        }
+        return this.instance;
+    }
+
+    /**
+     * Create a singleton instance (alias for getInstance with more clear name)
+     */
+    public static createSingleton(
+        embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
+        modelManager: CopilotModelManager
+    ): ContextProvider {
+        if (!this.instance ||
+            this.instance.embeddingDatabaseAdapter !== embeddingDatabaseAdapter ||
+            this.instance.modelManager !== modelManager) {
+            this.instance = new ContextProvider(embeddingDatabaseAdapter, modelManager);
         }
         return this.instance;
     }
@@ -44,8 +147,15 @@ export class ContextProvider implements vscode.Disposable {
      * Private constructor (use getInstance)
      */
     private constructor(
-        private readonly embeddingDatabaseAdapter: EmbeddingDatabaseAdapter
-    ) { }
+        private readonly embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
+        modelManager: CopilotModelManager
+    ) {
+        // Initialize the model manager if provided, otherwise create a new one
+        this.modelManager = modelManager;
+
+        // Initialize the token manager
+        this.tokenManager = new TokenManagerService(this.modelManager);
+    }
 
     /**
      * Extract meaningful code chunks from PR diff
@@ -103,12 +213,14 @@ export class ContextProvider implements vscode.Disposable {
      * @param diff The PR diff
      * @param options Optional search options
      * @param analysisMode Analysis mode that determines relevance strategy
+     * @param systemPrompt Optional system prompt
      * @returns The formatted context
      */
     async getContextForDiff(
         diff: string,
         options?: SimilaritySearchOptions,
-        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
+        analysisMode: AnalysisMode = AnalysisMode.Comprehensive,
+        systemPrompt?: string
     ): Promise<string> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
 
@@ -147,17 +259,57 @@ export class ContextProvider implements vscode.Disposable {
 
             console.log(`Found ${rankedResults.length} relevant code snippets after ranking`);
 
-            // Check if the total content exceeds token limits and optimize if needed
-            const optimizedResults = await this.optimizeForTokenLimit(rankedResults, analysisMode);
+            // Format the results first to get the initial context
+            const initialFormattedContext = this.formatContextResults(rankedResults);
 
-            // Format the results
-            const formattedContext = this.formatContextResults(optimizedResults);
+            // Use the TokenManagerService to optimize context size taking all components into account
+            // If systemPrompt is not provided, get it from the mode
+            if (!systemPrompt) {
+                // Get the system prompt for the current analysis mode from the token manager
+                systemPrompt = await this.tokenManager.getSystemPromptForMode(analysisMode);
+            }
+
+            // Calculate token allocation for all components
+            const tokenComponents = {
+                systemPrompt,
+                diffText: diff,
+                context: initialFormattedContext
+            };
+
+            const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, analysisMode);
+
+            // Log token distribution
+            console.log(`Token allocation: ${JSON.stringify({
+                systemPrompt: allocation.systemPromptTokens,
+                diff: allocation.diffTextTokens,
+                context: allocation.contextTokens,
+                available: allocation.totalAvailableTokens,
+                total: allocation.totalRequiredTokens,
+                contextAllocation: allocation.contextAllocationTokens,
+                fits: allocation.fitsWithinLimit
+            })}`);
+
+            // If everything fits, we can use the full context
+            if (allocation.fitsWithinLimit) {
+                console.log('All components fit within token limit, using full context');
+                return initialFormattedContext;
+            }
+
+            // If we need to optimize, use the token manager to do it
+            console.log(`Total tokens (${allocation.totalRequiredTokens}) exceed limit (${allocation.totalAvailableTokens})`);
+            console.log(`Context can use up to ${allocation.contextAllocationTokens} tokens`);
+
+            // Optimize the context to fit within the available token allocation
+            const optimizedContext = await this.tokenManager.optimizeContext(
+                initialFormattedContext,
+                allocation.contextAllocationTokens
+            );
 
             // Assess the quality of the context
-            const qualityScore = this.assessContextQuality(optimizedResults);
+            const qualityScore = this.assessContextQuality(rankedResults);
             console.log(`Context quality score: ${qualityScore.toFixed(2)}`);
 
-            return formattedContext;
+            return optimizedContext;
         } catch (error) {
             console.error('Error getting context for diff:', error);
             return 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error));
@@ -285,52 +437,121 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
-     * Optimize the context to stay within token limits based on the analysis mode
+     * Optimize the context to stay within token limits based on the current model being used
      */
     private async optimizeForTokenLimit(
         results: SimilaritySearchResult[],
         mode: AnalysisMode
     ): Promise<SimilaritySearchResult[]> {
-        // Get the token limit for this mode
-        const tokenLimit = this.CONTEXT_LIMITS[mode] || this.DEFAULT_TOKEN_LIMIT;
+        try {
+            // Get information about the current model to determine token calculation strategy
+            const currentModel = await this.modelManager.getCurrentModel();
+            const modelFamily = currentModel.family || 'unknown';
 
-        // Estimate total tokens (this is a simplification - actual tokens depend on the tokenizer)
-        // Estimate about 4 chars per token for code on average
-        const totalCharacters = results.reduce((sum, result) =>
-            sum + result.content.length + result.filePath.length + 50, 0);
+            // Use the actual model token limit, with a safety margin of 20%
+            // This leaves room for the model prompt and other content
+            const tokenLimit = currentModel ? Math.floor(currentModel.maxInputTokens * 0.8) : 8000;
 
-        const estimatedTokens = Math.ceil(totalCharacters / 4);
+            console.log(`Using token limit of ${tokenLimit} for model ${currentModel.name || 'unknown'}`);
 
-        if (estimatedTokens <= tokenLimit) {
-            return results; // Already within limits
-        }
+            // Calculate total tokens based on the model family
+            const calculateTotalTokens = (results: SimilaritySearchResult[]): number => {
+                let totalTokens = 0;
 
-        console.log(`Context exceeds estimated token limit (${estimatedTokens} > ${tokenLimit}), optimizing...`);
+                for (const result of results) {
+                    // Calculate tokens for both the file path and content
+                    const pathTokens = TokenEstimator.estimateTokensByModelFamily(
+                        result.filePath,
+                        modelFamily,
+                        currentModel.name
+                    );
+                    const contentTokens = TokenEstimator.estimateTokensByModelFamily(
+                        result.content,
+                        modelFamily,
+                        currentModel.name
+                    );
 
-        // Simple scaling approach
-        const scaleFactor = tokenLimit / estimatedTokens;
-        const maxResultsToKeep = Math.max(5, Math.floor(results.length * scaleFactor));
+                    // Add tokens for markdown formatting (approximately 10 tokens per result)
+                    totalTokens += pathTokens + contentTokens + 10;
+                }
 
-        // Keep top results based on score
-        const optimizedResults = results.slice(0, maxResultsToKeep);
+                return totalTokens;
+            };
 
-        // For remaining results, truncate content if necessary
-        const contentScaleFactor = maxResultsToKeep === results.length ? scaleFactor : 1;
+            // Calculate total tokens
+            const estimatedTokens = calculateTotalTokens(results);
 
-        return optimizedResults.map(result => {
-            if (contentScaleFactor < 1) {
-                // Truncate content to fit within limits
-                const maxContentLength = Math.floor(result.content.length * contentScaleFactor);
-                const truncatedContent = result.content.substring(0, maxContentLength);
-                return {
-                    ...result,
-                    content: truncatedContent.length < result.content.length
-                        ? truncatedContent + '\n// ... [content truncated] ...'
-                        : truncatedContent
-                };
+            // Check if we're within limits
+            if (estimatedTokens <= tokenLimit) {
+                return results; // Already within limits
             }
-            return result;
-        });
+
+            console.log(`Context exceeds estimated token limit for ${modelFamily} model (${estimatedTokens} > ${tokenLimit}), optimizing...`);
+
+            // Calculate how much we need to reduce content
+            const scaleFactor = tokenLimit / estimatedTokens;
+            const maxResultsToKeep = Math.max(5, Math.floor(results.length * scaleFactor));
+
+            // Sort by relevance (highest score first) and take the top results
+            const optimizedResults = [...results]
+                .sort((a, b) => b.score - a.score)
+                .slice(0, maxResultsToKeep);
+
+            // Check if we still need to truncate content
+            const optimizedTokens = calculateTotalTokens(optimizedResults);
+            if (optimizedTokens > tokenLimit) {
+                // Further truncation needed
+                const contentScaleFactor = tokenLimit / optimizedTokens;
+
+                return optimizedResults.map(result => {
+                    // Calculate max allowed tokens for this result's content
+                    const currentContentTokens = TokenEstimator.estimateTokensByModelFamily(
+                        result.content,
+                        modelFamily,
+                        currentModel?.name
+                    );
+                    const allowedContentTokens = Math.floor(currentContentTokens * contentScaleFactor);
+
+                    // Estimate number of characters per token for this model family
+                    let charsPerToken = 4; // Default estimate
+                    if (modelFamily.toLowerCase().includes('claude')) {
+                        charsPerToken = 5;
+                    } else if (modelFamily.toLowerCase().includes('gemini')) {
+                        charsPerToken = 4.5;
+                    }
+
+                    // Calculate max character length
+                    const maxContentLength = Math.max(100, allowedContentTokens * charsPerToken);
+
+                    // Truncate if needed
+                    if (result.content.length > maxContentLength) {
+                        const truncatedContent = result.content.substring(0, maxContentLength);
+                        return {
+                            ...result,
+                            content: truncatedContent + '\n// ... [content truncated to fit token limit] ...'
+                        };
+                    }
+                    return result;
+                });
+            }
+
+            return optimizedResults;
+        } catch (error) {
+            console.error('Error optimizing for token limit:', error);
+
+            // Fallback: return top 5 results with truncated content if error occurs
+            const topResults = [...results].sort((a, b) => b.score - a.score).slice(0, 5);
+
+            return topResults.map(result => {
+                if (result.content.length > 500) {
+                    return {
+                        ...result,
+                        content: result.content.substring(0, 500) + '\n// ... [content truncated] ...'
+                    };
+                }
+                return result;
+            });
+        }
     }
 
     /**
