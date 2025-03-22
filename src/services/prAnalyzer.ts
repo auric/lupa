@@ -73,7 +73,8 @@ export class PRAnalyzer implements vscode.Disposable {
         );
 
         // Initialize the context provider
-        this.contextProvider = ContextProvider.createSingleton(this.embeddingDatabaseAdapter, this.modelManager);
+        this.contextProvider = ContextProvider.createSingleton(
+            this.context, this.embeddingDatabaseAdapter, this.modelManager);
 
         // Get the status bar service
         this.statusBarService = StatusBarService.getInstance();
@@ -169,7 +170,8 @@ export class PRAnalyzer implements vscode.Disposable {
             );
 
             // Recreate the context provider with the updated adapter
-            this.contextProvider = ContextProvider.createSingleton(this.embeddingDatabaseAdapter, this.modelManager);
+            this.contextProvider = ContextProvider.createSingleton(
+                this.context, this.embeddingDatabaseAdapter, this.modelManager);
         }
     }
 

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { encoding_for_model as tiktokenCountTokens, TiktokenModel } from 'tiktoken';
 import { countTokens as anthropicCountTokens } from '@anthropic-ai/tokenizer';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
+import { TreeStructureAnalyzer } from './treeStructureAnalyzer';
 import {
     SUPPORTED_LANGUAGES
 } from '../types/types';
@@ -132,13 +133,14 @@ export class ContextProvider implements vscode.Disposable {
      * Create a singleton instance (alias for getInstance with more clear name)
      */
     public static createSingleton(
+        context: vscode.ExtensionContext,
         embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
         modelManager: CopilotModelManager
     ): ContextProvider {
         if (!this.instance ||
             this.instance.embeddingDatabaseAdapter !== embeddingDatabaseAdapter ||
             this.instance.modelManager !== modelManager) {
-            this.instance = new ContextProvider(embeddingDatabaseAdapter, modelManager);
+            this.instance = new ContextProvider(context, embeddingDatabaseAdapter, modelManager);
         }
         return this.instance;
     }
@@ -147,6 +149,7 @@ export class ContextProvider implements vscode.Disposable {
      * Private constructor (use getInstance)
      */
     private constructor(
+        private readonly context: vscode.ExtensionContext,
         private readonly embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
         modelManager: CopilotModelManager
     ) {
@@ -162,50 +165,105 @@ export class ContextProvider implements vscode.Disposable {
      * @param diff PR diff content
      * @returns Extracted code chunks for similarity search
      */
-    private extractMeaningfulChunks(diff: string): string[] {
+    private async extractMeaningfulChunks(diff: string): Promise<string[]> {
         const chunks: string[] = [];
+        const analyzer = TreeStructureAnalyzer.getInstance(this.context.extensionPath);
 
         // Split the diff into files
         const fileRegex = /^diff --git a\/(.+) b\/(.+)[\r\n]+(?:.+[\r\n]+)*?(?:@@.+@@)/gm;
         let fileMatch;
-        const matches: { index: number, length: number, filePath: string }[] = [];
+        const matches: { index: number, length: number, filePath: string, newContent: string }[] = [];
 
         // Find all file sections in the diff
         while ((fileMatch = fileRegex.exec(diff)) !== null) {
-            matches.push({
-                index: fileMatch.index,
-                length: fileMatch[0].length,
-                filePath: fileMatch[2] // Using the 'b/' path (new file path)
-            });
-        }
+            const filePath = fileMatch[2]; // Using the 'b/' path (new file path)
+            const start = fileMatch.index + fileMatch[0].length;
+            const end = diff.indexOf('\ndiff --git', start);
+            const fileContent = diff.substring(start, end !== -1 ? end : diff.length);
 
-        // Extract content for each file section
-        for (let i = 0; i < matches.length; i++) {
-            const start = matches[i].index + matches[i].length;
-            const end = i < matches.length - 1 ? matches[i].index : diff.length;
-            const fileContent = diff.substring(start, end);
-
-            // Extract added lines (starting with '+' but not '+++')
-            const addedLines = fileContent
+            // Extract and process added/modified code
+            const newContent = fileContent
                 .split('\n')
                 .filter(line => line.startsWith('+') && !line.startsWith('+++'))
                 .map(line => line.substring(1)) // Remove the '+' prefix
                 .join('\n');
 
-            if (addedLines.trim().length > 0) {
-                chunks.push(addedLines);
+            if (newContent.trim().length > 0) {
+                matches.push({
+                    index: fileMatch.index,
+                    length: fileMatch[0].length,
+                    filePath,
+                    newContent
+                });
             }
-
-            // Also use the file path as a chunk to find related files
-            chunks.push(matches[i].filePath);
         }
 
-        // If we couldn't extract meaningful chunks, use the whole diff
+        // Process each file's changes with structure awareness
+        for (const match of matches) {
+            try {
+                // Detect the language from the file extension
+                const fileExt = match.filePath.split('.').pop()?.toLowerCase();
+                const language = fileExt ? SUPPORTED_LANGUAGES[fileExt]?.language : undefined;
+
+                if (language && match.newContent.trim()) {
+                    // Try to analyze the code structure
+                    const functions = await analyzer.findFunctions(match.newContent, language);
+                    const classes = await analyzer.findClasses(match.newContent, language);
+
+                    // Add complete function/class definitions as chunks
+                    for (const func of functions) {
+                        if (func.text.trim()) {
+                            chunks.push(func.text);
+                        }
+                    }
+
+                    for (const cls of classes) {
+                        if (cls.text.trim()) {
+                            chunks.push(cls.text);
+                        }
+                    }
+
+                    // If no structures found, add the modified code as is
+                    if (functions.length === 0 && classes.length === 0) {
+                        chunks.push(match.newContent);
+                    }
+                } else {
+                    // For unsupported languages or non-code files, add content as is
+                    chunks.push(match.newContent);
+                }
+
+                // Always add the file path as a chunk to find related files
+                chunks.push(match.filePath);
+
+                // Try to find parent structures (e.g., containing class/namespace)
+                if (language) {
+                    const hierarchy = await analyzer.getStructureHierarchyAtPosition(
+                        match.newContent,
+                        language,
+                        { row: 0, column: 0 }
+                    );
+
+                    // Add parent structures as chunks for better context
+                    for (const struct of hierarchy) {
+                        if (struct.text.trim() && !chunks.includes(struct.text)) {
+                            chunks.push(struct.text);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn(`Error analyzing structure for ${match.filePath}:`, error);
+                // Fallback: add the content without structure analysis
+                chunks.push(match.newContent);
+            }
+        }
+
+        // If we couldn't extract any meaningful chunks, use the whole diff
         if (chunks.length === 0) {
             chunks.push(diff);
         }
 
-        return chunks;
+        // Deduplicate chunks while preserving order
+        return [...new Set(chunks)];
     }
 
     /**
@@ -226,7 +284,7 @@ export class ContextProvider implements vscode.Disposable {
 
         try {
             // Extract meaningful chunks from the diff for better semantic search
-            const chunks = this.extractMeaningfulChunks(diff);
+            const chunks = await this.extractMeaningfulChunks(diff);
 
             // Set search options based on analysis mode
             const searchOptions = this.getSearchOptionsForMode(analysisMode, options);
