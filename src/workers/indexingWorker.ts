@@ -6,12 +6,6 @@ import { WorkerTokenEstimator } from './workerTokenEstimator';
 import { WorkerCodeChunker } from './workerCodeChunker';
 import { getLanguageForExtension } from '../types/types';
 
-// Module-level variables for caching
-let embeddingPipeline: FeatureExtractionPipeline | null = null;
-let tokenEstimator: WorkerTokenEstimator | null = null;
-let codeChunker: WorkerCodeChunker | null = null;
-let currentModelName: string | null = null;
-
 // Define interfaces for clear typing
 export interface ProcessFileTask {
     index: number;
@@ -56,63 +50,32 @@ async function initializeModel(
     contextWindow: number,
     extensionPath: string,
     signal: AbortSignal
-): Promise<FeatureExtractionPipeline> {
-    // Check for cancellation
-    if (signal.aborted) {
-        throw new Error('Operation was cancelled during model initialization');
+): Promise<{
+    embeddingPipeline: FeatureExtractionPipeline,
+    codeChunker: WorkerCodeChunker
+}> {
+    transformersEnv.allowRemoteModels = false;
+    transformersEnv.allowLocalModels = true;
+    transformersEnv.cacheDir = modelBasePath;
+
+    // Create the pipeline
+    const embeddingPipeline = await pipeline('feature-extraction', modelName, {
+        dtype: 'q4'
+    });
+
+    if (!embeddingPipeline) {
+        throw new Error(`Failed to initialize embedding pipeline for ${modelName}`);
     }
 
-    // If model is already initialized with the same name, reuse it
-    if (embeddingPipeline && currentModelName === modelName) {
-        return embeddingPipeline;
-    }
+    // Initialize token estimator
+    const tokenEstimator = new WorkerTokenEstimator(
+        modelName,
+        contextWindow
+    );
+    const codeChunker = new WorkerCodeChunker(extensionPath, tokenEstimator);
+    console.log(`Worker: Model ${modelName} initialized successfully`);
 
-    try {
-        console.log(`Worker: Initializing model ${modelName}`);
-
-        // Check for cancellation before starting expensive operation
-        if (signal.aborted) {
-            throw new Error('Operation was cancelled before model initialization');
-        }
-
-        transformersEnv.allowRemoteModels = false;
-        transformersEnv.allowLocalModels = true;
-        transformersEnv.cacheDir = modelBasePath;
-
-        // Create the pipeline
-        embeddingPipeline = await pipeline('feature-extraction', modelName, {
-            dtype: 'q4'
-        });
-
-        if (!embeddingPipeline) {
-            throw new Error(`Failed to initialize embedding pipeline for ${modelName}`);
-        }
-
-        // Store the current model name
-        currentModelName = modelName;
-
-        // Initialize token estimator
-        tokenEstimator = new WorkerTokenEstimator(
-            modelName,
-            contextWindow
-        );
-        codeChunker = new WorkerCodeChunker(extensionPath, tokenEstimator);
-        console.log(`Worker: Model ${modelName} initialized successfully`);
-
-        return embeddingPipeline;
-    } catch (error) {
-        // Check if the error is due to cancellation
-        if (signal.aborted) {
-            console.log(`Worker: Model initialization cancelled for ${modelName}`);
-            throw new Error('Operation was cancelled');
-        }
-
-        console.error(`Worker: Failed to initialize model:`, error);
-        // Reset state on failure
-        embeddingPipeline = null;
-        currentModelName = null;
-        throw error;
-    }
+    return { embeddingPipeline, codeChunker };
 }
 
 /**
@@ -122,6 +85,7 @@ async function generateEmbeddings(
     text: string,
     filePath: string,
     pipe: FeatureExtractionPipeline,
+    codeChunker: WorkerCodeChunker,
     options: EmbeddingOptions = {},
     signal: AbortSignal
 ): Promise<{ embeddings: Float32Array[], chunkOffsets: number[] }> {
@@ -133,7 +97,7 @@ async function generateEmbeddings(
     const language = getLanguageFromFilePath(filePath);
 
     // Chunk the text using smart code-aware chunking
-    const { chunks, offsets } = await codeChunker!.chunkCode(text, options, signal, language);
+    const { chunks, offsets } = await codeChunker.chunkCode(text, options, signal, language);
 
     // Yield to the event loop to process any pending messages
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -166,6 +130,8 @@ async function generateEmbeddings(
             }
 
             embeddings.push(embedding);
+            output.dispose();
+            pipe.dispose();
         } catch (error) {
             console.error('Error generating embedding for chunk:', error);
             throw error;
@@ -205,7 +171,7 @@ export default async function processFile(
         }
 
         // Initialize model if needed
-        const pipe = await initializeModel(
+        const { embeddingPipeline, codeChunker } = await initializeModel(
             task.modelBasePath,
             task.modelName,
             task.contextLength,
@@ -222,7 +188,8 @@ export default async function processFile(
         const { embeddings, chunkOffsets } = await generateEmbeddings(
             task.content,
             task.filePath,
-            pipe,
+            embeddingPipeline,
+            codeChunker,
             task.options,
             signal
         );
