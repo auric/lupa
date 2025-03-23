@@ -1,14 +1,34 @@
 import * as vscode from 'vscode';
-import { TreeStructureAnalyzer, CodePosition, CodeStructure } from '../../services/treeStructureAnalyzer';
+import { TreeStructureAnalyzer, TreeStructureAnalyzerPool, CodePosition, CodeStructure } from '../../services/treeStructureAnalyzer';
 
 /**
  * Utility class to test code structure detection
  */
 export class CodeStructureTestUtils {
-    private analyzer: TreeStructureAnalyzer;
+    private analyzer: TreeStructureAnalyzer | null = null;
+    private initializePromise: Promise<TreeStructureAnalyzer> | null = null;
 
-    constructor(extensionPath: string) {
-        this.analyzer = TreeStructureAnalyzer.getInstance(extensionPath);
+    constructor() {
+        this.initializeAnalyzer();
+    }
+
+    private async initializeAnalyzer() {
+        if (!this.initializePromise) {
+            this.initializePromise = this.initializeAnalyzerImpl();
+        }
+        return this.initializePromise;
+    }
+
+    /**
+     * Initialize the TreeStructureAnalyzer if not already initialized
+     * @returns The initialized analyzer
+     */
+    private async initializeAnalyzerImpl(): Promise<TreeStructureAnalyzer> {
+        if (!this.analyzer) {
+            this.analyzer = await TreeStructureAnalyzerPool.getInstance().getAnalyzer();
+            this.initializePromise = null;
+        }
+        return this.analyzer;
     }
 
     /**
@@ -19,7 +39,11 @@ export class CodeStructureTestUtils {
      * @returns The detected functions
      */
     async testFunctionDetection(content: string, language: string, variant?: string): Promise<CodeStructure[]> {
-        const functions = await this.analyzer.findFunctions(content, language, variant);
+        if (!this.analyzer) {
+            await this.initializeAnalyzer();
+        }
+
+        const functions = await this.analyzer!.findFunctions(content, language, variant);
         console.log(`Detected ${functions.length} functions in ${language}${variant ? ` (${variant})` : ''} code`);
 
         return functions;
@@ -42,7 +66,10 @@ export class CodeStructureTestUtils {
         variant?: string
     ): Promise<CodeStructure | null> {
         const position: CodePosition = { row: line, column: column };
-        const result = await this.analyzer.isPositionInsideFunction(content, language, position, variant);
+        if (!this.analyzer) {
+            await this.initializeAnalyzer();
+        }
+        const result = await this.analyzer!.isPositionInsideFunction(content, language, position, variant);
 
         if (result) {
             console.log(`Position (${line},${column}) is inside function: ${result.name}`);
@@ -65,7 +92,10 @@ export class CodeStructureTestUtils {
         language: string,
         variant?: string
     ): Promise<Array<{ position: number, quality: number }>> {
-        const breakPoints = await this.analyzer.findStructureBreakPoints(content, language, variant);
+        if (!this.analyzer) {
+            await this.initializeAnalyzer();
+        }
+        const breakPoints = await this.analyzer!.findStructureBreakPoints(content, language, variant);
 
         console.log(`Found ${breakPoints.length} structure break points`);
 
@@ -112,7 +142,10 @@ export class CodeStructureTestUtils {
         variant?: string
     ): Promise<CodeStructure[]> {
         const position: CodePosition = { row: line, column: column };
-        const hierarchy = await this.analyzer.getStructureHierarchyAtPosition(
+        if (!this.analyzer) {
+            await this.initializeAnalyzer();
+        }
+        const hierarchy = await this.analyzer!.getStructureHierarchyAtPosition(
             content,
             language,
             position,

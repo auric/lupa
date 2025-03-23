@@ -34,8 +34,7 @@ const esbuildProblemMatcherPlugin = {
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
     entryPoints: [
-        join('src', 'extension.ts'),
-        join('src', 'workers', 'indexingWorker.ts'),
+        join('src', 'extension.ts')
     ],
     outdir: './dist',
     bundle: true,

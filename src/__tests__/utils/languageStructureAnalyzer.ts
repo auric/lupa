@@ -52,7 +52,7 @@ export async function testTreeStructureAnalyzer(context: vscode.ExtensionContext
     }
 
     // Create test utils
-    const testUtils = new CodeStructureTestUtils(context.extensionPath);
+    const testUtils = new CodeStructureTestUtils();
 
     // Output channel for results
     const outputChannel = vscode.window.createOutputChannel('Code Structure Analyzer');

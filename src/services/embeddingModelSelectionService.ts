@@ -1,9 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { ResourceDetectionService, SystemResources } from './resourceDetectionService';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
+import { ResourceDetectionService, type SystemResources } from './resourceDetectionService';
 
 /**
  * Available embedding models
@@ -19,6 +19,7 @@ export enum EmbeddingModel {
 export interface ModelInfo {
     name: EmbeddingModel;
     path: string;
+    isHighMemory: boolean;
     memoryRequirementGB: number;
     dimensions: number;
     contextLength: number;
@@ -50,11 +51,11 @@ export interface ModelSelectionOptions {
  * Service for selecting the optimal embedding model based on system resources
  */
 export class EmbeddingModelSelectionService implements vscode.Disposable {
-    private readonly resources: ResourceDetectionService;
     private readonly modelInfos: Record<EmbeddingModel, ModelInfo> = {
         [EmbeddingModel.JinaEmbeddings]: {
             name: EmbeddingModel.JinaEmbeddings,
             path: 'jinaai/jina-embeddings-v2-base-code',
+            isHighMemory: true,
             memoryRequirementGB: 8,
             contextLength: 8192,
             dimensions: 768,
@@ -63,6 +64,7 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
         [EmbeddingModel.MiniLM]: {
             name: EmbeddingModel.MiniLM,
             path: 'Xenova/all-MiniLM-L6-v2',
+            isHighMemory: false,
             memoryRequirementGB: 2,
             contextLength: 256,
             dimensions: 384,
@@ -87,10 +89,10 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
     constructor(
         private readonly basePath: string,
         private readonly workspaceSettingsService: WorkspaceSettingsService,
+        private readonly resourceDetectionService: ResourceDetectionService,
         options?: ModelSelectionOptions
     ) {
         this.options = { ...this.defaultOptions, ...options };
-        this.resources = new ResourceDetectionService();
         this.statusBarService = StatusBarService.getInstance();
     }
 
@@ -116,7 +118,7 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
             };
         }
 
-        const systemResources = this.resources.detectSystemResources();
+        const systemResources = this.resourceDetectionService.detectSystemResources();
         const modelsInfo = this.checkModelsAvailability();
 
         // Determine if we should use the high memory model
@@ -264,7 +266,7 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
             }
 
             // Get system resources
-            const resources = this.resources.detectSystemResources();
+            const resources = this.resourceDetectionService.detectSystemResources();
 
             // Format as message
             const message = `Models information:\n\n` +

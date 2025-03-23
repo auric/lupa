@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { encoding_for_model as tiktokenCountTokens, TiktokenModel } from 'tiktoken';
 import { countTokens as anthropicCountTokens } from '@anthropic-ai/tokenizer';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { TreeStructureAnalyzer } from './treeStructureAnalyzer';
+import { TreeStructureAnalyzerPool } from './treeStructureAnalyzer';
 import {
     SUPPORTED_LANGUAGES
 } from '../types/types';
@@ -167,7 +167,7 @@ export class ContextProvider implements vscode.Disposable {
      */
     private async extractMeaningfulChunks(diff: string): Promise<string[]> {
         const chunks: string[] = [];
-        const analyzer = TreeStructureAnalyzer.getInstance(this.context.extensionPath);
+        const analyzer = await TreeStructureAnalyzerPool.getInstance().getAnalyzer();
 
         // Split the diff into files
         const fileRegex = /^diff --git a\/(.+) b\/(.+)[\r\n]+(?:.+[\r\n]+)*?(?:@@.+@@)/gm;

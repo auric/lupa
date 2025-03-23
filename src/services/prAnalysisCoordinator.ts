@@ -1,20 +1,18 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IndexingManager } from './indexingManager';
+import { IndexingManager, IndexingManagerOptions } from './indexingManager';
 import { GitOperationsManager } from './gitOperationsManager';
 import { UIManager } from './uiManager';
 import { AnalysisProvider } from './analysisProvider';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
-import { ResourceDetectionService } from './resourceDetectionService';
 import { EmbeddingModelSelectionService, EmbeddingModel } from './embeddingModelSelectionService';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { TokenManagerService } from './tokenManagerService';
-import { DiffResult } from './gitOperationsManager';
 import { IndexingService } from './indexingService';
+import { ResourceDetectionService } from './resourceDetectionService';
 
 /**
  * PRAnalysisCoordinator orchestrates the PR analysis workflow
@@ -31,11 +29,11 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
     private vectorDatabaseService: VectorDatabaseService;
     private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter;
     private contextProvider: ContextProvider;
-    private resourceDetectionService: ResourceDetectionService;
     private modelSelectionService: EmbeddingModelSelectionService;
     private workspaceSettingsService: WorkspaceSettingsService;
     private modelManager: CopilotModelManager;
     private indexingService: IndexingService;
+    private resourceDetectionService: ResourceDetectionService;
 
     /**
      * Create a new PRAnalysisCoordinator
@@ -46,14 +44,15 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
     ) {
         // Initialize support services
         this.workspaceSettingsService = new WorkspaceSettingsService(context);
-
         this.resourceDetectionService = new ResourceDetectionService({
             memoryReserveGB: 4 // 4GB reserve for other processes
         });
 
+        // Initialize model selection service
         this.modelSelectionService = new EmbeddingModelSelectionService(
             path.join(context.extensionPath, 'dist', 'models'),
-            this.workspaceSettingsService
+            this.workspaceSettingsService,
+            this.resourceDetectionService
         );
 
         // Initialize the language model manager
@@ -64,13 +63,19 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
 
         // Initialize the indexing manager first without the embedding database adapter
         // to break the circular dependency
+        const indexingManagerOptions: IndexingManagerOptions = {
+            memoryReserveGB: 4, // 4GB reserve for other processes
+            batchSize: 20,       // Process files in batches of 20
+        };
+
         this.indexingManager = new IndexingManager(
             context,
             this.workspaceSettingsService,
-            this.resourceDetectionService,
             this.modelSelectionService,
             this.vectorDatabaseService,
-            null // Initially pass null for embeddingDatabaseAdapter
+            this.resourceDetectionService,
+            null, // Initially pass null for embeddingDatabaseAdapter
+            indexingManagerOptions
         );
 
         // Get the indexing service from the manager
@@ -308,7 +313,10 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         // Reinitialize indexing service if model changed
         if (modelChanged) {
             vscode.window.showInformationMessage('Reinitializing with new model selection...');
-            this.indexingManager.initializeIndexingService();
+
+            const { modelInfo } = this.modelSelectionService.selectOptimalModel();
+
+            this.indexingManager.initializeIndexingService(modelInfo);
 
             // Ask if user wants to rebuild database with new model
             const rebuild = await vscode.window.showQuickPick(['Yes', 'No'], {

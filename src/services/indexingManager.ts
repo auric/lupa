@@ -1,13 +1,27 @@
 import * as vscode from 'vscode';
-import * as os from 'os';
-import { IndexingService, FileToProcess, IndexingServiceOptions } from './indexingService';
+import { IndexingService, IndexingServiceOptions } from './indexingService';
+import { FileToProcess } from '../workers/asyncIndexingProcessor';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
+import { StatusBarService, StatusBarState } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
-import { ResourceDetectionService } from './resourceDetectionService';
-import { EmbeddingModelSelectionService, EmbeddingModel } from './embeddingModelSelectionService';
+import {
+    EmbeddingModelSelectionService,
+    type ModelInfo
+} from './embeddingModelSelectionService';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
+import { TreeStructureAnalyzerPool } from './treeStructureAnalyzer';
+import { ResourceDetectionService } from './resourceDetectionService';
+
+/**
+ * Options for indexing operations
+ */
+export interface IndexingManagerOptions {
+    /** Memory to reserve for other processes in GB */
+    memoryReserveGB?: number;
+    /** Maximum batch size for file processing */
+    batchSize?: number;
+}
 
 /**
  * IndexingManager handles all indexing operations with consistent reporting
@@ -17,32 +31,62 @@ export class IndexingManager implements vscode.Disposable {
     private indexingService: IndexingService | null = null;
     private continuousIndexingInProgress: boolean = false;
     private continuousIndexingCancellationToken: vscode.CancellationTokenSource | null = null;
-    private selectedModel: string | null = null;
+    private selectedModel: string;
     private statusBarService: StatusBarService;
-    private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter | null = null;
+
+    // Default options
+    private readonly defaultOptions: Required<IndexingManagerOptions> = {
+        memoryReserveGB: 4, // Default to 4GB reserve for other processes
+        batchSize: 20,      // Process files in batches of 20
+    };
+
+    private readonly options: Required<IndexingManagerOptions>;
 
     /**
      * Create a new IndexingManager
      * @param context VS Code extension context
      * @param workspaceSettingsService Service for workspace settings
-     * @param resourceDetectionService Service for resource detection
      * @param modelSelectionService Service for embedding model selection
      * @param vectorDatabaseService Service for vector database operations
+     * @param resourceDetectionService Service for resource detection
      * @param embeddingDatabaseAdapter Adapter for embedding database operations (can be null initially)
+     * @param options Configuration options
      */
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly workspaceSettingsService: WorkspaceSettingsService,
-        private readonly resourceDetectionService: ResourceDetectionService,
         private readonly modelSelectionService: EmbeddingModelSelectionService,
         private readonly vectorDatabaseService: VectorDatabaseService,
-        embeddingDatabaseAdapter: EmbeddingDatabaseAdapter | null
+        private readonly resourceDetectionService: ResourceDetectionService,
+        private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter | null,
+        options?: IndexingManagerOptions
     ) {
+        this.options = { ...this.defaultOptions, ...options };
         this.statusBarService = StatusBarService.getInstance();
-        this.embeddingDatabaseAdapter = embeddingDatabaseAdapter;
+
+        const { modelInfo } = this.modelSelectionService.selectOptimalModel();
+        this.selectedModel = modelInfo.name;
 
         // Initialize the indexing service
-        this.initializeIndexingService();
+        this.initializeIndexingService(modelInfo);
+    }
+
+    /**
+     * Initialize the TreeStructureAnalyzerPool
+     * This creates a singleton pool of analyzers that can be shared across components
+     */
+    private initializeTreeStructureAnalyzerPool(isHighMemoryModel: boolean): void {
+        try {
+            const analyzerPoolSize = this.resourceDetectionService.calculateOptimalConcurrentTasks(isHighMemoryModel);
+            TreeStructureAnalyzerPool.createSingleton(
+                this.context.extensionPath,
+                analyzerPoolSize
+            );
+            console.log(`Initialized TreeStructureAnalyzerPool with size: ${analyzerPoolSize}`);
+        } catch (error) {
+            console.warn('Failed to initialize TreeStructureAnalyzerPool:', error);
+            throw error;
+        }
     }
 
     /**
@@ -57,29 +101,26 @@ export class IndexingManager implements vscode.Disposable {
      * Initialize or reinitialize the indexing service with the appropriate model
      * @returns The initialized indexing service
      */
-    public initializeIndexingService(): IndexingService {
+    public initializeIndexingService(modelInfo: ModelInfo): IndexingService {
+
+        this.selectedModel = modelInfo.name;
+
+        // Initialize the TreeStructureAnalyzerPool before initializing the indexing service
+        this.initializeTreeStructureAnalyzerPool(modelInfo.isHighMemory);
+
         // Dispose existing service if it exists
         if (this.indexingService) {
             this.indexingService.dispose();
         }
 
-        // Get the selected model from EmbeddingModelSelectionService
-        const { model, modelInfo } = this.modelSelectionService.selectOptimalModel();
-
-        this.selectedModel = model;
-
-        // Calculate optimal worker count
-        const isHighMemoryModel = model === EmbeddingModel.JinaEmbeddings;
-        const workerCount = this.resourceDetectionService.calculateOptimalWorkerCount(
-            isHighMemoryModel,
-            Math.max(1, Math.floor(os.availableParallelism ? os.availableParallelism() : (os.cpus().length + 1) / 2))
-        );
+        // Calculate optimal concurrent tasks for async processing
+        const concurrentTasks = this.resourceDetectionService.calculateOptimalConcurrentTasks(modelInfo.isHighMemory);
 
         // Create options for indexing service
         const options: IndexingServiceOptions = {
             modelBasePath: this.modelSelectionService.getBasePath(),
-            modelName: model,
-            maxWorkers: workerCount,
+            modelName: this.selectedModel,
+            maxConcurrentTasks: concurrentTasks,
             contextLength: modelInfo.contextLength
         };
 
@@ -90,7 +131,7 @@ export class IndexingManager implements vscode.Disposable {
             options
         );
 
-        console.log(`Initialized IndexingService with model: ${model}, workers: ${workerCount}, context length: ${modelInfo?.contextLength || 'unknown'}`);
+        console.log(`Initialized IndexingService with model: ${this.selectedModel}, concurrentTasks: ${concurrentTasks}, context length: ${modelInfo?.contextLength || 'unknown'}`);
 
         return this.indexingService;
     }
@@ -171,7 +212,7 @@ export class IndexingManager implements vscode.Disposable {
 
         // Ensure indexing service is initialized
         if (!this.indexingService) {
-            this.initializeIndexingService();
+            throw new Error('Indexing service is not initialized');
         }
 
         // Create a cancellation token source
@@ -197,11 +238,8 @@ export class IndexingManager implements vscode.Disposable {
                     }
                 });
 
-                // Create a merged cancellation token
-                const mergedToken = this.continuousIndexingCancellationToken!.token;
-
                 // Process files using the common indexing method
-                await this.processFilesWithIndexing(progress, mergedToken, false);
+                await this.processFilesWithIndexing(progress, token, false);
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -214,6 +252,72 @@ export class IndexingManager implements vscode.Disposable {
             // Update status bar
             this.statusBarService.setState(StatusBarState.Ready);
         }
+    }
+
+    /**
+     * Prepare files for indexing, checking which ones need to be processed
+     * @param filePaths Array of file paths to check
+     * @param isFullReindexing Whether to process all files or only those needing reindexing
+     * @param token Cancellation token
+     * @param progressCallback Callback for reporting progress
+     * @returns Array of files to process
+     */
+    private async prepareFilesForIndexing(
+        filePaths: string[],
+        isFullReindexing: boolean,
+        token: vscode.CancellationToken,
+        progressCallback?: (checked: number, total: number, needIndexing: number) => void
+    ): Promise<{
+        filesToProcess: FileToProcess[],
+        totalFilesChecked: number,
+        totalFilesNeededIndexing: number
+    }> {
+        // Prepare result arrays
+        const filesToProcess: FileToProcess[] = [];
+        let totalFilesChecked = 0;
+        let totalFilesNeededIndexing = 0;
+
+        // Process all files to check which ones need indexing
+        for (const filePath of filePaths) {
+            try {
+                // Check if operation was cancelled
+                if (token.isCancellationRequested) {
+                    break;
+                }
+
+                // Read file content
+                const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+                const fileContent = Buffer.from(content).toString('utf8');
+
+                // For full reindexing, we process all files.
+                // For continuous indexing, we only process files that need reindexing.
+                const needsIndexing = isFullReindexing ||
+                    await this.embeddingDatabaseAdapter!.needsReindexing(filePath, fileContent);
+
+                // Increment total checked files counter
+                totalFilesChecked++;
+
+                // Report progress
+                if (progressCallback) {
+                    progressCallback(totalFilesChecked, filePaths.length, totalFilesNeededIndexing);
+                }
+
+                if (needsIndexing) {
+                    // Add file for processing
+                    filesToProcess.push({
+                        id: filePath,
+                        path: filePath,
+                        content: fileContent
+                    });
+                    totalFilesNeededIndexing++;
+                }
+            } catch (error) {
+                console.error(`Error checking file ${filePath}:`, error);
+                totalFilesChecked++; // Still count as checked even if there was an error
+            }
+        }
+
+        return { filesToProcess, totalFilesChecked, totalFilesNeededIndexing };
     }
 
     /**
@@ -230,6 +334,11 @@ export class IndexingManager implements vscode.Disposable {
             return;
         }
 
+        if (!this.embeddingDatabaseAdapter) {
+            vscode.window.showErrorMessage('Embedding database adapter is not initialized');
+            return;
+        }
+
         const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
 
         // Find source files in workspace
@@ -243,94 +352,68 @@ export class IndexingManager implements vscode.Disposable {
 
         progress.report({ message: `Found ${sourceFiles.length} files, analyzing...` });
 
-        // Process files in batches to keep memory usage under control
-        const batchSize = 20;
         let totalFilesProcessed = 0;
-        let totalFilesChecked = 0;
-        let totalFilesNeededIndexing = 0;
 
-        // Process all files in batches
-        for (let i = 0; i < sourceFiles.length; i += batchSize) {
-            // Check if operation was cancelled
+        // First, analyze all files to see which ones need indexing
+        const { filesToProcess, totalFilesChecked, totalFilesNeededIndexing } =
+            await this.prepareFilesForIndexing(
+                sourceFiles,
+                isFullReindexing,
+                token,
+                (checked, total, needIndexing) => {
+                    // Update progress based on checked files
+                    const checkingProgressPercent = Math.round((checked / total) * 100);
+                    progress.report({
+                        message: `Checked ${checked} of ${total} files (${needIndexing} need indexing)`,
+                        increment: 100 / total // Increment by percentage of one file
+                    });
+                }
+            );
+
+        // If there are no files to process, we're done
+        if (filesToProcess.length === 0 || token.isCancellationRequested) {
+            progress.report({ message: `No files need indexing. Checked ${totalFilesChecked} files.` });
+            return;
+        }
+
+        // Process files in optimally sized batches
+        const batchSize = this.options.batchSize;
+
+        // Now process the files that need indexing in batches
+        for (let i = 0; i < filesToProcess.length; i += batchSize) {
+            // Check if cancelled
             if (token.isCancellationRequested) {
-                vscode.window.showInformationMessage('Indexing operation cancelled');
+                progress.report({ message: `Indexing operation cancelled after processing ${totalFilesProcessed} files` });
                 break;
             }
 
-            // Get batch of files
-            const fileBatch = sourceFiles.slice(i, i + batchSize);
+            // Get current batch
+            const batch = filesToProcess.slice(i, i + batchSize);
 
-            // Process this batch of files
-            const filesToProcess: FileToProcess[] = [];
-
-            for (const filePath of fileBatch) {
-                try {
-                    // Check if operation was cancelled
-                    if (token.isCancellationRequested) {
-                        break;
-                    }
-
-                    // Read file content
-                    const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
-                    const fileContent = Buffer.from(content).toString('utf8');
-
-                    // For full reindexing, we process all files.
-                    // For continuous indexing, we only process files that need reindexing.
-                    const needsIndexing = isFullReindexing ||
-                        await this.embeddingDatabaseAdapter!.needsReindexing(filePath, fileContent);
-
-                    // Increment total checked files counter
-                    totalFilesChecked++;
-
-                    // Update progress based on total files checked
-                    const checkingProgressPercent = Math.round((totalFilesChecked / sourceFiles.length) * 100);
+            // Process this batch
+            const results = await this.indexingService!.processFiles(
+                batch,
+                token,
+                (processed, total) => {
+                    // Update progress message for current batch
                     progress.report({
-                        message: `Checked ${totalFilesChecked} of ${sourceFiles.length} files (${totalFilesNeededIndexing} need indexing)`,
-                        increment: 100 / sourceFiles.length // Increment by percentage of one file
+                        message: `Checked ${totalFilesChecked} of ${sourceFiles.length} files. ` +
+                            `Indexing ${processed}/${total} files in current batch...`
                     });
-
-                    if (needsIndexing) {
-                        // Add file to batch for processing
-                        filesToProcess.push({
-                            id: filePath,
-                            path: filePath,
-                            content: fileContent
-                        });
-                        totalFilesNeededIndexing++;
-                    }
-                } catch (error) {
-                    console.error(`Error processing file ${filePath}:`, error);
-                    totalFilesChecked++; // Still count as checked even if there was an error
                 }
-            }
+            );
 
-            // If there are files to index in this batch, process them
-            if (filesToProcess.length > 0 && !token.isCancellationRequested) {
-                // Process files and get embeddings
-                const results = await this.indexingService!.processFiles(
-                    filesToProcess,
-                    token,
-                    (processed, total) => {
-                        // Update progress message for current batch
-                        progress.report({
-                            message: `Checked ${totalFilesChecked} of ${sourceFiles.length} files. ` +
-                                `Indexing ${processed}/${total} files in current batch...`
-                        });
-                    }
-                );
+            // Store embeddings in database
+            await this.embeddingDatabaseAdapter.storeEmbeddingResults(batch, results);
 
-                // Store embeddings in database
-                await this.embeddingDatabaseAdapter!.storeEmbeddingResults(filesToProcess, results);
+            // Update counters
+            totalFilesProcessed += batch.length;
 
-                // Update counters
-                totalFilesProcessed += filesToProcess.length;
-
-                // Show overall progress based on files checked and indexed
-                progress.report({
-                    message: `Checked ${totalFilesChecked}/${sourceFiles.length} files. ` +
-                        `Indexed ${totalFilesProcessed}/${totalFilesNeededIndexing} files that needed indexing.`
-                });
-            }
+            // Show overall progress
+            progress.report({
+                message: `Checked ${totalFilesChecked}/${sourceFiles.length} files. ` +
+                    `Indexed ${totalFilesProcessed}/${totalFilesNeededIndexing} files that needed indexing.`
+            });
         }
 
         // Finalize with report
@@ -367,5 +450,9 @@ export class IndexingManager implements vscode.Disposable {
         if (this.continuousIndexingCancellationToken) {
             this.continuousIndexingCancellationToken.cancel();
         }
+
+        // We don't dispose the TreeStructureAnalyzerPool here since it's a singleton
+        // and might be used by other components. It will be disposed when the extension
+        // is deactivated.
     }
 }

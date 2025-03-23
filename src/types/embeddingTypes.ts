@@ -1,4 +1,7 @@
 
+/**
+ * Options for embedding generation
+ */
 export interface EmbeddingOptions {
     pooling?: 'mean' | 'cls' | 'none';
     normalize?: boolean;

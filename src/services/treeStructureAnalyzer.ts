@@ -42,17 +42,152 @@ export interface LanguageConfig {
 }
 
 /**
+ * Manages a pool of TreeStructureAnalyzer instances
+ */
+export class TreeStructureAnalyzerPool implements vscode.Disposable {
+    private static instance: TreeStructureAnalyzerPool | null = null;
+    private readonly analyzers: TreeStructureAnalyzer[] = [];
+    private readonly availableAnalyzers: TreeStructureAnalyzer[] = [];
+    private isInitialized = false;
+    private initPromise: Promise<void> | null = null;
+    private readonly maxPoolSize: number;
+
+    // Queue for waiting clients
+    private readonly waiting: Array<(analyzer: TreeStructureAnalyzer) => void> = [];
+
+    public static createSingleton(extensionPath: string, maxPoolSize: number = 5): TreeStructureAnalyzerPool {
+        if (TreeStructureAnalyzerPool.instance) {
+            TreeStructureAnalyzerPool.instance.dispose();
+        }
+        TreeStructureAnalyzerPool.instance = new TreeStructureAnalyzerPool(extensionPath, maxPoolSize);
+        return TreeStructureAnalyzerPool.instance;
+    }
+
+    /**
+     * Get singleton instance of the pool
+     */
+    public static getInstance(): TreeStructureAnalyzerPool {
+        if (!TreeStructureAnalyzerPool.instance) {
+            throw new Error('TreeStructureAnalyzerPool is not initialized. Call createSingleton first.');
+        }
+        return TreeStructureAnalyzerPool.instance;
+    }
+
+    /**
+     * Private constructor (use getInstance)
+     */
+    private constructor(
+        private readonly extensionPath: string,
+        poolSize: number
+    ) {
+        this.maxPoolSize = poolSize;
+        this.initPromise = this.initialize();
+    }
+
+    /**
+     * Initialize the pool with Tree-sitter
+     */
+    private async initialize(): Promise<void> {
+        try {
+            if (this.isInitialized) return;
+
+            // Initialize web-tree-sitter globally once
+            const moduleOptions = {
+                locateFile: (pathString: string, _prefixString: string) => {
+                    return path.join(this.extensionPath, 'dist', pathString);
+                }
+            };
+
+            await Parser.init(moduleOptions);
+            this.isInitialized = true;
+            console.log('TreeStructureAnalyzerPool initialized successfully');
+        } catch (error) {
+            console.error('Error initializing TreeStructureAnalyzerPool:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get an analyzer from the pool or create a new one if needed
+     */
+    public async getAnalyzer(): Promise<TreeStructureAnalyzer> {
+        // Wait for initialization if needed
+        if (!this.isInitialized && this.initPromise) {
+            await this.initPromise;
+        }
+
+        // Reuse existing analyzer if available
+        if (this.availableAnalyzers.length > 0) {
+            const analyzer = this.availableAnalyzers.pop()!;
+            return analyzer;
+        }
+
+        // Create new analyzer if we haven't reached the pool limit
+        if (this.analyzers.length < this.maxPoolSize) {
+            const analyzer = new TreeStructureAnalyzer(this.extensionPath);
+            await analyzer.initialize();
+            this.analyzers.push(analyzer);
+            return analyzer;
+        }
+
+        // If we've reached the pool limit, wait for an analyzer to become available
+        return new Promise<TreeStructureAnalyzer>(resolve => {
+            this.waiting.push(resolve);
+        });
+    }
+
+    /**
+     * Return analyzer to the pool when done
+     */
+    public releaseAnalyzer(analyzer: TreeStructureAnalyzer): void {
+        // First check if someone is waiting for an analyzer
+        if (this.waiting.length > 0) {
+            const nextClient = this.waiting.shift()!;
+            nextClient(analyzer);
+            return;
+        }
+
+        // Otherwise, add it back to the available pool
+        if (this.analyzers.includes(analyzer)) {
+            this.availableAnalyzers.push(analyzer);
+        }
+    }
+
+    /**
+     * Dispose all resources
+     */
+    public dispose(): void {
+        for (const analyzer of this.analyzers) {
+            analyzer.dispose();
+        }
+        this.analyzers.length = 0;
+        this.availableAnalyzers.length = 0;
+
+        // Reject any waiting promises
+        for (const waiting of this.waiting) {
+            // This is not ideal, but there's no way to properly return
+            // an analyzer at this point since we're shutting down
+            waiting(new TreeStructureAnalyzer(this.extensionPath, true));
+        }
+        this.waiting.length = 0;
+
+        TreeStructureAnalyzerPool.instance = null;
+    }
+}
+
+/**
  * Service to analyze code structure using Tree-sitter
  */
 export class TreeStructureAnalyzer implements vscode.Disposable {
-    private static instance: TreeStructureAnalyzer | null = null;
     private parser: Parser | null = null;
     private languageParsers: Map<string, Parser.Language> = new Map();
     private isInitialized = false;
     private initPromise: Promise<void> | null = null;
+    private pool: TreeStructureAnalyzerPool | null = null;
+    private isDisposed = false;
 
     // Language configurations for tree-sitter
-    private languageConfigs: Record<string, LanguageConfig> = {
+    private readonly languageConfigs: Record<string, LanguageConfig> = {
         'javascript': {
             functionQueries: ['(function_declaration) @function', '(arrow_function) @function', '(method_definition) @function'],
             classQueries: ['(class_declaration) @class', '(object) @object'],
@@ -122,42 +257,31 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     };
 
     /**
-     * Get singleton instance of the TreeStructureAnalyzer
+     * Constructor - create a new analyzer instance
+     * @param extensionPath Path to the extension
+     * @param skipPoolRegistration If true, the analyzer won't be registered with a pool
      */
-    public static getInstance(extensionPath: string): TreeStructureAnalyzer {
-        if (!TreeStructureAnalyzer.instance) {
-            TreeStructureAnalyzer.instance = new TreeStructureAnalyzer(extensionPath);
+    constructor(
+        private readonly extensionPath: string,
+        private skipPoolRegistration: boolean = false
+    ) {
+        if (!skipPoolRegistration) {
+            this.pool = TreeStructureAnalyzerPool.getInstance();
         }
-        return TreeStructureAnalyzer.instance;
-    }
-
-    /**
-     * Private constructor (use getInstance)
-     */
-    private constructor(private extensionPath: string) {
-        this.initPromise = this.initialize();
     }
 
     /**
      * Initialize the Tree-sitter parser
      */
-    private async initialize(): Promise<void> {
+    public async initialize(): Promise<void> {
         try {
-            if (this.isInitialized) return;
+            if (this.isInitialized || this.isDisposed) return;
 
-            // Initialize web-tree-sitter
-            const moduleOptions = {
-                locateFile: (pathString: string, _prefixString: string) => {
-                    return path.join(this.extensionPath, 'dist', pathString);
-                }
-            }
-            await Parser.init(moduleOptions);
-            this.parser = new Parser;
-
+            this.parser = new Parser();
             this.isInitialized = true;
-            console.log('Web Tree-sitter parser initialized successfully');
+            console.log('TreeStructureAnalyzer instance initialized');
         } catch (error) {
-            console.error('Error initializing Web Tree-sitter:', error);
+            console.error('Error initializing TreeStructureAnalyzer instance:', error);
             throw error;
         }
     }
@@ -166,8 +290,12 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * Ensure the analyzer is initialized before proceeding
      */
     private async ensureInitialized(): Promise<void> {
-        if (!this.isInitialized && this.initPromise) {
-            await this.initPromise;
+        if (this.isDisposed) {
+            throw new Error('TreeStructureAnalyzer has been disposed');
+        }
+
+        if (!this.isInitialized) {
+            await this.initialize();
         }
 
         if (!this.parser) {
@@ -435,7 +563,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     }
                 } catch (error) {
                     console.error(`Error running query "${queryString}" for ${language}:`, error);
-                // Continue with other queries even if one fails
+                    // Continue with other queries even if one fails
                 }
             }
 
@@ -573,7 +701,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     }
                 } catch (error) {
                     console.error(`Error running query "${queryString}" for ${language}:`, error);
-                // Continue with other queries even if one fails
+                    // Continue with other queries even if one fails
                 }
             }
 
@@ -905,16 +1033,75 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     }
 
     /**
+     * Return analyzer to the pool when done
+     * Use with resource pattern:
+     * const analyzer = await pool.getAnalyzer();
+     * try {
+     *   // use analyzer
+     * } finally {
+     *   analyzer.release();
+     * }
+     */
+    public release(): void {
+        if (!this.isDisposed && !this.skipPoolRegistration && this.pool) {
+            this.pool.releaseAnalyzer(this);
+        }
+    }
+
+    /**
      * Dispose resources
      */
     public dispose(): void {
+        if (this.isDisposed) return;
+
         if (this.parser) {
-            this.parser.delete();
+            try {
+                this.parser.delete();
+            } catch (error) {
+                console.error('Error disposing Tree-sitter parser:', error);
+            }
             this.parser = null;
         }
 
-        // Clean up any language parsers that were loaded
+        // Clear language parsers cache
         this.languageParsers.clear();
-        TreeStructureAnalyzer.instance = null;
+        this.isInitialized = false;
+        this.isDisposed = true;
+        this.initPromise = null;
+    }
+}
+
+/**
+ * Resource manager for TreeStructureAnalyzer to ensure proper cleanup
+ * Usage:
+ * async function example() {
+ *   const resource = await TreeStructureAnalyzerResource.create();
+ *   try {
+ *     const analyzer = resource.instance;
+ *     // use analyzer methods
+ *   } finally {
+ *     resource.dispose();
+ *   }
+ * }
+ */
+export class TreeStructureAnalyzerResource implements vscode.Disposable {
+    private constructor(
+        public readonly instance: TreeStructureAnalyzer
+    ) { }
+
+    /**
+     * Create a new analyzer resource
+     */
+    public static async create(): Promise<TreeStructureAnalyzerResource> {
+        const pool = TreeStructureAnalyzerPool.getInstance();
+        const analyzer = await pool.getAnalyzer();
+        return new TreeStructureAnalyzerResource(analyzer);
+    }
+
+    /**
+     * Dispose the analyzer by returning it to the pool
+     */
+    public dispose(): void {
+        this.instance.release();
     }
 }

@@ -3,7 +3,7 @@ import { hash } from 'crypto';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { IndexingService } from './indexingService';
-import { ProcessingResult } from '../workers/indexingWorker';
+import { type ProcessingResult } from '../workers/asyncIndexingProcessor';
 import { SimilaritySearchOptions, SimilaritySearchResult } from '../types/embeddingTypes';
 
 /**

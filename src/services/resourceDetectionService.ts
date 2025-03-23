@@ -89,4 +89,37 @@ export class ResourceDetectionService {
 
         return workerCount;
     }
+
+    /**
+     * Calculate optimal concurrent tasks based on available system resources
+     * @param highMemoryModel Whether we're using a high memory model
+     * @returns Optimal number of concurrent tasks
+     */
+    public calculateOptimalConcurrentTasks(highMemoryModel: boolean): number {
+        const resources = this.detectSystemResources();
+
+        // For high memory model, we need more memory per task
+        // We're using async processing now, so we need less memory per task
+        // but we still need to be cautious with high memory models
+        const memoryPerTask = highMemoryModel ? 2 : 0.5; // GB per task (reduced from worker thread values)
+
+        // Calculate based on CPU cores (always leave 1 core for the main thread)
+        const cpuBasedCount = Math.max(1, resources.cpuCount - 1);
+
+        // Calculate based on memory
+        const memoryBasedCount = Math.max(1, Math.floor(resources.availableMemoryGB / memoryPerTask));
+
+        // Take the minimum of CPU-based and memory-based counts
+        const optimalCount = Math.min(cpuBasedCount, memoryBasedCount);
+
+        console.log(
+            `Concurrent tasks calculation: cpus=${resources.cpuCount}, ` +
+            `totalMemoryGB=${resources.totalMemoryGB.toFixed(2)}, ` +
+            `availableMemoryGB=${resources.availableMemoryGB.toFixed(2)}, ` +
+            `highMemoryModel=${highMemoryModel}, ` +
+            `optimalCount=${optimalCount}`
+        );
+
+        return optimalCount;
+    }
 }
