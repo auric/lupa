@@ -383,8 +383,8 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      */
     private async showDatabaseManagementOptions(): Promise<void> {
         // Show database stats first
-        const stats = await this.embeddingDatabaseAdapter.getStorageStats();
-        vscode.window.showInformationMessage(stats, { modal: true });
+        // const stats = await this.embeddingDatabaseAdapter.getStorageStats();
+        // vscode.window.showInformationMessage(stats, { modal: true });
 
         // Show management options
         const selected = await this.uiManager.showDatabaseManagementOptions();
