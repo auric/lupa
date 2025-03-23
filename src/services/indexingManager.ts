@@ -14,16 +14,6 @@ import { TreeStructureAnalyzerPool } from './treeStructureAnalyzer';
 import { ResourceDetectionService } from './resourceDetectionService';
 
 /**
- * Options for indexing operations
- */
-export interface IndexingManagerOptions {
-    /** Memory to reserve for other processes in GB */
-    memoryReserveGB?: number;
-    /** Maximum batch size for file processing */
-    batchSize?: number;
-}
-
-/**
  * IndexingManager handles all indexing operations with consistent reporting
  * for both continuous indexing and full reindexing
  */
@@ -33,14 +23,6 @@ export class IndexingManager implements vscode.Disposable {
     private continuousIndexingCancellationToken: vscode.CancellationTokenSource | null = null;
     private selectedModel: string;
     private statusBarService: StatusBarService;
-
-    // Default options
-    private readonly defaultOptions: Required<IndexingManagerOptions> = {
-        memoryReserveGB: 4, // Default to 4GB reserve for other processes
-        batchSize: 20,      // Process files in batches of 20
-    };
-
-    private readonly options: Required<IndexingManagerOptions>;
 
     /**
      * Create a new IndexingManager
@@ -58,10 +40,8 @@ export class IndexingManager implements vscode.Disposable {
         private readonly modelSelectionService: EmbeddingModelSelectionService,
         private readonly vectorDatabaseService: VectorDatabaseService,
         private readonly resourceDetectionService: ResourceDetectionService,
-        private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter | null,
-        options?: IndexingManagerOptions
+        private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter | null
     ) {
-        this.options = { ...this.defaultOptions, ...options };
         this.statusBarService = StatusBarService.getInstance();
 
         const { modelInfo } = this.modelSelectionService.selectOptimalModel();
@@ -352,8 +332,6 @@ export class IndexingManager implements vscode.Disposable {
 
         progress.report({ message: `Found ${sourceFiles.length} files, analyzing...` });
 
-        let totalFilesProcessed = 0;
-
         // First, analyze all files to see which ones need indexing
         const { filesToProcess, totalFilesChecked, totalFilesNeededIndexing } =
             await this.prepareFilesForIndexing(
@@ -364,8 +342,7 @@ export class IndexingManager implements vscode.Disposable {
                     // Update progress based on checked files
                     const checkingProgressPercent = Math.round((checked / total) * 100);
                     progress.report({
-                        message: `Checked ${checked} of ${total} files (${needIndexing} need indexing)`,
-                        increment: 100 / total // Increment by percentage of one file
+                        message: `Checked ${checked} of ${total} files (${needIndexing} need indexing)`
                     });
                 }
             );
@@ -376,54 +353,41 @@ export class IndexingManager implements vscode.Disposable {
             return;
         }
 
-        // Process files in optimally sized batches
-        const batchSize = this.options.batchSize;
+        // Now process all files that need indexing - IndexingService will handle batching internally
+        progress.report({ message: `Indexing ${filesToProcess.length} files...` });
 
-        // Now process the files that need indexing in batches
-        for (let i = 0; i < filesToProcess.length; i += batchSize) {
-            // Check if cancelled
-            if (token.isCancellationRequested) {
-                progress.report({ message: `Indexing operation cancelled after processing ${totalFilesProcessed} files` });
-                break;
-            }
-
-            // Get current batch
-            const batch = filesToProcess.slice(i, i + batchSize);
-
-            // Process this batch
+        try {
+        // Let the IndexingService handle batching
             const results = await this.indexingService!.processFiles(
-                batch,
+                filesToProcess,
                 token,
                 (processed, total) => {
-                    // Update progress message for current batch
+                    // Update progress message showing overall indexing progress
                     progress.report({
-                        message: `Checked ${totalFilesChecked} of ${sourceFiles.length} files. ` +
-                            `Indexing ${processed}/${total} files in current batch...`
+                        message: `Indexing ${processed} of ${total} files...`,
+                        increment: 0 // Don't increment here, as we've already counted the checking phase
                     });
                 }
             );
 
             // Store embeddings in database
-            await this.embeddingDatabaseAdapter.storeEmbeddingResults(batch, results);
+            await this.embeddingDatabaseAdapter.storeEmbeddingResults(filesToProcess, results);
 
-            // Update counters
-            totalFilesProcessed += batch.length;
+            // Final report
+            if (!token.isCancellationRequested) {
+                const message = `Indexing completed. ` +
+                    `Checked ${totalFilesChecked} files. ` +
+                    `Indexed ${filesToProcess.length} files.`;
 
-            // Show overall progress
+                progress.report({ message });
+                console.log(message);
+            }
+        } catch (error) {
+            console.error('Error during indexing:', error);
             progress.report({
-                message: `Checked ${totalFilesChecked}/${sourceFiles.length} files. ` +
-                    `Indexed ${totalFilesProcessed}/${totalFilesNeededIndexing} files that needed indexing.`
+                message: `Error during indexing: ${error instanceof Error ? error.message : String(error)}`
             });
-        }
-
-        // Finalize with report
-        if (!token.isCancellationRequested) {
-            const message = `Indexing completed. ` +
-                `Checked ${totalFilesChecked}/${sourceFiles.length} files. ` +
-                `Indexed ${totalFilesProcessed}/${totalFilesNeededIndexing} files.`;
-
-            progress.report({ message });
-            console.log(message);
+            throw error;
         }
     }
 

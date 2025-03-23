@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IndexingManager, IndexingManagerOptions } from './indexingManager';
+import { IndexingManager } from './indexingManager';
 import { GitOperationsManager } from './gitOperationsManager';
 import { UIManager } from './uiManager';
 import { AnalysisProvider } from './analysisProvider';
@@ -61,21 +61,13 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         // Initialize the vector database service
         this.vectorDatabaseService = VectorDatabaseService.getInstance(context);
 
-        // Initialize the indexing manager first without the embedding database adapter
-        // to break the circular dependency
-        const indexingManagerOptions: IndexingManagerOptions = {
-            memoryReserveGB: 4, // 4GB reserve for other processes
-            batchSize: 20,       // Process files in batches of 20
-        };
-
         this.indexingManager = new IndexingManager(
             context,
             this.workspaceSettingsService,
             this.modelSelectionService,
             this.vectorDatabaseService,
             this.resourceDetectionService,
-            null, // Initially pass null for embeddingDatabaseAdapter
-            indexingManagerOptions
+            null // Initially pass null for embeddingDatabaseAdapter
         );
 
         // Get the indexing service from the manager

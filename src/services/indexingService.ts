@@ -28,6 +28,7 @@ interface ProcessingOperation {
     abortController: AbortController;
     completedCount: number;
     results: Map<string, ProcessingResult>;
+    promises: Promise<ProcessingResult>[];
 }
 
 /**
@@ -137,7 +138,8 @@ export class IndexingService implements vscode.Disposable {
             files,
             abortController,
             completedCount: 0,
-            results: new Map()
+            results: new Map(),
+            promises: []
         };
 
         // Update status to indexing
@@ -149,8 +151,9 @@ export class IndexingService implements vscode.Disposable {
             // Process files concurrently but with limited concurrency
             const maxConcurrentTasks = this.options.maxConcurrentTasks;
             let completedCount = 0;
+            const totalFiles = sortedFiles.length;
 
-            // Process in chunks to maintain concurrency control
+            // Process in batches to maintain concurrency control
             for (let i = 0; i < sortedFiles.length; i += maxConcurrentTasks) {
                 // Check if cancelled
                 if (abortController.signal.aborted) {
@@ -160,37 +163,34 @@ export class IndexingService implements vscode.Disposable {
                 const batch = sortedFiles.slice(i, i + maxConcurrentTasks);
 
                 // Process the batch concurrently
-                const promises = batch.map(file => {
+                this.currentOperation!.promises = batch.map(file => {
                     const processor = this.createProcessor();
                     return processor.processFile(file, abortController.signal)
-                        .then(result => {
-                            if (result.success) {
-                                this.currentOperation!.results.set(file.id, result);
-                            }
-
-                            // Update progress
-                            completedCount++;
-                            if (progressCallback) {
-                                progressCallback(completedCount, files.length);
-                            }
-
-                            // Update status bar
-                            const percentage = Math.round((completedCount / files.length) * 100);
-                            this.statusBarService.showTemporaryMessage(
-                                `Indexing: ${percentage}% (${completedCount}/${files.length})`,
-                                3000,
-                                StatusBarMessageType.Working
-                            );
-
-                            return result;
-                        })
                         .finally(() => {
                             processor.dispose();
                         });
                 });
 
                 // Wait for the current batch to complete
-                await Promise.all(promises);
+                const results = await Promise.all(this.currentOperation!.promises);
+
+                results.forEach(result => {
+                    if (result.success) {
+                        this.currentOperation!.results.set(result.fileId, result);
+                    }
+                    completedCount++;
+                    if (progressCallback) {
+                        progressCallback(completedCount, totalFiles);
+                    }
+
+                    // Update status bar with overall progress (not batch-specific)
+                    const percentage = Math.round((completedCount / totalFiles) * 100);
+                    this.statusBarService.showTemporaryMessage(
+                        `Indexing: ${percentage}% (${completedCount}/${totalFiles})`,
+                        3000,
+                        StatusBarMessageType.Working
+                    );
+                });
             }
 
             // Update last indexing timestamp after successful completion
@@ -221,6 +221,9 @@ export class IndexingService implements vscode.Disposable {
         if (this.currentOperation) {
             // Abort the operation
             this.currentOperation.abortController.abort();
+
+            await Promise.all(this.currentOperation.promises);
+
             this.currentOperation = null;
 
             this.statusBarService.showTemporaryMessage(
