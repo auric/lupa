@@ -73,7 +73,7 @@ export class ResourceDetectionService {
         let workerCount = Math.max(1, Math.min(resources.cpuCount - 1, maxWorkers));
 
         // For high memory model, each worker needs more memory
-        const memoryPerWorker = highMemoryModel ? 1 : 0.5; // GB per worker
+        const memoryPerWorker = highMemoryModel ? 3 : 0.5; // GB per worker
         const maxWorkersForMemory = Math.max(1, Math.floor(resources.availableMemoryGB / memoryPerWorker));
 
         // Take the minimum of CPU-based and memory-based worker counts

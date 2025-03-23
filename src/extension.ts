@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { PRAnalyzer } from './services/prAnalyzer';
+import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
 import { registerLanguageStructureCommands } from './__tests__/utils/languageStructureAnalyzer';
 
@@ -8,10 +8,10 @@ export async function activate(context: vscode.ExtensionContext) {
     console.log('Activating codelens-pr-analyzer extension');
 
     try {
-        // Create the PR analyzer instance
-        const prAnalyzer = new PRAnalyzer(context);
+        // Create the PR analysis coordinator instance
+        const prAnalysisCoordinator = new PRAnalysisCoordinator(context);
 
-        context.subscriptions.push(prAnalyzer);
+        context.subscriptions.push(prAnalysisCoordinator);
 
         // Register the test command for the structure analyzer
         registerLanguageStructureCommands(context);
