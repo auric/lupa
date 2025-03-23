@@ -267,12 +267,17 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     ): Promise<Parser.Tree | null> {
         await this.ensureInitialized();
 
+        let tree: Parser.Tree | null = null;
         try {
             const lang = await this.loadLanguageParser(language, variant);
             this.parser!.setLanguage(lang);
-            return this.parser!.parse(content);
+            tree = this.parser!.parse(content);
+            return tree;
         } catch (error) {
             console.error(`Error parsing ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            if (tree) {
+                tree.delete();
+            }
             throw new Error(`Parsing error: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
@@ -291,8 +296,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     ): Promise<CodeStructure[]> {
         await this.ensureInitialized();
 
+        let tree = null;
+        let queries = [];
+
         try {
-            const tree = await this.parseContent(content, language, variant);
+            tree = await this.parseContent(content, language, variant);
             if (!tree) {
                 console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
                 return [];
@@ -311,6 +319,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     // Get the currently set language from the parser
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
+                    queries.push(query);
 
                     // For older web-tree-sitter API, we need to use captures()
                     // instead of matches()
@@ -434,6 +443,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         } catch (error) {
             console.error(`Error finding functions in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
+        } finally {
+            // Clean up resources
+            if (tree) {
+                tree.delete();
+            }
+
+            for (const query of queries) {
+                query.delete();
+            }
         }
     }
 
@@ -451,16 +469,17 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     ): Promise<CodeStructure[]> {
         await this.ensureInitialized();
 
+        let tree = null;
+        let queries = [];
+
         try {
-            const tree = await this.parseContent(content, language, variant);
+            tree = await this.parseContent(content, language, variant);
             if (!tree) {
-                // Handle the case where parsing failed and returned null
                 console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
                 return [];
             }
 
             const config = this.languageConfigs[language];
-
             if (!config) {
                 throw new Error(`Language '${language}' is not supported`);
             }
@@ -473,8 +492,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     // Get the currently set language from the parser
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
+                    queries.push(query);
 
-                    // Fix: Use the captures method with the rootNode for older web-tree-sitter API
+                    // Use the captures method with the rootNode
                     const captures = query.captures(rootNode);
 
                     for (const capture of captures) {
@@ -561,6 +581,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         } catch (error) {
             console.error(`Error finding classes in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
+        } finally {
+            // Clean up resources
+            if (tree) {
+                tree.delete();
+            }
+
+            for (const query of queries) {
+                query.delete();
+            }
         }
     }
 
@@ -743,8 +772,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     ): Promise<CodeStructure[]> {
         await this.ensureInitialized();
 
+        let tree = null;
         try {
-            const tree = await this.parseContent(content, language, variant);
+            tree = await this.parseContent(content, language, variant);
             if (tree === null) {
                 return [];
             }
@@ -786,6 +816,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         } catch (error) {
             console.error(`Error getting structure hierarchy:`, error);
             return [];
+        } finally {
+            // Clean up resources
+            if (tree) {
+                tree.delete();
+            }
         }
     }
 
@@ -874,9 +909,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      */
     public dispose(): void {
         if (this.parser) {
+            this.parser.delete();
             this.parser = null;
         }
 
+        // Clean up any language parsers that were loaded
         this.languageParsers.clear();
         TreeStructureAnalyzer.instance = null;
     }
