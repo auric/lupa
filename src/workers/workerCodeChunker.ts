@@ -60,8 +60,6 @@ export class WorkerCodeChunker {
         const safeTokenLimit = this.tokenEstimator.getSafeChunkSize();
 
         try {
-            console.log(`Worker: Processing file of ${text.length} characters`);
-
             // For medium-sized files, check token count
             if (await this.tokenEstimator.willFitContextWindow(text)) {
                 return {
@@ -117,23 +115,17 @@ export class WorkerCodeChunker {
         signal: AbortSignal
     ): Promise<ChunkingResult | null> {
         try {
-            console.log(`Worker: Starting structure-aware chunking for ${language}`);
-
             // Find all structure break points (function/method/class boundaries)
             const breakPoints = await analyzer.findStructureBreakPoints(text, language);
 
             if (breakPoints.length === 0) {
-                console.log('Worker: No structure break points found, falling back to token chunking');
+                console.warn('Worker: No structure break points found, falling back to token chunking');
                 return null;
             }
-
-            console.log(`Worker: Found ${breakPoints.length} structure break points`);
 
             // Get functions and classes to prioritize preserving whole structures
             const functions = await analyzer.findFunctions(text, language);
             const classes = await analyzer.findClasses(text, language);
-
-            console.log(`Worker: Found ${functions.length} functions and ${classes.length} classes`);
 
             // Create a map of important code structures with their ranges
             const codeStructures = new Map<number, { end: number, type: string }>();
@@ -315,8 +307,6 @@ export class WorkerCodeChunker {
 
                 lastEndPos = endPos;
                 startPos = nextStartPos;
-
-                console.log(`Worker: Created structure-aware chunk of ${chunk.length} chars, next start at ${startPos}/${text.length}`);
             }
 
             return { chunks, offsets };
@@ -569,7 +559,6 @@ export class WorkerCodeChunker {
             return { chunks: [], offsets: [] };
         }
 
-        console.log(`Worker: Starting token-based chunking for ${text.length} characters`);
         const startTime = performance.now();
 
         // Initialize tokenizer
@@ -577,11 +566,9 @@ export class WorkerCodeChunker {
 
         // Get all tokens first
         const tokens = await this.tokenEstimator.tokenize(text);
-        console.log(`Worker: Text tokenized into ${tokens.length} tokens`);
 
         // Map tokens to their positions in the text
         const tokenPositions = await this.mapTokensToPositions(text, tokens, tokenizer);
-        console.log(`Worker: Mapped ${tokenPositions.length} token positions`);
 
         // If it fits in one chunk, return as is
         if (tokens.length <= maxTokens) {
@@ -606,7 +593,6 @@ export class WorkerCodeChunker {
             }
             // Determine target end index
             const targetEndTokenIdx = Math.min(startTokenIdx + maxTokens, tokens.length);
-            console.log(`Worker: Chunking progress - processing tokens ${startTokenIdx}/${tokens.length}`);
 
             // If we're at the end, add final chunk
             if (targetEndTokenIdx >= tokens.length) {
@@ -648,8 +634,6 @@ export class WorkerCodeChunker {
 
             // Ensure we always make forward progress
             startTokenIdx = Math.max(startTokenIdx + 1, nextStartTokenIdx);
-
-            console.log(`Worker: Created chunk of ${chunkText.length} chars (${chunkText.split('\n').length} lines), next start at token ${startTokenIdx}/${tokens.length}`);
         }
 
         const endTime = performance.now();
@@ -673,9 +657,6 @@ export class WorkerCodeChunker {
         const positions: Array<{ start: number, end: number }> = [];
         let currentPos = 0;
         let remainingText = text;
-
-        console.log(`Worker: Mapping ${tokens.length} tokens to positions`);
-        const progressStep = Math.max(1, Math.floor(tokens.length / 10));
 
         // Process tokens in batches for efficiency
         const batchSize = 100;
@@ -743,11 +724,6 @@ export class WorkerCodeChunker {
 
                     currentPos += 1;
                     remainingText = text.substring(currentPos);
-                }
-
-                // Log progress periodically
-                if ((tokenIdx + 1) % progressStep === 0 || tokenIdx === tokens.length - 1) {
-                    console.log(`Worker: Mapping progress - mapped ${tokenIdx + 1}/${tokens.length} tokens`);
                 }
             }
         }
