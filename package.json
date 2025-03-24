@@ -78,7 +78,7 @@
         "@vscode/sqlite3": "^5.1.8-vscode",
         "@vscode/tree-sitter-wasm": "^0.1.4",
         "ml-distance": "^4.0.1",
-        "onnxruntime-node": "^1.20.1",
+        "onnxruntime-node": "^1.21.0",
         "piscina": "^4.8.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",

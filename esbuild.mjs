@@ -52,8 +52,8 @@ const buildOptions = {
             resolveFrom: "cwd",
             assets: [
                 {
-                    from: ["./node_modules/onnxruntime-node/bin/napi-v3/win32/x64/*"],
-                    to: ["./dist/node_modules/onnxruntime-node/bin/napi-v3/win32/x64/"],
+                    from: ["./node_modules/onnxruntime-node/**/*"],
+                    to: ["./dist/node_modules/onnxruntime-node/"],
                 },
                 {
                     from: ["./node_modules/better-sqlite3/build/Release/*"],
