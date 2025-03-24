@@ -70,7 +70,9 @@
         "prepare-models": "node ./scripts/prepare-models.js",
         "check-types": "tsc --noEmit",
         "clean": "rimraf -g ./*.vsix && rimraf ./dist",
-        "test": "jest"
+        "test": "npx vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
         "@anthropic-ai/tokenizer": "^0.0.4",
@@ -94,14 +96,14 @@
         "@types/react-dom": "^19.0.4",
         "@types/uuid": "^10.0.0",
         "@types/vscode": "^1.97.0",
+        "@vitest/coverage-v8": "^3.0.9",
         "esbuild": "^0.25.0",
         "esbuild-native-node-modules-plugin": "^1.0.3",
         "esbuild-plugin-copy": "^2.1.1",
-        "jest": "^29.7.0",
-        "jest-mock-vscode": "^4.1.0",
         "rimraf": "^6.0.1",
         "ts-jest": "^29.2.6",
-        "typescript": "^5.8.2"
+        "typescript": "^5.8.2",
+        "vitest": "^3.0.9"
     },
     "files": [
         "dist/**/*"

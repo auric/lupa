@@ -1,42 +1,46 @@
-// ___mocks__/vscode.js
-/* eslint-disable node/no-unpublished-require */
-const vscodeMock = require('jest-mock-vscode').createVSCodeMock(jest);
-/* eslint-enable node/no-unpublished-require */
+import { vi } from 'vitest';
 
-vscodeMock.TextDocument = jest.fn().mockImplementation(() => ({
-  getText: jest.fn().mockReturnValue('mocked document text'),
-  lineAt: jest.fn().mockReturnValue({ text: 'mocked line text' }),
-  offsetAt: jest.fn().mockReturnValue(10),
-  positionAt: jest.fn((offset) => {
+function createVSCodeMock() {
+  const vscodeMock = {};
+  return vscodeMock;
+}
+
+let vscodeMock = createVSCodeMock();
+
+vscodeMock.TextDocument = vi.fn().mockImplementation(() => ({
+  getText: vi.fn().mockReturnValue('mocked document text'),
+  lineAt: vi.fn().mockReturnValue({ text: 'mocked line text' }),
+  offsetAt: vi.fn().mockReturnValue(10),
+  positionAt: vi.fn((offset) => {
     return new vscodeMock.Position(Math.floor(offset / 10), offset % 10);
   }),
   lineCount: 100
 }));
 
 // Add custom mocks for Position class
-vscodeMock.Position = jest.fn().mockImplementation((line, character) => {
+vscodeMock.Position = vi.fn().mockImplementation((line, character) => {
   return {
     line,
     character,
-    translate: jest.fn(function (lineDelta, characterDelta) {
+    translate: vi.fn(function (lineDelta, characterDelta) {
       return new vscodeMock.Position(this.line + lineDelta, this.character + characterDelta);
     })
   };
 });
 
 // Add custom mocks for Range class
-vscodeMock.Range = jest.fn().mockImplementation((startOrStartLine, endOrStartCharacter, endLine, endCharacter) => {
+vscodeMock.Range = vi.fn().mockImplementation((startOrStartLine, endOrStartCharacter, endLine, endCharacter) => {
   if (typeof startOrStartLine === 'number' && typeof endOrStartCharacter === 'number') {
     return {
       start: new vscodeMock.Position(startOrStartLine, endOrStartCharacter),
       end: new vscodeMock.Position(endLine, endCharacter),
       isEmpty: false,
       isSingleLine: startOrStartLine === endLine,
-      contains: jest.fn(),
-      isEqual: jest.fn(),
-      intersection: jest.fn(),
-      union: jest.fn(),
-      with: jest.fn()
+      contains: vi.fn(),
+      isEqual: vi.fn(),
+      intersection: vi.fn(),
+      union: vi.fn(),
+      with: vi.fn()
     };
   } else {
     return {
@@ -44,17 +48,17 @@ vscodeMock.Range = jest.fn().mockImplementation((startOrStartLine, endOrStartCha
       end: endOrStartCharacter,
       isEmpty: false,
       isSingleLine: startOrStartLine.line === endOrStartCharacter.line,
-      contains: jest.fn(),
-      isEqual: jest.fn(),
-      intersection: jest.fn(),
-      union: jest.fn(),
-      with: jest.fn()
+      contains: vi.fn(),
+      isEqual: vi.fn(),
+      intersection: vi.fn(),
+      union: vi.fn(),
+      with: vi.fn()
     };
   }
 });
 
 // Add custom mocks for InlineCompletionItem class
-vscodeMock.InlineCompletionItem = jest.fn().mockImplementation((insertText, range, command) => {
+vscodeMock.InlineCompletionItem = vi.fn().mockImplementation((insertText, range, command) => {
   return {
     insertText,
     range,
@@ -64,44 +68,44 @@ vscodeMock.InlineCompletionItem = jest.fn().mockImplementation((insertText, rang
 });
 
 // Add custom mocks for InlineCompletionList class
-vscodeMock.InlineCompletionList = jest.fn().mockImplementation((items) => {
+vscodeMock.InlineCompletionList = vi.fn().mockImplementation((items) => {
   return {
     items,
   };
 });
 
 vscodeMock.workspace = {
-  getConfiguration: jest.fn().mockReturnValue({
-    get: jest.fn(),
-    update: jest.fn().mockResolvedValue(undefined)
+  getConfiguration: vi.fn().mockReturnValue({
+    get: vi.fn(),
+    update: vi.fn().mockResolvedValue(undefined)
   }),
-  openTextDocument: jest.fn().mockResolvedValue({
-    getText: jest.fn().mockReturnValue(''),
-    save: jest.fn().mockResolvedValue(true)
+  openTextDocument: vi.fn().mockResolvedValue({
+    getText: vi.fn().mockReturnValue(''),
+    save: vi.fn().mockResolvedValue(true)
   }),
-  applyEdit: jest.fn().mockResolvedValue(true),
-  onDidChangeTextDocument: jest.fn(),
-  onDidChangeWorkspaceFolders: jest.fn((_listener) => {
+  applyEdit: vi.fn().mockResolvedValue(true),
+  onDidChangeTextDocument: vi.fn(),
+  onDidChangeWorkspaceFolders: vi.fn((_listener) => {
     return {
-      dispose: jest.fn()
+      dispose: vi.fn()
     };
   }),
   fs: {
-    readDirectory: jest.fn().mockResolvedValue([]),
-    readFile: jest.fn().mockResolvedValue(Buffer.from('')),
-    writeFile: jest.fn().mockResolvedValue(),
-    stat: jest.fn().mockResolvedValue({
+    readDirectory: vi.fn().mockResolvedValue([]),
+    readFile: vi.fn().mockResolvedValue(Buffer.from('')),
+    writeFile: vi.fn().mockResolvedValue(),
+    stat: vi.fn().mockResolvedValue({
       type: 1
     }),
-    copy: jest.fn().mockResolvedValue(),
-    createDirectory: jest.fn().mockResolvedValue(),
-    delete: jest.fn().mockResolvedValue()
+    copy: vi.fn().mockResolvedValue(),
+    createDirectory: vi.fn().mockResolvedValue(),
+    delete: vi.fn().mockResolvedValue()
   }
 };
 
 vscodeMock.commands = {
-  registerCommand: jest.fn(),
-  executeCommand: jest.fn()
+  registerCommand: vi.fn(),
+  executeCommand: vi.fn()
 };
 
 vscodeMock.ConfigurationTarget = {
@@ -110,25 +114,34 @@ vscodeMock.ConfigurationTarget = {
   WorkspaceFolder: 3
 };
 
-vscodeMock.CancellationTokenSource = jest.fn().mockImplementation(() => {
-  let listeners = [];
-  return {
-    token: {
-      isCancellationRequested: false,
-      onCancellationRequested: jest.fn((listener) => {
-        listeners.push(listener);
-        return {
-          dispose: jest.fn(() => {
-            listeners = listeners.filter(l => l !== listener);
-          }),
-        };
-      }),
-    },
-    cancel: jest.fn(() => {
-      listeners.forEach(listener => listener());
-    }),
-    dispose: jest.fn(),
+vscodeMock.CancellationTokenSource = vi.fn(function () {
+  // Using function() instead of arrow function so 'this' refers to the instance
+  const listeners = [];
+
+  // Create the token property on the instance
+  this.token = {
+    isCancellationRequested: false,
+    onCancellationRequested: vi.fn((listener) => {
+      listeners.push(listener);
+      return {
+        dispose: vi.fn(() => {
+          const index = listeners.indexOf(listener);
+          if (index !== -1) {
+            listeners.splice(index, 1);
+          }
+        })
+      };
+    })
   };
+
+  // Add methods to the instance
+  this.cancel = vi.fn(() => {
+    this.token.isCancellationRequested = true;
+    // Create a copy of listeners array before iteration
+    [...listeners].forEach(listener => listener());
+  });
+
+  this.dispose = vi.fn();
 });
 
 vscodeMock.ProgressLocation = {
@@ -144,9 +157,9 @@ vscodeMock.ViewColumn = {
 };
 
 vscodeMock.Uri = {
-  file: jest.fn(path => ({ fsPath: path })),
-  parse: jest.fn(),
-  joinPath: jest.fn((base, ...paths) => {
+  file: vi.fn(path => ({ fsPath: path })),
+  parse: vi.fn(),
+  joinPath: vi.fn((base, ...paths) => {
     const joinedPath = [base.fsPath, ...paths].join('/');
     return {
       ...base,
@@ -157,138 +170,138 @@ vscodeMock.Uri = {
 };
 
 vscodeMock.languages = {
-  registerInlineCompletionItemProvider: jest.fn(),
-  registerCodeActionsProvider: jest.fn()
+  registerInlineCompletionItemProvider: vi.fn(),
+  registerCodeActionsProvider: vi.fn()
 };
 
-vscodeMock.ThemeIcon = jest.fn();
+vscodeMock.ThemeIcon = vi.fn();
 
 vscodeMock.window = {
-  showQuickPick: jest.fn().mockResolvedValue(undefined),
-  showInputBox: jest.fn().mockResolvedValue(undefined),
-  showInformationMessage: jest.fn().mockResolvedValue(undefined),
-  showWarningMessage: jest.fn().mockResolvedValue(undefined),
-  showErrorMessage: jest.fn().mockResolvedValue(undefined),
-  createOutputChannel: jest.fn().mockReturnValue({
-    appendLine: jest.fn(),
-    show: jest.fn()
+  showQuickPick: vi.fn().mockResolvedValue(undefined),
+  showInputBox: vi.fn().mockResolvedValue(undefined),
+  showInformationMessage: vi.fn().mockResolvedValue(undefined),
+  showWarningMessage: vi.fn().mockResolvedValue(undefined),
+  showErrorMessage: vi.fn().mockResolvedValue(undefined),
+  createOutputChannel: vi.fn().mockReturnValue({
+    appendLine: vi.fn(),
+    show: vi.fn()
   }),
   tabGroups: {
     activeTabGroup: {},
     all: [],
-    onDidChangeTabGroups: jest.fn(),
-    onDidChangeTabs: jest.fn()
+    onDidChangeTabGroups: vi.fn(),
+    onDidChangeTabs: vi.fn()
   },
   activeTextEditor: undefined,
   visibleTextEditors: [],
-  onDidChangeActiveTextEditor: jest.fn(),
-  onDidChangeVisibleTextEditors: jest.fn(),
-  onDidChangeTextEditorSelection: jest.fn(),
-  onDidChangeTextEditorVisibleRanges: jest.fn(),
-  onDidChangeTextEditorOptions: jest.fn(),
-  onDidChangeTextEditorViewColumn: jest.fn(),
+  onDidChangeActiveTextEditor: vi.fn(),
+  onDidChangeVisibleTextEditors: vi.fn(),
+  onDidChangeTextEditorSelection: vi.fn(),
+  onDidChangeTextEditorVisibleRanges: vi.fn(),
+  onDidChangeTextEditorOptions: vi.fn(),
+  onDidChangeTextEditorViewColumn: vi.fn(),
   visibleNotebookEditors: [],
-  onDidChangeVisibleNotebookEditors: jest.fn(),
+  onDidChangeVisibleNotebookEditors: vi.fn(),
   activeNotebookEditor: undefined,
-  onDidChangeActiveNotebookEditor: jest.fn(),
-  onDidChangeNotebookEditorSelection: jest.fn(),
-  onDidChangeNotebookEditorVisibleRanges: jest.fn(),
+  onDidChangeActiveNotebookEditor: vi.fn(),
+  onDidChangeNotebookEditorSelection: vi.fn(),
+  onDidChangeNotebookEditorVisibleRanges: vi.fn(),
   terminals: [],
   activeTerminal: undefined,
-  onDidChangeActiveTerminal: jest.fn(),
-  onDidOpenTerminal: jest.fn(),
-  onDidCloseTerminal: jest.fn(),
-  onDidChangeTerminalState: jest.fn(),
+  onDidChangeActiveTerminal: vi.fn(),
+  onDidOpenTerminal: vi.fn(),
+  onDidCloseTerminal: vi.fn(),
+  onDidChangeTerminalState: vi.fn(),
   state: {},
-  onDidChangeWindowState: jest.fn(),
-  showTextDocument: jest.fn().mockResolvedValue(undefined),
-  showNotebookDocument: jest.fn().mockResolvedValue(undefined),
-  createTextEditorDecorationType: jest.fn(),
-  showWorkspaceFolderPick: jest.fn().mockResolvedValue(undefined),
-  showOpenDialog: jest.fn().mockResolvedValue(undefined),
-  showSaveDialog: jest.fn().mockResolvedValue(undefined),
-  createQuickPick: jest.fn().mockReturnValue({
+  onDidChangeWindowState: vi.fn(),
+  showTextDocument: vi.fn().mockResolvedValue(undefined),
+  showNotebookDocument: vi.fn().mockResolvedValue(undefined),
+  createTextEditorDecorationType: vi.fn(),
+  showWorkspaceFolderPick: vi.fn().mockResolvedValue(undefined),
+  showOpenDialog: vi.fn().mockResolvedValue(undefined),
+  showSaveDialog: vi.fn().mockResolvedValue(undefined),
+  createQuickPick: vi.fn().mockReturnValue({
     items: [],
     selectedItems: [],
-    onDidAccept: jest.fn(),
-    onDidChangeValue: jest.fn(),
-    show: jest.fn(),
-    hide: jest.fn()
+    onDidAccept: vi.fn(),
+    onDidChangeValue: vi.fn(),
+    show: vi.fn(),
+    hide: vi.fn()
   }),
-  createInputBox: jest.fn().mockReturnValue({
+  createInputBox: vi.fn().mockReturnValue({
     value: '',
-    onDidAccept: jest.fn(),
-    onDidChangeValue: jest.fn(),
-    show: jest.fn(),
-    hide: jest.fn()
+    onDidAccept: vi.fn(),
+    onDidChangeValue: vi.fn(),
+    show: vi.fn(),
+    hide: vi.fn()
   }),
-  createOutputChannel: jest.fn().mockReturnValue({
-    appendLine: jest.fn(),
-    show: jest.fn()
+  createOutputChannel: vi.fn().mockReturnValue({
+    appendLine: vi.fn(),
+    show: vi.fn()
   }),
-  createWebviewPanel: jest.fn().mockReturnValue({
+  createWebviewPanel: vi.fn().mockReturnValue({
     webview: {
-      postMessage: jest.fn(),
-      onDidReceiveMessage: jest.fn()
+      postMessage: vi.fn(),
+      onDidReceiveMessage: vi.fn()
     },
-    reveal: jest.fn(),
-    dispose: jest.fn()
+    reveal: vi.fn(),
+    dispose: vi.fn()
   }),
-  setStatusBarMessage: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  setStatusBarMessage: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
-  withProgress: jest.fn((options, task) => {
+  withProgress: vi.fn((options, task) => {
     const token = {
       isCancellationRequested: false,
-      onCancellationRequested: jest.fn()
+      onCancellationRequested: vi.fn()
     };
     return task({}, token);
   }),
-  createStatusBarItem: jest.fn().mockReturnValue({
+  createStatusBarItem: vi.fn().mockReturnValue({
     text: '',
     tooltip: '',
     color: '',
     command: '',
-    show: jest.fn(),
-    hide: jest.fn(),
-    dispose: jest.fn()
+    show: vi.fn(),
+    hide: vi.fn(),
+    dispose: vi.fn()
   }),
-  createTerminal: jest.fn().mockReturnValue({
-    sendText: jest.fn(),
-    show: jest.fn(),
-    hide: jest.fn(),
-    dispose: jest.fn()
+  createTerminal: vi.fn().mockReturnValue({
+    sendText: vi.fn(),
+    show: vi.fn(),
+    hide: vi.fn(),
+    dispose: vi.fn()
   }),
-  registerTreeDataProvider: jest.fn(),
-  createTreeView: jest.fn().mockReturnValue({
-    onDidChangeVisibility: jest.fn(),
-    onDidChangeSelection: jest.fn(),
-    reveal: jest.fn(),
-    dispose: jest.fn()
+  registerTreeDataProvider: vi.fn(),
+  createTreeView: vi.fn().mockReturnValue({
+    onDidChangeVisibility: vi.fn(),
+    onDidChangeSelection: vi.fn(),
+    reveal: vi.fn(),
+    dispose: vi.fn()
   }),
-  registerUriHandler: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  registerUriHandler: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
-  registerWebviewPanelSerializer: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  registerWebviewPanelSerializer: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
-  registerWebviewViewProvider: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  registerWebviewViewProvider: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
-  registerCustomEditorProvider: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  registerCustomEditorProvider: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
-  registerTerminalLinkProvider: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  registerTerminalLinkProvider: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
-  registerTerminalProfileProvider: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  registerTerminalProfileProvider: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
-  registerFileDecorationProvider: jest.fn().mockReturnValue({
-    dispose: jest.fn()
+  registerFileDecorationProvider: vi.fn().mockReturnValue({
+    dispose: vi.fn()
   }),
   activeColorTheme: {},
-  onDidChangeActiveColorTheme: jest.fn()
+  onDidChangeActiveColorTheme: vi.fn()
 };
 
 module.exports = vscodeMock;
