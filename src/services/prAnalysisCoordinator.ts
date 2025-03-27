@@ -213,19 +213,37 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             // Perform the analysis with progress reporting
             await this.uiManager.showAnalysisProgress('PR Analyzer', async (progress, token) => {
                 try {
-                    // Step 1: Generate embeddings for the diff
-                    progress.report({ message: 'Analyzing changes...', increment: 10 });
+                    // Initial setup - 5%
+                    progress.report({ message: 'Initializing analysis...', increment: 5 });
 
-                    // Step 2: Run the analysis
-                    const { analysis, context } = await this.analysisProvider.analyzePullRequest(diffText, analysisMode);
-                    progress.report({ message: 'Analysis complete', increment: 75 });
+                    // Step 1: Run the analysis with detailed progress reporting - 85% total
+                    // We allocate most of the progress to the actual analysis
+                    const { analysis, context } = await this.analysisProvider.analyzePullRequest(
+                        diffText, 
+                        analysisMode,
+                        (message, increment) => {
+                            // Only update the message if no increment is specified
+                            if (increment) {
+                                // Use a very conservative scaling factor to ensure progress
+                                // never gets ahead of actual completion
+                                const scaledIncrement = Math.min(increment * 0.2, 1);
+                                progress.report({ message, increment: scaledIncrement });
+                            } else {
+                                progress.report({ message });
+                            }
+                        },
+                        token
+                    );
+                    
+                    // Step 2: Display the results - 10% remaining
+                    progress.report({ message: 'Preparing analysis results...', increment: 5 });
 
                     // Create a title based on the reference
                     const title = `PR Analysis: ${refName}`;
 
                     // Display the results in a webview
                     this.uiManager.displayAnalysisResults(title, diffText, context, analysis);
-                    progress.report({ message: 'Analysis displayed', increment: 15 });
+                    progress.report({ message: 'Analysis displayed', increment: 5 });
 
                     // Update status bar
                     this.uiManager.showTemporaryStatusMessage(

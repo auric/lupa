@@ -272,44 +272,55 @@ export class ContextProvider implements vscode.Disposable {
      * @param options Optional search options
      * @param analysisMode Analysis mode that determines relevance strategy
      * @param systemPrompt Optional system prompt
+     * @param progressCallback Optional callback for progress updates
+     * @param token Optional cancellation token
      * @returns The formatted context
      */
     async getContextForDiff(
         diff: string,
         options?: SimilaritySearchOptions,
         analysisMode: AnalysisMode = AnalysisMode.Comprehensive,
-        systemPrompt?: string
+        systemPrompt?: string,
+        progressCallback?: (processed: number, total: number) => void,
+        token?: vscode.CancellationToken
     ): Promise<string> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
 
         try {
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
             // Extract meaningful chunks from the diff for better semantic search
             const chunks = await this.extractMeaningfulChunks(diff);
+
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
 
             // Set search options based on analysis mode
             const searchOptions = this.getSearchOptionsForMode(analysisMode, options);
 
-            // Store all results across chunks
-            const allResults: SimilaritySearchResult[] = [];
+            // Find relevant context for all chunks in a single batch with progress reporting
+            const allResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
+                chunks,
+                searchOptions,
+                progressCallback || ((processed, total) => {
+                    console.log(`Generating embeddings: ${processed} of ${total}`);
+                }),
+                token
+            );
 
-            // Query the database for each chunk
-            for (const chunk of chunks) {
-                const results = await this.embeddingDatabaseAdapter.findRelevantCodeContext(
-                    chunk,
-                    searchOptions
-                );
-
-                // Add results, avoiding duplicates
-                for (const result of results) {
-                    if (!allResults.some(r => r.chunkId === result.chunkId)) {
-                        allResults.push(result);
-                    }
-                }
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
             }
 
             if (allResults.length === 0) {
                 console.log('No relevant context found');
-                return await this.getFallbackContext(diff);
+                return await this.getFallbackContext(diff, token);
             }
 
             // Rank and filter results based on relevance and analysis mode
@@ -319,6 +330,11 @@ export class ContextProvider implements vscode.Disposable {
 
             // Format the results first to get the initial context
             const initialFormattedContext = this.formatContextResults(rankedResults);
+
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
 
             // Use the TokenManagerService to optimize context size taking all components into account
             // If systemPrompt is not provided, get it from the mode
@@ -347,6 +363,11 @@ export class ContextProvider implements vscode.Disposable {
                 fits: allocation.fitsWithinLimit
             })}`);
 
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
             // If everything fits, we can use the full context
             if (allocation.fitsWithinLimit) {
                 console.log('All components fit within token limit, using full context');
@@ -369,6 +390,9 @@ export class ContextProvider implements vscode.Disposable {
 
             return optimizedContext;
         } catch (error) {
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
             console.error('Error getting context for diff:', error);
             return 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error));
         }
@@ -695,18 +719,18 @@ export class ContextProvider implements vscode.Disposable {
     /**
      * Get fallback context when no relevant context is found
      */
-    private async getFallbackContext(diff: string): Promise<string> {
-        console.log('Using fallback context strategy');
-
+    private async getFallbackContext(diff: string, token?: vscode.CancellationToken): Promise<string> {
         try {
-            // Strategy 1: Use filenames from the diff to find relevant files
-            const filePathRegex = /^(?:diff --git a\/|--- a\/|\+\+\+ b\/)(.+?)(?:$|\s)/gm;
+            console.log('Using fallback strategies to find context');
+
+            // Strategy 1: Extract file paths from diff and use them to find related files
+            const filePathRegex = /^diff --git a\/(.+) b\/(.+)$/gm;
             const filePaths = new Set<string>();
             let match;
 
             while ((match = filePathRegex.exec(diff)) !== null) {
-                if (match[1] && !match[1].includes('/dev/null')) {
-                    filePaths.add(match[1]);
+                if (match[2]) {
+                    filePaths.add(match[2]);
                 }
             }
 
@@ -724,21 +748,15 @@ export class ContextProvider implements vscode.Disposable {
 
                 const searchQueries = [...filePaths, ...parentDirs];
 
-                // Try to find related files
-                const allResults: SimilaritySearchResult[] = [];
-
-                for (const query of searchQueries) {
-                    const results = await this.embeddingDatabaseAdapter.findRelevantCodeContext(
-                        query,
-                        { minScore: 0.5, limit: 5 }
-                    );
-
-                    for (const result of results) {
-                        if (!allResults.some(r => r.chunkId === result.chunkId)) {
-                            allResults.push(result);
-                        }
-                    }
-                }
+                // Try to find related files - use batch processing
+                const allResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
+                    searchQueries,
+                    { minScore: 0.5, limit: 5 },
+                    (processed, total) => {
+                        console.log(`Generating fallback embeddings: ${processed} of ${total}`);
+                    },
+                    token
+                );
 
                 if (allResults.length > 0) {
                     console.log(`Found ${allResults.length} fallback context items`);
@@ -751,7 +769,49 @@ export class ContextProvider implements vscode.Disposable {
 
         } catch (error) {
             console.error('Error getting fallback context:', error);
-            return 'No directly relevant context could be found. Analysis will be based solely on the changes in the PR.';
+            return 'Error retrieving fallback context: ' + (error instanceof Error ? error.message : String(error));
+        }
+    }
+
+    /**
+     * Get context specifically for repository-level analysis
+     * Useful for understanding project structure and patterns
+     */
+    async getRepositoryContext(): Promise<string> {
+        try {
+            console.log('Getting repository context');
+
+            // Look for key files that would give insights into the project structure
+            const keyFilePatterns = [
+                'package.json', 'requirements.txt', 'build.gradle', 'pom.xml',
+                'tsconfig.json', 'Cargo.toml', 'CMakeLists.txt', 'Makefile',
+                'README.md', '.gitignore'
+            ];
+
+            // Use batch processing for all patterns at once
+            const allResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
+                keyFilePatterns,
+                { minScore: 0.5, limit: 2 },
+                (processed, total) => {
+                    console.log(`Generating repository context embeddings: ${processed} of ${total}`);
+                }
+            );
+
+            if (allResults.length === 0) {
+                return 'No repository context could be found.';
+            }
+
+            // Filter out duplicate file paths
+            const uniqueResults = allResults.filter((result, index, self) => 
+                index === self.findIndex(r => r.filePath === result.filePath)
+            );
+
+            return this.formatContextResults(uniqueResults);
+
+        } catch (error) {
+            console.error('Error getting repository context:', error);
+            return 'Error retrieving repository context: ' +
+                (error instanceof Error ? error.message : String(error));
         }
     }
 
@@ -971,48 +1031,6 @@ export class ContextProvider implements vscode.Disposable {
         }
 
         return combined;
-    }
-
-    /**
-     * Get context specifically for repository-level analysis
-     * Useful for understanding project structure and patterns
-     */
-    async getRepositoryContext(): Promise<string> {
-        try {
-            // Find key files that represent the project structure
-            const keyFilePatterns = [
-                'package.json', 'requirements.txt', 'build.gradle', 'pom.xml',
-                'tsconfig.json', 'Cargo.toml', 'CMakeLists.txt', 'Makefile',
-                'README.md', '.gitignore'
-            ];
-
-            const allResults: SimilaritySearchResult[] = [];
-
-            // Search for each key file pattern
-            for (const pattern of keyFilePatterns) {
-                const results = await this.embeddingDatabaseAdapter.findRelevantCodeContext(
-                    pattern,
-                    { minScore: 0.5, limit: 2 }
-                );
-
-                for (const result of results) {
-                    if (!allResults.some(r => r.filePath === result.filePath)) {
-                        allResults.push(result);
-                    }
-                }
-            }
-
-            if (allResults.length === 0) {
-                return 'No repository context could be found.';
-            }
-
-            return this.formatContextResults(allResults);
-
-        } catch (error) {
-            console.error('Error getting repository context:', error);
-            return 'Error retrieving repository context: ' +
-                (error instanceof Error ? error.message : String(error));
-        }
     }
 
     /**

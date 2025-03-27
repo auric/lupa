@@ -322,7 +322,7 @@ export class IndexingManager implements vscode.Disposable {
         const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
 
         // Find source files in workspace
-        progress.report({ message: 'Finding files to index...' });
+        progress.report({ message: 'Finding files to index...', increment: 0 });
         const sourceFiles = await this.findSourceFiles(workspaceRoot);
 
         if (sourceFiles.length === 0) {
@@ -330,6 +330,7 @@ export class IndexingManager implements vscode.Disposable {
             return;
         }
 
+        // Just update the message without incrementing progress
         progress.report({ message: `Found ${sourceFiles.length} files, analyzing...` });
 
         // First, analyze all files to see which ones need indexing
@@ -339,8 +340,7 @@ export class IndexingManager implements vscode.Disposable {
                 isFullReindexing,
                 token,
                 (checked, total, needIndexing) => {
-                    // Update progress based on checked files
-                    const checkingProgressPercent = Math.round((checked / total) * 100);
+                    // Just update the message without incrementing progress
                     progress.report({
                         message: `Checked ${checked} of ${total} files (${needIndexing} need indexing)`
                     });
@@ -349,35 +349,105 @@ export class IndexingManager implements vscode.Disposable {
 
         // If there are no files to process, we're done
         if (filesToProcess.length === 0 || token.isCancellationRequested) {
-            progress.report({ message: `No files need indexing. Checked ${totalFilesChecked} files.` });
+            progress.report({
+                message: `No files need indexing. Checked ${totalFilesChecked} files.`
+            });
             return;
         }
 
-        // Now process all files that need indexing - IndexingService will handle batching internally
+        // Now process all files that need indexing
+        // All progress (100%) will be allocated to the actual file processing
         progress.report({ message: `Indexing ${filesToProcess.length} files...` });
 
         try {
-        // Let the IndexingService handle batching
+            // Track progress statistics
+            let totalProcessed = 0;
+            let totalStored = 0;
+            const totalToProcess = filesToProcess.length; // This is the actual number of files that need processing
+            let lastProcessedPercent = 0;
+
+            // Process the files with the IndexingService, saving results as batches complete
             const results = await this.indexingService!.processFiles(
                 filesToProcess,
                 token,
                 (processed, total) => {
                     // Update progress message showing overall indexing progress
-                    progress.report({
-                        message: `Indexing ${processed} of ${total} files...`,
-                        increment: 0 // Don't increment here, as we've already counted the checking phase
-                    });
+                    totalProcessed = processed;
+                    
+                    // Calculate percentage based on the actual number of files to process
+                    // not the total files checked
+                    const processedPercent = Math.round((processed / totalToProcess) * 100);
+
+                    // Calculate the increment for the progress bar
+                    // We allocate 100% of the progress bar to the processing phase
+                    if (processed > 0) {
+                        // Calculate the increment based on the progress since last update
+                        // Use a percentage of the total files to process as the progress indicator
+                        const currentProcessedPercent = (processed / totalToProcess) * 100;
+                        const incrementValue = Math.max(0, currentProcessedPercent - lastProcessedPercent);
+                        lastProcessedPercent = currentProcessedPercent;
+                        
+                        if (incrementValue > 0) {
+                            progress.report({
+                                message: `Indexing ${processed} of ${totalToProcess} files (${processedPercent}%)...`,
+                                increment: incrementValue
+                            });
+                        } else {
+                            // Just update the message without incrementing
+                            progress.report({
+                                message: `Indexing ${processed} of ${totalToProcess} files (${processedPercent}%)...`
+                            });
+                        }
+                    }
+                },
+                // Batch completion callback - store embeddings as each batch completes
+                async (batchResults) => {
+                    try {
+                        // Store this batch of embeddings immediately
+                        const batchFiles = filesToProcess.filter(file =>
+                            batchResults.has(file.id) && batchResults.get(file.id)!.success
+                        );
+
+                        if (batchFiles.length > 0) {
+                            await this.embeddingDatabaseAdapter!.storeEmbeddingResults(
+                                batchFiles,
+                                batchResults,
+                                (processed, total) => {
+                                    // Only update the message, not the progress bar
+                                    // The progress bar is only updated based on file processing
+                                    const newStored = totalStored + processed;
+                                    progress.report({
+                                        message: `Processed: ${totalProcessed}/${totalToProcess}, Stored: ${newStored}/${totalToProcess}`
+                                    });
+                                }
+                            );
+                            
+                            // Update the total stored count after the batch is complete
+                            totalStored += batchFiles.length;
+
+                            // Log batch completion
+                            console.log(`Saved batch of ${batchFiles.length} files. Total stored: ${totalStored}/${totalToProcess}`);
+                        }
+                    } catch (error) {
+                        console.error('Error storing batch results:', error);
+                    }
                 }
             );
-
-            // Store embeddings in database
-            await this.embeddingDatabaseAdapter.storeEmbeddingResults(filesToProcess, results);
 
             // Final report
             if (!token.isCancellationRequested) {
                 const message = `Indexing completed. ` +
                     `Checked ${totalFilesChecked} files. ` +
-                    `Indexed ${filesToProcess.length} files.`;
+                    `Indexed and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
+
+                // Just update the message without incrementing
+                progress.report({ message });
+                console.log(message);
+            } else {
+                // If cancelled, show how many files were successfully processed and stored
+                const message = `Indexing cancelled. ` +
+                    `Checked ${totalFilesChecked} files. ` +
+                    `Processed ${totalProcessed} and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
 
                 progress.report({ message });
                 console.log(message);

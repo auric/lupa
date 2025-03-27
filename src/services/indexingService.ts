@@ -109,12 +109,14 @@ export class IndexingService implements vscode.Disposable {
      * @param files Array of files to process
      * @param token Cancellation token
      * @param progressCallback Optional callback for progress updates
+     * @param batchCompletedCallback Optional callback when a batch is completed
      * @returns Map of file IDs to embeddings
      */
     public async processFiles(
         files: FileToProcess[],
         token?: vscode.CancellationToken,
-        progressCallback?: (processed: number, total: number) => void
+        progressCallback?: (processed: number, total: number) => void,
+        batchCompletedCallback?: (batchResults: Map<string, ProcessingResult>) => Promise<void>
     ): Promise<Map<string, ProcessingResult>> {
         if (files.length === 0) {
             return new Map();
@@ -147,50 +149,92 @@ export class IndexingService implements vscode.Disposable {
 
         // Sort files by priority (if available) to process important files first
         const sortedFiles = [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        
         try {
-            // Process files concurrently but with limited concurrency
+            // Process files concurrently with limited concurrency
             const maxConcurrentTasks = this.options.maxConcurrentTasks;
             let completedCount = 0;
             const totalFiles = sortedFiles.length;
-
-            // Process in batches to maintain concurrency control
-            for (let i = 0; i < sortedFiles.length; i += maxConcurrentTasks) {
-                // Check if cancelled
-                if (abortController.signal.aborted) {
-                    throw new Error('Operation was cancelled');
-                }
-
-                const batch = sortedFiles.slice(i, i + maxConcurrentTasks);
-
-                // Process the batch concurrently
-                this.currentOperation!.promises = batch.map(file => {
+            
+            // Create a function to process a single file
+            const processFile = async (file: FileToProcess): Promise<ProcessingResult> => {
+                try {
+                    // Check if cancelled
+                    if (abortController.signal.aborted) {
+                        throw new Error('Operation was cancelled');
+                    }
+                    
                     const processor = this.createProcessor();
-                    return processor.processFile(file, abortController.signal)
+                    const result = await processor.processFile(file, abortController.signal)
                         .finally(() => {
                             processor.dispose();
                         });
-                });
-
-                // Wait for the current batch to complete
-                const results = await Promise.all(this.currentOperation!.promises);
-
-                results.forEach(result => {
-                    if (result.success) {
-                        this.currentOperation!.results.set(result.fileId, result);
-                    }
+                    
+                    // Update progress
                     completedCount++;
                     if (progressCallback) {
                         progressCallback(completedCount, totalFiles);
                     }
-
-                    // Update status bar with overall progress (not batch-specific)
+                    
+                    // Update status bar with overall progress
                     const percentage = Math.round((completedCount / totalFiles) * 100);
                     this.statusBarService.showTemporaryMessage(
                         `Indexing: ${percentage}% (${completedCount}/${totalFiles})`,
                         3000,
                         StatusBarMessageType.Working
                     );
-                });
+                    
+                    return result;
+                } catch (error) {
+                    console.error(`Error processing file ${file.path}:`, error);
+                    return {
+                        fileId: file.id,
+                        success: false,
+                        error: error instanceof Error ? error.message : String(error),
+                        embeddings: [],
+                        chunkOffsets: []
+                    };
+                }
+            };
+            
+            // Process files in batches to control concurrency
+            for (let i = 0; i < sortedFiles.length; i += maxConcurrentTasks) {
+                // Check if cancelled
+                if (abortController.signal.aborted) {
+                    throw new Error('Operation was cancelled');
+                }
+                
+                const batch = sortedFiles.slice(i, i + maxConcurrentTasks);
+                
+                // Process the batch concurrently
+                const batchPromises = batch.map(file => processFile(file));
+                this.currentOperation!.promises = batchPromises;
+                
+                // Wait for the current batch to complete
+                const batchResults = await Promise.all(batchPromises);
+                
+                // Create a map for the current batch results
+                const batchResultsMap = new Map<string, ProcessingResult>();
+                
+                // Store results only after the entire batch is complete
+                // This avoids race conditions from multiple async operations
+                // writing to the shared results map simultaneously
+                for (const result of batchResults) {
+                    if (result.success) {
+                        this.currentOperation!.results.set(result.fileId, result);
+                        batchResultsMap.set(result.fileId, result);
+                    }
+                }
+                
+                // If a batch completion callback is provided, call it with the batch results
+                // This allows for saving embeddings as batches are processed
+                if (batchCompletedCallback && batchResultsMap.size > 0) {
+                    try {
+                        await batchCompletedCallback(batchResultsMap);
+                    } catch (error) {
+                        console.error('Error in batch completion callback:', error);
+                    }
+                }
             }
 
             // Update last indexing timestamp after successful completion

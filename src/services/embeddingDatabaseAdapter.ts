@@ -65,69 +65,119 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
     }
 
     /**
+     * Store a single file's embedding results
+     * @param file File that was processed
+     * @param result Processing result for the file
+     * @returns Promise that resolves when the file is stored
+     */
+    async storeEmbeddingResult(
+        file: { id: string, path: string, content: string },
+        result: ProcessingResult
+    ): Promise<boolean> {
+        try {
+            // Skip if no valid embeddings
+            if (!result || !result.success) {
+                console.log(`Skipping file ${file.path} - no valid embeddings`);
+                return false;
+            }
+
+            // Store file record
+            const fileRecord = await this.vectorDb.storeFile(file.path, file.content);
+
+            // Store chunks
+            if (result.chunkOffsets.length > 0) {
+                // Extract chunks from the file content based on offsets
+                const chunks: string[] = [];
+                for (let i = 0; i < result.chunkOffsets.length; i++) {
+                    const startOffset = result.chunkOffsets[i];
+                    const endOffset = i < result.chunkOffsets.length - 1
+                        ? result.chunkOffsets[i + 1]
+                        : file.content.length;
+
+                    chunks.push(file.content.substring(startOffset, endOffset));
+                }
+
+                // Store chunks with their offsets
+                const chunkRecords = await this.vectorDb.storeChunks(
+                    fileRecord.id,
+                    chunks,
+                    result.chunkOffsets
+                );
+
+                // Store embeddings
+                if (result.embeddings.length === chunkRecords.length) {
+                    await this.vectorDb.storeEmbeddings(
+                        chunkRecords.map((chunk, index) => ({
+                            chunkId: chunk.id,
+                            vector: result.embeddings[index],
+                            model: this.embeddingModel,
+                            dimension: result.embeddings[index].length
+                        }))
+                    );
+                } else {
+                    console.error(`Mismatch between chunks (${chunkRecords.length}) and embeddings (${result.embeddings.length}) for file ${file.path}`);
+                    return false;
+                }
+            }
+
+            // Mark file as indexed
+            await this.vectorDb.markFileAsIndexed(fileRecord.id);
+            return true;
+
+        } catch (error) {
+            console.error(`Error storing embeddings for file ${file.path}:`, error);
+            return false;
+        }
+    }
+
+    /**
      * Store embeddings results from the IndexingService
      * @param files List of files that were processed
      * @param results Map of file IDs to embedding results
+     * @param progressCallback Optional callback for progress updates
      */
     async storeEmbeddingResults(
         files: Array<{ id: string, path: string, content: string }>,
-        results: Map<string, ProcessingResult>
+        results: Map<string, ProcessingResult>,
+        progressCallback?: (processed: number, total: number) => void
     ): Promise<void> {
         console.log(`Storing embeddings for ${files.length} files`);
 
-        for (const file of files) {
-            try {
-                // Get the processing result for this file
+        let processedCount = 0;
+        const totalFiles = files.length;
+
+        // Process files in parallel with a concurrency limit
+        const concurrencyLimit = 5; // Process up to 5 files at once
+
+        // Process files in batches to maintain concurrency control
+        for (let i = 0; i < files.length; i += concurrencyLimit) {
+            const batch = files.slice(i, i + concurrencyLimit);
+
+            // Process the batch concurrently
+            const batchPromises = batch.map(async (file) => {
                 const result = results.get(file.id);
-                if (!result || !result.success) {
-                    console.log(`Skipping file ${file.path} - no valid embeddings`);
-                    continue;
+                if (!result) {
+                    console.log(`No result found for file ${file.path}`);
+                    processedCount++;
+                    if (progressCallback) {
+                        progressCallback(processedCount, totalFiles);
+                    }
+                    return false;
                 }
 
-                // Store file record
-                const fileRecord = await this.vectorDb.storeFile(file.path, file.content);
+                const success = await this.storeEmbeddingResult(file, result);
 
-                // Store chunks
-                if (result.chunkOffsets.length > 0) {
-                    // Extract chunks from the file content based on offsets
-                    const chunks: string[] = [];
-                    for (let i = 0; i < result.chunkOffsets.length; i++) {
-                        const startOffset = result.chunkOffsets[i];
-                        const endOffset = i < result.chunkOffsets.length - 1
-                            ? result.chunkOffsets[i + 1]
-                            : file.content.length;
-
-                        chunks.push(file.content.substring(startOffset, endOffset));
-                    }
-
-                    // Store chunks with their offsets
-                    const chunkRecords = await this.vectorDb.storeChunks(
-                        fileRecord.id,
-                        chunks,
-                        result.chunkOffsets
-                    );
-
-                    // Store embeddings
-                    if (result.embeddings.length === chunkRecords.length) {
-                        this.vectorDb.storeEmbeddings(
-                            chunkRecords.map((chunk, index) => ({
-                                chunkId: chunk.id,
-                                vector: result.embeddings[index],
-                                model: this.embeddingModel,
-                                dimension: result.embeddings[index].length
-                            }))
-                        );
-                    } else {
-                        console.error(`Mismatch between chunks (${chunkRecords.length}) and embeddings (${result.embeddings.length}) for file ${file.path}`);
-                    }
+                // Update progress
+                processedCount++;
+                if (progressCallback) {
+                    progressCallback(processedCount, totalFiles);
                 }
 
-                // Mark file as indexed
-                this.vectorDb.markFileAsIndexed(fileRecord.id);
+                return success;
+            });
 
-            } catch (error) {
-                console.error(`Error storing embeddings for file ${file.path}:`, error);
-            }
+            // Wait for the current batch to complete
+            await Promise.all(batchPromises);
         }
 
         // Update database metadata
@@ -139,19 +189,25 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
      * Find relevant code context for a diff or PR
      * @param diff The PR diff text or relevant code snippet
      * @param options Search options
+     * @param progressCallback Optional callback for progress updates
      * @returns Relevant code snippets with similarity scores
      */
     async findRelevantCodeContext(
         diff: string,
-        options?: SimilaritySearchOptions
+        options?: SimilaritySearchOptions,
+        progressCallback?: (processed: number, total: number) => void
     ): Promise<SimilaritySearchResult[]> {
         try {
-            // Generate embedding for the diff using the IndexingService
-            const diffEmbedding = await this.generateEmbedding(diff);
-            if (!diffEmbedding) {
+            // Generate embedding for the diff using the batch method with a single item
+            const embeddingsMap = await this.generateEmbeddings([diff], progressCallback);
+            const entries = Array.from(embeddingsMap.entries());
+            
+            if (entries.length === 0 || !entries[0][1]) {
                 console.error('Failed to generate embedding for diff');
                 return [];
             }
+            
+            const diffEmbedding = entries[0][1];
 
             // Find similar code using the vector database
             const initialResults = await this.vectorDb.findSimilarCode(
@@ -236,6 +292,189 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
     }
 
     /**
+     * Generate embedding vectors for multiple text chunks at once
+     * This ensures we only have one call to processFiles for all chunks
+     * @param texts Array of text chunks to generate embeddings for
+     * @param progressCallback Optional callback for progress updates
+     * @param token Optional cancellation token
+     * @returns Map of chunk IDs to embedding vectors
+     */
+    async generateEmbeddings(
+        texts: string[],
+        progressCallback?: (processed: number, total: number) => void,
+        token?: vscode.CancellationToken
+    ): Promise<Map<string, Float32Array>> {
+        try {
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
+            if (texts.length === 0) {
+                return new Map();
+            }
+
+            // Create temporary files for each text chunk
+            const filesToProcess = texts.map((text, index) => {
+                const tempFileId = `temp-embed-batch-${Date.now()}-${index}`;
+                return {
+                    id: tempFileId,
+                    path: `memory://temp-${index}.txt`,
+                    content: text,
+                    priority: 0 // Low priority
+                };
+            });
+
+            // Process all texts in a single batch to get embeddings
+            const results = await this.indexingService.processFiles(
+                filesToProcess,
+                token, // Pass the cancellation token
+                progressCallback // Pass the progress callback
+            );
+
+            // Check for cancellation again after processing
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
+            // Map the results to their corresponding texts
+            const embeddings = new Map<string, Float32Array>();
+
+            for (let i = 0; i < filesToProcess.length; i++) {
+                // Check for cancellation during mapping
+                if (token?.isCancellationRequested) {
+                    throw new Error('Operation cancelled');
+                }
+
+                const file = filesToProcess[i];
+                const result = results.get(file.id);
+                if (result && result.success && result.embeddings.length > 0) {
+                    embeddings.set(texts[i], result.embeddings[0]);
+                }
+            }
+
+            return embeddings;
+        } catch (error) {
+            // Explicitly check for cancellation and rethrow
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+            console.error('Error generating embeddings via IndexingService:', error);
+            throw error; // Rethrow the error instead of returning an empty map
+        }
+    }
+
+    /**
+     * Find relevant code context for multiple chunks at once
+     * @param chunks The code chunks to find context for
+     * @param options Optional search options
+     * @param progressCallback Optional callback for progress updates
+     * @param token Optional cancellation token
+     * @returns Array of similarity search results
+     */
+    async findRelevantCodeContextForChunks(
+        chunks: string[], 
+        options?: SimilaritySearchOptions,
+        progressCallback?: (processed: number, total: number) => void,
+        token?: vscode.CancellationToken
+    ): Promise<SimilaritySearchResult[]> {
+        if (chunks.length === 0) {
+            return [];
+        }
+
+        try {
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
+            console.log(`Finding relevant code context for ${chunks.length} chunks`);
+            
+            // Generate embeddings for all chunks in a single batch
+            const embeddingsMap = await this.generateEmbeddings(chunks, progressCallback, token);
+            
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
+            // Prepare search options with defaults
+            const searchOptions = this.prepareSearchOptions(options);
+            
+            // Collect all results
+            const allResults: SimilaritySearchResult[] = [];
+            
+            // For each chunk, find similar documents
+            for (let i = 0; i < chunks.length; i++) {
+                // Check for cancellation
+                if (token?.isCancellationRequested) {
+                    throw new Error('Operation cancelled');
+                }
+
+                const chunk = chunks[i];
+                const embedding = embeddingsMap.get(chunk);
+                
+                if (!embedding) {
+                    console.warn(`No embedding generated for chunk: ${chunk.substring(0, 50)}...`);
+                    continue;
+                }
+                
+                // Find similar documents using the embedding
+                const results = await this.vectorDb.findSimilarCode(
+                    embedding,
+                    this.embeddingModel,
+                    {
+                        limit: searchOptions.limit,
+                        minScore: searchOptions.minScore
+                    }
+                );
+                
+                // Check for cancellation after each search
+                if (token?.isCancellationRequested) {
+                    throw new Error('Operation cancelled');
+                }
+                
+                if (results.length > 0) {
+                    // Add the original chunk to each result
+                    const resultsWithQuery = results.map((result: SimilaritySearchResult) => ({
+                        ...result,
+                        query: chunk
+                    }));
+                    
+                    allResults.push(...resultsWithQuery);
+                }
+                
+                // Report progress for similarity search if callback provided
+                if (progressCallback) {
+                    progressCallback(i + 1, chunks.length);
+                }
+            }
+            
+            // Sort all results by score in descending order
+            return allResults.sort((a, b) => b.score - a.score);
+        } catch (error) {
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+            console.error('Error finding relevant code context for chunks:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Prepare search options with defaults
+     * @param options Optional search options
+     * @returns Search options with defaults applied
+     */
+    private prepareSearchOptions(options?: SimilaritySearchOptions): SimilaritySearchOptions {
+        return {
+            limit: options?.limit || 10,
+            minScore: options?.minScore || 0.7,
+            ...options
+        };
+    }
+
+    /**
      * Remove duplicate results based on content overlap
      * @param results Array of search results that might contain duplicates
      * @returns Deduplicated results array
@@ -284,28 +523,23 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
      * Generate an embedding vector for text content using the indexingService
      * This ensures we only have one instance of the embedding model loaded
      * @param text The text to generate an embedding for
+     * @param progressCallback Optional callback for progress updates
      * @returns A float32 embedding vector or null if generation fails
      */
-    async generateEmbedding(text: string): Promise<Float32Array | null> {
+    async generateEmbedding(
+        text: string,
+        progressCallback?: (processed: number, total: number) => void
+    ): Promise<Float32Array | null> {
         try {
-            // Create a temporary ID for this embedding generation
-            const tempFileId = `temp-embed-${Date.now()}`;
-            const fileToProcess = {
-                id: tempFileId,
-                path: 'memory://temp.txt',
-                content: text,
-                priority: 0 // Low priority
-            };
-
-            // Process the text to get embeddings
-            const results = await this.indexingService.processFiles([fileToProcess]);
-            const result = results.get(tempFileId);
-
-            if (result && result.success && result.embeddings.length > 0) {
-                return result.embeddings[0];
+            // Use the batch method with a single item for consistency
+            const embeddingsMap = await this.generateEmbeddings([text], progressCallback);
+            const entries = Array.from(embeddingsMap.entries());
+            
+            if (entries.length === 0 || !entries[0][1]) {
+                return null;
             }
-
-            return null;
+            
+            return entries[0][1];
         } catch (error) {
             console.error('Error generating embedding via IndexingService:', error);
             return null;

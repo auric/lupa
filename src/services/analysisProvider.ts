@@ -22,23 +22,85 @@ export class AnalysisProvider implements vscode.Disposable {
      * Analyze PR using language models
      * @param diffText The diff text to analyze
      * @param mode The analysis mode
+     * @param progressCallback Optional callback for progress updates
+     * @param token Optional cancellation token
      */
-    public async analyzePullRequest(diffText: string, mode: AnalysisMode): Promise<{
+    public async analyzePullRequest(
+        diffText: string, 
+        mode: AnalysisMode,
+        progressCallback?: (message: string, increment?: number) => void,
+        token?: vscode.CancellationToken
+    ): Promise<{
         analysis: string;
         context: string;
     }> {
         try {
-            // Find relevant code context for the diff
-            const context = await this.contextProvider.getContextForDiff(diffText);
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
 
-            // Run analysis using language model
+            // Report progress: Starting context retrieval - 5%
+            if (progressCallback) {
+                progressCallback('Retrieving relevant code context...', 5);
+            }
+
+            // Find relevant code context for the diff with progress reporting - 50% total
+            const context = await this.contextProvider.getContextForDiff(
+                diffText,
+                undefined,
+                mode,
+                undefined,
+                (processed: number, total: number) => {
+                    if (progressCallback) {
+                        const percentage = Math.round((processed / total) * 100);
+                        // Use a more conservative scaling to ensure progress is accurate
+                        // Only report progress if it's a significant change
+                        if (percentage % 10 === 0 || percentage === 100) {
+                            // Scale to ensure progress never exceeds actual completion
+                            // Use a very small increment to avoid jumping ahead
+                            const scaledIncrement = 0.2; // Very small increments
+                            progressCallback(`Generating embeddings: ${processed} of ${total} (${percentage}%)`, scaledIncrement);
+                        } else {
+                            // Just update the message without incrementing progress
+                            progressCallback(`Generating embeddings: ${processed} of ${total} (${percentage}%)`);
+                        }
+                    }
+                },
+                token
+            );
+
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
+            // Report progress: Starting analysis - 5%
+            if (progressCallback) {
+                progressCallback('Context retrieved. Analyzing with language model...', 5);
+            }
+
+            // Run analysis using language model - this is a significant part of the process
             const analysis = await this.analyzeWithLanguageModel(diffText, context, mode);
+
+            // Check for cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
+
+            // Report progress: Analysis complete - 20%
+            if (progressCallback) {
+                progressCallback('Analysis complete', 20);
+            }
 
             return {
                 analysis,
                 context
             };
         } catch (error) {
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
             throw new Error(`Failed to analyze PR: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
