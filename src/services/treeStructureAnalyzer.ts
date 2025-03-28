@@ -25,10 +25,12 @@ export interface CodeRange {
 export interface CodeStructure {
     type: string;           // Node type (e.g., "function_declaration", "class_declaration")
     name?: string;          // Name of the node if available
-    range: CodeRange;       // Position range in the document
+    range: CodeRange;       // Position range in the document (including comments/decorators)
+    contentRange: CodeRange; // Position range of the core code content (excluding comments/decorators)
     children: CodeStructure[]; // Child structures
     parent?: CodeStructure; // Parent structure
-    text: string;           // The text content of this structure
+    text: string;           // The text content of this structure (including comments/decorators)
+    comment?: string;       // Associated comment text, if found
 }
 
 /**
@@ -187,70 +189,164 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     private isDisposed = false;
 
     // Language configurations for tree-sitter
+    // Queries aim to capture the main node (@...) and optionally preceding comments (@comment) or decorators (@decorator)
+    // A @capture node can be used to define the overall range including comments/decorators
     private readonly languageConfigs: Record<string, LanguageConfig> = {
         'javascript': {
-            functionQueries: ['(function_declaration) @function', '(arrow_function) @function', '(method_definition) @function'],
-            classQueries: ['(class_declaration) @class', '(object) @object'],
-            methodQueries: ['(method_definition) @method'],
+            functionQueries: [
+                `
+                (program . (comment)* . (function_declaration) @function) @capture
+                `,
+                `
+                (program . (comment)* . (export_statement . (function_declaration) @function)) @capture
+                `,
+                `
+                (program . (comment)* . (expression_statement (assignment_expression
+                    left: (_)
+                    right: [(arrow_function) (function)] @function
+                ))) @capture
+                `,
+                `
+                (program . (comment)* . (lexical_declaration (variable_declarator
+                    name: (_)
+                    value: [(arrow_function) (function)] @function
+                ))) @capture
+                `,
+                // Method definitions within classes
+                `
+                (class_body . (comment)* . (method_definition) @function) @capture
+                `
+            ],
+            classQueries: [
+                `
+                (program . (comment)* . (decorator)* . (class_declaration) @class) @capture
+                `,
+                `
+                (program . (comment)* . (export_statement . (decorator)* . (class_declaration) @class)) @capture
+                `
+                // Note: Simple objects `(object) @object` are less useful as top-level structures
+            ],
+            // Method queries are implicitly covered by function queries within class_body
+            methodQueries: [],
             blockQueries: ['(statement_block) @block']
         },
         'typescript': {
-            functionQueries: ['(function_declaration) @function', '(arrow_function) @function', '(method_definition) @function'],
-            classQueries: ['(class_declaration) @class', '(interface_declaration) @interface'],
-            methodQueries: ['(method_definition) @method'],
+            functionQueries: [
+                `
+                (program . (comment)* . (function_declaration) @function) @capture
+                `,
+                `
+                (program . (comment)* . (export_statement . (function_declaration) @function)) @capture
+                `,
+                `
+                (program . (comment)* . (expression_statement (assignment_expression
+                    left: (_)
+                    right: [(arrow_function) (function)] @function
+                ))) @capture
+                `,
+                `
+                (program . (comment)* . (lexical_declaration (variable_declarator
+                    name: (_)
+                    value: [(arrow_function) (function)] @function
+                ))) @capture
+                `,
+                // Method definitions within classes/interfaces
+                `
+                (_ . (comment)* . (method_definition) @function) @capture
+                `,
+                `
+                (_ . (comment)* . (method_signature) @function) @capture
+                `
+            ],
+            classQueries: [
+                `
+                (program . (comment)* . (decorator)* . (class_declaration) @class) @capture
+                `,
+                `
+                (program . (comment)* . (export_statement . (decorator)* . (class_declaration) @class)) @capture
+                `,
+                `
+                (program . (comment)* . (interface_declaration) @interface) @capture
+                `,
+                `
+                (program . (comment)* . (export_statement . (interface_declaration) @interface)) @capture
+                `,
+                `
+                (program . (comment)* . (enum_declaration) @enum) @capture
+                `,
+                `
+                (program . (comment)* . (export_statement . (enum_declaration) @enum)) @capture
+                `,
+                `
+                (program . (comment)* . (type_alias_declaration) @type) @capture
+                `,
+                `
+                (program . (comment)* . (export_statement . (type_alias_declaration) @type)) @capture
+                `
+            ],
+            // Method queries are implicitly covered by function queries within class_body/interface_body
+            methodQueries: [],
             blockQueries: ['(statement_block) @block']
         },
         'python': {
-            functionQueries: ['(function_definition) @function'],
-            classQueries: ['(class_definition) @class'],
-            methodQueries: ['(function_definition) @method'],
+            // Includes decorators and preceding comments
+            functionQueries: [`((comment)* . (decorator)* . (function_definition) @function) @capture`],
+            classQueries: [`((comment)* . (decorator)* . (class_definition) @class) @capture`],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
         },
         'java': {
-            functionQueries: ['(method_declaration) @function', '(constructor_declaration) @function'],
-            classQueries: ['(class_declaration) @class', '(interface_declaration) @interface'],
-            methodQueries: ['(method_declaration) @method'],
+            // Includes annotations and preceding comments
+            functionQueries: [`((comment)* . (marker_annotation)* . (method_declaration) @function) @capture`, `((comment)* . (marker_annotation)* . (constructor_declaration) @function) @capture`],
+            classQueries: [`((comment)* . (marker_annotation)* . (class_declaration) @class) @capture`, `((comment)* . (marker_annotation)* . (interface_declaration) @interface) @capture`, `((comment)* . (marker_annotation)* . (enum_declaration) @enum) @capture`],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
         },
         'cpp': {
-            functionQueries: ['(function_definition) @function', '(declaration (function_declarator)) @function'],
-            classQueries: ['(class_specifier) @class', '(struct_specifier) @struct'],
-            methodQueries: ['(function_definition) @method'],
+            // Includes preceding comments
+            functionQueries: [`((comment)* . (function_definition) @function) @capture`, `((comment)* . (declaration type: (_) declarator: (function_declarator)) @function) @capture`],
+            classQueries: [`((comment)* . (class_specifier) @class) @capture`, `((comment)* . (struct_specifier) @struct) @capture`, `((comment)* . (namespace_definition) @namespace) @capture`],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: ['(compound_statement) @block']
         },
         'c': {
-            functionQueries: ['(function_definition) @function', '(declaration (function_declarator)) @function'],
-            classQueries: ['(struct_specifier) @struct'],
-            methodQueries: ['(function_definition) @method'],
+            // Includes preceding comments
+            functionQueries: [`((comment)* . (function_definition) @function) @capture`, `((comment)* . (declaration type: (_) declarator: (function_declarator)) @function) @capture`],
+            classQueries: [`((comment)* . (struct_specifier) @struct) @capture`, `((comment)* . (enum_specifier) @enum) @capture`],
+            methodQueries: [],
             blockQueries: ['(compound_statement) @block']
         },
         'csharp': {
-            functionQueries: ['(method_declaration) @function', '(constructor_declaration) @function'],
-            classQueries: ['(class_declaration) @class', '(interface_declaration) @interface'],
-            methodQueries: ['(method_declaration) @method'],
+            // Includes attributes and preceding comments
+            functionQueries: [`((comment)* . (attribute_list)* . (method_declaration) @function) @capture`, `((comment)* . (attribute_list)* . (constructor_declaration) @function) @capture`],
+            classQueries: [`((comment)* . (attribute_list)* . (class_declaration) @class) @capture`, `((comment)* . (attribute_list)* . (interface_declaration) @interface) @capture`, `((comment)* . (attribute_list)* . (struct_declaration) @struct) @capture`, `((comment)* . (attribute_list)* . (enum_declaration) @enum) @capture`, `((comment)* . (namespace_declaration) @namespace) @capture`],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
         },
         'go': {
-            functionQueries: ['(function_declaration) @function', '(method_declaration) @method'],
-            classQueries: ['(type_declaration) @type'],
-            methodQueries: ['(method_declaration) @method'],
+            // Includes preceding comments
+            functionQueries: [`((comment)* . (function_declaration) @function) @capture`, `((comment)* . (method_declaration) @method) @capture`],
+            classQueries: [`((comment)* . (type_declaration) @type) @capture`, `((comment)* . (struct_type) @struct) @capture`],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
         },
         'ruby': {
-            functionQueries: ['(method) @function', '(singleton_method) @function'],
-            classQueries: ['(class) @class', '(module) @module'],
-            methodQueries: ['(method) @method'],
+            // Includes preceding comments
+            functionQueries: [`((comment)* . (method) @function) @capture`, `((comment)* . (singleton_method) @function) @capture`],
+            classQueries: [`((comment)* . (class) @class) @capture`, `((comment)* . (module) @module) @capture`],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: ['(do_block) @block', '(block) @block']
         },
         'rust': {
-            functionQueries: ['(function_item) @function', '(function_signature_item) @function'],
-            classQueries: ['(struct_item) @struct', '(trait_item) @trait', '(impl_item) @impl'],
-            methodQueries: ['(function_item) @method'],
+            // Includes attributes and preceding comments
+            functionQueries: [`((comment)* . (attribute_item)* . (function_item) @function) @capture`, `((comment)* . (attribute_item)* . (function_signature_item) @function) @capture`],
+            classQueries: [`((comment)* . (attribute_item)* . (struct_item) @struct) @capture`, `((comment)* . (attribute_item)* . (trait_item) @trait) @capture`, `((comment)* . (attribute_item)* . (impl_item) @impl) @capture`, `((comment)* . (attribute_item)* . (enum_item) @enum) @capture`, `((comment)* . (attribute_item)* . (mod_item) @module) @capture`],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
         },
         'css': {
-            functionQueries: ['(function_name) @function'],
-            classQueries: ['(rule_set) @rule', '(keyframe_block) @keyframe'],
+            functionQueries: [], // CSS doesn't have functions in the typical sense
+            classQueries: [`((comment)* . (rule_set) @rule) @capture`, `((comment)* . (at_rule) @at_rule) @capture`], // Treat rules like structures
             methodQueries: [],
             blockQueries: ['(block) @block']
         }
@@ -435,134 +531,64 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             }
 
             const config = this.languageConfigs[language];
-            if (!config) {
-                throw new Error(`Language '${language}' is not supported`);
+            if (!config || !config.functionQueries) { // Check if functionQueries exists
+                console.warn(`No function queries defined for language '${language}'`);
+                return [];
             }
 
             const rootNode = tree.rootNode;
             const functions: CodeStructure[] = [];
+            const processedNodes = new Set<number>(); // Keep track of nodes already processed
 
             for (const queryString of config.functionQueries) {
                 try {
-                    // Get the currently set language from the parser
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
                     queries.push(query);
 
-                    // For older web-tree-sitter API, we need to use captures()
-                    // instead of matches()
-                    const captures = query.captures(rootNode);
+                    // Use matches() which provides more context than captures()
+                    const matches = query.matches(rootNode);
 
-                    // The older API returns an array of capture objects
-                    for (let i = 0; i < captures.length; i++) {
-                        const capture = captures[i];
-                        const node = capture.node;
+                    for (const match of matches) {
+                        let functionNode: Parser.SyntaxNode | null = null;
+                        let commentNode: Parser.SyntaxNode | null = null;
+                        let captureNode: Parser.SyntaxNode | null = null; // The overall capture, e.g., including comments
 
-                        // Find the function name
-                        let name = "anonymous";
-
-                        // Different languages have different patterns for function names
-                        switch (language) {
-                            case 'javascript':
-                            case 'typescript':
-                                // For function declarations
-                                if (node.type === 'function_declaration') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                // For method definitions
-                                else if (node.type === 'method_definition') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                // For arrow functions
-                                else if (node.type === 'arrow_function') {
-                                    // Try to find a parent assignment or variable declaration
-                                    let parent = node.parent;
-                                    while (parent) {
-                                        if (parent.type === 'variable_declarator') {
-                                            const nameNode = parent.childForFieldName('name');
-                                            if (nameNode) {
-                                                name = nameNode.text;
-                                                break;
-                                            }
-                                        }
-                                        parent = parent.parent;
-                                    }
-                                }
-                                break;
-
-                            case 'python':
-                                if (node.type === 'function_definition') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                break;
-
-                            case 'java':
-                            case 'csharp':
-                                if (node.type === 'method_declaration') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                break;
-
-                            case 'c':
-                            case 'cpp':
-                                if (node.type === 'function_definition') {
-                                    const declarator = node.childForFieldName('declarator');
-                                    if (declarator) {
-                                        const nameNodes = declarator.descendantsOfType('identifier');
-                                        if (nameNodes.length > 0) {
-                                            name = nameNodes[0].text;
-                                        }
-                                    }
-                                }
-                                break;
-
-                            case 'rust':
-                                if (node.type === 'function_item') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                break;
-
-                            case 'css':
-                                if (node.type === 'function_name') {
-                                    name = node.text;
-                                }
-                                break;
+                        for (const capture of match.captures) {
+                            if (capture.name === 'function') {
+                                functionNode = capture.node;
+                            } else if (capture.name === 'comment') {
+                                // Capture the first comment node found before the function
+                                if (!commentNode) commentNode = capture.node;
+                            } else if (capture.name === 'capture') {
+                                captureNode = capture.node;
+                            }
                         }
 
-                        functions.push({
-                            type: node.type,
-                            name: name,
-                            range: {
-                                startPosition: {
-                                    row: node.startPosition.row,
-                                    column: node.startPosition.column
-                                },
-                                endPosition: {
-                                    row: node.endPosition.row,
-                                    column: node.endPosition.column
-                                }
-                            },
-                            children: [],
-                            text: content.substring(node.startIndex, node.endIndex)
-                        });
+                        if (functionNode && !processedNodes.has(functionNode.id)) {
+                            processedNodes.add(functionNode.id);
+
+                            // Determine the full range (including comments/decorators if captured)
+                            const contentRange = this.nodeToCodeRange(functionNode);
+                            const range = captureNode ? this.nodeToCodeRange(captureNode) : contentRange;
+                            const commentText = commentNode ? content.substring(commentNode.startIndex, commentNode.endIndex) : undefined;
+
+                            // Find the function name
+                            let name = this.extractNodeName(functionNode, language);
+
+                            functions.push({
+                                type: functionNode.type,
+                                name: name,
+                                range: range,
+                                contentRange: contentRange, // Add contentRange
+                                children: [],
+                                text: content.substring(this.positionToOffset(range.startPosition, content)!, this.positionToOffset(range.endPosition, content)!), // Correctly use range offsets for text
+                                comment: commentText
+                            });
+                        }
                     }
                 } catch (error) {
-                    console.error(`Error running query "${queryString}" for ${language}:`, error);
+                    console.error(`Error running function query "${queryString}" for ${language}:`, error);
                     // Continue with other queries even if one fails
                 }
             }
@@ -608,106 +634,67 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             }
 
             const config = this.languageConfigs[language];
-            if (!config) {
-                throw new Error(`Language '${language}' is not supported`);
+            if (!config || !config.classQueries) { // Check if classQueries exists
+                console.warn(`No class/structure queries defined for language '${language}'`);
+                return [];
             }
 
             const rootNode = tree.rootNode;
-            const classes: CodeStructure[] = [];
+            const structures: CodeStructure[] = [];
+            const processedNodes = new Set<number>(); // Keep track of nodes already processed
 
-            for (const queryString of config.classQueries) {
+            for (const queryString of config.classQueries) { // Includes classes, interfaces, enums, types
                 try {
-                    // Get the currently set language from the parser
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
                     queries.push(query);
 
-                    // Use the captures method with the rootNode
-                    const captures = query.captures(rootNode);
+                    const matches = query.matches(rootNode);
 
-                    for (const capture of captures) {
-                        const node = capture.node;
+                    for (const match of matches) {
+                        let structureNode: Parser.SyntaxNode | null = null;
+                        let commentNode: Parser.SyntaxNode | null = null;
+                        let captureNode: Parser.SyntaxNode | null = null; // Overall capture
 
-                        // Find the class name
-                        let name = "anonymous";
-
-                        // Different languages have different patterns for class names
-                        if (language === 'javascript' || language === 'typescript') {
-                            if (node.type === 'class_declaration') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            } else if (node.type === 'interface_declaration') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'python') {
-                            if (node.type === 'class_definition') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'java' || language === 'csharp') {
-                            if (node.type.includes('class_declaration') || node.type.includes('interface_declaration')) {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'c' || language === 'cpp') {
-                            if (node.type === 'struct_specifier' || node.type === 'class_specifier') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'rust') {
-                            if (node.type === 'struct_item' || node.type === 'trait_item') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'css') {
-                            if (node.type === 'rule_set') {
-                                const selectors = node.childForFieldName('selectors');
-                                if (selectors) {
-                                    name = selectors.text;
-                                }
+                        // Find the main structure node (@class, @interface, @enum, @type, etc.)
+                        for (const capture of match.captures) {
+                            if (['class', 'interface', 'enum', 'type', 'struct', 'trait', 'impl', 'module', 'namespace', 'rule', 'at_rule'].includes(capture.name)) {
+                                structureNode = capture.node;
+                            } else if (capture.name === 'comment') {
+                                if (!commentNode) commentNode = capture.node;
+                            } else if (capture.name === 'capture') {
+                                captureNode = capture.node;
                             }
                         }
-                        // Additional language handlers would go here
 
-                        classes.push({
-                            type: node.type,
-                            name: name,
-                            range: {
-                                startPosition: {
-                                    row: node.startPosition.row,
-                                    column: node.startPosition.column
-                                },
-                                endPosition: {
-                                    row: node.endPosition.row,
-                                    column: node.endPosition.column
-                                }
-                            },
-                            children: [],
-                            text: content.substring(node.startIndex, node.endIndex)
-                        });
+                        if (structureNode && !processedNodes.has(structureNode.id)) {
+                            processedNodes.add(structureNode.id);
+
+                            const contentRange = this.nodeToCodeRange(structureNode);
+                            const range = captureNode ? this.nodeToCodeRange(captureNode) : contentRange;
+                            const commentText = commentNode ? content.substring(commentNode.startIndex, commentNode.endIndex) : undefined;
+                            let name = this.extractNodeName(structureNode, language);
+
+                            structures.push({
+                                type: structureNode.type,
+                                name: name,
+                                range: range,
+                                contentRange: contentRange, // Add contentRange
+                                children: [],
+                                text: content.substring(this.positionToOffset(range.startPosition, content)!, this.positionToOffset(range.endPosition, content)!), // Use range offsets for text
+                                comment: commentText
+                            });
+                        }
                     }
                 } catch (error) {
-                    console.error(`Error running query "${queryString}" for ${language}:`, error);
+                    console.error(`Error running class/structure query "${queryString}" for ${language}:`, error);
                     // Continue with other queries even if one fails
                 }
             }
 
-            return classes;
+            return structures;
         } catch (error) {
-            console.error(`Error finding classes in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            console.error(`Error finding classes/structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
         } finally {
             // Clean up resources
@@ -720,6 +707,133 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             }
         }
     }
+
+    /**
+    * Helper to convert a Tree-sitter node to a CodeRange
+    */
+    private nodeToCodeRange(node: Parser.SyntaxNode): CodeRange {
+        return {
+            startPosition: {
+                row: node.startPosition.row,
+                column: node.startPosition.column
+            },
+            endPosition: {
+                row: node.endPosition.row,
+                column: node.endPosition.column
+            }
+        };
+    }
+
+    /**
+     * Helper to extract a meaningful name from a Tree-sitter node
+     */
+    private extractNodeName(node: Parser.SyntaxNode, language: string): string | undefined {
+        let nameNode: Parser.SyntaxNode | null = null;
+        let name: string | undefined = undefined;
+
+        // Common field name for identifiers
+        nameNode = node.childForFieldName('name');
+        if (nameNode) return nameNode.text;
+
+        // Language-specific patterns
+        switch (language) {
+            case 'javascript':
+            case 'typescript':
+                if (node.type === 'arrow_function') {
+                    let parent = node.parent;
+                    while (parent) {
+                        if (parent.type === 'variable_declarator' || parent.type === 'pair') {
+                            nameNode = parent.childForFieldName('name') || parent.childForFieldName('key');
+                            if (nameNode) return nameNode.text;
+                        }
+                        parent = parent.parent;
+                    }
+                } else if (node.type === 'method_definition' || node.type === 'method_signature' || node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'interface_declaration' || node.type === 'enum_declaration' || node.type === 'type_alias_declaration') {
+                    nameNode = node.childForFieldName('name');
+                    if (nameNode) return nameNode.text;
+                }
+                break;
+            case 'python':
+                nameNode = node.childForFieldName('name');
+                if (nameNode) return nameNode.text;
+                break;
+            case 'java':
+            case 'csharp':
+                nameNode = node.childForFieldName('name');
+                if (nameNode) return nameNode.text;
+                // For constructors
+                if (node.type === 'constructor_declaration') {
+                    nameNode = node.childForFieldName('name'); // C#
+                    if (nameNode) return nameNode.text;
+                    // Java constructor name matches class name, find parent class
+                    let parent = node.parent;
+                    while (parent && parent.type !== 'class_declaration') {
+                        parent = parent.parent;
+                    }
+                    if (parent) {
+                        nameNode = parent.childForFieldName('name');
+                        if (nameNode) return nameNode.text;
+                    }
+                }
+                break;
+            case 'c':
+            case 'cpp':
+                if (node.type === 'function_definition') {
+                    const declarator = node.childForFieldName('declarator');
+                    // Look for identifier within declarator (might be pointer_declarator etc.)
+                    nameNode = declarator?.descendantsOfType('identifier')[0] || null;
+                    if (nameNode) return nameNode.text;
+                } else if (node.type === 'struct_specifier' || node.type === 'class_specifier' || node.type === 'namespace_definition' || node.type === 'enum_specifier') {
+                    nameNode = node.childForFieldName('name');
+                    if (nameNode) return nameNode.text;
+                }
+                break;
+            case 'rust':
+                nameNode = node.childForFieldName('name');
+                if (nameNode) return nameNode.text;
+                // For impl blocks, try to get the type name
+                if (node.type === 'impl_item') {
+                    nameNode = node.childForFieldName('type');
+                    if (nameNode) return nameNode.text;
+                }
+                break;
+            case 'go':
+                nameNode = node.childForFieldName('name');
+                if (nameNode) return nameNode.text;
+                // For method declarations, get receiver type
+                if (node.type === 'method_declaration') {
+                    const receiver = node.childForFieldName('receiver');
+                    if (receiver) {
+                        // Find type identifier within receiver parameters
+                        const typeIdentifier = receiver.descendantsOfType('type_identifier')[0];
+                        if (typeIdentifier) return typeIdentifier.text;
+                    }
+                }
+                break;
+            case 'ruby':
+                nameNode = node.childForFieldName('name');
+                if (nameNode) return nameNode.text;
+                // For singleton methods, name might be different
+                if (node.type === 'singleton_method') {
+                    nameNode = node.childForFieldName('name');
+                    if (nameNode) return nameNode.text;
+                }
+                break;
+            case 'css':
+                if (node.type === 'rule_set') {
+                    const selectors = node.childForFieldName('selectors');
+                    if (selectors) return selectors.text;
+                } else if (node.type === 'at_rule') {
+                    nameNode = node.childForFieldName('name');
+                    if (nameNode) return nameNode.text;
+                }
+                break;
+            // Add other languages as needed
+        }
+
+        return name; // Return undefined if no name found
+    }
+
 
     /**
      * Check if a given position is inside any function declaration
@@ -739,7 +853,8 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const functions = await this.findFunctions(content, language, variant);
 
             for (const func of functions) {
-                if (this.isPositionInsideRange(position, func.range)) {
+                // Use contentRange for checking if position is within the core code
+                if (this.isPositionInsideRange(position, func.contentRange)) {
                     return func;
                 }
             }
@@ -769,7 +884,8 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const classes = await this.findClasses(content, language, variant);
 
             for (const cls of classes) {
-                if (this.isPositionInsideRange(position, cls.range)) {
+                // Use contentRange for checking if position is within the core code
+                if (this.isPositionInsideRange(position, cls.contentRange)) {
                     return cls;
                 }
             }
@@ -798,13 +914,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
             // Get functions
             const functions = await this.findFunctions(content, language, variant);
-            result.set('function', functions.map(f => f.range));
+            result.set('function', functions.map(f => f.range)); // Use full range for boundaries
 
-            // Get classes
+            // Get classes/structures
             const classes = await this.findClasses(content, language, variant);
-            result.set('class', classes.map(c => c.range));
+            result.set('class', classes.map(c => c.range)); // Use full range for boundaries
 
-            // Additional structure types could be added here
+            // Add other structure types if needed (e.g., namespaces, modules)
+            // const namespaces = await this.findNamespaces(content, language, variant);
+            // result.set('namespace', namespaces.map(n => n.range));
 
             return result;
         } catch (error) {
@@ -828,47 +946,51 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         try {
             const breakPoints: Array<{ position: number, quality: number }> = [];
 
-            // Get functions and classes
-            const functions = await this.findFunctions(content, language, variant);
-            const classes = await this.findClasses(content, language, variant);
+            // Combine all relevant structures
+            const structures = await this.findAllStructures(content, language, variant);
 
-            // Function endings make excellent break points
-            for (const func of functions) {
-                const endPos = this.rangeToOffset(func.range.endPosition, content);
-                if (endPos !== null) {
-                    breakPoints.push({
-                        position: endPos,
-                        quality: 10 // Highest quality
-                    });
+            // Add structure start and end points as high-quality break points
+            for (const struct of structures) {
+                const startOffset = this.positionToOffset(struct.range.startPosition, content);
+                const endOffset = this.positionToOffset(struct.range.endPosition, content);
+
+                if (startOffset !== null) {
+                    // Break *before* a structure starts (medium quality)
+                    breakPoints.push({ position: startOffset, quality: 7 });
+                }
+                if (endOffset !== null) {
+                    // Break *after* a structure ends (high quality)
+                    breakPoints.push({ position: endOffset, quality: 10 });
                 }
             }
 
-            // Class endings also make excellent break points
-            for (const cls of classes) {
-                const endPos = this.rangeToOffset(cls.range.endPosition, content);
-                if (endPos !== null) {
-                    breakPoints.push({
-                        position: endPos,
-                        quality: 9 // Very high quality
-                    });
-                }
-            }
+            // Add internal breakpoints (e.g., between methods in a class) - Requires more specific queries or tree traversal
+            // Example placeholder:
+            // const internalBreaks = await this.findInternalBreakpoints(content, language, variant);
+            // breakPoints.push(...internalBreaks);
 
             // Add blank lines as lower quality break points
             const blankLineMatches = content.matchAll(/\n\s*\n/g);
             for (const match of blankLineMatches) {
                 if (match.index !== undefined) {
+                    // Avoid adding blank line breaks inside structures if possible
+                    const breakPos = match.index + match[0].length;
+                    const isInStructure = structures.some(s =>
+                        breakPos > this.positionToOffset(s.range.startPosition, content)! &&
+                        breakPos < this.positionToOffset(s.range.endPosition, content)!
+                    );
                     breakPoints.push({
-                        position: match.index + match[0].length,
-                        quality: 5 // Medium quality
+                        position: breakPos,
+                        quality: isInStructure ? 3 : 5 // Lower quality if inside a structure
                     });
                 }
             }
 
-            // Sort by position
-            breakPoints.sort((a, b) => a.position - b.position);
+            // Remove duplicates and sort by position
+            const uniqueBreakPoints = Array.from(new Map(breakPoints.map(item => [item.position, item])).values());
+            uniqueBreakPoints.sort((a, b) => a.position - b.position);
 
-            return breakPoints;
+            return uniqueBreakPoints;
         } catch (error) {
             console.error(`Error finding structure break points:`, error);
 
@@ -883,6 +1005,21 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             return lineBreaks;
         }
     }
+
+    /**
+    * Helper to find all major structures (functions, classes, etc.)
+    */
+    public async findAllStructures(
+        content: string,
+        language: string,
+        variant?: string
+    ): Promise<CodeStructure[]> {
+        const functions = await this.findFunctions(content, language, variant);
+        const classes = await this.findClasses(content, language, variant);
+        // Add calls to findNamespaces, findTestCases etc. here if implemented
+        return [...functions, ...classes]; // Combine results
+    }
+
 
     /**
      * Get the full structure hierarchy at a given position
@@ -916,20 +1053,16 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             let currentNode = tree.rootNode.descendantForIndex(offset);
 
             while (currentNode) {
+                const contentRange = this.nodeToCodeRange(currentNode);
+                // For hierarchy, range and contentRange are the same
                 hierarchy.push({
                     type: currentNode.type,
-                    range: {
-                        startPosition: {
-                            row: currentNode.startPosition.row,
-                            column: currentNode.startPosition.column
-                        },
-                        endPosition: {
-                            row: currentNode.endPosition.row,
-                            column: currentNode.endPosition.column
-                        }
-                    },
+                    name: this.extractNodeName(currentNode, language), // Try to get name
+                    range: contentRange,
+                    contentRange: contentRange, // Add contentRange
                     children: [],
-                    text: content.substring(currentNode.startIndex, currentNode.endIndex)
+                    text: content.substring(this.positionToOffset(contentRange.startPosition, content)!, this.positionToOffset(contentRange.endPosition, content)!)
+                    // Comment association is harder for arbitrary hierarchy nodes
                 });
 
                 // Fix: Handle potentially null parent
@@ -962,31 +1095,83 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         const lines = content.split('\n');
 
         if (position.row >= lines.length) {
-            return null;
+            return null; // Row out of bounds
         }
 
         let offset = 0;
         for (let i = 0; i < position.row; i++) {
+            if (lines[i] === undefined) return null; // Should not happen if row is in bounds
             offset += lines[i].length + 1; // +1 for the newline
         }
 
-        if (position.column > lines[position.row].length) {
+        // Check column bounds for the target row
+        if (lines[position.row] === undefined || position.column > lines[position.row].length) {
+            // Allow column to be equal to length (position after last char)
+            if (lines[position.row] !== undefined && position.column === lines[position.row].length) {
+                // This is valid, position at the end of the line
+            } else {
+                return null; // Column out of bounds
+            }
+        }
+
+
+        offset += position.column;
+        // Ensure offset does not exceed content length
+        return Math.min(offset, content.length);
+    }
+
+
+    /**
+     * Convert a character offset to a position
+     * @param offset Character offset
+     * @param content File content
+     * @returns Position in the document or null if invalid
+     */
+    private offsetToPosition(offset: number, content: string): CodePosition | null {
+        if (offset < 0 || offset > content.length) {
             return null;
         }
 
-        offset += position.column;
-        return offset;
+        let row = 0;
+        let column = 0;
+        let currentOffset = 0;
+
+        const lines = content.split('\n');
+
+        for (let i = 0; i < lines.length; i++) {
+            const lineLength = lines[i].length;
+            const lineEndOffset = currentOffset + lineLength;
+
+            if (offset <= lineEndOffset) {
+                row = i;
+                column = offset - currentOffset;
+                return { row, column };
+            }
+
+            currentOffset += lineLength + 1; // +1 for the newline
+        }
+
+        // Should not be reached if offset <= content.length, but handle defensively
+        return null;
     }
 
+
     /**
-     * Convert a position to a character offset
-     * @param position Position in the document
+     * Convert a range to an offset range
+     * @param range CodeRange
      * @param content File content
-     * @returns Character offset or null if invalid
+     * @returns Start and end offsets or null if invalid
      */
-    private rangeToOffset(position: CodePosition, content: string): number | null {
-        return this.positionToOffset(position, content);
+    private rangeToOffsets(range: CodeRange, content: string): { start: number, end: number } | null {
+        const start = this.positionToOffset(range.startPosition, content);
+        const end = this.positionToOffset(range.endPosition, content);
+
+        if (start === null || end === null || start > end) {
+            return null;
+        }
+        return { start, end };
     }
+
 
     /**
      * Check if a position is inside a range
@@ -995,11 +1180,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @returns True if position is inside the range
      */
     private isPositionInsideRange(position: CodePosition, range: CodeRange): boolean {
-        // Check if position is after the start position
+        // Check if position is after or at the start position
         if (position.row > range.startPosition.row ||
             (position.row === range.startPosition.row && position.column >= range.startPosition.column)) {
 
-            // Check if position is before the end position
+            // Check if position is before or at the end position
             if (position.row < range.endPosition.row ||
                 (position.row === range.endPosition.row && position.column <= range.endPosition.column)) {
                 return true;
@@ -1029,7 +1214,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             return null;
         }
 
-        return func.text;
+        return func.text; // Return the full text including comments/decorators
     }
 
     /**

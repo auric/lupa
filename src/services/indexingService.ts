@@ -149,13 +149,13 @@ export class IndexingService implements vscode.Disposable {
 
         // Sort files by priority (if available) to process important files first
         const sortedFiles = [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0));
-        
+
         try {
             // Process files concurrently with limited concurrency
             const maxConcurrentTasks = this.options.maxConcurrentTasks;
             let completedCount = 0;
             const totalFiles = sortedFiles.length;
-            
+
             // Create a function to process a single file
             const processFile = async (file: FileToProcess): Promise<ProcessingResult> => {
                 try {
@@ -163,19 +163,19 @@ export class IndexingService implements vscode.Disposable {
                     if (abortController.signal.aborted) {
                         throw new Error('Operation was cancelled');
                     }
-                    
+
                     const processor = this.createProcessor();
                     const result = await processor.processFile(file, abortController.signal)
                         .finally(() => {
                             processor.dispose();
                         });
-                    
+
                     // Update progress
                     completedCount++;
                     if (progressCallback) {
                         progressCallback(completedCount, totalFiles);
                     }
-                    
+
                     // Update status bar with overall progress
                     const percentage = Math.round((completedCount / totalFiles) * 100);
                     this.statusBarService.showTemporaryMessage(
@@ -183,7 +183,7 @@ export class IndexingService implements vscode.Disposable {
                         3000,
                         StatusBarMessageType.Working
                     );
-                    
+
                     return result;
                 } catch (error) {
                     console.error(`Error processing file ${file.path}:`, error);
@@ -191,31 +191,37 @@ export class IndexingService implements vscode.Disposable {
                         fileId: file.id,
                         success: false,
                         error: error instanceof Error ? error.message : String(error),
+                        metadata: {
+                            parentStructureIds: [],
+                            structureOrders: [],
+                            isOversizedFlags: [],
+                            structureTypes: []
+                        },
                         embeddings: [],
                         chunkOffsets: []
                     };
                 }
             };
-            
+
             // Process files in batches to control concurrency
             for (let i = 0; i < sortedFiles.length; i += maxConcurrentTasks) {
                 // Check if cancelled
                 if (abortController.signal.aborted) {
                     throw new Error('Operation was cancelled');
                 }
-                
+
                 const batch = sortedFiles.slice(i, i + maxConcurrentTasks);
-                
+
                 // Process the batch concurrently
                 const batchPromises = batch.map(file => processFile(file));
                 this.currentOperation!.promises = batchPromises;
-                
+
                 // Wait for the current batch to complete
                 const batchResults = await Promise.all(batchPromises);
-                
+
                 // Create a map for the current batch results
                 const batchResultsMap = new Map<string, ProcessingResult>();
-                
+
                 // Store results only after the entire batch is complete
                 // This avoids race conditions from multiple async operations
                 // writing to the shared results map simultaneously
@@ -225,7 +231,7 @@ export class IndexingService implements vscode.Disposable {
                         batchResultsMap.set(result.fileId, result);
                     }
                 }
-                
+
                 // If a batch completion callback is provided, call it with the batch results
                 // This allows for saving embeddings as batches are processed
                 if (batchCompletedCallback && batchResultsMap.size > 0) {

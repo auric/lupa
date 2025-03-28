@@ -12,7 +12,8 @@ import {
     SimilaritySearchOptions,
     SimilaritySearchResult,
     DatabaseConfig,
-    StorageStats
+    StorageStats,
+    ChunkingMetadata
 } from '../types/embeddingTypes';
 
 /**
@@ -165,7 +166,7 @@ export class VectorDatabaseService implements vscode.Disposable {
         await this.run('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)', []);
         await this.run('CREATE INDEX IF NOT EXISTS idx_files_indexed ON files(is_indexed)', []);
 
-        // Chunks table - stores code chunks from files
+        // Chunks table - stores code chunks from files with structure metadata
         await this.run(`
             CREATE TABLE IF NOT EXISTS chunks (
                 id TEXT PRIMARY KEY,
@@ -174,11 +175,16 @@ export class VectorDatabaseService implements vscode.Disposable {
                 start_offset INTEGER NOT NULL,
                 end_offset INTEGER NOT NULL,
                 token_count INTEGER,
+                parent_structure_id TEXT,
+                structure_order INTEGER,
+                is_oversized BOOLEAN,
+                structure_type TEXT,
                 FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
             )
         `, []);
 
         await this.run('CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)', []);
+        await this.run('CREATE INDEX IF NOT EXISTS idx_chunks_parent_structure ON chunks(parent_structure_id)', []);
 
         // Embeddings table - stores vector embeddings of chunks
         await this.run(`
@@ -376,11 +382,20 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @param offsets Array of offsets for each chunk in the original file
      * @returns Array of chunk records
      */
-    async storeChunks(fileId: string, chunks: string[], offsets: number[]): Promise<ChunkRecord[]> {
+    async storeChunks(
+        fileId: string,
+        chunks: string[],
+        offsets: number[],
+        metadata: ChunkingMetadata
+    ): Promise<ChunkRecord[]> {
         await this.ensureInitialized();
 
-        if (chunks.length !== offsets.length) {
-            throw new Error('Chunks and offsets arrays must have the same length');
+        if (chunks.length !== offsets.length ||
+            chunks.length !== metadata.parentStructureIds.length ||
+            chunks.length !== metadata.structureOrders.length ||
+            chunks.length !== metadata.isOversizedFlags.length ||
+            chunks.length !== metadata.structureTypes.length) {
+            throw new Error('All arrays in chunks data must have the same length');
         }
 
         return this.transaction(async () => {
@@ -393,16 +408,33 @@ export class VectorDatabaseService implements vscode.Disposable {
                 const endOffset = startOffset + content.length;
 
                 await this.run(`
-                    INSERT INTO chunks (id, file_id, content, start_offset, end_offset)
-                    VALUES (?, ?, ?, ?, ?)
-                `, [chunkId, fileId, content, startOffset, endOffset]);
+                    INSERT INTO chunks (
+                        id, file_id, content, start_offset, end_offset,
+                        parent_structure_id, structure_order, is_oversized, structure_type
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `, [
+                    chunkId,
+                    fileId,
+                    content,
+                    startOffset,
+                    endOffset,
+                    metadata.parentStructureIds[i],
+                    metadata.structureOrders[i],
+                    metadata.isOversizedFlags[i],
+                    metadata.structureTypes[i]
+                ]);
 
                 records.push({
                     id: chunkId,
                     fileId,
                     content,
                     startOffset,
-                    endOffset
+                    endOffset,
+                    parentStructureId: metadata.parentStructureIds[i],
+                    structureOrder: metadata.structureOrders[i],
+                    isOversized: metadata.isOversizedFlags[i],
+                    structureType: metadata.structureTypes[i]
                 });
             }
 
@@ -709,20 +741,22 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @param chunkId ID of the chunk that might be part of a larger structure
      * @returns A complete structure chunk if found, or null if not
      */
-    async getCompleteStructureForChunk(chunkId: string): Promise<ChunkRecord | null> {
+    async getCompleteStructureForChunk(chunkId: string): Promise<ChunkRecord[] | null> {
         await this.ensureInitialized();
 
-        // First, get the current chunk to find its file
-        const currentChunk = await this.get<{
-            id: string,
-            file_id: string,
-            content: string,
-            start_offset: number,
-            end_offset: number
-        }>(
-            `SELECT id, file_id, content, start_offset, end_offset
-             FROM chunks
-             WHERE id = ?`,
+        // First, get the current chunk to check its structure metadata
+        const currentChunk = await this.get<ChunkRecord>(
+            `SELECT *,
+                file_id as fileId,
+                start_offset as startOffset,
+                end_offset as endOffset,
+                token_count as tokenCount,
+                parent_structure_id as parentStructureId,
+                structure_order as structureOrder,
+                is_oversized as isOversized,
+                structure_type as structureType
+            FROM chunks
+            WHERE id = ?`,
             [chunkId]
         );
 
@@ -730,50 +764,61 @@ export class VectorDatabaseService implements vscode.Disposable {
             return null;
         }
 
-        // Look for chunks that fully contain this chunk
-        // This might be a larger chunk that contains a complete function/class
+        // If the chunk has a parent structure ID, get all chunks in that structure
+        if (currentChunk.parentStructureId) {
+            const structureChunks = await this.all<ChunkRecord>(
+                `SELECT *,
+                    file_id as fileId,
+                    start_offset as startOffset,
+                    end_offset as endOffset,
+                    token_count as tokenCount,
+                    parent_structure_id as parentStructureId,
+                    structure_order as structureOrder,
+                    is_oversized as isOversized,
+                    structure_type as structureType
+                FROM chunks
+                WHERE parent_structure_id = ?
+                ORDER BY structure_order ASC`,
+                [currentChunk.parentStructureId]
+            );
+
+            return structureChunks.length > 0 ? structureChunks : null;
+        }
+
+        // If the chunk itself is a complete structure
+        if (currentChunk.structureType && !currentChunk.isOversized) {
+            return [currentChunk];
+        }
+
+        // Try to find a containing chunk that represents a complete structure
         const containerChunks = await this.all<ChunkRecord>(
-            `SELECT id, file_id as fileId, content, start_offset as startOffset, end_offset as endOffset, token_count as tokenCount
-             FROM chunks
-             WHERE file_id = ?
-               AND id != ?
-               AND start_offset <= ?
-               AND end_offset >= ?
-             ORDER BY (end_offset - start_offset) ASC
-             LIMIT 1`,
+            `SELECT *,
+                file_id as fileId,
+                start_offset as startOffset,
+                end_offset as endOffset,
+                token_count as tokenCount,
+                parent_structure_id as parentStructureId,
+                structure_order as structureOrder,
+                is_oversized as isOversized,
+                structure_type as structureType
+            FROM chunks
+            WHERE file_id = ?
+                AND id != ?
+                AND start_offset <= ?
+                AND end_offset >= ?
+                AND structure_type IS NOT NULL
+                AND is_oversized = 0
+            ORDER BY (end_offset - start_offset) ASC
+            LIMIT 1`,
             [
-                currentChunk.file_id,
+                currentChunk.fileId,
                 chunkId,
-                currentChunk.start_offset,
-                currentChunk.end_offset
+                currentChunk.startOffset,
+                currentChunk.endOffset
             ]
         );
 
-        if (containerChunks.length > 0) {
-            return containerChunks[0];
-        }
-
-        // If we don't find a container chunk, try to detect if this chunk starts/ends
-        // with incomplete structures like partial brackets
-        const content = currentChunk.content;
-
-        // Simple heuristic: check opening/closing brace balance
-        const openBraces = (content.match(/{/g) || []).length;
-        const closeBraces = (content.match(/}/g) || []).length;
-
-        // If balanced, this might be a complete structure already
-        if (openBraces === closeBraces) {
-            return {
-                id: currentChunk.id,
-                fileId: currentChunk.file_id,
-                content: currentChunk.content,
-                startOffset: currentChunk.start_offset,
-                endOffset: currentChunk.end_offset,
-                tokenCount: undefined
-            };
-        }
-
-        return null;
+        return containerChunks.length > 0 ? [containerChunks[0]] : null;
     }
 
     /**

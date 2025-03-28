@@ -5,7 +5,7 @@ import {
     type FeatureExtractionPipeline,
     type Tensor
 } from '@huggingface/transformers';
-import { EmbeddingOptions } from '../types/embeddingTypes';
+import { EmbeddingOptions, ChunkingMetadata } from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
 import { getLanguageForExtension } from '../types/types';
@@ -27,6 +27,7 @@ export interface ProcessingResult {
     fileId: string;
     embeddings: Float32Array[];
     chunkOffsets: number[];
+    metadata: ChunkingMetadata;
     success: boolean;
     error?: string;
 }
@@ -103,7 +104,7 @@ export class AsyncIndexingProcessor {
         filePath: string,
         options: EmbeddingOptions = {},
         signal: AbortSignal
-    ): Promise<{ embeddings: Float32Array[], chunkOffsets: number[] }> {
+    ): Promise<{ embeddings: Float32Array[], chunkOffsets: number[], metadata: ChunkingMetadata }> {
         if (!this.pipeline || !this.codeChunker) {
             await this.initialize();
         }
@@ -120,12 +121,12 @@ export class AsyncIndexingProcessor {
         const language = this.getLanguageFromFilePath(filePath);
 
         // Chunk the text using smart code-aware chunking
-        const { chunks, offsets } = await this.codeChunker!.chunkCode(text, options, signal, language);
+        const result = await this.codeChunker!.chunkCode(text, options, signal, language);
 
         // Generate embeddings for each chunk
         const embeddings: Float32Array[] = [];
         let output: Tensor | null = null;
-        for (const chunk of chunks) {
+        for (const chunk of result.chunks) {
             // Check for cancellation before processing each chunk
             if (signal?.aborted) {
                 throw new Error('Operation was cancelled');
@@ -163,7 +164,8 @@ export class AsyncIndexingProcessor {
 
         return {
             embeddings,
-            chunkOffsets: offsets
+            chunkOffsets: result.offsets,
+            metadata: result.metadata
         };
     }
 
@@ -172,8 +174,8 @@ export class AsyncIndexingProcessor {
      */
     public async processFile(file: FileToProcess, signal: AbortSignal): Promise<ProcessingResult> {
         try {
-            // Generate embeddings
-            const { embeddings, chunkOffsets } = await this.generateEmbeddings(
+            // Generate embeddings with metadata
+            const { embeddings, chunkOffsets, metadata } = await this.generateEmbeddings(
                 file.content,
                 file.path,
                 this.embeddingOptions,
@@ -184,7 +186,8 @@ export class AsyncIndexingProcessor {
                 fileId: file.id,
                 embeddings,
                 chunkOffsets,
-                success: true
+                success: true,
+                metadata
             };
         } catch (error) {
             // Check if it's a cancellation error
@@ -193,6 +196,12 @@ export class AsyncIndexingProcessor {
                     fileId: file.id,
                     embeddings: [],
                     chunkOffsets: [],
+                    metadata: {
+                        parentStructureIds: [],
+                        structureOrders: [],
+                        isOversizedFlags: [],
+                        structureTypes: []
+                    },
                     success: false,
                     error: 'Operation was cancelled'
                 };
@@ -204,6 +213,12 @@ export class AsyncIndexingProcessor {
                 fileId: file.id,
                 embeddings: [],
                 chunkOffsets: [],
+                metadata: {
+                    parentStructureIds: [],
+                    structureOrders: [],
+                    isOversizedFlags: [],
+                    structureTypes: []
+                },
                 success: false,
                 error: error instanceof Error ? error.message : String(error)
             };
