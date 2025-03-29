@@ -34,6 +34,17 @@ export interface DetailedChunkingResult extends ChunkingResult {
     metadata: ChunkingMetadata;
 }
 
+export interface StructureAwareChunkingResult {
+    chunks: string[];
+    metadata: {
+        offsets: number[];
+        parentStructureIds: string[];
+        structureOrders: number[];
+        isOversizedFlags: boolean[];
+        structureTypes: string[];
+    };
+}
+
 export interface CodeChunkingOptions {
     overlapSize?: number;
 }
