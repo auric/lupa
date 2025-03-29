@@ -1352,56 +1352,57 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         // Sort structures primarily by start position ascending,
         // then by end position descending (larger ranges first for ties at the same start)
         structures.sort((a, b) => {
-            const startDiff = a.range.startPosition.row - b.range.startPosition.row || a.range.startPosition.column - b.range.startPosition.column;
+            const startDiff = a.range.startPosition.row - b.range.startPosition.row ||
+                a.range.startPosition.column - b.range.startPosition.column;
             if (startDiff !== 0) {
                 return startDiff;
             }
-            return b.range.endPosition.row - a.range.endPosition.row || b.range.endPosition.column - a.range.endPosition.column;
+            return b.range.endPosition.row - a.range.endPosition.row ||
+                b.range.endPosition.column - a.range.endPosition.column;
         });
+
+        // First clear any existing parent-child relationships that might have been
+        // established by previous operations to prevent duplicates or conflicts
+        for (const structure of structures) {
+            structure.parent = undefined;
+            structure.children = [];
+        }
 
         const stack: CodeStructure[] = []; // Stack to keep track of potential parent structures
 
         for (const currentStructure of structures) {
-            // Ensure children array exists
-            currentStructure.children = currentStructure.children || [];
-
-            // Remove structures from the stack that end before or exactly where the current one starts.
-            // This ensures that siblings are not incorrectly nested.
+            // Remove structures from the stack that end before or exactly where the current one starts
             while (stack.length > 0) {
                 const topOfStack = stack[stack.length - 1];
-                // If the top of stack ends before or at the same position the current structure starts, pop it.
-                if (topOfStack.range.endPosition.row < currentStructure.range.startPosition.row ||
-                    (topOfStack.range.endPosition.row === currentStructure.range.startPosition.row &&
-                        topOfStack.range.endPosition.column <= currentStructure.range.startPosition.column)) {
+                if (this.isRangeBeforeOrEqual(topOfStack.range.endPosition, currentStructure.range.startPosition)) {
                     stack.pop();
                 } else {
                     break; // The top of the stack is a potential parent or ancestor
                 }
             }
 
-            // If the stack is not empty, the top element is the immediate parent.
+            // If the stack is not empty, the top element is the immediate parent
             if (stack.length > 0) {
                 const parent = stack[stack.length - 1];
                 // Check for strict containment (parent range must fully contain child range)
-                // and avoid self-parenting.
-                if (parent !== currentStructure && this.isStructureContainedIn(currentStructure, parent)) {
-                    // Assign parent/child relationship only if not already assigned via parentContext
-                    // (parentContext derived from queries might be more accurate in some cases, e.g. methods)
-                    if (!currentStructure.parent) {
-                        currentStructure.parent = parent;
-                        if (!parent.children.includes(currentStructure)) {
-                            parent.children.push(currentStructure);
-                        }
-                    } else if (currentStructure.parent !== parent) {
-                        // Optional: Warn about potential conflict between query-based context and range containment
-                        // console.warn(`Hierarchy conflict for ${currentStructure.id}: parentContext ${currentStructure.parent.id} vs range parent ${parent.id}`);
-                    }
+                // and avoid self-parenting
+                if (parent !== currentStructure && this.isRangeContained(currentStructure.range, parent.range)) {
+                    // Set up parent-child relationship
+                    currentStructure.parent = parent;
+                    parent.children.push(currentStructure);
                 }
             }
 
             // Push the current structure onto the stack. It might be a parent for subsequent structures.
             stack.push(currentStructure);
         }
+    }
+
+    /**
+     * Helper to check if position1 is before or equal to position2
+     */
+    private isRangeBeforeOrEqual(pos1: CodePosition, pos2: CodePosition): boolean {
+        return pos1.row < pos2.row || (pos1.row === pos2.row && pos1.column <= pos2.column);
     }
 
     /**
@@ -1778,27 +1779,30 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         // Check if input is empty or undefined
         if (!commentText) return '';
 
-        // Handle multiple comments (separated by newlines)
-        const comments = commentText.split(/\n(?=\/\/|\/\*)/);
+        // Preserve the original structure of comments, including blank lines
+        const lines = commentText.split('\n');
+        const cleanedLines: string[] = [];
 
-        const cleanedComments = comments.map(comment => {
-            // Remove comment markers
-            let cleaned = comment;
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
 
-            // Remove block comment markers
-            cleaned = cleaned.replace(/^\/\*\*?/, ''); // Start markers
-            cleaned = cleaned.replace(/\*\/$/, ''); // End marker
+            // Remove line comment markers (// ...)
+            line = line.replace(/^\s*\/\/\s?/, '');
 
-            // Remove line comment markers            cleaned = cleaned.replace(/^\/\/\s?/mg, ''); // Start of each line
+            // Remove block comment start marker (/* or /**)
+            line = line.replace(/^\s*\/\*\*?/, '');
 
-            // Remove asterisks from the beginning of lines in block comments
-            cleaned = cleaned.replace(/^\s*\*\s?/mg, '');
+            // Remove block comment end marker (*/)
+            line = line.replace(/\*\/\s*$/, '');
 
-            return cleaned.trim();
-        });
+            // Remove leading asterisks from block comments (* ...)
+            line = line.replace(/^\s*\*\s?/, '');
 
-        // Join the cleaned comments with newlines
-        return cleanedComments.join('\n');
+            cleanedLines.push(line);
+        }
+
+        // Join the cleaned lines, preserving the original line structure
+        return cleanedLines.join('\n');
     }
 }
 
