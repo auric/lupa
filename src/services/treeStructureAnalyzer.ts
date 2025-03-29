@@ -201,7 +201,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     private readonly languageConfigs: Record<string, LanguageConfig> = {
         'javascript': {
             functionQueries: [
-                // Function declaration with preceding comments
+                // Function declaration with preceding comments (handles multiple comments and blank lines)
                 `((comment)+ @comment . (function_declaration) @func) @capture`,
                 // Exported function declaration with preceding comments
                 `((comment)+ @comment . (export_statement . (function_declaration) @func)) @capture`,
@@ -216,7 +216,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     value: [(arrow_function) (function_expression)] @func
                 ))) @capture`,
                 // Method definition within class with preceding comments
-                `(class_body . (comment)+ @comment . (method_definition) @func) @capture`
+                `((class_body . (comment)+ @comment . (method_definition) @func)) @capture`
             ],
             classQueries: [
                 // Class declaration with preceding comments
@@ -226,7 +226,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(statement_block) @block']
-            // commentQueries removed
         },
         'typescript': {
             functionQueries: [
@@ -245,9 +244,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     value: [(arrow_function) (function_expression)] @func
                 ))) @capture`,
                 // Method definition within class/interface with preceding comments
-                `(_ . (comment)+ @comment . (method_definition) @func) @capture`,
+                `((class_body . (comment)+ @comment . (method_definition) @func)) @capture`,
                 // Method signature within interface with preceding comments
-                `(_ . (comment)+ @comment . (method_signature) @func) @capture`
+                `((object_type . (comment)+ @comment . (method_signature) @func)) @capture`
             ],
             classQueries: [
                 // Class declaration with decorators and preceding comments
@@ -269,7 +268,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(statement_block) @block']
-            // commentQueries removed
         },
         'python': {
             functionQueries: [
@@ -282,7 +280,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
-            // commentQueries removed
         },
         'java': {
             functionQueries: [
@@ -301,7 +298,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
-            // commentQueries removed
         },
         'cpp': {
             functionQueries: [
@@ -330,11 +326,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [
                 // Method definition within class/struct body with preceding comments
-                `(_ body: (field_declaration_list . ((comment)+ @comment . (function_definition) @method))) @capture`,
+                `(field_declaration_list . ((comment)+ @comment . (function_definition) @method)) @capture`,
                 // Templated method definition within class/struct body with preceding comments
-                `(_ body: (field_declaration_list . ((comment)+ @comment . (template_declaration . (function_definition) @method)))) @capture`,
+                `(field_declaration_list . ((comment)+ @comment . (template_declaration . (function_definition) @method))) @capture`,
                 // Field declaration within class/struct body with preceding comments
-                `(_ body: (field_declaration_list . ((comment)+ @comment . (field_declaration) @field))) @capture`
+                `(field_declaration_list . ((comment)+ @comment . (field_declaration) @field)) @capture`
             ],
             blockQueries: [
                 '(compound_statement) @block',
@@ -342,7 +338,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 '(class_specifier body: (field_declaration_list) @block)',
                 '(struct_specifier body: (field_declaration_list) @block)'
             ]
-            // commentQueries removed
         },
         'c': {
             functionQueries: [
@@ -359,7 +354,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [],
             blockQueries: ['(compound_statement) @block']
-            // commentQueries removed
         },
         'csharp': {
             functionQueries: [
@@ -388,7 +382,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
-            // commentQueries removed
         },
         'go': {
             functionQueries: [
@@ -409,7 +402,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
-            // commentQueries removed
         },
         'ruby': {
             functionQueries: [
@@ -426,7 +418,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(do_block) @block', '(block) @block']
-            // commentQueries removed
         },
         'rust': {
             functionQueries: [
@@ -449,7 +440,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
-            // commentQueries removed
         },
         'css': {
             functionQueries: [], // CSS doesn't have functions in the typical sense
@@ -458,10 +448,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 `((comment)+ @comment . (rule_set) @rule) @capture`,
                 // At-rule with preceding comments
                 `((comment)+ @comment . (at_rule) @at_rule) @capture`
-            ], // Treat rules like structures
+            ],
             methodQueries: [],
             blockQueries: ['(block) @block']
-            // commentQueries removed
         }
     };
 
@@ -633,197 +622,24 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         language: string,
         variant?: string
     ): Promise<CodeStructure[]> {
-        await this.ensureInitialized();
-
-        let tree = null;
-        let queries = [];
-
-        try {
-            tree = await this.parseContent(content, language, variant);
-            if (!tree) {
-                console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
-                return [];
-            }
-
-            const config = this.languageConfigs[language];
-            if (!config || !config.functionQueries) { // Check if functionQueries exists
-                console.warn(`No function queries defined for language '${language}'`);
-                return [];
-            }
-
-            const rootNode = tree.rootNode;
-            const functions: CodeStructure[] = [];
-            const processedNodes = new Set<number>(); // Keep track of nodes already processed
-
-            // First, find all class/namespace nodes to establish context
-            const classNodes: Parser.SyntaxNode[] = [];
-            this.findNodesOfType(rootNode, [
+        return this.findStructures(
+            content,
+            language,
+            'functionQueries',
+            [
                 'class_specifier', 'struct_specifier', 'namespace_definition',
                 'class_declaration', 'struct_declaration', 'interface_declaration',
                 'enum_declaration', 'namespace_declaration', 'module',
                 'enum_specifier', 'template_declaration'
-            ], classNodes);
-
-            // Map of node IDs to their parent context (class/namespace)
-            const nodeParentMap = new Map<number, { node: Parser.SyntaxNode, name?: string, type: string }>();
-
-            // Build a map of parent contexts
-            for (const classNode of classNodes) {
-                const className = this.extractNodeName(classNode, language);
-                const classType = classNode.type;
-
-                // Find all function nodes within this class/namespace
-                this.findChildNodesWithinRange(classNode, (node) => {
-                    // Check if this is a function-like node
-                    const isFunctionLike = node.type.includes('function') ||
-                        node.type.includes('method') ||
-                        node.type.includes('procedure');
-
-                    if (isFunctionLike) {
-                        nodeParentMap.set(node.id, {
-                            node: classNode,
-                            name: className,
-                            type: classType
-                        });
-                    }
-                    return false; // Continue searching
-                });
-            }
-
-            // Now process all function queries
-            for (const queryString of config.functionQueries) {
-                try {
-                    const currentLang = await this.loadLanguageParser(language, variant);
-                    const query = currentLang.query(queryString);
-                    queries.push(query);
-
-                    // Use matches() which provides more context than captures()
-                    const matches = query.matches(rootNode);
-
-                    for (const match of matches) {
-                        let functionNode: Parser.SyntaxNode | null = null;
-                        let commentNode: Parser.SyntaxNode | null = null;
-                        let captureNode: Parser.SyntaxNode | null = null; // The overall capture, e.g., including comments
-
-                        for (const capture of match.captures) {
-                            if (capture.name === 'function' || capture.name === 'func' ||
-                                capture.name === 'method' || capture.name.includes('function')) {
-                                functionNode = capture.node;
-                            } else if (capture.name === 'comment' || capture.name.includes('comment')) {
-                                // Capture the first comment node found before the function
-                                if (!commentNode) commentNode = capture.node;
-                            } else if (capture.name === 'capture') {
-                                captureNode = capture.node;
-                            }
-                        }
-
-                        if (functionNode && !processedNodes.has(functionNode.id)) {
-                            processedNodes.add(functionNode.id);
-
-                            // Determine the full range (including comments/decorators if captured)
-                            const contentRange = this.nodeToCodeRange(functionNode);
-                            const range = captureNode ? this.nodeToCodeRange(captureNode) : contentRange;
-
-                            // Find the function name
-                            let name = this.extractNodeName(functionNode, language);
-
-                            // Extract text and comment based on captured nodes
-                            let structureText = "";
-                            let commentText = "";
-                            let firstCommentNode = commentNode; // Keep track of the first comment
-
-                            // Find the actual first comment node if multiple were captured implicitly by (comment)+
-                            let tempNode = functionNode.previousSibling;
-                            while (tempNode && tempNode.type === 'comment') {
-                                firstCommentNode = tempNode;
-                                tempNode = tempNode.previousSibling;
-                            }
-                            // Also check preceding sibling of capture node if different
-                            if (captureNode && captureNode !== functionNode && captureNode.previousSibling && captureNode.previousSibling.type === 'comment') {
-                                let capPrevNode = captureNode.previousSibling;
-                                while (capPrevNode && capPrevNode.type === 'comment') {
-                                    firstCommentNode = capPrevNode;
-                                    // Fix: Check for null before assignment
-                                    const capPrevSibling = capPrevNode.previousSibling;
-                                    if (!capPrevSibling) {
-                                        break;
-                                    }
-                                    capPrevNode = capPrevSibling;
-                                }
-                            }
-
-
-                            if (captureNode) {
-                                // Determine the start index for the full text (structureText)
-                                let textStartIndex = functionNode.startIndex;
-                                if (captureNode) {
-                                    textStartIndex = captureNode.startIndex;
-                                } else if (firstCommentNode) {
-                                    textStartIndex = firstCommentNode.startIndex;
-                                }
-                                structureText = content.substring(textStartIndex, functionNode.endIndex);
-
-                                // Extract comment text from the start of the first comment to the start of the function node
-                                if (firstCommentNode) {
-                                    commentText = this.cleanCommentText(content.substring(firstCommentNode.startIndex, functionNode.startIndex));
-                                } else if (commentNode) { // Fallback to originally captured comment node if firstCommentNode wasn't found (shouldn't happen often)
-                                    commentText = this.cleanCommentText(content.substring(commentNode.startIndex, commentNode.endIndex));
-                                }
-                            }
-
-                            // Check if this function is part of a class/namespace
-                            let parentContext: { node: Parser.SyntaxNode, name?: string, type: string } | undefined;
-                            if (nodeParentMap.has(functionNode.id)) {
-                                parentContext = nodeParentMap.get(functionNode.id);
-                            }
-
-                            // Create a unique ID that includes parent context if available
-                            let functionId: string;
-                            if (parentContext && parentContext.name) {
-                                functionId = `${parentContext.type}:${parentContext.name}:${functionNode.type}:${name || functionNode.id}`;
-                            } else {
-                                functionId = `${functionNode.type}:${name || functionNode.id}`;
-                            }
-
-                            // Create the function structure
-                            const functionStructure: CodeStructure = {
-                                type: functionNode.type,
-                                name: name,
-                                range: range,
-                                contentRange: contentRange,
-                                children: [],
-                                text: structureText.trim(),
-                                comment: commentText || undefined, // Use cleaned comment text or undefined
-                                id: functionId,
-                                parentContext: parentContext ? {
-                                    type: parentContext.type,
-                                    name: parentContext.name
-                                } : undefined
-                            };
-
-                            functions.push(functionStructure);
-                        }
-                    }
-                } catch (error) {
-                    console.error(`Error running function query "${queryString}" for ${language}:`, error);
-                    // Continue with other queries even if one fails
-                }
-            }
-
-            return functions;
-        } catch (error) {
-            console.error(`Error finding functions in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
-            return [];
-        } finally {
-            // Clean up resources
-            if (tree) {
-                tree.delete();
-            }
-
-            for (const query of queries) {
-                query.delete();
-            }
-        }
+            ],
+            (node) => {
+            // Check if this is a function-like node
+                return node.type.includes('function') ||
+                    node.type.includes('method') ||
+                    node.type.includes('procedure');
+            },
+            variant
+        );
     }
 
     /**
@@ -836,6 +652,37 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     public async findClasses(
         content: string,
         language: string,
+        variant?: string
+    ): Promise<CodeStructure[]> {
+        return this.findStructures(content, language, 'classQueries', [
+            'namespace_definition', 'namespace_declaration', 'module'
+        ], (node) => {
+            // Check if this is a class-like node
+            const isClassLike = node.type.includes('class') ||
+                node.type.includes('struct') ||
+                node.type.includes('interface') ||
+                node.type.includes('enum');
+
+            return isClassLike;
+        }, variant);
+    }
+
+    /**
+     * Generic method to find code structures (functions, classes, etc.) using tree-sitter queries
+     * @param content File content
+     * @param language Language identifier
+     * @param queryType Type of queries to use: 'functionQueries' or 'classQueries'
+     * @param contextNodesTypes Types of nodes to consider as potential parents/containers
+     * @param contextNodeCheck Function to determine if a node is a child of a context node
+     * @param variant Optional language variant
+     * @returns Array of code structures
+     */
+    private async findStructures(
+        content: string,
+        language: string,
+        queryType: 'functionQueries' | 'classQueries',
+        contextNodesTypes: string[],
+        contextNodeCheck: (node: Parser.SyntaxNode) => boolean,
         variant?: string
     ): Promise<CodeStructure[]> {
         await this.ensureInitialized();
@@ -851,8 +698,8 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             }
 
             const config = this.languageConfigs[language];
-            if (!config || !config.classQueries) { // Check if classQueries exists
-                console.warn(`No class/structure queries defined for language '${language}'`);
+            if (!config || !config[queryType] || config[queryType].length === 0) {
+                console.warn(`No ${queryType} defined for language '${language}'`);
                 return [];
             }
 
@@ -860,41 +707,34 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const structures: CodeStructure[] = [];
             const processedNodes = new Set<number>(); // Keep track of nodes already processed
 
-            // First, find all namespace nodes to establish context
-            const namespaceNodes: Parser.SyntaxNode[] = [];
-            this.findNodesOfType(rootNode, [
-                'namespace_definition', 'namespace_declaration', 'module'
-            ], namespaceNodes);
+            // Find context nodes (classes, namespaces, etc.)
+            const contextNodes: Parser.SyntaxNode[] = [];
+            this.findNodesOfType(rootNode, contextNodesTypes, contextNodes);
 
-            // Map of node IDs to their parent namespace context
-            const nodeNamespaceMap = new Map<number, { node: Parser.SyntaxNode, name?: string, type: string }>();
+            // Map of node IDs to their parent context
+            const nodeContextMap = new Map<number, { node: Parser.SyntaxNode, name?: string, type: string }>();
 
-            // Build a map of namespace contexts
-            for (const namespaceNode of namespaceNodes) {
-                const namespaceName = this.extractNodeName(namespaceNode, language);
-                const namespaceType = namespaceNode.type;
+            // Build a map of parent contexts
+            for (const contextNode of contextNodes) {
+                const contextName = this.extractNodeName(contextNode, language);
+                const contextType = contextNode.type;
 
-                // Find all class nodes within this namespace
-                this.findChildNodesWithinRange(namespaceNode, (node) => {
-                    // Check if this is a class-like node
-                    const isClassLike = node.type.includes('class') ||
-                        node.type.includes('struct') ||
-                        node.type.includes('interface') ||
-                        node.type.includes('enum');
-
-                    if (isClassLike) {
-                        nodeNamespaceMap.set(node.id, {
-                            node: namespaceNode,
-                            name: namespaceName,
-                            type: namespaceType
+                // Find all relevant nodes within this context
+                this.findChildNodesWithinRange(contextNode, (node) => {
+                    // Check if this node should be associated with this context
+                    if (contextNodeCheck(node)) {
+                        nodeContextMap.set(node.id, {
+                            node: contextNode,
+                            name: contextName,
+                            type: contextType
                         });
                     }
                     return false; // Continue searching
                 });
             }
 
-            // First, try to use the tree-sitter queries for classes
-            for (const queryString of config.classQueries) {
+            // Process all queries
+            for (const queryString of config[queryType]) {
                 try {
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
@@ -904,35 +744,38 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     const matches = query.matches(rootNode);
 
                     for (const match of matches) {
-                        let classNode: Parser.SyntaxNode | null = null;
+                        let mainNode: Parser.SyntaxNode | null = null;
                         let commentNode: Parser.SyntaxNode | null = null;
                         let captureNode: Parser.SyntaxNode | null = null; // The overall capture, e.g., including comments
 
+                        // Based on query type, determine what capture names to look for
+                        const mainCaptureNames = queryType === 'functionQueries'
+                            ? ['function', 'func', 'method']
+                            : ['class', 'struct', 'interface', 'namespace', 'enum', 'type'];
+
                         for (const capture of match.captures) {
-                            if (capture.name === 'class' || capture.name === 'struct' ||
-                                capture.name === 'interface' || capture.name === 'namespace' ||
-                                capture.name === 'enum' || capture.name === 'type' ||
-                                capture.name.includes('class') || capture.name.includes('struct') ||
-                                capture.name.includes('interface') || capture.name.includes('namespace') ||
-                                capture.name.includes('enum') || capture.name.includes('type')) {
-                                classNode = capture.node;
+                            const isMainCapture = mainCaptureNames.some(name =>
+                                capture.name === name || capture.name.includes(name));
+
+                            if (isMainCapture) {
+                                mainNode = capture.node;
                             } else if (capture.name === 'comment' || capture.name.includes('comment')) {
-                                // Capture the comment node
+                                // Capture the first comment node
                                 if (!commentNode) commentNode = capture.node;
                             } else if (capture.name === 'capture') {
                                 captureNode = capture.node;
                             }
                         }
 
-                        if (classNode && !processedNodes.has(classNode.id)) {
-                            processedNodes.add(classNode.id);
+                        if (mainNode && !processedNodes.has(mainNode.id)) {
+                            processedNodes.add(mainNode.id);
 
                             // Determine the full range (including comments/decorators if captured)
-                            const contentRange = this.nodeToCodeRange(classNode);
+                            const contentRange = this.nodeToCodeRange(mainNode);
                             const range = captureNode ? this.nodeToCodeRange(captureNode) : contentRange;
 
-                            // Find the class name
-                            let name = this.extractNodeName(classNode, language);
+                            // Find the name
+                            let name = this.extractNodeName(mainNode, language);
 
                             // Extract text and comment based on captured nodes
                             let structureText = "";
@@ -940,17 +783,18 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             let firstCommentNode = commentNode; // Keep track of the first comment
 
                             // Find the actual first comment node if multiple were captured implicitly by (comment)+
-                            let tempNode = classNode.previousSibling;
+                            let tempNode = mainNode.previousSibling;
                             while (tempNode && tempNode.type === 'comment') {
                                 firstCommentNode = tempNode;
                                 tempNode = tempNode.previousSibling;
                             }
+
                             // Also check preceding sibling of capture node if different
-                            if (captureNode && captureNode !== classNode && captureNode.previousSibling && captureNode.previousSibling.type === 'comment') {
+                            if (captureNode && captureNode !== mainNode && captureNode.previousSibling && captureNode.previousSibling.type === 'comment') {
                                 let capPrevNode = captureNode.previousSibling;
                                 while (capPrevNode && capPrevNode.type === 'comment') {
                                     firstCommentNode = capPrevNode;
-                                    // Fix: Check for null before assignment
+                                    // Check for null before assignment
                                     const capPrevSibling = capPrevNode.previousSibling;
                                     if (!capPrevSibling) {
                                         break;
@@ -960,85 +804,84 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             }
 
                             // Determine the start index for the full text (structureText)
-                            let textStartIndex = classNode.startIndex;
+                            let textStartIndex = mainNode.startIndex;
                             if (captureNode) {
-                                if (captureNode) {
-                                    textStartIndex = captureNode.startIndex;
-                                } else if (firstCommentNode) {
-                                    textStartIndex = firstCommentNode.startIndex;
-                                }
-                                // Initial structure text (might be expanded by trailing comment)
-                                structureText = content.substring(textStartIndex, classNode.endIndex);
-
-                                // Extract comment text from the start of the first comment to the start of the class node
-                                if (firstCommentNode) {
-                                    commentText = this.cleanCommentText(content.substring(firstCommentNode.startIndex, classNode.startIndex));
-                                } else if (commentNode) { // Fallback
-                                    commentText = this.cleanCommentText(content.substring(commentNode.startIndex, commentNode.endIndex));
-                                }
+                                textStartIndex = captureNode.startIndex;
+                            } else if (firstCommentNode) {
+                                textStartIndex = firstCommentNode.startIndex;
                             }
 
-                            // Check for namespace trailing comments (e.g., "} // namespace foo")
+                            // Extract the structure text
+                            structureText = content.substring(textStartIndex, mainNode.endIndex);
+
+                            // Extract comment text
+                            if (firstCommentNode) {
+                                commentText = this.cleanCommentText(content.substring(firstCommentNode.startIndex, mainNode.startIndex));
+                            } else if (commentNode) { // Fallback
+                                commentText = this.cleanCommentText(content.substring(commentNode.startIndex, commentNode.endIndex));
+                            }
+
+                            // Check for trailing comments like "} // namespace foo"
                             let trailingComment = undefined;
-                            if (classNode.type === 'namespace_definition') {
+                            if (mainNode.type === 'namespace_definition') {
                                 // Look for comment on the same line after the closing brace
-                                const lineEndOffset = content.indexOf('\n', classNode.endIndex);
-                                const endOfLineText = content.substring(classNode.endIndex, lineEndOffset !== -1 ? lineEndOffset : content.length);
-                                const namespaceCommentMatch = endOfLineText.match(/^\s*\/\/\s*namespace\s+([\w:]+)/); // Match // namespace foo or // namespace foo::bar
+                                const lineEndOffset = content.indexOf('\n', mainNode.endIndex);
+                                const endOfLineText = content.substring(mainNode.endIndex, lineEndOffset !== -1 ? lineEndOffset : content.length);
+                                const namespaceCommentMatch = endOfLineText.match(/^\s*\/\/\s*namespace\s+([\w:]+)/);
                                 if (namespaceCommentMatch) {
                                     // Only capture the comment itself, not leading whitespace
                                     trailingComment = namespaceCommentMatch[0].trim();
                                     // Adjust the overall range and text to include this trailing comment
-                                    const expectedEndIndex = classNode.endIndex + endOfLineText.indexOf(trailingComment) + trailingComment.length;
+                                    const expectedEndIndex = mainNode.endIndex + endOfLineText.indexOf(trailingComment) + trailingComment.length;
                                     range.endPosition = this.offsetToPosition(content, expectedEndIndex) || range.endPosition;
                                     // Recalculate structureText based on the potentially expanded range
                                     structureText = content.substring(textStartIndex, expectedEndIndex);
                                 }
                             }
 
-                            // Check if this class is part of a namespace
-                            let namespaceContext: { node: Parser.SyntaxNode, name?: string, type: string } | undefined;
-                            if (nodeNamespaceMap.has(classNode.id)) {
-                                namespaceContext = nodeNamespaceMap.get(classNode.id);
+                            // Check if this node is part of a context (class/namespace)
+                            let parentContext: { node: Parser.SyntaxNode, name?: string, type: string } | undefined;
+                            if (nodeContextMap.has(mainNode.id)) {
+                                parentContext = nodeContextMap.get(mainNode.id);
                             }
 
-                            // Create a unique ID that includes namespace context if available
-                            let classId: string;
-                            if (namespaceContext && namespaceContext.name) {
-                                classId = `${namespaceContext.type}:${namespaceContext.name}:${classNode.type}:${name || classNode.id}`;
+                            // Create a unique ID
+                            let structureId: string;
+                            if (parentContext && parentContext.name) {
+                                structureId = `${parentContext.type}:${parentContext.name}:${mainNode.type}:${name || mainNode.id}`;
                             } else {
-                                classId = `${classNode.type}:${name || classNode.id}`;
+                                structureId = `${mainNode.type}:${name || mainNode.id}`;
                             }
 
-                            structures.push({
-                                type: classNode.type,
+                            // Create the structure object
+                            const structure: CodeStructure = {
+                                type: mainNode.type,
                                 name: name,
                                 range: range,
                                 contentRange: contentRange,
                                 children: [],
                                 text: structureText.trim(),
-                                comment: commentText || undefined, // Use cleaned comment text or undefined
-                                id: classId,
-                                parentContext: namespaceContext ? {
-                                    type: namespaceContext.type,
-                                    name: namespaceContext.name
+                                comment: commentText || undefined,
+                                id: structureId,
+                                parentContext: parentContext ? {
+                                    type: parentContext.type,
+                                    name: parentContext.name
                                 } : undefined,
                                 trailingComment
-                            });
+                            };
+
+                            structures.push(structure);
                         }
                     }
                 } catch (error) {
-                    console.error(`Error running class query "${queryString}" for ${language}:`, error);
+                    console.error(`Error running ${queryType} "${queryString}" for ${language}:`, error);
                     // Continue with other queries even if one fails
                 }
             }
 
-            // Removed fallback logic that manually searched for comments.
-            // The refined queries are expected to handle comment association.
-
             return structures;
         } catch (error) {
-            console.error(`Error finding classes/structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            console.error(`Error finding structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
         } finally {
             // Clean up resources
