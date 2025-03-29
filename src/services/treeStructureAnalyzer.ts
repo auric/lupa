@@ -312,9 +312,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             ],
             classQueries: [
                 // Class specifier with preceding comments
-                `((comment)+ @comment . (class_specifier) @class) @capture`,
+                `((comment)* @comment (class_specifier) @class) @capture`,
                 // Struct specifier with preceding comments
-                `((comment)+ @comment . (struct_specifier) @struct) @capture`,
+                `((comment)* @comment (struct_specifier) @struct) @capture`,
                 // Namespace definition with preceding comments
                 `((comment)+ @comment . (namespace_definition) @namespace) @capture`,
                 // Templated class specifier with preceding comments
@@ -804,22 +804,17 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             }
 
                             // Determine the start index for the full text (structureText)
+                            // CRITICAL FIX: Always use the earliest position available to include comments
                             let textStartIndex = mainNode.startIndex;
                             if (captureNode) {
-                                textStartIndex = captureNode.startIndex;
-                            } else if (firstCommentNode) {
-                                textStartIndex = firstCommentNode.startIndex;
+                                textStartIndex = Math.min(textStartIndex, captureNode.startIndex);
                             }
-
-                            // Extract the structure text
-                            structureText = content.substring(textStartIndex, mainNode.endIndex);
-
-                            // Extract comment text
                             if (firstCommentNode) {
-                                commentText = this.cleanCommentText(content.substring(firstCommentNode.startIndex, mainNode.startIndex));
-                            } else if (commentNode) { // Fallback
-                                commentText = this.cleanCommentText(content.substring(commentNode.startIndex, commentNode.endIndex));
+                                textStartIndex = Math.min(textStartIndex, firstCommentNode.startIndex);
                             }
+
+                            // Extract the structure text - use endIndex to ensure we get the complete code
+                            let textEndIndex = mainNode.endIndex;
 
                             // Check for trailing comments like "} // namespace foo"
                             let trailingComment = undefined;
@@ -834,9 +829,19 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                                     // Adjust the overall range and text to include this trailing comment
                                     const expectedEndIndex = mainNode.endIndex + endOfLineText.indexOf(trailingComment) + trailingComment.length;
                                     range.endPosition = this.offsetToPosition(content, expectedEndIndex) || range.endPosition;
-                                    // Recalculate structureText based on the potentially expanded range
-                                    structureText = content.substring(textStartIndex, expectedEndIndex);
+                                    // Update the end index to include trailing comment
+                                    textEndIndex = expectedEndIndex;
                                 }
+                            }
+
+                            // Extract the structure text including all comments
+                            structureText = content.substring(textStartIndex, textEndIndex);
+
+                            // Extract comment text for the comment field
+                            if (firstCommentNode) {
+                                commentText = this.cleanCommentText(content.substring(firstCommentNode.startIndex, mainNode.startIndex));
+                            } else if (commentNode) { // Fallback
+                                commentText = this.cleanCommentText(content.substring(commentNode.startIndex, commentNode.endIndex));
                             }
 
                             // Check if this node is part of a context (class/namespace)
@@ -1349,17 +1354,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param structures Array of code structures.
      */
     private buildStructureHierarchy(structures: CodeStructure[]): void {
-        // Sort structures primarily by start position ascending,
-        // then by end position descending (larger ranges first for ties at the same start)
-        structures.sort((a, b) => {
-            const startDiff = a.range.startPosition.row - b.range.startPosition.row ||
-                a.range.startPosition.column - b.range.startPosition.column;
-            if (startDiff !== 0) {
-                return startDiff;
-            }
-            return b.range.endPosition.row - a.range.endPosition.row ||
-                b.range.endPosition.column - a.range.endPosition.column;
-        });
+        if (!structures.length) return;
 
         // First clear any existing parent-child relationships that might have been
         // established by previous operations to prevent duplicates or conflicts
@@ -1368,65 +1363,87 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             structure.children = [];
         }
 
-        const stack: CodeStructure[] = []; // Stack to keep track of potential parent structures
+        // Sort structures primarily by start position ascending
+        structures.sort((a, b) => {
+            // Compare start positions first
+            const startRowDiff = a.range.startPosition.row - b.range.startPosition.row;
+            if (startRowDiff !== 0) {
+                return startRowDiff;
+            }
 
-        for (const currentStructure of structures) {
-            // Remove structures from the stack that end before or exactly where the current one starts
+            const startColDiff = a.range.startPosition.column - b.range.startPosition.column;
+            if (startColDiff !== 0) {
+                return startColDiff;
+            }
+
+            // If start positions are the same, prioritize containing structures by comparing end positions
+            // Larger (containing) structures should come first in the array
+            const endRowDiff = b.range.endPosition.row - a.range.endPosition.row;
+            if (endRowDiff !== 0) {
+                return endRowDiff;
+            }
+
+            return b.range.endPosition.column - a.range.endPosition.column;
+        });
+
+        // Create an array to track potentially open containers at each position
+        const stack: CodeStructure[] = [];
+
+        for (const current of structures) {
+        // Pop structures from the stack that end before or at current's start position
             while (stack.length > 0) {
-                const topOfStack = stack[stack.length - 1];
-                if (this.isRangeBeforeOrEqual(topOfStack.range.endPosition, currentStructure.range.startPosition)) {
+                const top = stack[stack.length - 1];
+
+                // If the top structure ends before current's start, it can't be a parent
+                if (this.isPositionBeforeOrEqual(top.range.endPosition, current.range.startPosition)) {
                     stack.pop();
                 } else {
-                    break; // The top of the stack is a potential parent or ancestor
+                    break;
                 }
             }
 
-            // If the stack is not empty, the top element is the immediate parent
+            // If stack is not empty, the top structure is a potential parent
             if (stack.length > 0) {
-                const parent = stack[stack.length - 1];
-                // Check for strict containment (parent range must fully contain child range)
-                // and avoid self-parenting
-                if (parent !== currentStructure && this.isRangeContained(currentStructure.range, parent.range)) {
-                    // Set up parent-child relationship
-                    currentStructure.parent = parent;
-                    parent.children.push(currentStructure);
+                const potentialParent = stack[stack.length - 1];
+
+                // A structure is a parent if it fully contains the current structure
+                // and is not the same structure
+                if (this.isRangeFullyContained(current.range, potentialParent.range) &&
+                    current !== potentialParent) {
+
+                    // Found parent, establish the relationship
+                    current.parent = potentialParent;
+                    potentialParent.children.push(current);
                 }
             }
 
-            // Push the current structure onto the stack. It might be a parent for subsequent structures.
-            stack.push(currentStructure);
+            // Push the current structure onto the stack
+            stack.push(current);
         }
     }
 
     /**
-     * Helper to check if position1 is before or equal to position2
+     * Check if position1 is before or equal to position2
      */
-    private isRangeBeforeOrEqual(pos1: CodePosition, pos2: CodePosition): boolean {
-        return pos1.row < pos2.row || (pos1.row === pos2.row && pos1.column <= pos2.column);
+    private isPositionBeforeOrEqual(pos1: CodePosition, pos2: CodePosition): boolean {
+        if (pos1.row < pos2.row) return true;
+        if (pos1.row > pos2.row) return false;
+        return pos1.column <= pos2.column;
     }
 
     /**
-     * Checks if outerRange completely contains innerRange.
+     * Check if inner range is fully contained within outer range
      */
-    private isRangeContained(innerRange: CodeRange, outerRange: CodeRange): boolean {
-        const innerStart = innerRange.startPosition;
-        const innerEnd = innerRange.endPosition;
-        const outerStart = outerRange.startPosition;
-        const outerEnd = outerRange.endPosition;
+    private isRangeFullyContained(inner: CodeRange, outer: CodeRange): boolean {
+        // Inner starts after or at the same position as outer
+        const innerStartsAfterOrAtOuter =
+            this.isPositionBeforeOrEqual(outer.startPosition, inner.startPosition);
 
-        const startsAfterOrAtOuterStart = innerStart.row > outerStart.row || (innerStart.row === outerStart.row && innerStart.column >= outerStart.column);
-        const endsBeforeOrAtOuterEnd = innerEnd.row < outerEnd.row || (innerEnd.row === outerEnd.row && innerEnd.column <= outerEnd.column);
+        // Inner ends before or at the same position as outer
+        const innerEndsBeforeOrAtOuter =
+            this.isPositionBeforeOrEqual(inner.endPosition, outer.endPosition);
 
-        return startsAfterOrAtOuterStart && endsBeforeOrAtOuterEnd;
-    }
-
-    /**
-     * Checks if a range contains a specific position.
-     */
-    private doesRangeContain(range: CodeRange, position: CodePosition): boolean {
-        const startsBeforeOrAtPos = range.startPosition.row < position.row || (range.startPosition.row === position.row && range.startPosition.column <= position.column);
-        const endsAfterOrAtPos = range.endPosition.row > position.row || (range.endPosition.row === position.row && range.endPosition.column >= position.column);
-        return startsBeforeOrAtPos && endsAfterOrAtPos;
+        return innerStartsAfterOrAtOuter && innerEndsBeforeOrAtOuter;
     }
 
     /**
