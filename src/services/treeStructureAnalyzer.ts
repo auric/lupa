@@ -4,19 +4,11 @@ import { SUPPORTED_LANGUAGES, getLanguageForExtension } from '../types/types';
 import * as path from 'path';
 
 /**
- * Represents a code node position in a file
- */
-export interface CodePosition {
-    row: number;    // 0-based row
-    column: number; // 0-based column
-}
-
-/**
  * Represents a code range in a file
  */
 export interface CodeRange {
-    startPosition: CodePosition;
-    endPosition: CodePosition;
+    startPosition: Parser.Point;
+    endPosition: Parser.Point;
 }
 
 /**
@@ -24,19 +16,12 @@ export interface CodeRange {
  */
 export interface CodeStructure {
     type: string;           // Node type (e.g., "function_declaration", "class_declaration")
-    name?: string;          // Name of the node if available
     range: CodeRange;       // Position range in the document (including comments/decorators)
-    contentRange: CodeRange; // Position range of the core code content (excluding comments/decorators)
-    children: CodeStructure[]; // Child structures
-    parent?: CodeStructure; // Parent structure
     text: string;           // The text content of this structure (including comments/decorators)
-    comment?: string;       // Associated comment text, if found
-    id?: string;            // Unique identifier for the structure
     parentContext?: {       // Information about the parent context (class/namespace)
         type: string;       // Type of the parent context
         name?: string;      // Name of the parent context
     };
-    trailingComment?: string; // Trailing comment like "} // namespace foo"
 }
 
 /**
@@ -302,35 +287,69 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'cpp': {
             functionQueries: [
                 // Standalone function definition with preceding comments
-                `((comment)+ @comment . (function_definition) @function) @capture`,
+                `(
+                  (comment)* @comment
+                  .
+                  (function_definition) @function
+                ) @capture`,
                 // Standalone function declaration with preceding comments
-                `((comment)+ @comment . (declaration type: (_) declarator: (function_declarator)) @function) @capture`,
+                `(
+                  (comment)* @comment
+                  .
+                  (declaration
+                    type: (_)
+                    declarator: (function_declarator)
+                  ) @function
+                ) @capture`,
                 // Templated function definition with preceding comments
-                `((comment)+ @comment . (template_declaration . (function_definition) @function)) @capture`,
+                `(
+                  (comment)+ @comment
+                  .
+                  (template_declaration . (function_definition) @function)
+                ) @capture`,
                 // Templated function declaration with preceding comments
-                `((comment)+ @comment . (template_declaration . (declaration type: (_) declarator: (function_declarator)) @function)) @capture`
+                `(
+                  (comment)+ @comment
+                  .
+                  (template_declaration . (declaration type: (_) declarator: (function_declarator)) @function)
+                ) @capture`
             ],
             classQueries: [
                 // Class specifier with preceding comments
-                `((comment)* @comment (class_specifier) @class) @capture`,
-                // Struct specifier with preceding comments
-                `((comment)* @comment (struct_specifier) @struct) @capture`,
+                `((comment)* . [(template_declaration) (class_specifier) (struct_specifier) (enum_specifier)]) @capture
+                 `,
                 // Namespace definition with preceding comments
-                `((comment)+ @comment . (namespace_definition) @namespace) @capture`,
-                // Templated class specifier with preceding comments
-                `((comment)+ @comment . (template_declaration . (class_specifier) @class)) @capture`,
-                // Templated struct specifier with preceding comments
-                `((comment)+ @comment . (template_declaration . (struct_specifier) @struct)) @capture`,
-                // Enum specifier with preceding comments
-                `((comment)+ @comment . (enum_specifier) @enum) @capture`
+                `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture
+                 (#select-adjacent! @comment @namespace @trailingComment)`
             ],
             methodQueries: [
                 // Method definition within class/struct body with preceding comments
-                `(field_declaration_list . ((comment)+ @comment . (function_definition) @method)) @capture`,
+                `(field_declaration_list
+                  .
+                  (
+                    (comment)+ @comment
+                    .
+                    (function_definition) @method
+                  )
+                ) @capture`,
                 // Templated method definition within class/struct body with preceding comments
-                `(field_declaration_list . ((comment)+ @comment . (template_declaration . (function_definition) @method))) @capture`,
+                `(field_declaration_list
+                  .
+                  (
+                    (comment)+ @comment
+                    .
+                    (template_declaration . (function_definition) @method)
+                  )
+                ) @capture`,
                 // Field declaration within class/struct body with preceding comments
-                `(field_declaration_list . ((comment)+ @comment . (field_declaration) @field)) @capture`
+                `(field_declaration_list
+                  .
+                  (
+                    (comment)+ @comment
+                    .
+                    (field_declaration) @field
+                  )
+                ) @capture`
             ],
             blockQueries: [
                 '(compound_statement) @block',
@@ -740,144 +759,45 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     const query = currentLang.query(queryString);
                     queries.push(query);
 
-                    // Use matches() which provides more context than captures()
-                    const matches = query.matches(rootNode);
+                    const captures = query.captures(rootNode);
+                    if (captures.length === 0) {
+                        continue;
+                    }
 
-                    for (const match of matches) {
-                        let mainNode: Parser.SyntaxNode | null = null;
-                        let commentNode: Parser.SyntaxNode | null = null;
-                        let captureNode: Parser.SyntaxNode | null = null; // The overall capture, e.g., including comments
-
-                        // Based on query type, determine what capture names to look for
-                        const mainCaptureNames = queryType === 'functionQueries'
-                            ? ['function', 'func', 'method']
-                            : ['class', 'struct', 'interface', 'namespace', 'enum', 'type'];
-
-                        for (const capture of match.captures) {
-                            const isMainCapture = mainCaptureNames.some(name =>
-                                capture.name === name || capture.name.includes(name));
-
-                            if (isMainCapture) {
-                                mainNode = capture.node;
-                            } else if (capture.name === 'comment' || capture.name.includes('comment')) {
-                                // Capture the first comment node
-                                if (!commentNode) commentNode = capture.node;
-                            } else if (capture.name === 'capture') {
-                                captureNode = capture.node;
-                            }
-                        }
-
-                        if (mainNode && !processedNodes.has(mainNode.id)) {
-                            processedNodes.add(mainNode.id);
-
-                            // Determine the full range (including comments/decorators if captured)
-                            const contentRange = this.nodeToCodeRange(mainNode);
-                            const range = captureNode ? this.nodeToCodeRange(captureNode) : contentRange;
-
-                            // Find the name
-                            let name = this.extractNodeName(mainNode, language);
-
-                            // Extract text and comment based on captured nodes
-                            let structureText = "";
-                            let commentText = "";
-                            let firstCommentNode = commentNode; // Keep track of the first comment
-
-                            // Find the actual first comment node if multiple were captured implicitly by (comment)+
-                            let tempNode = mainNode.previousSibling;
-                            while (tempNode && tempNode.type === 'comment') {
-                                firstCommentNode = tempNode;
-                                tempNode = tempNode.previousSibling;
-                            }
-
-                            // Also check preceding sibling of capture node if different
-                            if (captureNode && captureNode !== mainNode && captureNode.previousSibling && captureNode.previousSibling.type === 'comment') {
-                                let capPrevNode = captureNode.previousSibling;
-                                while (capPrevNode && capPrevNode.type === 'comment') {
-                                    firstCommentNode = capPrevNode;
-                                    // Check for null before assignment
-                                    const capPrevSibling = capPrevNode.previousSibling;
-                                    if (!capPrevSibling) {
-                                        break;
-                                    }
-                                    capPrevNode = capPrevSibling;
-                                }
-                            }
-
-                            // Determine the start index for the full text (structureText)
-                            // CRITICAL FIX: Always use the earliest position available to include comments
-                            let textStartIndex = mainNode.startIndex;
-                            if (captureNode) {
-                                textStartIndex = Math.min(textStartIndex, captureNode.startIndex);
-                            }
-                            if (firstCommentNode) {
-                                textStartIndex = Math.min(textStartIndex, firstCommentNode.startIndex);
-                            }
-
-                            // Extract the structure text - use endIndex to ensure we get the complete code
-                            let textEndIndex = mainNode.endIndex;
-
-                            // Check for trailing comments like "} // namespace foo"
-                            let trailingComment = undefined;
-                            if (mainNode.type === 'namespace_definition') {
-                                // Look for comment on the same line after the closing brace
-                                const lineEndOffset = content.indexOf('\n', mainNode.endIndex);
-                                const endOfLineText = content.substring(mainNode.endIndex, lineEndOffset !== -1 ? lineEndOffset : content.length);
-                                const namespaceCommentMatch = endOfLineText.match(/^\s*\/\/\s*namespace\s+([\w:]+)/);
-                                if (namespaceCommentMatch) {
-                                    // Only capture the comment itself, not leading whitespace
-                                    trailingComment = namespaceCommentMatch[0].trim();
-                                    // Adjust the overall range and text to include this trailing comment
-                                    const expectedEndIndex = mainNode.endIndex + endOfLineText.indexOf(trailingComment) + trailingComment.length;
-                                    range.endPosition = this.offsetToPosition(content, expectedEndIndex) || range.endPosition;
-                                    // Update the end index to include trailing comment
-                                    textEndIndex = expectedEndIndex;
-                                }
-                            }
-
-                            // Extract the structure text including all comments
-                            structureText = content.substring(textStartIndex, textEndIndex);
-
-                            // Extract comment text for the comment field
-                            if (firstCommentNode) {
-                                commentText = this.cleanCommentText(content.substring(firstCommentNode.startIndex, mainNode.startIndex));
-                            } else if (commentNode) { // Fallback
-                                commentText = this.cleanCommentText(content.substring(commentNode.startIndex, commentNode.endIndex));
-                            }
-
-                            // Check if this node is part of a context (class/namespace)
-                            let parentContext: { node: Parser.SyntaxNode, name?: string, type: string } | undefined;
-                            if (nodeContextMap.has(mainNode.id)) {
-                                parentContext = nodeContextMap.get(mainNode.id);
-                            }
-
-                            // Create a unique ID
-                            let structureId: string;
-                            if (parentContext && parentContext.name) {
-                                structureId = `${parentContext.type}:${parentContext.name}:${mainNode.type}:${name || mainNode.id}`;
+                    let startPosition: Parser.Point = { row: 0, column: 0 };
+                    let endPosition: Parser.Point = { row: 0, column: 0 };
+                    let text = '';
+                    let type = '';
+                    for (const capture of captures) {
+                        if (capture.name == 'capture') {
+                            if (text) {
+                                text += '\n' + capture.node.text;
                             } else {
-                                structureId = `${mainNode.type}:${name || mainNode.id}`;
+                                startPosition = capture.node.startPosition;
+                                text = capture.node.text;
+                                capture.node.type
                             }
-
-                            // Create the structure object
-                            const structure: CodeStructure = {
-                                type: mainNode.type,
-                                name: name,
-                                range: range,
-                                contentRange: contentRange,
-                                children: [],
-                                text: structureText.trim(),
-                                comment: commentText || undefined,
-                                id: structureId,
-                                parentContext: parentContext ? {
-                                    type: parentContext.type,
-                                    name: parentContext.name
-                                } : undefined,
-                                trailingComment
-                            };
-
-                            structures.push(structure);
+                            endPosition = capture.node.endPosition;
+                            type = capture.node.type;
+                            console.log(`Capture text for ${capture.name}:`, text);
+                        } else if (capture.name == 'trailingComment') {
+                            text += '\n' + capture.node.text;
+                            endPosition = capture.node.endPosition;
                         }
                     }
+
+                    // Create the structure object
+                    const structure: CodeStructure = {
+                        type: type,
+                        text: text,
+                        range: {
+                            startPosition: startPosition,
+                            endPosition: endPosition,
+                        },
+                        parentContext: undefined,
+                    };
+
+                    structures.push(structure);
                 } catch (error) {
                     console.error(`Error running ${queryType} "${queryString}" for ${language}:`, error);
                     // Continue with other queries even if one fails
@@ -945,7 +865,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param offset Character offset
      * @returns Position or null if invalid
      */
-    private offsetToPosition(content: string, offset: number): CodePosition | null {
+    private offsetToPosition(content: string, offset: number): Parser.Point | null {
         if (offset < 0 || offset > content.length) {
             return null;
         }
@@ -977,14 +897,8 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     */
     private nodeToCodeRange(node: Parser.SyntaxNode): CodeRange {
         return {
-            startPosition: {
-                row: node.startPosition.row,
-                column: node.startPosition.column
-            },
-            endPosition: {
-                row: node.endPosition.row,
-                column: node.endPosition.column
-            }
+            startPosition: node.startPosition,
+            endPosition: node.endPosition,
         };
     }
 
@@ -1104,7 +1018,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param content File content
      * @returns Character offset or null if invalid
      */
-    public positionToOffset(position: CodePosition, content: string): number | null {
+    public positionToOffset(position: Parser.Point, content: string): number | null {
         const lines = content.split('\n');
 
         if (position.row >= lines.length) {
@@ -1181,11 +1095,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             comments.push({
                                 type: 'standalone_comment',
                                 range: range,
-                                contentRange: range,
-                                children: [],
                                 text: commentText,
-                                comment: commentText,
-                                id: `comment:${commentNode.id}`
                             });
                         }
                     }
@@ -1240,13 +1150,8 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                         const commentText = content.substring(firstNode.startIndex, firstNode.endIndex);
                         fileHeaderComment = {
                             type: 'file_header_comment',
-                            name: 'file_header',
                             range: this.nodeToCodeRange(firstNode),
-                            contentRange: this.nodeToCodeRange(firstNode),
-                            children: [],
                             text: commentText,
-                            comment: this.cleanCommentText(commentText),
-                            id: 'file_header'
                         };
                         // Add header comment to the list if found
                         allFoundStructures.unshift(fileHeaderComment);
@@ -1256,89 +1161,13 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             tree.delete(); // Clean up the tree
         }
 
-        // --- Find Standalone Comments ---
-        const associatedCommentRanges = new Set<string>();
-        allFoundStructures.forEach(s => {
-            if (s.comment) {
-                // Mark the range of the associated comment to avoid double-counting
-                const commentStartOffset = s.text.indexOf(s.comment);
-                if (commentStartOffset !== -1) {
-                    const commentStartPos = this.offsetToPosition(content, s.range.startPosition.row === 0 && s.range.startPosition.column === 0 ? commentStartOffset : s.range.startPosition.row + commentStartOffset); // Adjust offset calculation
-                    if (commentStartPos) {
-                        const commentEndPos = this.offsetToPosition(content, commentStartPos.row + s.comment.length); // Adjust offset calculation
-                        if (commentEndPos) {
-                            associatedCommentRanges.add(`${commentStartPos.row}:${commentStartPos.column}-${commentEndPos.row}:${commentEndPos.column}`);
-                        }
-                    }
-                }
-            }
-        });
-
-        const standaloneComments = await this.findStandaloneComments(content, language, variant);
-        const uniqueStandaloneComments = standaloneComments.filter(c => {
-            const rangeKey = `${c.range.startPosition.row}:${c.range.startPosition.column}-${c.range.endPosition.row}:${c.range.endPosition.column}`;
-            // Filter out comments already associated with structures or the header
-            return !associatedCommentRanges.has(rangeKey) && c.id !== 'file_header';
-        });
-
-        // Combine all structures
-        let structures: CodeStructure[] = [...allFoundStructures, ...uniqueStandaloneComments];
-
-        // Filter out forward declarations for all languages
-        const implementations = new Map<string, CodeStructure>();
-
-        // First pass: identify implementations
-        for (const struct of structures) {
-            // Check if this is an implementation (has a body)
-            const isImplementation =
-                (struct.type.includes('definition') ||
-                    struct.type.includes('specifier')) &&
-                struct.name !== undefined;
-
-            if (isImplementation && struct.name) {
-                implementations.set(struct.name, struct);
-            }
-        }
-
-        // Second pass: filter out forward declarations that have implementations
-        structures = structures.filter(struct => {
-            // Check if this is a forward declaration
-            const isForwardDeclaration =
-                (struct.type.includes('declaration') &&
-                    !struct.type.includes('definition') &&
-                    !struct.type.includes('specifier')) &&
-                struct.name !== undefined;
-
-            // Also check for simple forward declarations like "class X;" or "template<typename T> class X;"
-            const isSimpleForwardDeclaration =
-                struct.text && (
-                    (struct.text.match(/\bclass\s+\w+\s*;/)) ||
-                    (struct.text.match(/\bstruct\s+\w+\s*;/)) ||
-                    (struct.text.match(/\btemplate\s*<[^>]*>\s*class\s+\w+\s*;/))
-                );
-
-            if ((isForwardDeclaration && struct.name && implementations.has(struct.name)) ||
-                isSimpleForwardDeclaration) {
-                // This is a forward declaration, filter it out
-                return false;
-            }
-
-            return true;
-        });
-
-        // Build the structure hierarchy
-        this.buildStructureHierarchy(structures);
-
-        // Assign unique IDs to structures if not already assigned
-        this.assignStructureIds(structures);
-
-        return structures;
+        return allFoundStructures;
     }
 
     /**
      * Helper method to find the end position of a string
      */
-    private findEndPosition(str: string): CodePosition {
+    private findEndPosition(str: string): Parser.Point {
         const lines = str.split('\n');
         const lastLineIndex = lines.length - 1;
         const lastLineLength = lines[lastLineIndex].length;
@@ -1347,168 +1176,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             row: lastLineIndex,
             column: lastLineLength
         };
-    }
-
-    /**
-     * Build parent-child relationships between structures using a stack-based approach.
-     * @param structures Array of code structures.
-     */
-    private buildStructureHierarchy(structures: CodeStructure[]): void {
-        if (!structures.length) return;
-
-        // First clear any existing parent-child relationships that might have been
-        // established by previous operations to prevent duplicates or conflicts
-        for (const structure of structures) {
-            structure.parent = undefined;
-            structure.children = [];
-        }
-
-        // Sort structures primarily by start position ascending
-        structures.sort((a, b) => {
-            // Compare start positions first
-            const startRowDiff = a.range.startPosition.row - b.range.startPosition.row;
-            if (startRowDiff !== 0) {
-                return startRowDiff;
-            }
-
-            const startColDiff = a.range.startPosition.column - b.range.startPosition.column;
-            if (startColDiff !== 0) {
-                return startColDiff;
-            }
-
-            // If start positions are the same, prioritize containing structures by comparing end positions
-            // Larger (containing) structures should come first in the array
-            const endRowDiff = b.range.endPosition.row - a.range.endPosition.row;
-            if (endRowDiff !== 0) {
-                return endRowDiff;
-            }
-
-            return b.range.endPosition.column - a.range.endPosition.column;
-        });
-
-        // Create an array to track potentially open containers at each position
-        const stack: CodeStructure[] = [];
-
-        for (const current of structures) {
-        // Pop structures from the stack that end before or at current's start position
-            while (stack.length > 0) {
-                const top = stack[stack.length - 1];
-
-                // If the top structure ends before current's start, it can't be a parent
-                if (this.isPositionBeforeOrEqual(top.range.endPosition, current.range.startPosition)) {
-                    stack.pop();
-                } else {
-                    break;
-                }
-            }
-
-            // If stack is not empty, the top structure is a potential parent
-            if (stack.length > 0) {
-                const potentialParent = stack[stack.length - 1];
-
-                // A structure is a parent if it fully contains the current structure
-                // and is not the same structure
-                if (this.isRangeFullyContained(current.range, potentialParent.range) &&
-                    current !== potentialParent) {
-
-                    // Found parent, establish the relationship
-                    current.parent = potentialParent;
-                    potentialParent.children.push(current);
-                }
-            }
-
-            // Push the current structure onto the stack
-            stack.push(current);
-        }
-    }
-
-    /**
-     * Check if position1 is before or equal to position2
-     */
-    private isPositionBeforeOrEqual(pos1: CodePosition, pos2: CodePosition): boolean {
-        if (pos1.row < pos2.row) return true;
-        if (pos1.row > pos2.row) return false;
-        return pos1.column <= pos2.column;
-    }
-
-    /**
-     * Check if inner range is fully contained within outer range
-     */
-    private isRangeFullyContained(inner: CodeRange, outer: CodeRange): boolean {
-        // Inner starts after or at the same position as outer
-        const innerStartsAfterOrAtOuter =
-            this.isPositionBeforeOrEqual(outer.startPosition, inner.startPosition);
-
-        // Inner ends before or at the same position as outer
-        const innerEndsBeforeOrAtOuter =
-            this.isPositionBeforeOrEqual(inner.endPosition, outer.endPosition);
-
-        return innerStartsAfterOrAtOuter && innerEndsBeforeOrAtOuter;
-    }
-
-    /**
-     * Assign unique IDs to structures if not already assigned
-     * @param structures Array of code structures
-     */
-    private assignStructureIds(structures: CodeStructure[]): void {
-        // Use a non-recursive approach to avoid stack overflow
-        const stack: CodeStructure[] = [...structures];
-        const processed = new Set<CodeStructure>();
-
-        while (stack.length > 0) {
-            const structure = stack.pop()!;
-
-            // Skip if already processed to avoid circular references
-            if (processed.has(structure)) {
-                continue;
-            }
-
-            processed.add(structure);
-
-            if (!structure.id) {
-                // Create an ID based on type and name if available
-                if (structure.name) {
-                    structure.id = `${structure.type}:${structure.name}`;
-                } else {
-                    // Use position as a fallback for unnamed structures
-                    const pos = structure.range.startPosition;
-                    structure.id = `${structure.type}:${pos.row}:${pos.column}`;
-                }
-            }
-
-            // Add children to the stack
-            if (structure.children && structure.children.length > 0) {
-                for (const child of structure.children) {
-                    if (!processed.has(child)) {
-                        stack.push(child);
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Check if one structure is contained within another
-     */
-    private isStructureContainedIn(inner: CodeStructure, outer: CodeStructure): boolean {
-        const innerStartRow = inner.range.startPosition.row;
-        const innerStartCol = inner.range.startPosition.column;
-        const innerEndRow = inner.range.endPosition.row;
-        const innerEndCol = inner.range.endPosition.column;
-
-        const outerStartRow = outer.range.startPosition.row;
-        const outerStartCol = outer.range.startPosition.column;
-        const outerEndRow = outer.range.endPosition.row;
-        const outerEndCol = outer.range.endPosition.column;
-
-        // Check if inner structure is completely within outer structure
-        if (innerStartRow > outerStartRow || (innerStartRow === outerStartRow && innerStartCol >= outerStartCol)) {
-            if (innerEndRow < outerEndRow || (innerEndRow === outerEndRow && innerEndCol <= outerEndCol)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -1600,25 +1267,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     }
 
     /**
-     * Get all structures in a hierarchical format
-     * @param content File content
-     * @param language Language identifier
-     * @param variant Optional language variant
-     * @returns Array of top-level structures with children properly nested
-     */
-    public async getStructureHierarchy(
-        content: string,
-        language: string,
-        variant?: string
-    ): Promise<CodeStructure[]> {
-        // Find all structures first
-        const allStructures = await this.findAllStructures(content, language, variant);
-
-        // Filter to only return top-level structures (those without parents)
-        return allStructures.filter(structure => !structure.parent);
-    }
-
-    /**
      * Get a flat list of all structures with parent references
      * @param content File content
      * @param language Language identifier
@@ -1647,7 +1295,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     public async isPositionInsideFunction(
         content: string,
         language: string,
-        position: CodePosition,
+        position: Parser.Point,
         variant?: string
     ): Promise<CodeStructure | null> {
         try {
@@ -1655,7 +1303,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
             for (const func of functions) {
                 // Use contentRange for checking if position is within the core code
-                if (this.isPositionInsideRange(position, func.contentRange)) {
+                if (this.isPositionInsideRange(position, func.range)) {
                     return func;
                 }
             }
@@ -1673,7 +1321,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param range Range to check against
      * @returns True if position is inside the range
      */
-    private isPositionInsideRange(position: CodePosition, range: CodeRange): boolean {
+    private isPositionInsideRange(position: Parser.Point, range: CodeRange): boolean {
         // Check if position is after or at the start position
         if (position.row > range.startPosition.row ||
             (position.row === range.startPosition.row && position.column >= range.startPosition.column)) {
@@ -1699,7 +1347,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     public async getStructureHierarchyAtPosition(
         content: string,
         language: string,
-        position: CodePosition,
+        position: Parser.Point,
         variant?: string
     ): Promise<CodeStructure[]> {
         try {

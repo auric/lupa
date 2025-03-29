@@ -69,7 +69,7 @@ export async function testTreeStructureAnalyzer(context: vscode.ExtensionContext
         const functions = await testUtils.testFunctionDetection(fileContent, language, variant);
 
         for (const func of functions) {
-            outputChannel.appendLine(`- ${func.type}: ${func.name || 'anonymous'}`);
+            outputChannel.appendLine(`- ${func.type}: ${func.text || 'anonymous'}`);
             outputChannel.appendLine(`  Range: (${func.range.startPosition.row},${func.range.startPosition.column}) - (${func.range.endPosition.row},${func.range.endPosition.column})`);
         }
 
@@ -87,7 +87,7 @@ export async function testTreeStructureAnalyzer(context: vscode.ExtensionContext
             );
 
             if (cursorFunction) {
-                outputChannel.appendLine(`Cursor is inside function: ${cursorFunction.name || 'anonymous'}`);
+                outputChannel.appendLine(`Cursor is inside function: ${cursorFunction.text || 'anonymous'}`);
                 outputChannel.appendLine(`Function text:\n---\n${cursorFunction.text}\n---`);
             } else {
                 outputChannel.appendLine('Cursor is not inside any function');
@@ -106,7 +106,7 @@ export async function testTreeStructureAnalyzer(context: vscode.ExtensionContext
             for (let i = 0; i < hierarchy.length; i++) {
                 const node = hierarchy[i];
                 const indent = '  '.repeat(i);
-                outputChannel.appendLine(`${indent}${node.type}${node.name ? ` (${node.name})` : ''}`);
+                outputChannel.appendLine(`${indent}${node.type}${node.text ? ` (${node.text})` : ''}`);
             }
         }
 

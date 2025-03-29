@@ -1,5 +1,5 @@
-import * as vscode from 'vscode';
-import { TreeStructureAnalyzer, TreeStructureAnalyzerPool, CodePosition, CodeStructure } from '../../services/treeStructureAnalyzer';
+import Parser from 'web-tree-sitter';
+import { TreeStructureAnalyzer, TreeStructureAnalyzerPool, CodeStructure } from '../../services/treeStructureAnalyzer';
 
 /**
  * Utility class to test code structure detection
@@ -65,17 +65,11 @@ export class CodeStructureTestUtils {
         column: number,
         variant?: string
     ): Promise<CodeStructure | null> {
-        const position: CodePosition = { row: line, column: column };
+        const position: Parser.Point = { row: line, column: column };
         if (!this.analyzer) {
             await this.initializeAnalyzer();
         }
         const result = await this.analyzer!.isPositionInsideFunction(content, language, position, variant);
-
-        if (result) {
-            console.log(`Position (${line},${column}) is inside function: ${result.name}`);
-        } else {
-            console.log(`Position (${line},${column}) is NOT inside any function`);
-        }
 
         return result;
     }
@@ -141,7 +135,7 @@ export class CodeStructureTestUtils {
         column: number,
         variant?: string
     ): Promise<CodeStructure[]> {
-        const position: CodePosition = { row: line, column: column };
+        const position: Parser.Point = { row: line, column: column };
         if (!this.analyzer) {
             await this.initializeAnalyzer();
         }
@@ -155,7 +149,7 @@ export class CodeStructureTestUtils {
         console.log(`Structure hierarchy at position (${line},${column}):`);
         for (let i = 0; i < hierarchy.length; i++) {
             const indent = '  '.repeat(i);
-            console.log(`${indent}${hierarchy[i].type}${hierarchy[i].name ? ` (${hierarchy[i].name})` : ''}`);
+            console.log(`${indent}${hierarchy[i].type}${hierarchy[i].text ? ` (${hierarchy[i].text})` : ''}`);
         }
 
         return hierarchy;
