@@ -237,9 +237,9 @@ export class AsyncIndexingProcessor {
             }
             this.pipeline = null;
         }
-
-        // Note: We don't dispose the TreeStructureAnalyzerPool here as it's a singleton
-        // managed externally and shared with other components
+        if (this.codeChunker) {
+            this.codeChunker.dispose();
+        }
 
         this.tokenEstimator = null;
         this.codeChunker = null;

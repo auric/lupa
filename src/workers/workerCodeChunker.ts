@@ -3,16 +3,17 @@ import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import { PreTrainedTokenizer } from '@huggingface/transformers';
 import { EmbeddingOptions, ChunkingResult, DetailedChunkingResult } from '../types/embeddingTypes'; // Import DetailedChunkingResult
 import { WorkerTokenEstimator } from './workerTokenEstimator';
-import { TreeStructureAnalyzer, TreeStructureAnalyzerPool, CodeStructure } from '../services/treeStructureAnalyzer'; // Import CodeStructure
+import { TreeStructureAnalyzer, TreeStructureAnalyzerResource, CodeStructure } from '../services/treeStructureAnalyzer'; // Import CodeStructure
 
 /**
  * WorkerCodeChunker provides intelligent code chunking capabilities within worker threads.
  * It respects natural code boundaries while ensuring chunks fit within token limits.
  */
-export class WorkerCodeChunker {
+export class WorkerCodeChunker implements vscode.Disposable {
     private readonly tokenEstimator: WorkerTokenEstimator;
     private readonly defaultOverlapSize = 100;
-    private treeStructureAnalyzerPool: TreeStructureAnalyzerPool | null = null;
+    private resource: TreeStructureAnalyzerResource | null = null;
+    private analyzer: TreeStructureAnalyzer | null = null;
 
     /**
      * Creates a new worker code chunker
@@ -28,27 +29,18 @@ export class WorkerCodeChunker {
      * Get a TreeStructureAnalyzer from the pool
      */
     private async getTreeStructureAnalyzer(): Promise<TreeStructureAnalyzer | null> {
-        if (!this.treeStructureAnalyzerPool) {
+        if (!this.analyzer) {
             try {
                 // Get the pool instance instead of creating a new analyzer
-                this.treeStructureAnalyzerPool = TreeStructureAnalyzerPool.getInstance();
-                if (!this.treeStructureAnalyzerPool) {
-                    console.warn('TreeStructureAnalyzerPool not available, falling back to regex-based chunking');
-                    return null;
-                }
+                this.resource = await TreeStructureAnalyzerResource.create();
+                this.analyzer = this.resource.instance;
+                return this.analyzer;
             } catch (error) {
                 console.warn('Tree-sitter not available, falling back to regex-based chunking:', error);
                 return null;
             }
         }
-
-        // Get an analyzer from the pool
-        try {
-            return await this.treeStructureAnalyzerPool.getAnalyzer();
-        } catch (error) {
-            console.warn('Failed to get analyzer from pool:', error);
-            return null;
-        }
+        return this.analyzer;
     }
 
     /**
@@ -107,7 +99,8 @@ export class WorkerCodeChunker {
                         }
                     } finally {
                         // Ensure analyzer is always released
-                        this.treeStructureAnalyzerPool?.releaseAnalyzer(analyzer);
+                        this.analyzer = null;
+                        this.resource?.dispose();
                     }
                 }
             }
@@ -805,5 +798,14 @@ export class WorkerCodeChunker {
             }
         }
         return low;
+    }
+
+    /**
+     * Release resources and clean up
+     */
+    public async dispose(): Promise<void> {
+        this.resource?.dispose();
+        this.resource = null;
+        this.analyzer = null;
     }
 }

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { encoding_for_model as tiktokenCountTokens, TiktokenModel } from 'tiktoken';
 import { countTokens as anthropicCountTokens } from '@anthropic-ai/tokenizer';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { TreeStructureAnalyzerPool } from './treeStructureAnalyzer';
+import { TreeStructureAnalyzerResource } from './treeStructureAnalyzer';
 import {
     SUPPORTED_LANGUAGES
 } from '../types/types';
@@ -167,7 +167,8 @@ export class ContextProvider implements vscode.Disposable {
      */
     private async extractMeaningfulChunks(diff: string): Promise<string[]> {
         const chunks: string[] = [];
-        const analyzer = await TreeStructureAnalyzerPool.getInstance().getAnalyzer();
+        const resource = await TreeStructureAnalyzerResource.create();
+        const analyzer = resource.instance;
 
         // Split the diff into files
         const fileRegex = /^diff --git a\/(.+) b\/(.+)[\r\n]+(?:.+[\r\n]+)*?(?:@@.+@@)/gm;
@@ -261,6 +262,8 @@ export class ContextProvider implements vscode.Disposable {
         if (chunks.length === 0) {
             chunks.push(diff);
         }
+
+        resource.dispose();
 
         // Deduplicate chunks while preserving order
         return [...new Set(chunks)];
@@ -802,7 +805,7 @@ export class ContextProvider implements vscode.Disposable {
             }
 
             // Filter out duplicate file paths
-            const uniqueResults = allResults.filter((result, index, self) => 
+            const uniqueResults = allResults.filter((result, index, self) =>
                 index === self.findIndex(r => r.filePath === result.filePath)
             );
 
