@@ -209,7 +209,6 @@ export class WorkerCodeChunker {
                         continue; // Process next part of the text
                     } else {
                         // Structure is too large, needs splitting
-                        console.log(`Worker: Structure ${currentStructure.name || currentStructure.type} at ${currentPos} exceeds flexible limit (${tokenCount} > ${flexibleTokenLimit}), attempting split.`);
                         const parentId = uuidv4();
                         const subChunks = await this.splitOversizedStructure(
                             structureText,

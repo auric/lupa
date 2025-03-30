@@ -187,21 +187,21 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'javascript': {
             functionQueries: [
                 // Function declaration with preceding comments (handles multiple comments and blank lines)
-                `((comment)* @comment . (function_declaration) @func) @capture`,
+                `((comment)* @comment . (function_declaration) @function) @capture`,
                 // Exported function declaration with preceding comments
-                `((comment)* @comment . (export_statement . (function_declaration) @func)) @capture`,
+                `((comment)* @comment . (export_statement . (function_declaration) @function)) @capture`,
                 // Function expression assigned to variable with preceding comments
                 `((comment)* @comment . (expression_statement (assignment_expression
                     left: (_)
-                    right: [(arrow_function) (function_expression)] @func
+                    right: [(arrow_function) (function_expression)] @function
                 ))) @capture`,
                 // Arrow function assigned to variable with preceding comments
                 `((comment)* @comment . (lexical_declaration (variable_declarator
                     name: (_)
-                    value: [(arrow_function) (function_expression)] @func
+                    value: [(arrow_function) (function_expression)] @function
                 ))) @capture`,
                 // Method definition within class with preceding comments
-                `((class_body . (comment)* @comment . (method_definition) @func)) @capture`
+                `((class_body . (comment)* @comment . (method_definition) @function)) @capture`
             ],
             classQueries: [
                 // Class declaration with preceding comments
@@ -215,20 +215,22 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'typescript': {
             functionQueries: [
                 // Function declaration with preceding comments
-                `((comment)* @comment . (function_declaration) @func) @capture`,
+                `((comment)* @comment . (function_declaration) @function) @capture`,
                 // Exported function declaration with preceding comments
-                `((comment)* @comment . (export_statement . (function_declaration) @func)) @capture`,
+                `((comment)* @comment . (export_statement . (function_declaration) @function)) @capture`,
                 // Function expression assigned to variable with preceding comments
                 `((comment)* @comment . (variable_declaration
                     (variable_declarator
                       name: (_)
-                      value: [(arrow_function) (function_expression)] @func))) @capture`,
+                      value: [(arrow_function) (function_expression)] @function))) @capture`,
                 // Arrow function assigned to variable with preceding comments
                 `((comment)* @comment . (lexical_declaration
                     (variable_declarator
                       name: (_)
-                      value: [(arrow_function) (function_expression)] @func))) @capture`,
+                      value: [(arrow_function) (function_expression)] @function))) @capture`,
                 // Method definition within class with preceding comments
+                `((comment)* @comment . (decorator)* @decorator . (method_definition) @method) @capture`,
+                // Method definition within class (no scope access)
                 `(class_body . ((comment)* @comment . (method_definition) @method)) @capture`,
                 // Method definition in interface with preceding comments
                 `(object_type . ((comment)* @comment . (method_signature) @method)) @capture`
@@ -297,30 +299,28 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 `((comment)* @comment . (declaration
                     type: (_)
                     declarator: (function_declarator)) @function) @capture`,
-                // Templated function definition with preceding comments
-                `((comment)* @comment . (template_declaration . (function_definition) @function)) @capture`,
+                // Template function definition with preceding comments
+                `((comment)* @comment . (template_declaration) @template_decl . (function_definition) @function) @capture`,
                 // Templated function declaration with preceding comments
-                `((comment)* @comment . (template_declaration . (declaration
+                `((comment)* @comment . (template_declaration) @template_decl . (declaration
                     type: (_)
-                    declarator: (function_declarator)) @function)) @capture`,
+                    declarator: (function_declarator)) @function) @capture`,
                 // Method definition within class/struct body with preceding comments
                 `(field_declaration_list . ((comment)* @comment . (function_definition) @method)) @capture`,
-                // Templated method definition within class/struct body with preceding comments
-                `(field_declaration_list . ((comment)* @comment . (template_declaration . (function_definition)) @method)) @capture`,
+                // Template method definition within class/struct body with preceding comments
+                `(field_declaration_list . ((comment)* @comment . (template_declaration) @template_decl . (function_definition) @method)) @capture`,
                 // Field declaration within class/struct body with preceding comments
                 `(field_declaration_list . ((comment)* @comment . (field_declaration) @field)) @capture`
             ],
             classQueries: [
+                // Template class declaration with preceding comments - capture the template node
+                `((comment)* @comment . (template_declaration)) @capture`,
                 // Class specifier with preceding comments
                 `((comment)* @comment . (class_specifier) @class) @capture`,
                 // Struct specifier with preceding comments
                 `((comment)* @comment . (struct_specifier) @struct) @capture`,
                 // Enum specifier with preceding comments
                 `((comment)* @comment . (enum_specifier) @enum) @capture`,
-                // Templated class specifier with preceding comments
-                `((comment)* @comment . (template_declaration . (class_specifier) @class)) @capture`,
-                // Templated struct specifier with preceding comments
-                `((comment)* @comment . (template_declaration . (struct_specifier) @struct)) @capture`,
                 // Namespace definition with preceding comments and trailing comment
                 `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture`,
                 // Namespace definition with just preceding comments
@@ -762,7 +762,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
                         // Determine the main node (structure) from known types or use 'capture' node
                         let mainNode: Parser.SyntaxNode | undefined = undefined;
-                        for (const type of ['function', 'func', 'method', 'class', 'struct', 'interface', 'enum', 'namespace', 'capture']) {
+                        for (const type of ['function', 'method', 'class', 'struct', 'interface', 'enum', 'namespace', 'capture']) {
                             if (captureMap.has(type)) {
                                 mainNode = captureMap.get(type);
                                 break;
@@ -928,112 +928,69 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
     /**
      * Helper to extract a meaningful name from a Tree-sitter node
-    */
+     */
     private extractNodeName(node: Parser.SyntaxNode, language: string): string | undefined {
-        let nameNode: Parser.SyntaxNode | null = null;
-        let name: string | undefined = undefined;
+        // Common field name patterns to try, in order of preference
+        const commonFields = ['name', 'id', 'identifier'];
 
-        // Common field name for identifiers
-        nameNode = node.childForFieldName('name');
-        if (nameNode) return nameNode.text;
-
-        // Language-specific patterns
-        switch (language) {
-            case 'javascript':
-            case 'typescript':
-                if (node.type === 'arrow_function') {
-                    let parent = node.parent;
-                    while (parent) {
-                        if (parent.type === 'variable_declarator' || parent.type === 'pair') {
-                            nameNode = parent.childForFieldName('name') || parent.childForFieldName('key');
-                            if (nameNode) return nameNode.text;
-                        }
-                        parent = parent.parent;
-                    }
-                } else if (node.type === 'method_definition' || node.type === 'method_signature' || node.type === 'function_declaration' || node.type === 'class_declaration' || node.type === 'interface_declaration' || node.type === 'enum_declaration' || node.type === 'type_alias_declaration') {
-                    nameNode = node.childForFieldName('name');
-                    if (nameNode) return nameNode.text;
-                }
-                break;
-            case 'python':
-                nameNode = node.childForFieldName('name');
-                if (nameNode) return nameNode.text;
-                break;
-            case 'java':
-            case 'csharp':
-                nameNode = node.childForFieldName('name');
-                if (nameNode) return nameNode.text;
-                // For constructors
-                if (node.type === 'constructor_declaration') {
-                    nameNode = node.childForFieldName('name'); // C#
-                    if (nameNode) return nameNode.text;
-                    // Java constructor name matches class name, find parent class
-                    let parent = node.parent;
-                    while (parent && parent.type !== 'class_declaration') {
-                        parent = parent.parent;
-                    }
-                    if (parent) {
-                        nameNode = parent.childForFieldName('name');
-                        if (nameNode) return nameNode.text;
-                    }
-                }
-                break;
-            case 'c':
-            case 'cpp':
-                if (node.type === 'function_definition') {
-                    const declarator = node.childForFieldName('declarator');
-                    // Look for identifier within declarator (might be pointer_declarator etc.)
-                    nameNode = declarator?.descendantsOfType('identifier')[0] || null;
-                    if (nameNode) return nameNode.text;
-                } else if (node.type === 'struct_specifier' || node.type === 'class_specifier' || node.type === 'namespace_definition' || node.type === 'enum_specifier') {
-                    nameNode = node.childForFieldName('name');
-                    if (nameNode) return nameNode.text;
-                }
-                break;
-            case 'rust':
-                nameNode = node.childForFieldName('name');
-                if (nameNode) return nameNode.text;
-                // For impl blocks, try to get the type name
-                if (node.type === 'impl_item') {
-                    nameNode = node.childForFieldName('type');
-                    if (nameNode) return nameNode.text;
-                }
-                break;
-            case 'go':
-                nameNode = node.childForFieldName('name');
-                if (nameNode) return nameNode.text;
-                // For method declarations, get receiver type
-                if (node.type === 'method_declaration') {
-                    const receiver = node.childForFieldName('receiver');
-                    if (receiver) {
-                        // Find type identifier within receiver parameters
-                        const typeIdentifier = receiver.descendantsOfType('type_identifier')[0];
-                        if (typeIdentifier) return typeIdentifier.text;
-                    }
-                }
-                break;
-            case 'ruby':
-                nameNode = node.childForFieldName('name');
-                if (nameNode) return nameNode.text;
-                // For singleton methods, name might be different
-                if (node.type === 'singleton_method') {
-                    nameNode = node.childForFieldName('name');
-                    if (nameNode) return nameNode.text;
-                }
-                break;
-            case 'css':
-                if (node.type === 'rule_set') {
-                    const selectors = node.childForFieldName('selectors');
-                    if (selectors) return selectors.text;
-                } else if (node.type === 'at_rule') {
-                    nameNode = node.childForFieldName('name');
-                    if (nameNode) return nameNode.text;
-                }
-                break;
-            // Add other languages as needed
+        // First try direct child field access - most common case
+        for (const fieldName of commonFields) {
+            const nameNode = node.childForFieldName(fieldName);
+            if (nameNode) return nameNode.text;
         }
 
-        return name; // Return undefined if no name found
+        // Try to find identifier nodes - common in many languages
+        const identifierTypes = ['identifier', 'property_identifier', 'type_identifier', 'field_identifier'];
+        const identifiers = node.descendantsOfType(identifierTypes);
+        if (identifiers.length > 0) {
+            // First identifier is usually the name
+            return identifiers[0].text;
+        }
+
+        // Special handling for function declarations in languages with complex declarators
+        if (node.type.includes('function')) {
+            const declarator = node.childForFieldName('declarator');
+            if (declarator) {
+                // Try to find identifier in the declarator
+                const identifiersInDeclarator = declarator.descendantsOfType(identifierTypes);
+                if (identifiersInDeclarator.length > 0) {
+                    return identifiersInDeclarator[0].text;
+                }
+            }
+        }
+
+        // For anonymous functions assigned to variables, try to find parent variable declarator
+        if (node.type.includes('function') || node.type === 'arrow_function') {
+            let parent = node.parent;
+            while (parent) {
+                if (parent.type === 'variable_declarator' || parent.type === 'pair') {
+                    const nameNode = parent.childForFieldName('name') || parent.childForFieldName('key');
+                    if (nameNode) return nameNode.text;
+                }
+                parent = parent.parent;
+            }
+        }
+
+        // For CSS rule sets, get selectors
+        if (node.type === 'rule_set' || node.type.includes('selector')) {
+            const selectors = node.childForFieldName('selectors');
+            if (selectors) return selectors.text;
+        }
+
+        // For type declarations that might have a generic type parameter
+        if (node.type.includes('class') || node.type.includes('interface') || node.type.includes('type')) {
+            // First try direct field access
+            const nameNode = node.childForFieldName('name');
+            if (nameNode) return nameNode.text;
+
+            // Then try to find a type identifier
+            const typeIds = node.descendantsOfType(['type_identifier']);
+            if (typeIds.length > 0) {
+                return typeIds[0].text;
+            }
+        }
+
+        return undefined; // Return undefined if no name found
     }
 
     /**
@@ -1275,40 +1232,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     }
 
     /**
-     * Find partial structures in a code snippet, useful for handling incomplete code fragments
-     * @param content File content
-     * @param language Language identifier
-     * @param variant Optional language variant
-     * @returns Array of partial structure information
-     */
-    public async findPartialStructures(
-        _content: string,
-        _language: string,
-        _variant?: string
-    ): Promise<CodeStructure[]> {
-        // For now, return an empty array as we'll rely on the existing structure detection
-        return [];
-    }
-
-    /**
-     * Get a flat list of all structures with parent references
-     * @param content File content
-     * @param language Language identifier
-     * @param variant Optional language variant
-     * @returns Flat array of all structures with parent references
-     */
-    public async getFlatStructureList(
-        content: string,
-        language: string,
-        variant?: string
-    ): Promise<CodeStructure[]> {
-        // This returns all structures with parent references set
-        return await this.findAllStructures(content, language, variant);
-    }
-
-    // supportsLanguage is implemented below
-
-    /**
      * Check if a given position is inside any function declaration
      * @param content File content
      * @param language Language identifier
@@ -1457,41 +1380,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         this.isInitialized = false;
         this.isDisposed = true;
         // Reset initialization state
-    }
-
-    /**
-     * Helper to clean comment text by removing comment markers and extra whitespace
-     * @param commentText The raw comment text with comment markers
-     * @returns Formatted comment text without markers
-     */
-    private cleanCommentText(commentText: string): string {
-        // Check if input is empty or undefined
-        if (!commentText) return '';
-
-        // Preserve the original structure of comments, including blank lines
-        const lines = commentText.split('\n');
-        const cleanedLines: string[] = [];
-
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i];
-
-            // Remove line comment markers (// ...)
-            line = line.replace(/^\s*\/\/\s?/, '');
-
-            // Remove block comment start marker (/* or /**)
-            line = line.replace(/^\s*\/\*\*?/, '');
-
-            // Remove block comment end marker (*/)
-            line = line.replace(/\*\/\s*$/, '');
-
-            // Remove leading asterisks from block comments (* ...)
-            line = line.replace(/^\s*\*\s?/, '');
-
-            cleanedLines.push(line);
-        }
-
-        // Join the cleaned lines, preserving the original line structure
-        return cleanedLines.join('\n');
     }
 }
 

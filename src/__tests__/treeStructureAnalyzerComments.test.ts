@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TreeStructureAnalyzer, TreeStructureAnalyzerPool } from '../services/treeStructureAnalyzer';
 import * as path from 'path';
 
@@ -137,6 +137,11 @@ namespace test {
         expect(namespaceStructure).toBeDefined();
         expect(namespaceStructure?.text).toContain('namespace test');
         expect(namespaceStructure?.text).toContain('// namespace test'); // Check full text includes trailing comment
+
+        const functionStructure = structures.find(s => s.type.includes('function'));
+        expect(functionStructure).toBeDefined();
+        expect(functionStructure?.text).toContain('void foo()');
+        expect(functionStructure?.text).toContain('/** Function comment */');
     });
 
     it('should handle comments separated by blank lines', async () => {
@@ -193,6 +198,7 @@ class DecoratedClass {
 }
 `;
         const structures = await analyzer.findAllStructures(code, 'typescript');
+        expect(structures.length).toBe(2);
         const classStructure = structures.find(s => s.type === 'class_declaration');
         const methodStructure = structures.find(s => s.type === 'method_definition');
 
@@ -282,5 +288,199 @@ namespace outer {
             s.type === 'class_specifier' && s.text.includes('NestedClass'));
 
         expect(nestedClass).toBeDefined();
+    });
+
+    it('should create a comprehensive template for C++ structure comments', async () => {
+        const code = `
+/**
+ * This is a file-level comment
+ * describing the entire file
+ */
+
+// Forward declaration
+class ForwardClass;
+
+/**
+ * This is a namespace comment
+ * with multiple lines
+ */
+namespace test_namespace {
+
+    /**
+     * This is a class comment
+     * Class documentation with multiple lines
+     */
+    class TestClass {
+    public:
+        /**
+         * This is a method comment
+         * @param a First parameter
+         * @param b Second parameter
+         * @return Return value description
+         */
+        int testMethod(int a, int b) {
+            // Implementation comment
+            return a + b;
+        }
+
+        // Simple line comment for a field
+        int testField;
+    };
+
+    /**
+     * This is a function comment outside of class
+     */
+    void testFunction() {
+        // Function implementation
+    }
+
+    /**
+     * This is a struct comment
+     */
+    struct TestStruct {
+        // Field comment
+        int structField;
+    };
+
+    /**
+     * This is an enum comment
+     */
+    enum class TestEnum {
+        VALUE1, // Value comment
+        VALUE2
+    };
+
+} // namespace test_namespace
+
+/**
+ * Template class comment
+ */
+template <typename T>
+class TemplateClass {
+public:
+    /**
+     * Template method comment
+     */
+    T templateMethod(T value) {
+        return value;
+    }
+};
+
+// Test trailing namespace closing comment
+namespace another {
+    void anotherFunction() {}
+} // namespace another
+`;
+
+        const structures = await analyzer.findAllStructures(code, 'cpp');
+
+        console.log('Structures:', JSON.stringify(structures, null, 2));
+
+        // Check that we found the expected number of structures
+        expect(structures.length).toBeGreaterThan(5);
+
+        // Verify namespace with comments
+        const namespaces = structures.filter(s => s.type === 'namespace_definition');
+        expect(namespaces.length).toBeGreaterThan(0);
+
+        // First namespace should have the comment and also the trailing comment
+        const mainNamespace = namespaces.find(n => n.text.includes('test_namespace'));
+        expect(mainNamespace).toBeDefined();
+        expect(mainNamespace?.text).toContain('This is a namespace comment');
+        expect(mainNamespace?.text).toContain('// namespace test_namespace');
+
+        // Verify class with comments
+        const classes = structures.filter(s => s.type === 'class_specifier');
+        expect(classes.length).toBeGreaterThan(0);
+        const testClass = classes.find(c => c.text.includes('TestClass'));
+        expect(testClass).toBeDefined();
+        expect(testClass?.text).toContain('This is a class comment');
+
+        // Verify method with comments
+        const methods = structures.filter(s => s.type.includes('function'));
+        expect(methods.length).toBeGreaterThan(0);
+        const testMethod = methods.find(m => m.text.includes('testMethod'));
+        expect(testMethod).toBeDefined();
+        expect(testMethod?.text).toContain('This is a method comment');
+
+        // Verify standalone function with comments
+        const testFunction = methods.find(m => m.text.includes('testFunction'));
+        expect(testFunction).toBeDefined();
+        expect(testFunction?.text).toContain('This is a function comment outside of class');
+
+        // Verify struct with comments
+        const structs = structures.filter(s => s.type === 'struct_specifier');
+        expect(structs.length).toBeGreaterThan(0);
+        const testStruct = structs.find(s => s.text.includes('TestStruct'));
+        expect(testStruct).toBeDefined();
+        expect(testStruct?.text).toContain('This is a struct comment');
+
+        // Verify enum with comments
+        const enums = structures.filter(s => s.type === 'enum_specifier');
+        expect(enums.length).toBeGreaterThan(0);
+        const testEnum = enums.find(e => e.text.includes('TestEnum'));
+        expect(testEnum).toBeDefined();
+        expect(testEnum?.text).toContain('This is an enum comment');
+
+        // Verify template class with comments
+        const templateClass = classes.find(c => c.text.includes('TemplateClass'));
+        expect(templateClass).toBeDefined();
+        expect(templateClass?.text).toContain('Template class comment');
+    });
+
+    it('should correctly handle comments for C++ template structures', async () => {
+        const code = `
+/**
+ * Comment for template function
+ */
+template <typename T>
+T templateFunction(T value) {
+    return value;
+}
+
+/**
+ * Comment for template class
+ */
+template <typename T, typename U>
+class TemplateExample {
+public:
+    /**
+     * Comment for template method
+     */
+    T processValue(T input, U modifier) {
+        return input;
+    }
+};
+
+// Comment for specialized template
+template <>
+class TemplateExample<int, double> {
+public:
+    int processValue(int input, double modifier) {
+        return input * static_cast<int>(modifier);
+    }
+};
+`;
+
+        const structures = await analyzer.findAllStructures(code, 'cpp');
+
+        console.log('Structures:', JSON.stringify(structures, null, 2));
+
+        // Verify template function with comments
+        const functions = structures.filter(s => s.type.includes('function'));
+        const templateFunction = functions.find(f => f.text.includes('templateFunction'));
+        expect(templateFunction).toBeDefined();
+        expect(templateFunction?.text).toContain('Comment for template function');
+
+        // Verify template class with comments
+        const classes = structures.filter(s => s.type === 'class_specifier' || s.text.includes('template'));
+        const templateClass = classes.find(c => c.text.includes('TemplateExample') && c.text.includes('typename T'));
+        expect(templateClass).toBeDefined();
+        expect(templateClass?.text).toContain('Comment for template class');
+
+        // Verify specialized template with comments
+        const specializedClass = classes.find(c => c.text.includes('TemplateExample<int, double>'));
+        expect(specializedClass).toBeDefined();
+        expect(specializedClass?.text).toContain('// Comment for specialized template');
     });
 });
