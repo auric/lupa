@@ -408,9 +408,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         await this.ensureInitialized();
 
         let tree = null;
-        const queries: Parser.Query[] = [];
         const structures: CodeStructure[] = [];
-        const processedNodes = new Set<string>(); // Track processed nodes by their text content + position
+        // Map to track processed nodes by type+range instead of just text to better handle templates
+        const processedNodeMap = new Map<string, boolean>();
 
         try {
             tree = await this.parseContent(content, language, variant);
@@ -427,21 +427,20 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
             const rootNode = tree.rootNode;
 
-            // Find context nodes (classes, namespaces, etc.)
+            // Find context nodes (classes, namespaces, etc.) to establish parent relationships
             const contextNodes: Parser.SyntaxNode[] = [];
             this.findNodesOfType(rootNode, contextNodesTypes, contextNodes);
 
             // Map of node IDs to their parent context
             const nodeContextMap = new Map<number, { node: Parser.SyntaxNode, name?: string, type: string }>();
 
-            // Build a map of parent contexts
+            // Build a map of parent contexts for faster lookup
             for (const contextNode of contextNodes) {
                 const contextName = this.extractNodeName(contextNode, language);
                 const contextType = contextNode.type;
 
-                // Find all relevant nodes within this context
+                // Find all relevant nodes within this context that should be associated with it
                 this.findChildNodesWithinRange(contextNode, (node) => {
-                    // Check if this node should be associated with this context
                     if (contextNodeCheck(node)) {
                         nodeContextMap.set(node.id, {
                             node: contextNode,
@@ -453,99 +452,131 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 });
             }
 
-            // Try each query pattern
+            // Process each query pattern in the configuration
             for (const queryString of config[queryType]) {
                 try {
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
-                    queries.push(query);
 
-                    // Get all matches for this query
-                    const matches = query.matches(rootNode);
+                    try {
+                        // Get all matches for this query
+                        const matches = query.matches(rootNode);
 
-                    for (const match of matches) {
-                        // For each match, identify the main structure and associated comments/decorators
-                        const captureMap = new Map<string, Parser.SyntaxNode>();
-                        const allComments: Parser.SyntaxNode[] = [];
-                        const trailingComments: Parser.SyntaxNode[] = [];
+                        // Process each match
+                        for (const match of matches) {
+                            // Group captures by name
+                            const captureMap = new Map<string, Parser.SyntaxNode>();
+                            const comments: Parser.SyntaxNode[] = [];
+                            const trailingComments: Parser.SyntaxNode[] = [];
+                            let captureNode: Parser.SyntaxNode | undefined = undefined;
 
-                        // Group captures by name
-                        for (const capture of match.captures) {
-                            // Store comments separately as there can be multiple
-                            if (capture.name === 'comment') {
-                                allComments.push(capture.node);
+                            for (const capture of match.captures) {
+                                if (capture.name === 'comment') {
+                                    comments.push(capture.node);
+                                } else if (capture.name === 'trailingComment') {
+                                    trailingComments.push(capture.node);
+                                } else if (capture.name === 'capture' && !captureNode) {
+                                    // Primary 'capture' node takes precedence
+                                    captureNode = capture.node;
+                                } else {
+                                    // Store all other nodes by capture name
+                                    captureMap.set(capture.name, capture.node);
+                                }
                             }
-                            // Store trailing comments separately
-                            else if (capture.name === 'trailingComment') {
-                                trailingComments.push(capture.node);
+
+                            // Determine the main structure node
+                            let mainNode: Parser.SyntaxNode | undefined;
+
+                            // Search for the main node in specific order of priority
+                            const nodeTypes = ['class', 'function', 'method', 'struct', 'interface',
+                                'enum', 'namespace', 'module', 'trait', 'impl'];
+
+                            for (const type of nodeTypes) {
+                                if (captureMap.has(type)) {
+                                    mainNode = captureMap.get(type);
+                                    break;
+                                }
                             }
-                            // For non-comment nodes, keep the last instance of each capture name
-                            else {
-                                captureMap.set(capture.name, capture.node);
+
+                            // If no specific type found but we have a capture node, use that
+                            if (!mainNode && captureNode) {
+                                // For template declarations, find the actual class/function inside
+                                if (captureNode.type === 'template_declaration') {
+                                    // Find the first child that's a class or function
+                                    for (let i = 0; i < captureNode.childCount; i++) {
+                                        const child = captureNode.child(i);
+                                        if (child && (
+                                            child.type.includes('class') ||
+                                            child.type.includes('struct') ||
+                                            child.type.includes('function')
+                                        )) {
+                                            // Use the template node as mainNode, but store the inner node type
+                                            mainNode = captureNode;
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    mainNode = captureNode;
+                                }
                             }
-                        }
 
-                        // Determine the main node (structure) from known types or use 'capture' node
-                        let mainNode: Parser.SyntaxNode | undefined = undefined;
-                        for (const type of ['function', 'method', 'class', 'struct', 'interface', 'enum', 'namespace', 'capture']) {
-                            if (captureMap.has(type)) {
-                                mainNode = captureMap.get(type);
-                                break;
+                            if (!mainNode) continue; // Skip if no suitable node found
+
+                            // Create a unique key for deduplication based on node type and position
+                            // This handles template classes properly by including position information
+                            const nodeKey = `${mainNode.type}_${mainNode.startPosition.row}_${mainNode.startPosition.column}_${mainNode.endPosition.row}_${mainNode.endPosition.column}`;
+
+                            // Skip if we've already processed this node
+                            if (processedNodeMap.has(nodeKey)) continue;
+                            processedNodeMap.set(nodeKey, true);
+
+                            // Sort comments by position
+                            comments.sort((a, b) => a.startIndex - b.startIndex);
+                            trailingComments.sort((a, b) => a.startIndex - b.startIndex);
+
+                            // Determine the full range including comments
+                            let startPosition = mainNode.startPosition;
+                            if (comments.length > 0 && comments[0].startIndex < mainNode.startIndex) {
+                                startPosition = comments[0].startPosition;
                             }
-                        }
 
-                        // Skip if no main node found
-                        if (!mainNode) continue;
+                            let endPosition = mainNode.endPosition;
+                            if (trailingComments.length > 0) {
+                                const lastTrailingComment = trailingComments[trailingComments.length - 1];
+                                endPosition = lastTrailingComment.endPosition;
+                            }
 
-                        // Skip if we've already processed this node (using type + text + position as key)
-                        const nodeKey = `${mainNode.type}_${mainNode.text}_${mainNode.startPosition.row}_${mainNode.startPosition.column}`;
-                        if (processedNodes.has(nodeKey)) continue;
-                        processedNodes.add(nodeKey);
+                            // Extract the full text content including comments
+                            const startOffset = this.positionToOffset(startPosition, content) || mainNode.startIndex;
+                            const endOffset = this.positionToOffset(endPosition, content) || mainNode.endIndex;
+                            const text = content.substring(startOffset, endOffset);
 
-                        // Sort comments by position
-                        allComments.sort((a, b) => a.startIndex - b.startIndex);
-                        trailingComments.sort((a, b) => a.startIndex - b.startIndex);
+                            // Find parent context if available
+                            let parentContext: { type: string; name?: string } | undefined = undefined;
+                            const contextInfo = nodeContextMap.get(mainNode.id);
+                            if (contextInfo) {
+                                parentContext = {
+                                    type: contextInfo.type,
+                                    name: contextInfo.name
+                                };
+                            }
 
-                        // Determine the start position (include preceding comments)
-                        let startPosition = mainNode.startPosition;
-                        if (allComments.length > 0 && allComments[0].startIndex < mainNode.startIndex) {
-                            startPosition = allComments[0].startPosition;
-                        }
-
-                        // Determine the end position (include trailing comments)
-                        let endPosition = mainNode.endPosition;
-                        if (trailingComments.length > 0) {
-                            const lastTrailingComment = trailingComments[trailingComments.length - 1];
-                            endPosition = lastTrailingComment.endPosition;
-                        }
-
-                        // Get the complete text including comments
-                        const startOffset = this.positionToOffset(startPosition, content) || mainNode.startIndex;
-                        const endOffset = this.positionToOffset(endPosition, content) || mainNode.endIndex;
-                        const text = content.substring(startOffset, endOffset);
-
-                        // Find parent context if available
-                        let parentContext: { type: string; name?: string } | undefined = undefined;
-                        const contextInfo = nodeContextMap.get(mainNode.id);
-                        if (contextInfo) {
-                            parentContext = {
-                                type: contextInfo.type,
-                                name: contextInfo.name
+                            // Create and add the structure
+                            const structure: CodeStructure = {
+                                type: mainNode.type,
+                                text: text,
+                                range: {
+                                    startPosition: startPosition,
+                                    endPosition: endPosition,
+                                },
+                                parentContext: parentContext,
                             };
+
+                            structures.push(structure);
                         }
-
-                        // Create the structure object
-                        const structure: CodeStructure = {
-                            type: mainNode.type,
-                            text: text,
-                            range: {
-                                startPosition: startPosition,
-                                endPosition: endPosition,
-                            },
-                            parentContext: parentContext,
-                        };
-
-                        structures.push(structure);
+                    } finally {
+                        // Clean up query
+                        query.delete();
                     }
                 } catch (error) {
                     console.error(`Error running ${queryType} "${queryString}" for ${language}:`, error);
@@ -558,13 +589,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             console.error(`Error finding structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
         } finally {
-            // Clean up resources
+            // Clean up tree
             if (tree) {
                 tree.delete();
-            }
-
-            for (const query of queries) {
-                query.delete();
             }
         }
     }

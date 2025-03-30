@@ -4,9 +4,6 @@
 export interface LanguageConfig {
     functionQueries: string[];    // Queries to find function declarations
     classQueries: string[];       // Queries to find class declarations
-    methodQueries: string[];      // Queries to find method declarations
-    blockQueries: string[];       // Queries to find block statements
-    // commentQueries removed - comments are captured with structures
 }
 
 // Language configurations for tree-sitter
@@ -30,16 +27,14 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
                     value: [(arrow_function) (function_expression)] @function
                 ))) @capture`,
             // Method definition within class with preceding comments
-            `((class_body . (comment)* @comment . (method_definition) @function)) @capture`
+            `(class_body . ((comment)* @comment . (method_definition) @function)) @capture`
         ],
         classQueries: [
             // Class declaration with preceding comments
             `((comment)* @comment . (class_declaration) @class) @capture`,
             // Exported class declaration with preceding comments
             `((comment)* @comment . (export_statement . (class_declaration) @class)) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(statement_block) @block']
+        ]
     },
     'typescript': {
         functionQueries: [
@@ -57,9 +52,9 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
                     (variable_declarator
                       name: (_)
                       value: [(arrow_function) (function_expression)] @function))) @capture`,
-            // Method definition within class with preceding comments
-            `((comment)* @comment . (decorator)* @decorator . (method_definition) @method) @capture`,
-            // Method definition within class (no scope access)
+            // Method definition within class with preceding comments and decorators
+            `(class_body . ((comment)* @comment . (decorator)* @decorator . (method_definition) @method)) @capture`,
+            // Method definition within class (no decorator)
             `(class_body . ((comment)* @comment . (method_definition) @method)) @capture`,
             // Method definition in interface with preceding comments
             `(object_type . ((comment)* @comment . (method_signature) @method)) @capture`
@@ -83,9 +78,7 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (export_statement . (type_alias_declaration) @type)) @capture`,
             // Module declaration with preceding comments
             `((comment)* @comment . (module) @module) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(statement_block) @block']
+        ]
     },
     'python': {
         functionQueries: [
@@ -98,9 +91,7 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
         classQueries: [
             // Class definition with decorators and preceding comments
             `((comment)* @comment . (decorator)* @decorator . (class_definition) @class) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(block) @block']
+        ]
     },
     'java': {
         functionQueries: [
@@ -116,9 +107,7 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (marker_annotation)* . (interface_declaration) @interface) @capture`,
             // Enum declaration with annotations and preceding comments
             `((comment)* @comment . (marker_annotation)* . (enum_declaration) @enum) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(block) @block']
+        ]
     },
     'cpp': {
         functionQueries: [
@@ -128,39 +117,58 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (declaration
                     type: (_)
                     declarator: (function_declarator)) @function) @capture`,
-            // Template function definition with preceding comments
-            `((comment)* @comment . (template_declaration) @template_decl . (function_definition) @function) @capture`,
+            // Template function definition with preceding comments - capturing both template and function
+            `((comment)* @comment . (template_declaration
+                    (function_definition) @function)) @capture`,
             // Templated function declaration with preceding comments
-            `((comment)* @comment . (template_declaration) @template_decl . (declaration
-                    type: (_)
-                    declarator: (function_declarator)) @function) @capture`,
+            `((comment)* @comment . (template_declaration
+                    (declaration type: (_) declarator: (function_declarator)) @function)) @capture`,
             // Method definition within class/struct body with preceding comments
             `(field_declaration_list . ((comment)* @comment . (function_definition) @method)) @capture`,
             // Template method definition within class/struct body with preceding comments
-            `(field_declaration_list . ((comment)* @comment . (template_declaration) @template_decl . (function_definition) @method)) @capture`,
+            `(field_declaration_list . ((comment)* @comment . (template_declaration
+                    (function_definition) @method))) @capture`,
             // Field declaration within class/struct body with preceding comments
-            `(field_declaration_list . ((comment)* @comment . (field_declaration) @field)) @capture`
+            `(field_declaration_list . ((comment)* @comment . (field_declaration) @field)) @capture`,
+            // Function in namespace with preceding comments
+            `(namespace_definition
+                    body: (declaration_list . ((comment)* @comment . (function_definition) @function))) @capture`,
+            // Template function in namespace with preceding comments
+            `(namespace_definition
+                    body: (declaration_list . ((comment)* @comment . (template_declaration
+                        (function_definition) @function)))) @capture`
         ],
         classQueries: [
-            // Template class declaration with preceding comments - capture the template node
-            `((comment)* @comment . (template_declaration)) @capture`,
-            // Class specifier with preceding comments
+            // Template class/struct with preceding comments - capture the entire template_declaration containing the class
+            `((comment)* @comment . (template_declaration
+                    (class_specifier) @class)) @capture`,
+            // Template class/struct with preceding comments (alternate form)
+            `((comment)* @comment . (template_declaration
+                    (struct_specifier) @struct)) @capture`,
+            // Class specifier with preceding comments (non-templated)
             `((comment)* @comment . (class_specifier) @class) @capture`,
-            // Struct specifier with preceding comments
+            // Struct specifier with preceding comments (non-templated)
             `((comment)* @comment . (struct_specifier) @struct) @capture`,
             // Enum specifier with preceding comments
             `((comment)* @comment . (enum_specifier) @enum) @capture`,
             // Namespace definition with preceding comments and trailing comment
             `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture`,
             // Namespace definition with just preceding comments
-            `((comment)* @comment . (namespace_definition) @namespace) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: [
-            '(compound_statement) @block',
-            '(namespace_definition body: (declaration_list) @block)',
-            '(class_specifier body: (field_declaration_list) @block)',
-            '(struct_specifier body: (field_declaration_list) @block)'
+            `((comment)* @comment . (namespace_definition) @namespace) @capture`,
+            // Class in namespace with preceding comments
+            `(namespace_definition
+                    body: (declaration_list . ((comment)* @comment . (class_specifier) @class))) @capture`,
+            // Struct in namespace with preceding comments
+            `(namespace_definition
+                    body: (declaration_list . ((comment)* @comment . (struct_specifier) @struct))) @capture`,
+            // Template class in namespace with preceding comments
+            `(namespace_definition
+                    body: (declaration_list . ((comment)* @comment . (template_declaration
+                        (class_specifier) @class)))) @capture`,
+            // Template struct in namespace with preceding comments
+            `(namespace_definition
+                    body: (declaration_list . ((comment)* @comment . (template_declaration
+                        (struct_specifier) @struct)))) @capture`
         ]
     },
     'c': {
@@ -175,9 +183,7 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (struct_specifier) @struct) @capture`,
             // Enum specifier with preceding comments
             `((comment)* @comment . (enum_specifier) @enum) @capture`
-        ],
-        methodQueries: [],
-        blockQueries: ['(compound_statement) @block']
+        ]
     },
     'csharp': {
         functionQueries: [
@@ -203,9 +209,7 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (attribute_list)* . (namespace_declaration) @namespace) @capture`,
             // Delegate declaration with attributes and preceding comments
             `((comment)* @comment . (attribute_list)* . (delegate_declaration) @delegate) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(block) @block']
+        ]
     },
     'go': {
         functionQueries: [
@@ -223,9 +227,7 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (interface_type) @interface) @capture`,
             // Type specifier with preceding comments
             `((comment)* @comment . (type_spec) @type) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(block) @block']
+        ]
     },
     'ruby': {
         functionQueries: [
@@ -239,16 +241,17 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (class) @class) @capture`,
             // Module definition with preceding comments
             `((comment)* @comment . (module) @module) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(do_block) @block', '(block) @block']
+        ]
     },
     'rust': {
         functionQueries: [
             // Function item with attributes and preceding comments
             `((comment)* @comment . (attribute_item)* . (function_item) @function) @capture`,
             // Function signature item with attributes and preceding comments
-            `((comment)* @comment . (attribute_item)* . (function_signature_item) @function) @capture`
+            `((comment)* @comment . (attribute_item)* . (function_signature_item) @function) @capture`,
+            // Method in impl block
+            `(impl_item
+                body: (declaration_list . ((comment)* @comment . (function_item) @method))) @capture`
         ],
         classQueries: [
             // Struct item with attributes and preceding comments
@@ -261,9 +264,7 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (attribute_item)* . (enum_item) @enum) @capture`,
             // Mod item with attributes and preceding comments
             `((comment)* @comment . (attribute_item)* . (mod_item) @module) @capture`
-        ],
-        methodQueries: [], // Covered by functionQueries
-        blockQueries: ['(block) @block']
+        ]
     },
     'css': {
         functionQueries: [], // CSS doesn't have functions in the typical sense
@@ -272,8 +273,6 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             `((comment)* @comment . (rule_set) @rule) @capture`,
             // At-rule with preceding comments
             `((comment)* @comment . (at_rule) @at_rule) @capture`
-        ],
-        methodQueries: [],
-        blockQueries: ['(block) @block']
+        ]
     }
 };
