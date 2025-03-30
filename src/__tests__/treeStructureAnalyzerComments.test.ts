@@ -466,6 +466,8 @@ public:
 
         console.log('Structures:', JSON.stringify(structures, null, 2));
 
+        expect(structures.length).toBe(5);
+
         // Verify template function with comments
         const functions = structures.filter(s => s.type.includes('function'));
         const templateFunction = functions.find(f => f.text.includes('templateFunction'));

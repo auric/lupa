@@ -409,16 +409,19 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
         let tree = null;
         const structures: CodeStructure[] = [];
-        // Map to track processed nodes by type+range instead of just text to better handle templates
+
+        // Map to track processed nodes by their unique position-based identifier
         const processedNodeMap = new Map<string, boolean>();
 
         try {
+            // Parse content into a tree
             tree = await this.parseContent(content, language, variant);
             if (!tree) {
                 console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
                 return [];
             }
 
+            // Get language configuration
             const config = TREE_SITTER_LANGUAGE_CONFIGS[language];
             if (!config || !config[queryType] || config[queryType].length === 0) {
                 console.warn(`No ${queryType} defined for language '${language}'`);
@@ -452,14 +455,13 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 });
             }
 
-            // Process each query pattern in the configuration
+            // Run each query from the configuration
             for (const queryString of config[queryType]) {
                 try {
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
 
                     try {
-                        // Get all matches for this query
                         const matches = query.matches(rootNode);
 
                         // Process each match
@@ -470,16 +472,16 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             const trailingComments: Parser.SyntaxNode[] = [];
                             let captureNode: Parser.SyntaxNode | undefined = undefined;
 
+                            // Process all captures in the match
                             for (const capture of match.captures) {
                                 if (capture.name === 'comment') {
                                     comments.push(capture.node);
                                 } else if (capture.name === 'trailingComment') {
                                     trailingComments.push(capture.node);
-                                } else if (capture.name === 'capture' && !captureNode) {
-                                    // Primary 'capture' node takes precedence
+                                } else if (capture.name === 'capture') {
                                     captureNode = capture.node;
-                                } else {
-                                    // Store all other nodes by capture name
+                                } else if (capture.name !== 'decorator') {
+                                    // Store other nodes by capture name (except decorators)
                                     captureMap.set(capture.name, capture.node);
                                 }
                             }
@@ -487,50 +489,68 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             // Determine the main structure node
                             let mainNode: Parser.SyntaxNode | undefined;
 
-                            // Search for the main node in specific order of priority
-                            const nodeTypes = ['class', 'function', 'method', 'struct', 'interface',
-                                'enum', 'namespace', 'module', 'trait', 'impl'];
+                            // First check for template declaration since it's a special case
+                            if (captureMap.has('template_declaration')) {
+                                mainNode = captureMap.get('template_declaration');
+                            } else {
+                                // Otherwise, try to find a specific type in order of priority
+                                const nodeTypes = ['class', 'function', 'method', 'struct', 'interface',
+                                    'enum', 'namespace', 'module', 'trait', 'impl'];
 
-                            for (const type of nodeTypes) {
-                                if (captureMap.has(type)) {
-                                    mainNode = captureMap.get(type);
-                                    break;
-                                }
-                            }
-
-                            // If no specific type found but we have a capture node, use that
-                            if (!mainNode && captureNode) {
-                                // For template declarations, find the actual class/function inside
-                                if (captureNode.type === 'template_declaration') {
-                                    // Find the first child that's a class or function
-                                    for (let i = 0; i < captureNode.childCount; i++) {
-                                        const child = captureNode.child(i);
-                                        if (child && (
-                                            child.type.includes('class') ||
-                                            child.type.includes('struct') ||
-                                            child.type.includes('function')
-                                        )) {
-                                            // Use the template node as mainNode, but store the inner node type
-                                            mainNode = captureNode;
-                                            break;
-                                        }
+                                for (const type of nodeTypes) {
+                                    if (captureMap.has(type)) {
+                                        mainNode = captureMap.get(type);
+                                        break;
                                     }
-                                } else {
-                                    mainNode = captureNode;
                                 }
                             }
 
-                            if (!mainNode) continue; // Skip if no suitable node found
+                            // If we still don't have a main node, use the captureNode
+                            if (!mainNode && captureNode) {
+                                mainNode = captureNode;
+                            }
 
-                            // Create a unique key for deduplication based on node type and position
-                            // This handles template classes properly by including position information
+                            // Skip if no suitable node found
+                            if (!mainNode) continue;
+
+                            // Skip field_declaration_list nodes
+                            if (mainNode.type === 'field_declaration_list') continue;
+
+                            // Skip forward declarations in C++
+                            if ((mainNode.type === 'class_specifier' || mainNode.type === 'struct_specifier') &&
+                                language === 'cpp') {
+                                const text = mainNode.text;
+                                if (text.trim().endsWith(';') && !text.includes('{')) {
+                                    continue;
+                                }
+                            }
+
+                            // Create a unique identifier for this node based on position
                             const nodeKey = `${mainNode.type}_${mainNode.startPosition.row}_${mainNode.startPosition.column}_${mainNode.endPosition.row}_${mainNode.endPosition.column}`;
 
                             // Skip if we've already processed this node
                             if (processedNodeMap.has(nodeKey)) continue;
                             processedNodeMap.set(nodeKey, true);
 
-                            // Sort comments by position
+                            // If this is a template_declaration, mark its children as processed
+                            // to avoid duplicate detections
+                            if (mainNode.type === 'template_declaration') {
+                                // Find the class or function node inside the template
+                                for (let i = 0; i < mainNode.childCount; i++) {
+                                    const child = mainNode.child(i);
+                                    if (child && (
+                                        child.type.includes('class') ||
+                                        child.type.includes('struct') ||
+                                        child.type.includes('function')
+                                    )) {
+                                        // Mark this child as processed so we don't process it again
+                                        const childKey = `${child.type}_${child.startPosition.row}_${child.startPosition.column}_${child.endPosition.row}_${child.endPosition.column}`;
+                                        processedNodeMap.set(childKey, true);
+                                    }
+                                }
+                            }
+
+                            // Prepare comments
                             comments.sort((a, b) => a.startIndex - b.startIndex);
                             trailingComments.sort((a, b) => a.startIndex - b.startIndex);
 
@@ -546,13 +566,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                                 endPosition = lastTrailingComment.endPosition;
                             }
 
-                            // Extract the full text content including comments
+                            // Extract the text content
                             const startOffset = this.positionToOffset(startPosition, content) || mainNode.startIndex;
                             const endOffset = this.positionToOffset(endPosition, content) || mainNode.endIndex;
                             const text = content.substring(startOffset, endOffset);
 
                             // Find parent context if available
                             let parentContext: { type: string; name?: string } | undefined = undefined;
+
+                            // Handle parent context appropriately
                             const contextInfo = nodeContextMap.get(mainNode.id);
                             if (contextInfo) {
                                 parentContext = {
@@ -575,12 +597,10 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             structures.push(structure);
                         }
                     } finally {
-                        // Clean up query
                         query.delete();
                     }
                 } catch (error) {
                     console.error(`Error running ${queryType} "${queryString}" for ${language}:`, error);
-                    // Continue with other queries even if one fails
                 }
             }
 
@@ -589,7 +609,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             console.error(`Error finding structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
         } finally {
-            // Clean up tree
             if (tree) {
                 tree.delete();
             }

@@ -111,12 +111,6 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
     },
     'cpp': {
         functionQueries: [
-            // Standalone function definition with preceding comments
-            `((comment)* @comment . (function_definition) @function) @capture`,
-            // Standalone function declaration with preceding comments
-            `((comment)* @comment . (declaration
-                    type: (_)
-                    declarator: (function_declarator)) @function) @capture`,
             // Template function definition with preceding comments - capturing both template and function
             `((comment)* @comment . (template_declaration
                     (function_definition) @function)) @capture`,
@@ -136,7 +130,13 @@ export const TREE_SITTER_LANGUAGE_CONFIGS: Record<string, LanguageConfig> = {
             // Template function in namespace with preceding comments
             `(namespace_definition
                     body: (declaration_list . ((comment)* @comment . (template_declaration
-                        (function_definition) @function)))) @capture`
+                        (function_definition) @function)))) @capture`,
+            // Standalone function definition with preceding comments
+            `((comment)* @comment . (function_definition) @function) @capture`,
+            // Standalone function declaration with preceding comments
+            `((comment)* @comment . (declaration
+                    type: (_)
+                    declarator: (function_declarator)) @function) @capture`,
         ],
         classQueries: [
             // Template class/struct with preceding comments - capture the entire template_declaration containing the class
