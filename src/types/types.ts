@@ -14,7 +14,7 @@ export interface SupportedLanguage {
 export const SUPPORTED_LANGUAGES: Record<string, SupportedLanguage> = {
     'js': { extension: 'js', language: 'javascript', treeSitterGrammar: 'tree-sitter-javascript' },
     'jsx': { extension: 'jsx', language: 'javascript', treeSitterGrammar: 'tree-sitter-javascript' },
-    'ts': { extension: 'ts', language: 'typescript', treeSitterGrammar: 'tree-sitter-typescript', variant: 'typescript' },
+    'ts': { extension: 'ts', language: 'typescript', treeSitterGrammar: 'tree-sitter-typescript' },
     'tsx': { extension: 'tsx', language: 'typescript', treeSitterGrammar: 'tree-sitter-typescript', variant: 'tsx' },
     'py': { extension: 'py', language: 'python', treeSitterGrammar: 'tree-sitter-python' },
     'pyw': { extension: 'pyw', language: 'python', treeSitterGrammar: 'tree-sitter-python' },

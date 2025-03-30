@@ -1,4 +1,3 @@
-
 /**
  * Options for embedding generation
  */
@@ -16,6 +15,34 @@ export interface TokenEstimatorOptions {
 export interface ChunkingResult {
     chunks: string[];
     offsets: number[];
+}
+
+/**
+ * Metadata about code structures and their chunking
+ */
+export interface ChunkingMetadata {
+    parentStructureIds: (string | null)[];  // Links chunks from split structures
+    structureOrders: (number | null)[];     // Order within split structures
+    isOversizedFlags: (boolean | null)[];   // Marks chunks that exceed strict limits
+    structureTypes: (string | null)[];      // Optional: e.g., 'function', 'class'
+}
+
+/**
+ * Extended result from chunking, including metadata for split structures
+ */
+export interface DetailedChunkingResult extends ChunkingResult {
+    metadata: ChunkingMetadata;
+}
+
+export interface StructureAwareChunkingResult {
+    chunks: string[];
+    metadata: {
+        offsets: number[];
+        parentStructureIds: string[];
+        structureOrders: number[];
+        isOversizedFlags: boolean[];
+        structureTypes: string[];
+    };
 }
 
 export interface CodeChunkingOptions {
@@ -49,6 +76,11 @@ export interface ChunkRecord {
     startOffset: number;
     endOffset: number;
     tokenCount?: number;
+    // Structure metadata fields
+    parentStructureId?: string | null;  // Matches DB schema: parent_structure_id TEXT
+    structureOrder?: number | null;     // Matches DB schema: structure_order INTEGER
+    isOversized?: boolean | null;       // Matches DB schema: is_oversized BOOLEAN
+    structureType?: string | null;      // Matches DB schema: structure_type TEXT
 }
 
 /**
@@ -107,4 +139,3 @@ export interface StorageStats {
     lastIndexed: number | null;
     embeddingModel: string;
 }
-

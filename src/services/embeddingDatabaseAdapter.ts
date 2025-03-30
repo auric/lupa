@@ -97,11 +97,12 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                     chunks.push(file.content.substring(startOffset, endOffset));
                 }
 
-                // Store chunks with their offsets
+                // Store chunks with their offsets and metadata
                 const chunkRecords = await this.vectorDb.storeChunks(
                     fileRecord.id,
                     chunks,
-                    result.chunkOffsets
+                    result.chunkOffsets,
+                    result.metadata
                 );
 
                 // Store embeddings
@@ -201,12 +202,12 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             // Generate embedding for the diff using the batch method with a single item
             const embeddingsMap = await this.generateEmbeddings([diff], progressCallback);
             const entries = Array.from(embeddingsMap.entries());
-            
+
             if (entries.length === 0 || !entries[0][1]) {
                 console.error('Failed to generate embedding for diff');
                 return [];
             }
-            
+
             const diffEmbedding = entries[0][1];
 
             // Find similar code using the vector database
@@ -228,16 +229,26 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             for (const result of initialResults) {
                 try {
                     // Try to find a complete structure containing this chunk
-                    const completeStructure = await this.vectorDb.getCompleteStructureForChunk(result.chunkId);
+                    const structureChunks = await this.vectorDb.getCompleteStructureForChunk(result.chunkId);
 
-                    if (completeStructure) {
+                    if (structureChunks && structureChunks.length > 0) {
+                        // Sort the chunks by structure order if they're part of a split structure
+                        structureChunks.sort((a, b) => {
+                            return (a.structureOrder ?? 0) - (b.structureOrder ?? 0);
+                        });
+
+                        // Combine all chunks into a single content
+                        const combinedContent = structureChunks.map(chunk => chunk.content).join('\n');
+                        const firstChunk = structureChunks[0];
+                        const lastChunk = structureChunks[structureChunks.length - 1];
+
                         // Use the complete structure instead of the fragment
                         enhancedResults.push({
                             ...result,
-                            content: completeStructure.content,
-                            startOffset: completeStructure.startOffset,
-                            endOffset: completeStructure.endOffset,
-                            chunkId: completeStructure.id,
+                            content: combinedContent,
+                            startOffset: firstChunk.startOffset,
+                            endOffset: lastChunk.endOffset,
+                            chunkId: firstChunk.id,
                             // Preserve the original score but add a small boost for complete structures
                             score: Math.min(1.0, result.score * 1.05)
                         });
@@ -373,7 +384,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
      * @returns Array of similarity search results
      */
     async findRelevantCodeContextForChunks(
-        chunks: string[], 
+        chunks: string[],
         options?: SimilaritySearchOptions,
         progressCallback?: (processed: number, total: number) => void,
         token?: vscode.CancellationToken
@@ -389,10 +400,10 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             }
 
             console.log(`Finding relevant code context for ${chunks.length} chunks`);
-            
+
             // Generate embeddings for all chunks in a single batch
             const embeddingsMap = await this.generateEmbeddings(chunks, progressCallback, token);
-            
+
             // Check for cancellation
             if (token?.isCancellationRequested) {
                 throw new Error('Operation cancelled');
@@ -400,10 +411,10 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
 
             // Prepare search options with defaults
             const searchOptions = this.prepareSearchOptions(options);
-            
+
             // Collect all results
             const allResults: SimilaritySearchResult[] = [];
-            
+
             // For each chunk, find similar documents
             for (let i = 0; i < chunks.length; i++) {
                 // Check for cancellation
@@ -413,12 +424,12 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
 
                 const chunk = chunks[i];
                 const embedding = embeddingsMap.get(chunk);
-                
+
                 if (!embedding) {
                     console.warn(`No embedding generated for chunk: ${chunk.substring(0, 50)}...`);
                     continue;
                 }
-                
+
                 // Find similar documents using the embedding
                 const results = await this.vectorDb.findSimilarCode(
                     embedding,
@@ -428,28 +439,28 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                         minScore: searchOptions.minScore
                     }
                 );
-                
+
                 // Check for cancellation after each search
                 if (token?.isCancellationRequested) {
                     throw new Error('Operation cancelled');
                 }
-                
+
                 if (results.length > 0) {
                     // Add the original chunk to each result
                     const resultsWithQuery = results.map((result: SimilaritySearchResult) => ({
                         ...result,
                         query: chunk
                     }));
-                    
+
                     allResults.push(...resultsWithQuery);
                 }
-                
+
                 // Report progress for similarity search if callback provided
                 if (progressCallback) {
                     progressCallback(i + 1, chunks.length);
                 }
             }
-            
+
             // Sort all results by score in descending order
             return allResults.sort((a, b) => b.score - a.score);
         } catch (error) {
@@ -534,11 +545,11 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             // Use the batch method with a single item for consistency
             const embeddingsMap = await this.generateEmbeddings([text], progressCallback);
             const entries = Array.from(embeddingsMap.entries());
-            
+
             if (entries.length === 0 || !entries[0][1]) {
                 return null;
             }
-            
+
             return entries[0][1];
         } catch (error) {
             console.error('Error generating embedding via IndexingService:', error);

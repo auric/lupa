@@ -1,22 +1,17 @@
 import * as vscode from 'vscode';
 import Parser from 'web-tree-sitter';
 import { SUPPORTED_LANGUAGES, getLanguageForExtension } from '../types/types';
+import {
+    TREE_SITTER_LANGUAGE_CONFIGS
+} from '../types/treeSitterLanguageConfigs';
 import * as path from 'path';
-
-/**
- * Represents a code node position in a file
- */
-export interface CodePosition {
-    row: number;    // 0-based row
-    column: number; // 0-based column
-}
 
 /**
  * Represents a code range in a file
  */
 export interface CodeRange {
-    startPosition: CodePosition;
-    endPosition: CodePosition;
+    startPosition: Parser.Point;
+    endPosition: Parser.Point;
 }
 
 /**
@@ -24,21 +19,12 @@ export interface CodeRange {
  */
 export interface CodeStructure {
     type: string;           // Node type (e.g., "function_declaration", "class_declaration")
-    name?: string;          // Name of the node if available
-    range: CodeRange;       // Position range in the document
-    children: CodeStructure[]; // Child structures
-    parent?: CodeStructure; // Parent structure
-    text: string;           // The text content of this structure
-}
-
-/**
- * Language-specific configuration for tree-sitter parsing
- */
-export interface LanguageConfig {
-    functionQueries: string[];    // Queries to find function declarations
-    classQueries: string[];       // Queries to find class declarations
-    methodQueries: string[];      // Queries to find method declarations
-    blockQueries: string[];       // Queries to find block statements
+    range: CodeRange;       // Position range in the document (including comments/decorators)
+    text: string;           // The text content of this structure (including comments/decorators)
+    parentContext?: {       // Information about the parent context (class/namespace)
+        type: string;       // Type of the parent context
+        name?: string;      // Name of the parent context
+    };
 }
 
 /**
@@ -167,7 +153,9 @@ export class TreeStructureAnalyzerPool implements vscode.Disposable {
         for (const waiting of this.waiting) {
             // This is not ideal, but there's no way to properly return
             // an analyzer at this point since we're shutting down
-            waiting(new TreeStructureAnalyzer(this.extensionPath, true));
+            const dummyAnalyzer = new TreeStructureAnalyzer(this.extensionPath, true);
+            waiting(dummyAnalyzer);
+            dummyAnalyzer.dispose();
         }
         this.waiting.length = 0;
 
@@ -182,79 +170,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     private parser: Parser | null = null;
     private languageParsers: Map<string, Parser.Language> = new Map();
     private isInitialized = false;
-    private initPromise: Promise<void> | null = null;
+    // Promise for initialization
     private pool: TreeStructureAnalyzerPool | null = null;
     private isDisposed = false;
 
-    // Language configurations for tree-sitter
-    private readonly languageConfigs: Record<string, LanguageConfig> = {
-        'javascript': {
-            functionQueries: ['(function_declaration) @function', '(arrow_function) @function', '(method_definition) @function'],
-            classQueries: ['(class_declaration) @class', '(object) @object'],
-            methodQueries: ['(method_definition) @method'],
-            blockQueries: ['(statement_block) @block']
-        },
-        'typescript': {
-            functionQueries: ['(function_declaration) @function', '(arrow_function) @function', '(method_definition) @function'],
-            classQueries: ['(class_declaration) @class', '(interface_declaration) @interface'],
-            methodQueries: ['(method_definition) @method'],
-            blockQueries: ['(statement_block) @block']
-        },
-        'python': {
-            functionQueries: ['(function_definition) @function'],
-            classQueries: ['(class_definition) @class'],
-            methodQueries: ['(function_definition) @method'],
-            blockQueries: ['(block) @block']
-        },
-        'java': {
-            functionQueries: ['(method_declaration) @function', '(constructor_declaration) @function'],
-            classQueries: ['(class_declaration) @class', '(interface_declaration) @interface'],
-            methodQueries: ['(method_declaration) @method'],
-            blockQueries: ['(block) @block']
-        },
-        'cpp': {
-            functionQueries: ['(function_definition) @function', '(declaration (function_declarator)) @function'],
-            classQueries: ['(class_specifier) @class', '(struct_specifier) @struct'],
-            methodQueries: ['(function_definition) @method'],
-            blockQueries: ['(compound_statement) @block']
-        },
-        'c': {
-            functionQueries: ['(function_definition) @function', '(declaration (function_declarator)) @function'],
-            classQueries: ['(struct_specifier) @struct'],
-            methodQueries: ['(function_definition) @method'],
-            blockQueries: ['(compound_statement) @block']
-        },
-        'csharp': {
-            functionQueries: ['(method_declaration) @function', '(constructor_declaration) @function'],
-            classQueries: ['(class_declaration) @class', '(interface_declaration) @interface'],
-            methodQueries: ['(method_declaration) @method'],
-            blockQueries: ['(block) @block']
-        },
-        'go': {
-            functionQueries: ['(function_declaration) @function', '(method_declaration) @method'],
-            classQueries: ['(type_declaration) @type'],
-            methodQueries: ['(method_declaration) @method'],
-            blockQueries: ['(block) @block']
-        },
-        'ruby': {
-            functionQueries: ['(method) @function', '(singleton_method) @function'],
-            classQueries: ['(class) @class', '(module) @module'],
-            methodQueries: ['(method) @method'],
-            blockQueries: ['(do_block) @block', '(block) @block']
-        },
-        'rust': {
-            functionQueries: ['(function_item) @function', '(function_signature_item) @function'],
-            classQueries: ['(struct_item) @struct', '(trait_item) @trait', '(impl_item) @impl'],
-            methodQueries: ['(function_item) @method'],
-            blockQueries: ['(block) @block']
-        },
-        'css': {
-            functionQueries: ['(function_name) @function'],
-            classQueries: ['(rule_set) @rule', '(keyframe_block) @keyframe'],
-            methodQueries: [],
-            blockQueries: ['(block) @block']
-        }
-    };
+    // Language configurations are defined directly in TREE_SITTER_LANGUAGE_CONFIGS
 
     /**
      * Constructor - create a new analyzer instance
@@ -422,165 +342,24 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         language: string,
         variant?: string
     ): Promise<CodeStructure[]> {
-        await this.ensureInitialized();
-
-        let tree = null;
-        let queries = [];
-
-        try {
-            tree = await this.parseContent(content, language, variant);
-            if (!tree) {
-                console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
-                return [];
-            }
-
-            const config = this.languageConfigs[language];
-            if (!config) {
-                throw new Error(`Language '${language}' is not supported`);
-            }
-
-            const rootNode = tree.rootNode;
-            const functions: CodeStructure[] = [];
-
-            for (const queryString of config.functionQueries) {
-                try {
-                    // Get the currently set language from the parser
-                    const currentLang = await this.loadLanguageParser(language, variant);
-                    const query = currentLang.query(queryString);
-                    queries.push(query);
-
-                    // For older web-tree-sitter API, we need to use captures()
-                    // instead of matches()
-                    const captures = query.captures(rootNode);
-
-                    // The older API returns an array of capture objects
-                    for (let i = 0; i < captures.length; i++) {
-                        const capture = captures[i];
-                        const node = capture.node;
-
-                        // Find the function name
-                        let name = "anonymous";
-
-                        // Different languages have different patterns for function names
-                        switch (language) {
-                            case 'javascript':
-                            case 'typescript':
-                                // For function declarations
-                                if (node.type === 'function_declaration') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                // For method definitions
-                                else if (node.type === 'method_definition') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                // For arrow functions
-                                else if (node.type === 'arrow_function') {
-                                    // Try to find a parent assignment or variable declaration
-                                    let parent = node.parent;
-                                    while (parent) {
-                                        if (parent.type === 'variable_declarator') {
-                                            const nameNode = parent.childForFieldName('name');
-                                            if (nameNode) {
-                                                name = nameNode.text;
-                                                break;
-                                            }
-                                        }
-                                        parent = parent.parent;
-                                    }
-                                }
-                                break;
-
-                            case 'python':
-                                if (node.type === 'function_definition') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                break;
-
-                            case 'java':
-                            case 'csharp':
-                                if (node.type === 'method_declaration') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                break;
-
-                            case 'c':
-                            case 'cpp':
-                                if (node.type === 'function_definition') {
-                                    const declarator = node.childForFieldName('declarator');
-                                    if (declarator) {
-                                        const nameNodes = declarator.descendantsOfType('identifier');
-                                        if (nameNodes.length > 0) {
-                                            name = nameNodes[0].text;
-                                        }
-                                    }
-                                }
-                                break;
-
-                            case 'rust':
-                                if (node.type === 'function_item') {
-                                    const nameNode = node.childForFieldName('name');
-                                    if (nameNode) {
-                                        name = nameNode.text;
-                                    }
-                                }
-                                break;
-
-                            case 'css':
-                                if (node.type === 'function_name') {
-                                    name = node.text;
-                                }
-                                break;
-                        }
-
-                        functions.push({
-                            type: node.type,
-                            name: name,
-                            range: {
-                                startPosition: {
-                                    row: node.startPosition.row,
-                                    column: node.startPosition.column
-                                },
-                                endPosition: {
-                                    row: node.endPosition.row,
-                                    column: node.endPosition.column
-                                }
-                            },
-                            children: [],
-                            text: content.substring(node.startIndex, node.endIndex)
-                        });
-                    }
-                } catch (error) {
-                    console.error(`Error running query "${queryString}" for ${language}:`, error);
-                    // Continue with other queries even if one fails
-                }
-            }
-
-            return functions;
-        } catch (error) {
-            console.error(`Error finding functions in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
-            return [];
-        } finally {
-            // Clean up resources
-            if (tree) {
-                tree.delete();
-            }
-
-            for (const query of queries) {
-                query.delete();
-            }
-        }
+        return this.findStructures(
+            content,
+            language,
+            'functionQueries',
+            [
+                'class_specifier', 'struct_specifier', 'namespace_definition',
+                'class_declaration', 'struct_declaration', 'interface_declaration',
+                'enum_declaration', 'namespace_declaration', 'module',
+                'enum_specifier', 'template_declaration'
+            ],
+            (node) => {
+            // Check if this is a function-like node
+                return node.type.includes('function') ||
+                    node.type.includes('method') ||
+                    node.type.includes('procedure');
+            },
+            variant
+        );
     }
 
     /**
@@ -595,10 +374,413 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         language: string,
         variant?: string
     ): Promise<CodeStructure[]> {
+        return this.findStructures(content, language, 'classQueries', [
+            'namespace_definition', 'namespace_declaration', 'module'
+        ], (node) => {
+            // Check if this is a class-like node
+            const isClassLike = node.type.includes('class') ||
+                node.type.includes('struct') ||
+                node.type.includes('interface') ||
+                node.type.includes('enum');
+
+            return isClassLike;
+        }, variant);
+    }
+
+    /**
+     * Generic method to find code structures (functions, classes, etc.) using tree-sitter queries
+     * @param content File content
+     * @param language Language identifier
+     * @param queryType Type of queries to use: 'functionQueries' or 'classQueries'
+     * @param contextNodesTypes Types of nodes to consider as potential parents/containers
+     * @param contextNodeCheck Function to determine if a node is a child of a context node
+     * @param variant Optional language variant
+     * @returns Array of code structures
+     */
+    private async findStructures(
+        content: string,
+        language: string,
+        queryType: 'functionQueries' | 'classQueries',
+        contextNodesTypes: string[],
+        contextNodeCheck: (node: Parser.SyntaxNode) => boolean,
+        variant?: string
+    ): Promise<CodeStructure[]> {
         await this.ensureInitialized();
 
         let tree = null;
-        let queries = [];
+        const structures: CodeStructure[] = [];
+
+        // Map to track processed nodes by their unique position-based identifier
+        const processedNodeMap = new Map<string, boolean>();
+
+        try {
+            // Parse content into a tree
+            tree = await this.parseContent(content, language, variant);
+            if (!tree) {
+                console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
+                return [];
+            }
+
+            // Get language configuration
+            const config = TREE_SITTER_LANGUAGE_CONFIGS[language];
+            if (!config || !config[queryType] || config[queryType].length === 0) {
+                console.warn(`No ${queryType} defined for language '${language}'`);
+                return [];
+            }
+
+            const rootNode = tree.rootNode;
+
+            // Find context nodes (classes, namespaces, etc.) to establish parent relationships
+            const contextNodes: Parser.SyntaxNode[] = [];
+            this.findNodesOfType(rootNode, contextNodesTypes, contextNodes);
+
+            // Map of node IDs to their parent context
+            const nodeContextMap = new Map<number, { node: Parser.SyntaxNode, name?: string, type: string }>();
+
+            // Build a map of parent contexts for faster lookup
+            for (const contextNode of contextNodes) {
+                const contextName = this.extractNodeName(contextNode, language);
+                const contextType = contextNode.type;
+
+                // Find all relevant nodes within this context that should be associated with it
+                this.findChildNodesWithinRange(contextNode, (node) => {
+                    if (contextNodeCheck(node)) {
+                        nodeContextMap.set(node.id, {
+                            node: contextNode,
+                            name: contextName,
+                            type: contextType
+                        });
+                    }
+                    return false; // Continue searching
+                });
+            }
+
+            // Run each query from the configuration
+            for (const queryString of config[queryType]) {
+                try {
+                    const currentLang = await this.loadLanguageParser(language, variant);
+                    const query = currentLang.query(queryString);
+
+                    try {
+                        const matches = query.matches(rootNode);
+
+                        // Process each match
+                        for (const match of matches) {
+                            // Group captures by name
+                            const captureMap = new Map<string, Parser.SyntaxNode>();
+                            const comments: Parser.SyntaxNode[] = [];
+                            const trailingComments: Parser.SyntaxNode[] = [];
+                            let captureNode: Parser.SyntaxNode | undefined = undefined;
+
+                            // Process all captures in the match
+                            for (const capture of match.captures) {
+                                if (capture.name === 'comment') {
+                                    comments.push(capture.node);
+                                } else if (capture.name === 'trailingComment') {
+                                    trailingComments.push(capture.node);
+                                } else if (capture.name === 'capture') {
+                                    captureNode = capture.node;
+                                } else if (capture.name !== 'decorator') {
+                                    // Store other nodes by capture name (except decorators)
+                                    captureMap.set(capture.name, capture.node);
+                                }
+                            }
+
+                            // Determine the main structure node
+                            let mainNode: Parser.SyntaxNode | undefined;
+
+                            // First check for template declaration since it's a special case
+                            if (captureMap.has('template_declaration')) {
+                                mainNode = captureMap.get('template_declaration');
+                            } else {
+                                // Otherwise, try to find a specific type in order of priority
+                                const nodeTypes = ['class', 'function', 'method', 'struct', 'interface',
+                                    'enum', 'namespace', 'module', 'trait', 'impl'];
+
+                                for (const type of nodeTypes) {
+                                    if (captureMap.has(type)) {
+                                        mainNode = captureMap.get(type);
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // If we still don't have a main node, use the captureNode
+                            if (!mainNode && captureNode) {
+                                mainNode = captureNode;
+                            }
+
+                            // Skip if no suitable node found
+                            if (!mainNode) continue;
+
+                            // Skip field_declaration_list nodes
+                            if (mainNode.type === 'field_declaration_list') continue;
+
+                            // Skip forward declarations in C++
+                            if ((mainNode.type === 'class_specifier' || mainNode.type === 'struct_specifier') &&
+                                language === 'cpp') {
+                                const text = mainNode.text;
+                                if (text.trim().endsWith(';') && !text.includes('{')) {
+                                    continue;
+                                }
+                            }
+
+                            // Create a unique identifier for this node based on position
+                            const nodeKey = `${mainNode.type}_${mainNode.startPosition.row}_${mainNode.startPosition.column}_${mainNode.endPosition.row}_${mainNode.endPosition.column}`;
+
+                            // Skip if we've already processed this node
+                            if (processedNodeMap.has(nodeKey)) continue;
+                            processedNodeMap.set(nodeKey, true);
+
+                            // If this is a template_declaration, mark its children as processed
+                            // to avoid duplicate detections
+                            if (mainNode.type === 'template_declaration') {
+                                // Find the class or function node inside the template
+                                for (let i = 0; i < mainNode.childCount; i++) {
+                                    const child = mainNode.child(i);
+                                    if (child && (
+                                        child.type.includes('class') ||
+                                        child.type.includes('struct') ||
+                                        child.type.includes('function')
+                                    )) {
+                                        // Mark this child as processed so we don't process it again
+                                        const childKey = `${child.type}_${child.startPosition.row}_${child.startPosition.column}_${child.endPosition.row}_${child.endPosition.column}`;
+                                        processedNodeMap.set(childKey, true);
+                                    }
+                                }
+                            }
+
+                            // Prepare comments
+                            comments.sort((a, b) => a.startIndex - b.startIndex);
+                            trailingComments.sort((a, b) => a.startIndex - b.startIndex);
+
+                            // Determine the full range including comments
+                            let startPosition = mainNode.startPosition;
+                            if (comments.length > 0 && comments[0].startIndex < mainNode.startIndex) {
+                                startPosition = comments[0].startPosition;
+                            }
+
+                            let endPosition = mainNode.endPosition;
+                            if (trailingComments.length > 0) {
+                                const lastTrailingComment = trailingComments[trailingComments.length - 1];
+                                endPosition = lastTrailingComment.endPosition;
+                            }
+
+                            // Extract the text content
+                            const startOffset = this.positionToOffset(startPosition, content) || mainNode.startIndex;
+                            const endOffset = this.positionToOffset(endPosition, content) || mainNode.endIndex;
+                            const text = content.substring(startOffset, endOffset);
+
+                            // Find parent context if available
+                            let parentContext: { type: string; name?: string } | undefined = undefined;
+
+                            // Handle parent context appropriately
+                            const contextInfo = nodeContextMap.get(mainNode.id);
+                            if (contextInfo) {
+                                parentContext = {
+                                    type: contextInfo.type,
+                                    name: contextInfo.name
+                                };
+                            }
+
+                            // Create and add the structure
+                            const structure: CodeStructure = {
+                                type: mainNode.type,
+                                text: text,
+                                range: {
+                                    startPosition: startPosition,
+                                    endPosition: endPosition,
+                                },
+                                parentContext: parentContext,
+                            };
+
+                            structures.push(structure);
+                        }
+                    } finally {
+                        query.delete();
+                    }
+                } catch (error) {
+                    console.error(`Error running ${queryType} "${queryString}" for ${language}:`, error);
+                }
+            }
+
+            return structures;
+        } catch (error) {
+            console.error(`Error finding structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            return [];
+        } finally {
+            if (tree) {
+                tree.delete();
+            }
+        }
+    }
+
+    /**
+     * Helper method to find all nodes of specific types
+     */
+    private findNodesOfType(node: Parser.SyntaxNode, types: string[], result: Parser.SyntaxNode[]): void {
+        if (types.includes(node.type)) {
+            result.push(node);
+        }
+
+        for (let i = 0; i < node.childCount; i++) {
+            const child = node.child(i);
+            if (child) {
+                this.findNodesOfType(child, types, result);
+            }
+        }
+    }
+
+    /**
+     * Helper method to find child nodes within a range that match a predicate
+     * @param node The parent node to search within
+     * @param predicate A function that returns true if the node should be included
+     */
+    private findChildNodesWithinRange(node: Parser.SyntaxNode, predicate: (node: Parser.SyntaxNode) => boolean): void {
+        // Check if this node matches the predicate
+        const shouldInclude = predicate(node);
+
+        // If the predicate returns true, we're done with this branch
+        if (shouldInclude) {
+            return;
+        }
+
+        // Otherwise, recursively check all children
+        for (let i = 0; i < node.childCount; i++) {
+            const child = node.child(i);
+            if (child) {
+                this.findChildNodesWithinRange(child, predicate);
+            }
+        }
+    }
+
+    /**
+     * Helper to convert a Tree-sitter node to a CodeRange
+    */
+    private nodeToCodeRange(node: Parser.SyntaxNode): CodeRange {
+        return {
+            startPosition: node.startPosition,
+            endPosition: node.endPosition,
+        };
+    }
+
+    /**
+     * Helper to extract a meaningful name from a Tree-sitter node
+     */
+    private extractNodeName(node: Parser.SyntaxNode, language: string): string | undefined {
+        // Common field name patterns to try, in order of preference
+        const commonFields = ['name', 'id', 'identifier'];
+
+        // First try direct child field access - most common case
+        for (const fieldName of commonFields) {
+            const nameNode = node.childForFieldName(fieldName);
+            if (nameNode) return nameNode.text;
+        }
+
+        // Try to find identifier nodes - common in many languages
+        const identifierTypes = ['identifier', 'property_identifier', 'type_identifier', 'field_identifier'];
+        const identifiers = node.descendantsOfType(identifierTypes);
+        if (identifiers.length > 0) {
+            // First identifier is usually the name
+            return identifiers[0].text;
+        }
+
+        // Special handling for function declarations in languages with complex declarators
+        if (node.type.includes('function')) {
+            const declarator = node.childForFieldName('declarator');
+            if (declarator) {
+                // Try to find identifier in the declarator
+                const identifiersInDeclarator = declarator.descendantsOfType(identifierTypes);
+                if (identifiersInDeclarator.length > 0) {
+                    return identifiersInDeclarator[0].text;
+                }
+            }
+        }
+
+        // For anonymous functions assigned to variables, try to find parent variable declarator
+        if (node.type.includes('function') || node.type === 'arrow_function') {
+            let parent = node.parent;
+            while (parent) {
+                if (parent.type === 'variable_declarator' || parent.type === 'pair') {
+                    const nameNode = parent.childForFieldName('name') || parent.childForFieldName('key');
+                    if (nameNode) return nameNode.text;
+                }
+                parent = parent.parent;
+            }
+        }
+
+        // For CSS rule sets, get selectors
+        if (node.type === 'rule_set' || node.type.includes('selector')) {
+            const selectors = node.childForFieldName('selectors');
+            if (selectors) return selectors.text;
+        }
+
+        // For type declarations that might have a generic type parameter
+        if (node.type.includes('class') || node.type.includes('interface') || node.type.includes('type')) {
+            // First try direct field access
+            const nameNode = node.childForFieldName('name');
+            if (nameNode) return nameNode.text;
+
+            // Then try to find a type identifier
+            const typeIds = node.descendantsOfType(['type_identifier']);
+            if (typeIds.length > 0) {
+                return typeIds[0].text;
+            }
+        }
+
+        return undefined; // Return undefined if no name found
+    }
+
+    /**
+     * Convert a position to a character offset
+     * @param position Position in the document
+     * @param content File content
+     * @returns Character offset or null if invalid
+     */
+    public positionToOffset(position: Parser.Point, content: string): number | null {
+        const lines = content.split('\n');
+
+        if (position.row >= lines.length) {
+            return null; // Row out of bounds
+        }
+
+        let offset = 0;
+        for (let i = 0; i < position.row; i++) {
+            if (lines[i] === undefined) return null; // Should not happen if row is in bounds
+            offset += lines[i].length + 1; // +1 for the newline
+        }
+
+        // Check column bounds for the target row
+        if (lines[position.row] === undefined || position.column > lines[position.row].length) {
+            // Allow column to be equal to length (position after last char)
+            if (lines[position.row] !== undefined && position.column === lines[position.row].length) {
+                // This is valid, position at the end of the line
+            } else {
+                return null; // Column out of bounds
+            }
+        }
+
+        offset += position.column;
+        // Ensure offset does not exceed content length
+        return Math.min(offset, content.length);
+    }
+
+    /**
+     * Find standalone comments in the code
+     * @param content File content
+     * @param language Language identifier
+     * @param variant Optional language variant
+     * @returns Array of comment structures
+     */
+    public async findStandaloneComments(
+        content: string,
+        language: string,
+        variant?: string
+    ): Promise<CodeStructure[]> {
+        await this.ensureInitialized();
+
+        let tree = null;
+        let query = null;
 
         try {
             tree = await this.parseContent(content, language, variant);
@@ -607,210 +789,98 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 return [];
             }
 
-            const config = this.languageConfigs[language];
-            if (!config) {
-                throw new Error(`Language '${language}' is not supported`);
-            }
-
             const rootNode = tree.rootNode;
-            const classes: CodeStructure[] = [];
+            const comments: CodeStructure[] = [];
+            const processedNodes = new Set<number>(); // Keep track of nodes already processed
 
-            for (const queryString of config.classQueries) {
-                try {
-                    // Get the currently set language from the parser
-                    const currentLang = await this.loadLanguageParser(language, variant);
-                    const query = currentLang.query(queryString);
-                    queries.push(query);
+            // Create a query to find all comments
+            const currentLang = await this.loadLanguageParser(language, variant);
+            query = currentLang.query('(comment) @comment');
 
-                    // Use the captures method with the rootNode
-                    const captures = query.captures(rootNode);
+            // Get all comment nodes
+            const matches = query.matches(rootNode);
 
-                    for (const capture of captures) {
-                        const node = capture.node;
+            for (const match of matches) {
+                for (const capture of match.captures) {
+                    if (capture.name === 'comment') {
+                        const commentNode = capture.node;
 
-                        // Find the class name
-                        let name = "anonymous";
+                        if (!processedNodes.has(commentNode.id)) {
+                            processedNodes.add(commentNode.id);
 
-                        // Different languages have different patterns for class names
-                        if (language === 'javascript' || language === 'typescript') {
-                            if (node.type === 'class_declaration') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            } else if (node.type === 'interface_declaration') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'python') {
-                            if (node.type === 'class_definition') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'java' || language === 'csharp') {
-                            if (node.type.includes('class_declaration') || node.type.includes('interface_declaration')) {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'c' || language === 'cpp') {
-                            if (node.type === 'struct_specifier' || node.type === 'class_specifier') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'rust') {
-                            if (node.type === 'struct_item' || node.type === 'trait_item') {
-                                const nameNode = node.childForFieldName('name');
-                                if (nameNode) {
-                                    name = nameNode.text;
-                                }
-                            }
-                        } else if (language === 'css') {
-                            if (node.type === 'rule_set') {
-                                const selectors = node.childForFieldName('selectors');
-                                if (selectors) {
-                                    name = selectors.text;
-                                }
-                            }
+                            const range = this.nodeToCodeRange(commentNode);
+                            const commentText = content.substring(commentNode.startIndex, commentNode.endIndex);
+
+                            comments.push({
+                                type: 'standalone_comment',
+                                range: range,
+                                text: commentText,
+                            });
                         }
-                        // Additional language handlers would go here
-
-                        classes.push({
-                            type: node.type,
-                            name: name,
-                            range: {
-                                startPosition: {
-                                    row: node.startPosition.row,
-                                    column: node.startPosition.column
-                                },
-                                endPosition: {
-                                    row: node.endPosition.row,
-                                    column: node.endPosition.column
-                                }
-                            },
-                            children: [],
-                            text: content.substring(node.startIndex, node.endIndex)
-                        });
                     }
-                } catch (error) {
-                    console.error(`Error running query "${queryString}" for ${language}:`, error);
-                    // Continue with other queries even if one fails
                 }
             }
 
-            return classes;
+            return comments;
         } catch (error) {
-            console.error(`Error finding classes in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            console.error(`Error finding standalone comments in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
         } finally {
             // Clean up resources
             if (tree) {
                 tree.delete();
             }
-
-            for (const query of queries) {
+            if (query) {
                 query.delete();
             }
         }
     }
 
     /**
-     * Check if a given position is inside any function declaration
-     * @param content File content
-     * @param language Language identifier
-     * @param position Position to check
-     * @param variant Optional language variant
-     * @returns The function structure if position is inside a function, null otherwise
+     * Find all major structures (functions, classes, etc.)
      */
-    public async isPositionInsideFunction(
+    public async findAllStructures(
         content: string,
         language: string,
-        position: CodePosition,
         variant?: string
-    ): Promise<CodeStructure | null> {
-        try {
-            const functions = await this.findFunctions(content, language, variant);
+    ): Promise<CodeStructure[]> {
+        // First, find all functions and classes independently
+        // Find all functions and classes using the refined queries
+        const functions = await this.findFunctions(content, language, variant);
+        const classes = await this.findClasses(content, language, variant);
 
-            for (const func of functions) {
-                if (this.isPositionInsideRange(position, func.range)) {
-                    return func;
+        // Combine functions and classes into a single list
+        let allFoundStructures: CodeStructure[] = [...functions, ...classes];
+
+        // --- Find File Header Comment ---
+        let fileHeaderComment: CodeStructure | null = null;
+        const tree = await this.parseContent(content, language, variant);
+        if (tree) {
+            const rootNode = tree.rootNode;
+            if (rootNode.childCount > 0) {
+                let firstNode = rootNode.child(0);
+                // Skip potential BOM or shebang
+                while (firstNode && (firstNode.type === 'bom' || firstNode.type === 'hash_bang_line')) {
+                    firstNode = firstNode.nextSibling;
+                }
+                if (firstNode && firstNode.type === 'comment') {
+                    // Check if it starts at the beginning of the file
+                    if (firstNode.startPosition.row === 0 && firstNode.startPosition.column === 0) {
+                        const commentText = content.substring(firstNode.startIndex, firstNode.endIndex);
+                        fileHeaderComment = {
+                            type: 'file_header_comment',
+                            range: this.nodeToCodeRange(firstNode),
+                            text: commentText,
+                        };
+                        // Add header comment to the list if found
+                        allFoundStructures.unshift(fileHeaderComment);
+                    }
                 }
             }
-
-            return null;
-        } catch (error) {
-            console.error(`Error checking if position is inside function:`, error);
-            return null;
+            tree.delete(); // Clean up the tree
         }
-    }
 
-    /**
-     * Check if a given position is inside any class declaration
-     * @param content File content
-     * @param language Language identifier
-     * @param position Position to check
-     * @param variant Optional language variant
-     * @returns The class structure if position is inside a class, null otherwise
-     */
-    public async isPositionInsideClass(
-        content: string,
-        language: string,
-        position: CodePosition,
-        variant?: string
-    ): Promise<CodeStructure | null> {
-        try {
-            const classes = await this.findClasses(content, language, variant);
-
-            for (const cls of classes) {
-                if (this.isPositionInsideRange(position, cls.range)) {
-                    return cls;
-                }
-            }
-
-            return null;
-        } catch (error) {
-            console.error(`Error checking if position is inside class:`, error);
-            return null;
-        }
-    }
-
-    /**
-     * Get all structure node boundaries for a file content
-     * @param content File content
-     * @param language Language identifier
-     * @param variant Optional language variant
-     * @returns Map of node types to arrays of node boundaries
-     */
-    public async getAllStructureBoundaries(
-        content: string,
-        language: string,
-        variant?: string
-    ): Promise<Map<string, CodeRange[]>> {
-        try {
-            const result = new Map<string, CodeRange[]>();
-
-            // Get functions
-            const functions = await this.findFunctions(content, language, variant);
-            result.set('function', functions.map(f => f.range));
-
-            // Get classes
-            const classes = await this.findClasses(content, language, variant);
-            result.set('class', classes.map(c => c.range));
-
-            // Additional structure types could be added here
-
-            return result;
-        } catch (error) {
-            console.error(`Error getting structure boundaries:`, error);
-            return new Map();
-        }
+        return allFoundStructures;
     }
 
     /**
@@ -828,29 +898,21 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         try {
             const breakPoints: Array<{ position: number, quality: number }> = [];
 
-            // Get functions and classes
-            const functions = await this.findFunctions(content, language, variant);
-            const classes = await this.findClasses(content, language, variant);
+            // Combine all relevant structures
+            const structures = await this.findAllStructures(content, language, variant);
 
-            // Function endings make excellent break points
-            for (const func of functions) {
-                const endPos = this.rangeToOffset(func.range.endPosition, content);
-                if (endPos !== null) {
-                    breakPoints.push({
-                        position: endPos,
-                        quality: 10 // Highest quality
-                    });
+            // Add structure start and end points as high-quality break points
+            for (const struct of structures) {
+                const startOffset = this.positionToOffset(struct.range.startPosition, content);
+                const endOffset = this.positionToOffset(struct.range.endPosition, content);
+
+                if (startOffset !== null) {
+                    // Break *before* a structure starts (medium quality)
+                    breakPoints.push({ position: startOffset, quality: 7 });
                 }
-            }
-
-            // Class endings also make excellent break points
-            for (const cls of classes) {
-                const endPos = this.rangeToOffset(cls.range.endPosition, content);
-                if (endPos !== null) {
-                    breakPoints.push({
-                        position: endPos,
-                        quality: 9 // Very high quality
-                    });
+                if (endOffset !== null) {
+                    // Break *after* a structure ends (high quality)
+                    breakPoints.push({ position: endOffset, quality: 10 });
                 }
             }
 
@@ -858,17 +920,26 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const blankLineMatches = content.matchAll(/\n\s*\n/g);
             for (const match of blankLineMatches) {
                 if (match.index !== undefined) {
+                    // Avoid adding blank line breaks inside structures if possible
+                    const breakPos = match.index + match[0].length;
+                    const isInStructure = structures.some(s => {
+                        const startOffset = this.positionToOffset(s.range.startPosition, content);
+                        const endOffset = this.positionToOffset(s.range.endPosition, content);
+                        return startOffset !== null && endOffset !== null &&
+                            breakPos > startOffset && breakPos < endOffset;
+                    });
                     breakPoints.push({
-                        position: match.index + match[0].length,
-                        quality: 5 // Medium quality
+                        position: breakPos,
+                        quality: isInStructure ? 3 : 5 // Lower quality if inside a structure
                     });
                 }
             }
 
-            // Sort by position
-            breakPoints.sort((a, b) => a.position - b.position);
+            // Remove duplicates and sort by position
+            const uniqueBreakPoints = Array.from(new Map(breakPoints.map(item => [item.position, item])).values());
+            uniqueBreakPoints.sort((a, b) => a.position - b.position);
 
-            return breakPoints;
+            return uniqueBreakPoints;
         } catch (error) {
             console.error(`Error finding structure break points:`, error);
 
@@ -885,107 +956,34 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     }
 
     /**
-     * Get the full structure hierarchy at a given position
+     * Check if a given position is inside any function declaration
      * @param content File content
      * @param language Language identifier
      * @param position Position to check
      * @param variant Optional language variant
-     * @returns Array of structures from outermost to innermost
+     * @returns The function structure if position is inside a function, null otherwise
      */
-    public async getStructureHierarchyAtPosition(
+    public async isPositionInsideFunction(
         content: string,
         language: string,
-        position: CodePosition,
+        position: Parser.Point,
         variant?: string
-    ): Promise<CodeStructure[]> {
-        await this.ensureInitialized();
-
-        let tree = null;
+    ): Promise<CodeStructure | null> {
         try {
-            tree = await this.parseContent(content, language, variant);
-            if (tree === null) {
-                return [];
-            }
+            const functions = await this.findFunctions(content, language, variant);
 
-            const offset = this.positionToOffset(position, content);
-            if (offset === null) {
-                return [];
-            }
-
-            const hierarchy: CodeStructure[] = [];
-            let currentNode = tree.rootNode.descendantForIndex(offset);
-
-            while (currentNode) {
-                hierarchy.push({
-                    type: currentNode.type,
-                    range: {
-                        startPosition: {
-                            row: currentNode.startPosition.row,
-                            column: currentNode.startPosition.column
-                        },
-                        endPosition: {
-                            row: currentNode.endPosition.row,
-                            column: currentNode.endPosition.column
-                        }
-                    },
-                    children: [],
-                    text: content.substring(currentNode.startIndex, currentNode.endIndex)
-                });
-
-                // Fix: Handle potentially null parent
-                const parentNode = currentNode.parent;
-                if (!parentNode) {
-                    break;
+            for (const func of functions) {
+                // Use contentRange for checking if position is within the core code
+                if (this.isPositionInsideRange(position, func.range)) {
+                    return func;
                 }
-                currentNode = parentNode;
             }
 
-            return hierarchy.reverse(); // Outermost first
+            return null;
         } catch (error) {
-            console.error(`Error getting structure hierarchy:`, error);
-            return [];
-        } finally {
-            // Clean up resources
-            if (tree) {
-                tree.delete();
-            }
-        }
-    }
-
-    /**
-     * Convert a position to a character offset
-     * @param position Position in the document
-     * @param content File content
-     * @returns Character offset or null if invalid
-     */
-    private positionToOffset(position: CodePosition, content: string): number | null {
-        const lines = content.split('\n');
-
-        if (position.row >= lines.length) {
+            console.error(`Error checking if position is inside function:`, error);
             return null;
         }
-
-        let offset = 0;
-        for (let i = 0; i < position.row; i++) {
-            offset += lines[i].length + 1; // +1 for the newline
-        }
-
-        if (position.column > lines[position.row].length) {
-            return null;
-        }
-
-        offset += position.column;
-        return offset;
-    }
-
-    /**
-     * Convert a position to a character offset
-     * @param position Position in the document
-     * @param content File content
-     * @returns Character offset or null if invalid
-     */
-    private rangeToOffset(position: CodePosition, content: string): number | null {
-        return this.positionToOffset(position, content);
     }
 
     /**
@@ -994,12 +992,12 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param range Range to check against
      * @returns True if position is inside the range
      */
-    private isPositionInsideRange(position: CodePosition, range: CodeRange): boolean {
-        // Check if position is after the start position
+    private isPositionInsideRange(position: Parser.Point, range: CodeRange): boolean {
+        // Check if position is after or at the start position
         if (position.row > range.startPosition.row ||
             (position.row === range.startPosition.row && position.column >= range.startPosition.column)) {
 
-            // Check if position is before the end position
+            // Check if position is before or at the end position
             if (position.row < range.endPosition.row ||
                 (position.row === range.endPosition.row && position.column <= range.endPosition.column)) {
                 return true;
@@ -1010,26 +1008,64 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     }
 
     /**
-     * Get the complete content of any function containing the given position
+     * Get the hierarchy of structures at a given position
      * @param content File content
      * @param language Language identifier
-     * @param position Position within the function
+     * @param position Position to check
      * @param variant Optional language variant
-     * @returns The complete function text or null if not in a function
+     * @returns Array of structures from outermost to innermost
      */
-    public async getFunctionAtPosition(
+    public async getStructureHierarchyAtPosition(
         content: string,
         language: string,
-        position: CodePosition,
+        position: Parser.Point,
         variant?: string
-    ): Promise<string | null> {
-        const func = await this.isPositionInsideFunction(content, language, position, variant);
+    ): Promise<CodeStructure[]> {
+        try {
+            const allStructures = await this.findAllStructures(content, language, variant);
+            const containingStructures: CodeStructure[] = [];
 
-        if (!func) {
-            return null;
+            // Find all structures that contain this position
+            for (const structure of allStructures) {
+                if (this.isPositionInsideRange(position, structure.range)) {
+                    containingStructures.push(structure);
+                }
+            }
+
+            // Sort from outermost to innermost
+            containingStructures.sort((a, b) => {
+                // Calculate size of each range
+                const aSize = (a.range.endPosition.row - a.range.startPosition.row) * 10000 +
+                    (a.range.endPosition.column - a.range.startPosition.column);
+                const bSize = (b.range.endPosition.row - b.range.startPosition.row) * 10000 +
+                    (b.range.endPosition.column - b.range.startPosition.column);
+
+                // Larger ranges first (outermost to innermost)
+                return bSize - aSize;
+            });
+
+            return containingStructures;
+        } catch (error) {
+            console.error(`Error getting structure hierarchy at position:`, error);
+            return [];
         }
+    }
 
-        return func.text;
+    /**
+     * Check if a language is supported by the analyzer
+     * @param language The language to check
+     * @returns True if the language is supported
+     */
+    public async supportsLanguage(language: string): Promise<boolean> {
+        await this.ensureInitialized();
+
+        try {
+            // Check if the language is in our language configs
+            return language in TREE_SITTER_LANGUAGE_CONFIGS;
+        } catch (error) {
+            console.error(`Error checking if language ${language} is supported:`, error);
+            return false;
+        }
     }
 
     /**
@@ -1067,7 +1103,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         this.languageParsers.clear();
         this.isInitialized = false;
         this.isDisposed = true;
-        this.initPromise = null;
+        // Reset initialization state
     }
 }
 
