@@ -219,25 +219,25 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 // Exported function declaration with preceding comments
                 `((comment)* @comment . (export_statement . (function_declaration) @func)) @capture`,
                 // Function expression assigned to variable with preceding comments
-                `((comment)* @comment . (expression_statement (assignment_expression
-                    left: (_)
-                    right: [(arrow_function) (function_expression)] @func
-                ))) @capture`,
+                `((comment)* @comment . (variable_declaration
+                    (variable_declarator
+                      name: (_)
+                      value: [(arrow_function) (function_expression)] @func))) @capture`,
                 // Arrow function assigned to variable with preceding comments
-                `((comment)* @comment . (lexical_declaration (variable_declarator
-                    name: (_)
-                    value: [(arrow_function) (function_expression)] @func
-                ))) @capture`,
-                // Method definition within class/interface with preceding comments
-                `((class_body . (comment)* @comment . (method_definition) @func)) @capture`,
-                // Method signature within interface with preceding comments
-                `((object_type . (comment)* @comment . (method_signature) @func)) @capture`
+                `((comment)* @comment . (lexical_declaration
+                    (variable_declarator
+                      name: (_)
+                      value: [(arrow_function) (function_expression)] @func))) @capture`,
+                // Method definition within class with preceding comments
+                `(class_body . ((comment)* @comment . (method_definition) @method)) @capture`,
+                // Method definition in interface with preceding comments
+                `(object_type . ((comment)* @comment . (method_signature) @method)) @capture`
             ],
             classQueries: [
                 // Class declaration with decorators and preceding comments
-                `((comment)* @comment . (decorator)* . (class_declaration) @class) @capture`,
+                `((comment)* @comment . (decorator)* @decorator . (class_declaration) @class) @capture`,
                 // Exported class declaration with decorators and preceding comments
-                `((comment)* @comment . (export_statement . (decorator)* . (class_declaration) @class)) @capture`,
+                `((comment)* @comment . (export_statement . ((decorator)* @decorator . (class_declaration) @class))) @capture`,
                 // Interface declaration with preceding comments
                 `((comment)* @comment . (interface_declaration) @interface) @capture`,
                 // Exported interface declaration with preceding comments
@@ -249,7 +249,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 // Type alias declaration with preceding comments
                 `((comment)* @comment . (type_alias_declaration) @type) @capture`,
                 // Exported type alias declaration with preceding comments
-                `((comment)* @comment . (export_statement . (type_alias_declaration) @type)) @capture`
+                `((comment)* @comment . (export_statement . (type_alias_declaration) @type)) @capture`,
+                // Module declaration with preceding comments
+                `((comment)* @comment . (module) @module) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(statement_block) @block']
@@ -257,11 +259,14 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'python': {
             functionQueries: [
                 // Function definition with decorators and preceding comments
-                `((comment)* @comment . (decorator)* . (function_definition) @function) @capture`
+                `((comment)* @comment . (decorator)* @decorator . (function_definition) @function) @capture`,
+                // Method definition in class with decorators and preceding comments
+                `(class_definition
+                    body: (block . ((comment)* @comment . (decorator)* @decorator . (function_definition) @method))) @capture`
             ],
             classQueries: [
                 // Class definition with decorators and preceding comments
-                `((comment)* @comment . (decorator)* . (class_definition) @class) @capture`
+                `((comment)* @comment . (decorator)* @decorator . (class_definition) @class) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
@@ -287,78 +292,41 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'cpp': {
             functionQueries: [
                 // Standalone function definition with preceding comments
-                `(
-                  (comment)* @comment
-                  .
-                  (function_definition) @function
-                ) @capture`,
+                `((comment)* @comment . (function_definition) @function) @capture`,
                 // Standalone function declaration with preceding comments
-                `(
-                  (comment)* @comment
-                  .
-                  (declaration
+                `((comment)* @comment . (declaration
                     type: (_)
-                    declarator: (function_declarator)
-                  ) @function
-                ) @capture`,
+                    declarator: (function_declarator)) @function) @capture`,
                 // Templated function definition with preceding comments
-                `(
-                  (comment)* @comment
-                  .
-                  (template_declaration . (function_definition) @function)
-                ) @capture`,
+                `((comment)* @comment . (template_declaration . (function_definition) @function)) @capture`,
                 // Templated function declaration with preceding comments
-                `(
-                  (comment)* @comment
-                  .
-                  (template_declaration . (declaration type: (_) declarator: (function_declarator)) @function)
-                ) @capture`,
+                `((comment)* @comment . (template_declaration . (declaration
+                    type: (_)
+                    declarator: (function_declarator)) @function)) @capture`,
                 // Method definition within class/struct body with preceding comments
-                `(field_declaration_list
-                  .
-                  (
-                    (comment)* @comment
-                    .
-                    (function_definition) @method
-                  )
-                ) @capture`,
+                `(field_declaration_list . ((comment)* @comment . (function_definition) @method)) @capture`,
                 // Templated method definition within class/struct body with preceding comments
-                `(field_declaration_list
-                  .
-                  (
-                    (comment)* @comment
-                    .
-                    (template_declaration . (function_definition) @method)
-                  )
-                ) @capture`,
+                `(field_declaration_list . ((comment)* @comment . (template_declaration . (function_definition)) @method)) @capture`,
                 // Field declaration within class/struct body with preceding comments
-                `(field_declaration_list
-                  .
-                  (
-                    (comment)* @comment
-                    .
-                    (field_declaration) @field
-                  )
-                ) @capture`
+                `(field_declaration_list . ((comment)* @comment . (field_declaration) @field)) @capture`
             ],
             classQueries: [
                 // Class specifier with preceding comments
-                `((comment)* . (class_specifier)) @capture`,
+                `((comment)* @comment . (class_specifier) @class) @capture`,
                 // Struct specifier with preceding comments
-                `((comment)* . (struct_specifier)) @capture`,
+                `((comment)* @comment . (struct_specifier) @struct) @capture`,
                 // Enum specifier with preceding comments
-                `((comment)* . (enum_specifier)) @capture`,
+                `((comment)* @comment . (enum_specifier) @enum) @capture`,
                 // Templated class specifier with preceding comments
                 `((comment)* @comment . (template_declaration . (class_specifier) @class)) @capture`,
                 // Templated struct specifier with preceding comments
                 `((comment)* @comment . (template_declaration . (struct_specifier) @struct)) @capture`,
-                // Namespace definition with preceding comments
-                `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture
-                 (#select-adjacent! @comment @namespace @trailingComment)`
+                // Namespace definition with preceding comments and trailing comment
+                `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture`,
+                // Namespace definition with just preceding comments
+                `((comment)* @comment . (namespace_definition) @namespace) @capture`
             ],
-            methodQueries: [
-
-            ],
+            methodQueries: [], // Covered by functionQueries
             blockQueries: [
                 '(compound_statement) @block',
                 '(namespace_definition body: (declaration_list) @block)',
@@ -715,7 +683,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         await this.ensureInitialized();
 
         let tree = null;
-        let queries: Parser.Query[] = [];
+        const queries: Parser.Query[] = [];
+        const structures: CodeStructure[] = [];
+        const processedNodes = new Set<string>(); // Track processed nodes by their text content + position
 
         try {
             tree = await this.parseContent(content, language, variant);
@@ -731,8 +701,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             }
 
             const rootNode = tree.rootNode;
-            const structures: CodeStructure[] = [];
-            const processedNodes = new Set<number>(); // Keep track of nodes already processed
 
             // Find context nodes (classes, namespaces, etc.)
             const contextNodes: Parser.SyntaxNode[] = [];
@@ -760,52 +728,100 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 });
             }
 
-            // Process all queries
+            // Try each query pattern
             for (const queryString of config[queryType]) {
                 try {
                     const currentLang = await this.loadLanguageParser(language, variant);
                     const query = currentLang.query(queryString);
                     queries.push(query);
 
-                    const captures = query.captures(rootNode);
-                    if (captures.length === 0) {
-                        continue;
-                    }
+                    // Get all matches for this query
+                    const matches = query.matches(rootNode);
 
-                    let startPosition: Parser.Point = { row: 0, column: 0 };
-                    let endPosition: Parser.Point = { row: 0, column: 0 };
-                    let text = '';
-                    let type = '';
-                    for (const capture of captures) {
-                        if (capture.name == 'capture') {
-                            if (text) {
-                                text += '\n' + capture.node.text;
-                            } else {
-                                startPosition = capture.node.startPosition;
-                                text = capture.node.text;
-                                capture.node.type
+                    for (const match of matches) {
+                        // For each match, identify the main structure and associated comments/decorators
+                        const captureMap = new Map<string, Parser.SyntaxNode>();
+                        const allComments: Parser.SyntaxNode[] = [];
+                        const trailingComments: Parser.SyntaxNode[] = [];
+
+                        // Group captures by name
+                        for (const capture of match.captures) {
+                            // Store comments separately as there can be multiple
+                            if (capture.name === 'comment') {
+                                allComments.push(capture.node);
                             }
-                            endPosition = capture.node.endPosition;
-                            type = capture.node.type;
-                            console.log(`Capture text for ${capture.name}:`, text);
-                        } else if (capture.name == 'trailingComment') {
-                            text += '\n' + capture.node.text;
-                            endPosition = capture.node.endPosition;
+                            // Store trailing comments separately
+                            else if (capture.name === 'trailingComment') {
+                                trailingComments.push(capture.node);
+                            }
+                            // For non-comment nodes, keep the last instance of each capture name
+                            else {
+                                captureMap.set(capture.name, capture.node);
+                            }
                         }
+
+                        // Determine the main node (structure) from known types or use 'capture' node
+                        let mainNode: Parser.SyntaxNode | undefined = undefined;
+                        for (const type of ['function', 'func', 'method', 'class', 'struct', 'interface', 'enum', 'namespace', 'capture']) {
+                            if (captureMap.has(type)) {
+                                mainNode = captureMap.get(type);
+                                break;
+                            }
+                        }
+
+                        // Skip if no main node found
+                        if (!mainNode) continue;
+
+                        // Skip if we've already processed this node (using type + text + position as key)
+                        const nodeKey = `${mainNode.type}_${mainNode.text}_${mainNode.startPosition.row}_${mainNode.startPosition.column}`;
+                        if (processedNodes.has(nodeKey)) continue;
+                        processedNodes.add(nodeKey);
+
+                        // Sort comments by position
+                        allComments.sort((a, b) => a.startIndex - b.startIndex);
+                        trailingComments.sort((a, b) => a.startIndex - b.startIndex);
+
+                        // Determine the start position (include preceding comments)
+                        let startPosition = mainNode.startPosition;
+                        if (allComments.length > 0 && allComments[0].startIndex < mainNode.startIndex) {
+                            startPosition = allComments[0].startPosition;
+                        }
+
+                        // Determine the end position (include trailing comments)
+                        let endPosition = mainNode.endPosition;
+                        if (trailingComments.length > 0) {
+                            const lastTrailingComment = trailingComments[trailingComments.length - 1];
+                            endPosition = lastTrailingComment.endPosition;
+                        }
+
+                        // Get the complete text including comments
+                        const startOffset = this.positionToOffset(startPosition, content) || mainNode.startIndex;
+                        const endOffset = this.positionToOffset(endPosition, content) || mainNode.endIndex;
+                        const text = content.substring(startOffset, endOffset);
+
+                        // Find parent context if available
+                        let parentContext: { type: string; name?: string } | undefined = undefined;
+                        const contextInfo = nodeContextMap.get(mainNode.id);
+                        if (contextInfo) {
+                            parentContext = {
+                                type: contextInfo.type,
+                                name: contextInfo.name
+                            };
+                        }
+
+                        // Create the structure object
+                        const structure: CodeStructure = {
+                            type: mainNode.type,
+                            text: text,
+                            range: {
+                                startPosition: startPosition,
+                                endPosition: endPosition,
+                            },
+                            parentContext: parentContext,
+                        };
+
+                        structures.push(structure);
                     }
-
-                    // Create the structure object
-                    const structure: CodeStructure = {
-                        type: type,
-                        text: text,
-                        range: {
-                            startPosition: startPosition,
-                            endPosition: endPosition,
-                        },
-                        parentContext: undefined,
-                    };
-
-                    structures.push(structure);
                 } catch (error) {
                     console.error(`Error running ${queryType} "${queryString}" for ${language}:`, error);
                     // Continue with other queries even if one fails
