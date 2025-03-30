@@ -312,21 +312,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                   (comment)* @comment
                   .
                   (template_declaration . (declaration type: (_) declarator: (function_declarator)) @function)
-                ) @capture`
-            ],
-            classQueries: [
-                // Class specifier with preceding comments
-                `((comment)* . [(class_specifier) (struct_specifier) (enum_specifier)]) @capture
-                 `,
-                // Templated class specifier with preceding comments
-                `((comment)* @comment . (template_declaration . (class_specifier) @class)) @capture`,
-                // Templated struct specifier with preceding comments
-                `((comment)* @comment . (template_declaration . (struct_specifier) @struct)) @capture`,
-                // Namespace definition with preceding comments
-                `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture
-                 (#select-adjacent! @comment @namespace @trailingComment)`
-            ],
-            methodQueries: [
+                ) @capture`,
                 // Method definition within class/struct body with preceding comments
                 `(field_declaration_list
                   .
@@ -354,6 +340,24 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     (field_declaration) @field
                   )
                 ) @capture`
+            ],
+            classQueries: [
+                // Class specifier with preceding comments
+                `((comment)* . (class_specifier)) @capture`,
+                // Struct specifier with preceding comments
+                `((comment)* . (struct_specifier)) @capture`,
+                // Enum specifier with preceding comments
+                `((comment)* . (enum_specifier)) @capture`,
+                // Templated class specifier with preceding comments
+                `((comment)* @comment . (template_declaration . (class_specifier) @class)) @capture`,
+                // Templated struct specifier with preceding comments
+                `((comment)* @comment . (template_declaration . (struct_specifier) @struct)) @capture`,
+                // Namespace definition with preceding comments
+                `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture
+                 (#select-adjacent! @comment @namespace @trailingComment)`
+            ],
+            methodQueries: [
+
             ],
             blockQueries: [
                 '(compound_statement) @block',
