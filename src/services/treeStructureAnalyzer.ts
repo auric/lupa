@@ -187,27 +187,27 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'javascript': {
             functionQueries: [
                 // Function declaration with preceding comments (handles multiple comments and blank lines)
-                `((comment)+ @comment . (function_declaration) @func) @capture`,
+                `((comment)* @comment . (function_declaration) @func) @capture`,
                 // Exported function declaration with preceding comments
-                `((comment)+ @comment . (export_statement . (function_declaration) @func)) @capture`,
+                `((comment)* @comment . (export_statement . (function_declaration) @func)) @capture`,
                 // Function expression assigned to variable with preceding comments
-                `((comment)+ @comment . (expression_statement (assignment_expression
+                `((comment)* @comment . (expression_statement (assignment_expression
                     left: (_)
                     right: [(arrow_function) (function_expression)] @func
                 ))) @capture`,
                 // Arrow function assigned to variable with preceding comments
-                `((comment)+ @comment . (lexical_declaration (variable_declarator
+                `((comment)* @comment . (lexical_declaration (variable_declarator
                     name: (_)
                     value: [(arrow_function) (function_expression)] @func
                 ))) @capture`,
                 // Method definition within class with preceding comments
-                `((class_body . (comment)+ @comment . (method_definition) @func)) @capture`
+                `((class_body . (comment)* @comment . (method_definition) @func)) @capture`
             ],
             classQueries: [
                 // Class declaration with preceding comments
-                `((comment)+ @comment . (class_declaration) @class) @capture`,
+                `((comment)* @comment . (class_declaration) @class) @capture`,
                 // Exported class declaration with preceding comments
-                `((comment)+ @comment . (export_statement . (class_declaration) @class)) @capture`
+                `((comment)* @comment . (export_statement . (class_declaration) @class)) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(statement_block) @block']
@@ -215,41 +215,41 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'typescript': {
             functionQueries: [
                 // Function declaration with preceding comments
-                `((comment)+ @comment . (function_declaration) @func) @capture`,
+                `((comment)* @comment . (function_declaration) @func) @capture`,
                 // Exported function declaration with preceding comments
-                `((comment)+ @comment . (export_statement . (function_declaration) @func)) @capture`,
+                `((comment)* @comment . (export_statement . (function_declaration) @func)) @capture`,
                 // Function expression assigned to variable with preceding comments
-                `((comment)+ @comment . (expression_statement (assignment_expression
+                `((comment)* @comment . (expression_statement (assignment_expression
                     left: (_)
                     right: [(arrow_function) (function_expression)] @func
                 ))) @capture`,
                 // Arrow function assigned to variable with preceding comments
-                `((comment)+ @comment . (lexical_declaration (variable_declarator
+                `((comment)* @comment . (lexical_declaration (variable_declarator
                     name: (_)
                     value: [(arrow_function) (function_expression)] @func
                 ))) @capture`,
                 // Method definition within class/interface with preceding comments
-                `((class_body . (comment)+ @comment . (method_definition) @func)) @capture`,
+                `((class_body . (comment)* @comment . (method_definition) @func)) @capture`,
                 // Method signature within interface with preceding comments
-                `((object_type . (comment)+ @comment . (method_signature) @func)) @capture`
+                `((object_type . (comment)* @comment . (method_signature) @func)) @capture`
             ],
             classQueries: [
                 // Class declaration with decorators and preceding comments
-                `((comment)+ @comment . (decorator)* . (class_declaration) @class) @capture`,
+                `((comment)* @comment . (decorator)* . (class_declaration) @class) @capture`,
                 // Exported class declaration with decorators and preceding comments
-                `((comment)+ @comment . (export_statement . (decorator)* . (class_declaration) @class)) @capture`,
+                `((comment)* @comment . (export_statement . (decorator)* . (class_declaration) @class)) @capture`,
                 // Interface declaration with preceding comments
-                `((comment)+ @comment . (interface_declaration) @interface) @capture`,
+                `((comment)* @comment . (interface_declaration) @interface) @capture`,
                 // Exported interface declaration with preceding comments
-                `((comment)+ @comment . (export_statement . (interface_declaration) @interface)) @capture`,
+                `((comment)* @comment . (export_statement . (interface_declaration) @interface)) @capture`,
                 // Enum declaration with preceding comments
-                `((comment)+ @comment . (enum_declaration) @enum) @capture`,
+                `((comment)* @comment . (enum_declaration) @enum) @capture`,
                 // Exported enum declaration with preceding comments
-                `((comment)+ @comment . (export_statement . (enum_declaration) @enum)) @capture`,
+                `((comment)* @comment . (export_statement . (enum_declaration) @enum)) @capture`,
                 // Type alias declaration with preceding comments
-                `((comment)+ @comment . (type_alias_declaration) @type) @capture`,
+                `((comment)* @comment . (type_alias_declaration) @type) @capture`,
                 // Exported type alias declaration with preceding comments
-                `((comment)+ @comment . (export_statement . (type_alias_declaration) @type)) @capture`
+                `((comment)* @comment . (export_statement . (type_alias_declaration) @type)) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(statement_block) @block']
@@ -257,11 +257,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'python': {
             functionQueries: [
                 // Function definition with decorators and preceding comments
-                `((comment)+ @comment . (decorator)* . (function_definition) @function) @capture`
+                `((comment)* @comment . (decorator)* . (function_definition) @function) @capture`
             ],
             classQueries: [
                 // Class definition with decorators and preceding comments
-                `((comment)+ @comment . (decorator)* . (class_definition) @class) @capture`
+                `((comment)* @comment . (decorator)* . (class_definition) @class) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
@@ -269,17 +269,17 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'java': {
             functionQueries: [
                 // Method declaration with annotations and preceding comments
-                `((comment)+ @comment . (marker_annotation)* . (method_declaration) @function) @capture`,
+                `((comment)* @comment . (marker_annotation)* . (method_declaration) @function) @capture`,
                 // Constructor declaration with annotations and preceding comments
-                `((comment)+ @comment . (marker_annotation)* . (constructor_declaration) @function) @capture`
+                `((comment)* @comment . (marker_annotation)* . (constructor_declaration) @function) @capture`
             ],
             classQueries: [
                 // Class declaration with annotations and preceding comments
-                `((comment)+ @comment . (marker_annotation)* . (class_declaration) @class) @capture`,
+                `((comment)* @comment . (marker_annotation)* . (class_declaration) @class) @capture`,
                 // Interface declaration with annotations and preceding comments
-                `((comment)+ @comment . (marker_annotation)* . (interface_declaration) @interface) @capture`,
+                `((comment)* @comment . (marker_annotation)* . (interface_declaration) @interface) @capture`,
                 // Enum declaration with annotations and preceding comments
-                `((comment)+ @comment . (marker_annotation)* . (enum_declaration) @enum) @capture`
+                `((comment)* @comment . (marker_annotation)* . (enum_declaration) @enum) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
@@ -303,21 +303,25 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 ) @capture`,
                 // Templated function definition with preceding comments
                 `(
-                  (comment)+ @comment
+                  (comment)* @comment
                   .
                   (template_declaration . (function_definition) @function)
                 ) @capture`,
                 // Templated function declaration with preceding comments
                 `(
-                  (comment)+ @comment
+                  (comment)* @comment
                   .
                   (template_declaration . (declaration type: (_) declarator: (function_declarator)) @function)
                 ) @capture`
             ],
             classQueries: [
                 // Class specifier with preceding comments
-                `((comment)* . [(template_declaration) (class_specifier) (struct_specifier) (enum_specifier)]) @capture
+                `((comment)* . [(class_specifier) (struct_specifier) (enum_specifier)]) @capture
                  `,
+                // Templated class specifier with preceding comments
+                `((comment)* @comment . (template_declaration . (class_specifier) @class)) @capture`,
+                // Templated struct specifier with preceding comments
+                `((comment)* @comment . (template_declaration . (struct_specifier) @struct)) @capture`,
                 // Namespace definition with preceding comments
                 `((comment)* @comment . (namespace_definition) @namespace . (comment)* @trailingComment) @capture
                  (#select-adjacent! @comment @namespace @trailingComment)`
@@ -327,7 +331,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 `(field_declaration_list
                   .
                   (
-                    (comment)+ @comment
+                    (comment)* @comment
                     .
                     (function_definition) @method
                   )
@@ -336,7 +340,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 `(field_declaration_list
                   .
                   (
-                    (comment)+ @comment
+                    (comment)* @comment
                     .
                     (template_declaration . (function_definition) @method)
                   )
@@ -345,7 +349,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 `(field_declaration_list
                   .
                   (
-                    (comment)+ @comment
+                    (comment)* @comment
                     .
                     (field_declaration) @field
                   )
@@ -361,15 +365,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'c': {
             functionQueries: [
                 // Function definition with preceding comments
-                `((comment)+ @comment . (function_definition) @function) @capture`,
+                `((comment)* @comment . (function_definition) @function) @capture`,
                 // Function declaration with preceding comments
-                `((comment)+ @comment . (declaration type: (_) declarator: (function_declarator)) @function) @capture`
+                `((comment)* @comment . (declaration type: (_) declarator: (function_declarator)) @function) @capture`
             ],
             classQueries: [
                 // Struct specifier with preceding comments
-                `((comment)+ @comment . (struct_specifier) @struct) @capture`,
+                `((comment)* @comment . (struct_specifier) @struct) @capture`,
                 // Enum specifier with preceding comments
-                `((comment)+ @comment . (enum_specifier) @enum) @capture`
+                `((comment)* @comment . (enum_specifier) @enum) @capture`
             ],
             methodQueries: [],
             blockQueries: ['(compound_statement) @block']
@@ -377,27 +381,27 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'csharp': {
             functionQueries: [
                 // Method declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (method_declaration) @function) @capture`,
+                `((comment)* @comment . (attribute_list)* . (method_declaration) @function) @capture`,
                 // Constructor declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (constructor_declaration) @function) @capture`,
+                `((comment)* @comment . (attribute_list)* . (constructor_declaration) @function) @capture`,
                 // Destructor declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (destructor_declaration) @function) @capture`,
+                `((comment)* @comment . (attribute_list)* . (destructor_declaration) @function) @capture`,
                 // Operator declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (operator_declaration) @function) @capture`
+                `((comment)* @comment . (attribute_list)* . (operator_declaration) @function) @capture`
             ],
             classQueries: [
                 // Class declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (class_declaration) @class) @capture`,
+                `((comment)* @comment . (attribute_list)* . (class_declaration) @class) @capture`,
                 // Interface declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (interface_declaration) @interface) @capture`,
+                `((comment)* @comment . (attribute_list)* . (interface_declaration) @interface) @capture`,
                 // Struct declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (struct_declaration) @struct) @capture`,
+                `((comment)* @comment . (attribute_list)* . (struct_declaration) @struct) @capture`,
                 // Enum declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (enum_declaration) @enum) @capture`,
+                `((comment)* @comment . (attribute_list)* . (enum_declaration) @enum) @capture`,
                 // Namespace declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (namespace_declaration) @namespace) @capture`,
+                `((comment)* @comment . (attribute_list)* . (namespace_declaration) @namespace) @capture`,
                 // Delegate declaration with attributes and preceding comments
-                `((comment)+ @comment . (attribute_list)* . (delegate_declaration) @delegate) @capture`
+                `((comment)* @comment . (attribute_list)* . (delegate_declaration) @delegate) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
@@ -405,19 +409,19 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'go': {
             functionQueries: [
                 // Function declaration with preceding comments
-                `((comment)+ @comment . (function_declaration) @function) @capture`,
+                `((comment)* @comment . (function_declaration) @function) @capture`,
                 // Method declaration with preceding comments
-                `((comment)+ @comment . (method_declaration) @method) @capture`
+                `((comment)* @comment . (method_declaration) @method) @capture`
             ],
             classQueries: [
                 // Type declaration with preceding comments
-                `((comment)+ @comment . (type_declaration) @type) @capture`,
+                `((comment)* @comment . (type_declaration) @type) @capture`,
                 // Struct type definition with preceding comments
-                `((comment)+ @comment . (struct_type) @struct) @capture`,
+                `((comment)* @comment . (struct_type) @struct) @capture`,
                 // Interface type definition with preceding comments
-                `((comment)+ @comment . (interface_type) @interface) @capture`,
+                `((comment)* @comment . (interface_type) @interface) @capture`,
                 // Type specifier with preceding comments
-                `((comment)+ @comment . (type_spec) @type) @capture`
+                `((comment)* @comment . (type_spec) @type) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
@@ -425,15 +429,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'ruby': {
             functionQueries: [
                 // Method definition with preceding comments
-                `((comment)+ @comment . (method) @function) @capture`,
+                `((comment)* @comment . (method) @function) @capture`,
                 // Singleton method definition with preceding comments
-                `((comment)+ @comment . (singleton_method) @function) @capture`
+                `((comment)* @comment . (singleton_method) @function) @capture`
             ],
             classQueries: [
                 // Class definition with preceding comments
-                `((comment)+ @comment . (class) @class) @capture`,
+                `((comment)* @comment . (class) @class) @capture`,
                 // Module definition with preceding comments
-                `((comment)+ @comment . (module) @module) @capture`
+                `((comment)* @comment . (module) @module) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(do_block) @block', '(block) @block']
@@ -441,21 +445,21 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         'rust': {
             functionQueries: [
                 // Function item with attributes and preceding comments
-                `((comment)+ @comment . (attribute_item)* . (function_item) @function) @capture`,
+                `((comment)* @comment . (attribute_item)* . (function_item) @function) @capture`,
                 // Function signature item with attributes and preceding comments
-                `((comment)+ @comment . (attribute_item)* . (function_signature_item) @function) @capture`
+                `((comment)* @comment . (attribute_item)* . (function_signature_item) @function) @capture`
             ],
             classQueries: [
                 // Struct item with attributes and preceding comments
-                `((comment)+ @comment . (attribute_item)* . (struct_item) @struct) @capture`,
+                `((comment)* @comment . (attribute_item)* . (struct_item) @struct) @capture`,
                 // Trait item with attributes and preceding comments
-                `((comment)+ @comment . (attribute_item)* . (trait_item) @trait) @capture`,
+                `((comment)* @comment . (attribute_item)* . (trait_item) @trait) @capture`,
                 // Impl item with attributes and preceding comments
-                `((comment)+ @comment . (attribute_item)* . (impl_item) @impl) @capture`,
+                `((comment)* @comment . (attribute_item)* . (impl_item) @impl) @capture`,
                 // Enum item with attributes and preceding comments
-                `((comment)+ @comment . (attribute_item)* . (enum_item) @enum) @capture`,
+                `((comment)* @comment . (attribute_item)* . (enum_item) @enum) @capture`,
                 // Mod item with attributes and preceding comments
-                `((comment)+ @comment . (attribute_item)* . (mod_item) @module) @capture`
+                `((comment)* @comment . (attribute_item)* . (mod_item) @module) @capture`
             ],
             methodQueries: [], // Covered by functionQueries
             blockQueries: ['(block) @block']
@@ -464,9 +468,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             functionQueries: [], // CSS doesn't have functions in the typical sense
             classQueries: [
                 // Rule set with preceding comments
-                `((comment)+ @comment . (rule_set) @rule) @capture`,
+                `((comment)* @comment . (rule_set) @rule) @capture`,
                 // At-rule with preceding comments
-                `((comment)+ @comment . (at_rule) @at_rule) @capture`
+                `((comment)* @comment . (at_rule) @at_rule) @capture`
             ],
             methodQueries: [],
             blockQueries: ['(block) @block']
