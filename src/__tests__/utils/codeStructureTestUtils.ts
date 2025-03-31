@@ -91,7 +91,7 @@ export class CodeStructureTestUtils {
         if (!this.analyzer) {
             await this.initializeAnalyzer();
         }
-        const breakPoints = await this.analyzer!.findStructureBreakPoints(content, language, variant);
+        const { breakPoints } = await this.analyzer!.findStructureBreakPoints(content, language, variant);
 
         console.log(`Found ${breakPoints.length} structure break points`);
 

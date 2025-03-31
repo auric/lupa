@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
-import { PreTrainedTokenizer } from '@huggingface/transformers';
 import { EmbeddingOptions, ChunkingResult, DetailedChunkingResult } from '../types/embeddingTypes'; // Import DetailedChunkingResult
 import { WorkerTokenEstimator } from './workerTokenEstimator';
-import { TreeStructureAnalyzer, TreeStructureAnalyzerResource, CodeStructure } from '../services/treeStructureAnalyzer'; // Import CodeStructure
+import { TreeStructureAnalyzer, TreeStructureAnalyzerResource } from '../services/treeStructureAnalyzer'; // Import CodeStructure
 
 /**
  * WorkerCodeChunker provides intelligent code chunking capabilities within worker threads.
@@ -14,6 +13,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
     private readonly defaultOverlapSize = 100;
     private resource: TreeStructureAnalyzerResource | null = null;
     private analyzer: TreeStructureAnalyzer | null = null;
+
+    private readonly logLevel: 'debug' | 'info' | 'warn' | 'error' = 'info';
 
     /**
      * Creates a new worker code chunker
@@ -28,23 +29,29 @@ export class WorkerCodeChunker implements vscode.Disposable {
     /**
      * Get a TreeStructureAnalyzer from the pool
      */
-    private async getTreeStructureAnalyzer(): Promise<TreeStructureAnalyzer | null> {
+    private async getTreeStructureAnalyzer(): Promise<TreeStructureAnalyzer> {
         if (!this.analyzer) {
-            try {
-                // Get the pool instance instead of creating a new analyzer
-                this.resource = await TreeStructureAnalyzerResource.create();
-                this.analyzer = this.resource.instance;
-                return this.analyzer;
-            } catch (error) {
-                console.warn('Tree-sitter not available, falling back to regex-based chunking:', error);
-                return null;
-            }
+            this.resource = await TreeStructureAnalyzerResource.create();
+            this.analyzer = this.resource.instance;
+            return this.analyzer;
         }
         return this.analyzer;
     }
 
     /**
-     * Chunks code into pieces that respect natural boundaries and fit within token limits
+     * Utility method for consistent logging
+     */
+    private log(level: 'debug' | 'info' | 'warn' | 'error', message: string, ...args: any[]): void {
+        // Only log if the level is at or above the configured log level
+        const levelPriority = { debug: 0, info: 1, warn: 2, error: 3 };
+        if (levelPriority[level] >= levelPriority[this.logLevel]) {
+            const prefix = `WorkerCodeChunker [${level.toUpperCase()}]`;
+            console[level](prefix, message, ...args);
+        }
+    }
+
+    /**
+     * Main chunking method - chunks code into pieces that respect natural boundaries and fit within token limits
      * @param text The code text to chunk
      * @param options Optional embedding options that may include overlap size
      * @param signal AbortSignal for cancellation
@@ -56,486 +63,515 @@ export class WorkerCodeChunker implements vscode.Disposable {
         options: EmbeddingOptions,
         signal: AbortSignal,
         language?: string
-    ): Promise<DetailedChunkingResult> { // Updated return type
+    ): Promise<DetailedChunkingResult> {
+        // Start with analytical logging
+        const chunkingStartTime = performance.now();
+        this.log('info', `Starting code chunking${language ? ` for ${language}` : ''}, text length: ${text.length}`);
+
+        // Handle empty content specially
+        if (!text || text.length === 0) {
+            return {
+                chunks: [''],
+                offsets: [0],
+                metadata: {
+                    parentStructureIds: [null],
+                    structureOrders: [null],
+                    isOversizedFlags: [false],
+                    structureTypes: [null],
+                }
+            };
+        }
+
         const overlapSize = options.overlapSize !== undefined ?
-            options.overlapSize :
-            this.defaultOverlapSize;
+            options.overlapSize : this.defaultOverlapSize;
 
         const safeTokenLimit = this.tokenEstimator.getSafeChunkSize();
-        // Define a flexible limit (e.g., 1.5x strict limit or +1000 tokens)
-        const flexibleTokenLimit = Math.min(safeTokenLimit * 1.5, safeTokenLimit + 1000);
 
         try {
-            // For files that fit entirely, return single chunk with null metadata
-            if (await this.tokenEstimator.willFitContextWindow(text)) {
-                return {
-                    chunks: [text],
-                    offsets: [0],
-                    metadata: {
-                        parentStructureIds: [null],
-                        structureOrders: [null],
-                        isOversizedFlags: [false], // Not oversized if it fits
-                        structureTypes: [null]
-                    }
-                };
-            }
-
-            // Try to use tree-sitter for language-aware chunking if language is provided
+            // Use Tree-sitter for structure-aware chunking if language is supported
             if (language) {
                 const analyzer = await this.getTreeStructureAnalyzer();
-                if (analyzer) {
-                    try {
-                        const structureResult = await this.createStructureAwareChunks(
-                            text,
-                            language,
-                            safeTokenLimit,
-                            flexibleTokenLimit, // Pass flexible limit
-                            overlapSize,
-                            analyzer,
-                            signal
-                        );
-                        if (structureResult) {
-                            return structureResult;
-                        }
-                    } finally {
-                        // Ensure analyzer is always released
-                        this.analyzer = null;
-                        this.resource?.dispose();
-                    }
-                }
+                this.log('info', `Using structure-aware chunking for ${language}`);
+
+                // Get the structural information using the analyzer
+                const result = await this.createStructureAwareChunks(
+                    text,
+                    language,
+                    safeTokenLimit,
+                        overlapSize,
+                        analyzer,
+                        signal
+                    );
+
+                const duration = performance.now() - chunkingStartTime;
+                this.log('info', `Structure-aware chunking completed in ${duration.toFixed(2)}ms, created ${result.chunks.length} chunks`);
+
+                return result;
             }
 
-            // Fallback: For large files or unsupported languages, use optimized token chunking
-            console.log('Worker: Falling back to optimized token chunking');
-            return this.createOptimizedTokenChunks(text, safeTokenLimit, overlapSize, signal);
+            // Fallback to basic chunking if language not supported or analyzer not available
+            this.log('info', 'Using basic chunking as fallback');
+            const result = await this.createBasicChunks(text, safeTokenLimit, overlapSize, signal);
+
+            const duration = performance.now() - chunkingStartTime;
+            this.log('info', `Basic chunking completed in ${duration.toFixed(2)}ms, created ${result.chunks.length} chunks`);
+
+            return result;
+
         } catch (error) {
-            if (signal.aborted && error instanceof Error && error.message.includes('cancelled')) {
-                throw error;
+            this.log('error', 'Error during chunking:', error);
+            if (signal.aborted) {
+                throw new Error('Operation was cancelled');
             }
 
-            console.error('Worker: Error during chunking:', error);
-
-            // Fallback to simple chunking on error
-            console.log('Worker: Falling back to simple chunking method due to error');
-            return this.createSimpleChunks(text, overlapSize);
+            // Last resort emergency fallback
+            this.log('warn', 'Using emergency fallback chunking');
+            return this.createEmergencyChunks(text, safeTokenLimit, overlapSize);
         }
     }
 
     /**
      * Creates chunks based on code structure analysis using Tree-sitter
-     * Handles class/method hierarchy and preserves complete structures
+     * Implements a recursive node-based chunking strategy
      */
     private async createStructureAwareChunks(
         text: string,
         language: string,
-        maxTokens: number, // Strict limit
-        flexibleTokenLimit: number, // More generous limit for whole structures
+        maxTokens: number,
         overlapSize: number,
         analyzer: TreeStructureAnalyzer,
         signal: AbortSignal
-    ): Promise<DetailedChunkingResult | null> {
+    ): Promise<DetailedChunkingResult> {
         try {
-            // Find all structure break points
-            const breakPoints = await analyzer.findStructureBreakPoints(text, language);
+            // Use TreeStructureAnalyzer to find all code structures
+            const structures = await analyzer.findAllStructures(text, language);
+            this.log('debug', `Found ${structures.length} code structures in ${language} file`);
 
-            // Get all major structures (functions, classes, etc.)
-            const allStructures = await analyzer.findAllStructures(text, language);
-
-            // Create a map of structures keyed by their start offset for quick lookup
-            const structureMap = new Map<number, CodeStructure>();
-            for (const struct of allStructures) {
-                const startOffset = this.positionToOffset(text, struct.range.startPosition.row, struct.range.startPosition.column);
-                if (startOffset !== null) {
-                    structureMap.set(startOffset, struct);
-                }
-            }
-
-            // --- Initialize arrays for DetailedChunkingResult ---
+            // Initialize result containers
             const chunks: string[] = [];
             const offsets: number[] = [];
             const parentStructureIds: (string | null)[] = [];
             const structureOrders: (number | null)[] = [];
-            const isOversizedFlags: (boolean | null)[] = [];
+            const isOversizedFlags: boolean[] = [];
             const structureTypes: (string | null)[] = [];
-            // ---
 
-            let currentPos = 0;
-            let currentBreakPointIndex = 0;
+            // Keep track of which parts of the text have been covered by structures
+            const coveredRanges: { start: number, end: number }[] = [];
 
-            while (currentPos < text.length) {
-                if (signal.aborted) throw new Error('Operation was cancelled');
-
-                let chunkEndPos = text.length;
-                let chunkText = '';
-                let isOversized = false;
-                let structureType: string | null = null;
-
-                // Check if current position is the start of a known structure
-                const currentStructure = structureMap.get(currentPos);
-
-                if (currentStructure) {
-                    structureType = currentStructure.type; // Store type
-                    const structureEndOffset = this.positionToOffset(text, currentStructure.range.endPosition.row, currentStructure.range.endPosition.column)!;
-                    const structureText = text.substring(currentPos, structureEndOffset);
-                    const tokenCount = await this.tokenEstimator.countTokens(structureText);
-
-                    if (tokenCount <= flexibleTokenLimit) {
-                        // Structure fits (possibly using flexible limit)
-                        chunkText = structureText;
-                        chunkEndPos = structureEndOffset;
-                        isOversized = tokenCount > maxTokens; // Mark if it exceeded strict limit
-
-                        // Add chunk and metadata
-                        offsets.push(currentPos);
-                        chunks.push(chunkText);
-                        parentStructureIds.push(null);
-                        structureOrders.push(null);
-                        isOversizedFlags.push(isOversized);
-                        structureTypes.push(structureType);
-
-                        // Advance position past this structure
-                        currentPos = chunkEndPos;
-                        // Advance breakpoint index past this structure
-                        while (currentBreakPointIndex < breakPoints.length && breakPoints[currentBreakPointIndex].position <= currentPos) {
-                            currentBreakPointIndex++;
-                        }
-                        continue; // Process next part of the text
-                    } else {
-                        // Structure is too large, needs splitting
-                        const parentId = uuidv4();
-                        const subChunks = await this.splitOversizedStructure(
-                            structureText,
-                            language,
-                            maxTokens,
-                            overlapSize,
-                            analyzer,
-                            signal
-                        );
-
-                        // Add sub-chunks with metadata
-                        for (let i = 0; i < subChunks.chunks.length; i++) {
-                            offsets.push(currentPos + subChunks.offsets[i]); // Adjust offset relative to file start
-                            chunks.push(subChunks.chunks[i]);
-                            parentStructureIds.push(parentId);
-                            structureOrders.push(i);
-                            isOversizedFlags.push(false); // Sub-chunks are not oversized by definition
-                            structureTypes.push(structureType);
-                        }
-
-                        // Advance position past the original oversized structure
-                        currentPos = structureEndOffset;
-                        // Advance breakpoint index past this structure
-                        while (currentBreakPointIndex < breakPoints.length && breakPoints[currentBreakPointIndex].position <= currentPos) {
-                            currentBreakPointIndex++;
-                        }
-                        continue; // Process next part of the text
-                    }
+            // Process each structure
+            for (const structure of structures) {
+                if (signal.aborted) {
+                    throw new Error('Operation was cancelled');
                 }
 
-                // --- If not at a structure start, find the next chunk boundary ---
-                let foundBreak = false;
-                while (currentBreakPointIndex < breakPoints.length) {
-                    const bp = breakPoints[currentBreakPointIndex];
-                    if (bp.position <= currentPos) {
-                        currentBreakPointIndex++;
-                        continue;
+                const startOffset = analyzer.positionToOffset(structure.range.startPosition, text)!;
+                const endOffset = analyzer.positionToOffset(structure.range.endPosition, text)!;
+
+                // Skip if this range is already covered by a previous structure
+                if (this.isRangeCovered(startOffset, endOffset, coveredRanges)) {
+                    continue;
+                }
+
+                const structureText = text.substring(startOffset, endOffset);
+                const tokenCount = await this.tokenEstimator.countTokens(structureText);
+
+                // If structure fits within token limit, include it as a whole
+                if (tokenCount <= maxTokens) {
+                    chunks.push(structureText);
+                    offsets.push(startOffset);
+                    parentStructureIds.push(null); // Top-level structure
+                    structureOrders.push(null);
+                    isOversizedFlags.push(false);
+                    structureTypes.push(structure.type);
+
+                    // Mark this range as covered
+                    coveredRanges.push({ start: startOffset, end: endOffset });
+                }
+                // Otherwise, we need to split this large structure
+                else {
+                    this.log('info', `Structure of type ${structure.type} exceeds token limit (${tokenCount} tokens), splitting`);
+
+                    // Create a unique parent ID for all chunks from this structure
+                    const parentId = uuidv4();
+
+                    // Split the oversized structure
+                    const splitResult = await this.splitOversizedStructure(
+                        structureText,
+                        maxTokens,
+                        overlapSize,
+                        signal
+                    );
+
+                    // Add each split chunk with proper metadata
+                    for (let i = 0; i < splitResult.chunks.length; i++) {
+                        chunks.push(splitResult.chunks[i]);
+                        offsets.push(startOffset + splitResult.offsets[i]);
+                        parentStructureIds.push(parentId);
+                        structureOrders.push(i);
+                        isOversizedFlags.push(true);
+                        structureTypes.push(structure.type);
                     }
 
-                    const potentialText = text.substring(currentPos, bp.position);
-                    const tokenCount = await this.tokenEstimator.countTokens(potentialText);
-
-                    if (tokenCount <= maxTokens) {
-                        // This breakpoint works
-                        chunkEndPos = bp.position;
-                        foundBreak = true;
-                        // Don't increment index yet, might reuse this breakpoint if overlap occurs
-                        break;
-                    } else {
-                        // This breakpoint makes the chunk too large, stop searching breakpoints
-                        break;
-                    }
-                }
-
-                if (!foundBreak) {
-                    // No suitable breakpoint found, or next breakpoint makes chunk too large.
-                    // Force break based on maxTokens.
-                    chunkEndPos = await this.findPositionByTokenLimit(text, currentPos, maxTokens);
-                }
-
-                // Ensure we make progress
-                if (chunkEndPos <= currentPos) {
-                    console.warn(`Worker: Chunk end position (${chunkEndPos}) not advancing from start (${currentPos}). Forcing advance.`);
-                    chunkEndPos = Math.min(currentPos + 100, text.length); // Force minimal progress
-                    if (chunkEndPos <= currentPos) chunkEndPos = text.length; // If still stuck, go to end
-                }
-
-
-                chunkText = text.substring(currentPos, chunkEndPos);
-
-                // Add the regular chunk and null metadata
-                offsets.push(currentPos);
-                chunks.push(chunkText);
-                parentStructureIds.push(null);
-                structureOrders.push(null);
-                isOversizedFlags.push(false);
-                structureTypes.push(null);
-
-                // Calculate next start position with overlap, ensuring it doesn't regress
-                const nextPos = Math.max(currentPos + 1, chunkEndPos - overlapSize);
-                currentPos = Math.min(nextPos, text.length); // Ensure we don't go past the end
-
-                // Advance breakpoint index past the current chunk end
-                while (currentBreakPointIndex < breakPoints.length && breakPoints[currentBreakPointIndex].position <= chunkEndPos) {
-                    currentBreakPointIndex++;
+                    // Mark this range as covered
+                    coveredRanges.push({ start: startOffset, end: endOffset });
                 }
             }
 
-            return { chunks, offsets, metadata: { parentStructureIds, structureOrders, isOversizedFlags, structureTypes } };
+            // Handle uncovered parts of the text
+            await this.processUncoveredRanges(
+                text,
+                coveredRanges,
+                maxTokens,
+                overlapSize,
+                chunks,
+                offsets,
+                parentStructureIds,
+                structureOrders,
+                isOversizedFlags,
+                structureTypes,
+                signal
+            );
+
+            // If no chunks were created, fall back to basic chunking
+            if (chunks.length === 0) {
+                this.log('warn', 'No chunks were created from structures, falling back to basic chunking');
+                return this.createBasicChunks(text, maxTokens, overlapSize, signal);
+            }
+
+            return {
+                chunks,
+                offsets,
+                metadata: {
+                    parentStructureIds,
+                    structureOrders,
+                    isOversizedFlags,
+                    structureTypes
+                }
+            };
         } catch (error) {
-            console.error('Error creating structure-aware chunks:', error);
-            return null; // Indicate failure
+            this.log('error', `Error in structure-based chunking for ${language}:`, error);
+            throw error;
         }
     }
 
-    /**
-     * Splits an oversized structure into smaller chunks, trying to respect internal boundaries.
-     */
-    private async splitOversizedStructure(
-        structureText: string,
-        language: string,
+    private isRangeCovered(start: number, end: number, coveredRanges: { start: number, end: number }[]): boolean {
+        // A range is considered covered if it's entirely contained within any existing range
+        return coveredRanges.some(range => start >= range.start && end <= range.end);
+    }
+
+    private async processUncoveredRanges(
+        text: string,
+        coveredRanges: { start: number, end: number }[],
         maxTokens: number,
         overlapSize: number,
-        analyzer: TreeStructureAnalyzer,
+        chunks: string[],
+        offsets: number[],
+        parentStructureIds: (string | null)[],
+        structureOrders: (number | null)[],
+        isOversizedFlags: boolean[],
+        structureTypes: (string | null)[],
         signal: AbortSignal
-    ): Promise<ChunkingResult> { // Returns simple ChunkingResult for internal use
-        // TODO: Implement more sophisticated internal splitting using tree-sitter
-        // For now, fallback to token-based splitting *within* the structure text
-        console.log("Worker: Oversized structure splitting using token fallback.");
-        const result = await this.createOptimizedTokenChunks(structureText, maxTokens, overlapSize, signal);
-        // We only need chunks and relative offsets within the structureText
-        return { chunks: result.chunks, offsets: result.offsets };
-    }
+    ): Promise<void> {
+        if (coveredRanges.length === 0) {
+            // If no ranges were covered, process the entire text
+            const basicResult = await this.createBasicChunks(text, maxTokens, overlapSize, signal);
+            chunks.push(...basicResult.chunks);
+            offsets.push(...basicResult.offsets);
+            parentStructureIds.push(...basicResult.metadata.parentStructureIds);
+            structureOrders.push(...basicResult.metadata.structureOrders);
+            isOversizedFlags.push(...basicResult.metadata.isOversizedFlags.map(flag => flag === null ? false : flag));
+            structureTypes.push(...basicResult.metadata.structureTypes);
+            return;
+        }
 
-    /**
-    * Finds the end position for a chunk starting at startPos to not exceed maxTokens.
-    */
-    private async findPositionByTokenLimit(text: string, startPos: number, maxTokens: number): Promise<number> {
-        let low = startPos;
-        let high = text.length;
-        let bestEndPos = startPos;
+        // Sort covered ranges by start position
+        coveredRanges.sort((a, b) => a.start - b.start);
 
-        // Estimate initial high point based on characters
-        const estimatedChars = maxTokens * 5; // Generous estimate
-        high = Math.min(startPos + estimatedChars, text.length);
+        // Find gaps between covered ranges
+        let lastEnd = 0;
 
-        // Binary search for the optimal end position
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            if (mid <= startPos) break; // Avoid getting stuck
+        for (const range of coveredRanges) {
+            // If there's a gap between the last end and this start, process it
+            if (range.start > lastEnd) {
+                const gapText = text.substring(lastEnd, range.start);
+                if (gapText.trim().length > 0) {
+                    const gapResult = await this.splitTextByLines(gapText, maxTokens, overlapSize, signal);
 
-            const subText = text.substring(startPos, mid);
-            try {
-                const tokenCount = await this.tokenEstimator.countTokens(subText);
-
-                if (tokenCount <= maxTokens) {
-                    bestEndPos = mid; // This position is valid, try larger
-                    low = mid + 1;
-                } else {
-                    high = mid - 1; // Too large, try smaller
+                    // Add each gap chunk with metadata
+                    for (let i = 0; i < gapResult.chunks.length; i++) {
+                        chunks.push(gapResult.chunks[i]);
+                        offsets.push(lastEnd + gapResult.offsets[i]);
+                        parentStructureIds.push(null);
+                        structureOrders.push(null);
+                        isOversizedFlags.push(false);
+                        structureTypes.push('gap');
+                    }
                 }
-            } catch (e) {
-                console.warn("Token estimation failed during binary search, reducing range.", e);
-                high = mid - 1; // Reduce range on error
+            }
+
+            lastEnd = Math.max(lastEnd, range.end);
+        }
+
+        // If there's text after the last covered range, process it
+        if (lastEnd < text.length) {
+            const trailingText = text.substring(lastEnd);
+            if (trailingText.trim().length > 0) {
+                const trailingResult = await this.splitTextByLines(trailingText, maxTokens, overlapSize, signal);
+
+                // Add each trailing chunk with metadata
+                for (let i = 0; i < trailingResult.chunks.length; i++) {
+                    chunks.push(trailingResult.chunks[i]);
+                    offsets.push(lastEnd + trailingResult.offsets[i]);
+                    parentStructureIds.push(null);
+                    structureOrders.push(null);
+                    isOversizedFlags.push(false);
+                    structureTypes.push('trailing');
+                }
             }
         }
-        // Ensure we return a position greater than startPos if possible
-        return Math.max(bestEndPos, startPos + 1);
     }
 
+    private async splitOversizedStructure(
+        text: string,
+        maxTokens: number,
+        overlapSize: number,
+        signal: AbortSignal
+    ): Promise<ChunkingResult> {
+        // First try to split by logical boundaries like blank lines
+        const boundaries = this.findLogicalBoundaries(text);
 
-    /**
-     * Convert position (row, column) to character offset
-     * @param text Source text
-     * @param row Zero-based row
-     * @param column Zero-based column
-     * @returns Character offset or null if invalid
-     */
-    private positionToOffset(text: string, row: number, column: number): number | null {
-        const lines = text.split('\n');
-
-        if (row >= lines.length) {
-            return null;
+        if (boundaries.length > 1) {
+            return this.splitByBoundaries(text, boundaries, maxTokens, overlapSize, signal);
         }
 
-        let offset = 0;
-        for (let i = 0; i < row; i++) {
-            if (lines[i] === undefined) return null;
-            offset += lines[i].length + 1; // +1 for the newline
-        }
+        // If no good boundaries found, fall back to line-based splitting
+        return this.splitTextByLines(text, maxTokens, overlapSize, signal);
+    }
 
-        if (lines[row] === undefined || column > lines[row].length) {
-            if (lines[row] !== undefined && column === lines[row].length) {
-                // Valid position at end of line
-            } else {
-                return null;
+    private findLogicalBoundaries(text: string): number[] {
+        const boundaries: number[] = [0]; // Always include the start
+
+        // Find blank lines (two or more newlines in a row)
+        const blankLineMatches = text.matchAll(/\n\s*\n/g);
+        for (const match of blankLineMatches) {
+            if (match.index !== undefined) {
+                boundaries.push(match.index + match[0].length);
             }
         }
 
-        offset += column;
-        return Math.min(offset, text.length);
-    }
-
-    /**
-     * Create simple chunks based on character count as a fallback.
-     * Returns DetailedChunkingResult with null metadata.
-     */
-    private createSimpleChunks(text: string, overlapSize: number): DetailedChunkingResult {
-        const simpleResult = this._createSimpleChunksInternal(text, overlapSize);
-        return {
-            ...simpleResult,
-            metadata: {
-                parentStructureIds: simpleResult.chunks.map(() => null),
-                structureOrders: simpleResult.chunks.map(() => null),
-                isOversizedFlags: simpleResult.chunks.map(() => false),
-                structureTypes: simpleResult.chunks.map(() => null),
+        // Add large comment blocks as boundaries
+        const commentBlockMatches = text.matchAll(/\/\*[\s\S]*?\*\//g);
+        for (const match of commentBlockMatches) {
+            if (match.index !== undefined && match[0].length > 50) {
+                boundaries.push(match.index + match[0].length);
             }
-        };
+        }
+
+        // Add the end of the text
+        boundaries.push(text.length);
+
+        // Sort and deduplicate
+        return [...new Set(boundaries)].sort((a, b) => a - b);
     }
 
-    /**
-     * Internal simple chunking logic.
-     */
-    private _createSimpleChunksInternal(text: string, overlapSize: number): ChunkingResult {
+    private async splitByBoundaries(
+        text: string,
+        boundaries: number[],
+        maxTokens: number,
+        overlapSize: number,
+        signal: AbortSignal
+    ): Promise<ChunkingResult> {
         const chunks: string[] = [];
         const offsets: number[] = [];
-        const charsPerToken = 4;
-        const estimatedChunkSize = Math.floor(this.tokenEstimator.getSafeChunkSize() * charsPerToken);
-        let position = 0;
 
-        while (position < text.length) {
-            offsets.push(position);
-            let end = Math.min(position + estimatedChunkSize, text.length);
+        let startBoundary = 0;
+        let currentChunk = '';
+        let currentTokens = 0;
 
-            if (end < text.length) {
-                const nearbyNewline = text.lastIndexOf('\n', end);
-                if (nearbyNewline > position) {
-                    end = nearbyNewline + 1;
-                }
+        for (let i = 1; i < boundaries.length; i++) {
+            if (signal.aborted) {
+                throw new Error('Operation was cancelled');
             }
 
-            chunks.push(text.substring(position, end));
-            const nextPosition = Math.max(position + 1, end - overlapSize);
-            position = Math.min(nextPosition, text.length);
+            const sectionText = text.substring(boundaries[startBoundary], boundaries[i]);
+            const sectionTokens = await this.tokenEstimator.countTokens(sectionText);
+
+            // If adding this section would exceed the token limit
+            if (currentTokens + sectionTokens > maxTokens && currentChunk.length > 0) {
+                // Add the current chunk
+                chunks.push(currentChunk);
+                offsets.push(boundaries[startBoundary]);
+
+                // Start a new chunk from this boundary
+                currentChunk = sectionText;
+                currentTokens = sectionTokens;
+                startBoundary = i;
+            }
+            // If this section alone exceeds the token limit
+            else if (sectionTokens > maxTokens) {
+                // If we have a current chunk, add it
+                if (currentChunk.length > 0) {
+                    chunks.push(currentChunk);
+                    offsets.push(boundaries[startBoundary]);
+                }
+
+                // Split this large section by lines
+                const splitResult = await this.splitTextByLines(sectionText, maxTokens, overlapSize, signal);
+
+                // Add each split chunk with adjusted offsets
+                for (let j = 0; j < splitResult.chunks.length; j++) {
+                    chunks.push(splitResult.chunks[j]);
+                    offsets.push(boundaries[i - 1] + splitResult.offsets[j]);
+                }
+
+                // Reset for next iteration
+                currentChunk = '';
+                currentTokens = 0;
+                startBoundary = i;
+            }
+            // Section fits in current chunk
+            else {
+                currentChunk += sectionText;
+                currentTokens += sectionTokens;
+            }
         }
+
+        // Add any remaining chunk
+        if (currentChunk.length > 0) {
+            chunks.push(currentChunk);
+            offsets.push(boundaries[startBoundary]);
+        }
+
         return { chunks, offsets };
     }
 
     /**
-     * Enhanced token-based chunking.
-     * Returns DetailedChunkingResult with null metadata.
+     * Split text by lines trying to respect token limits
      */
-    async createOptimizedTokenChunks(
+    private async splitTextByLines(
         text: string,
         maxTokens: number,
-        overlap: number,
+        overlapSize: number,
         signal: AbortSignal
-    ): Promise<DetailedChunkingResult> {
-        // Early return for empty text
-        if (!text || text.length === 0) {
-            return {
-                chunks: [], offsets: [], metadata: {
-                    parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: []
-                }
-            };
-        }
-
-        const startTime = performance.now();
-        const tokenizer = await this.tokenEstimator.initialize();
-        const tokens = await this.tokenEstimator.tokenize(text);
-        const tokenPositions = await this.mapTokensToPositions(text, tokens, tokenizer);
-
-        if (tokens.length <= maxTokens) {
-            return {
-                chunks: [text], offsets: [0],
-                metadata: {
-                    parentStructureIds: [null], structureOrders: [null], isOversizedFlags: [false], structureTypes: [null]
-                }
-            };
-        }
-
-        const breakPoints = this.findCodeBreakPoints(text); // Use simple breakpoints as fallback
-        console.log(`Worker (Optimized): Found ${breakPoints.length} potential break points`);
-
+    ): Promise<ChunkingResult> {
         const chunks: string[] = [];
         const offsets: number[] = [];
-        let startTokenIdx = 0;
 
-        while (startTokenIdx < tokens.length) {
+        // Split the text into lines
+        const lines = text.split(/\r?\n/);
+        let currentChunk: string[] = [];
+        let currentOffset = 0;
+        let currentTokens = 0;
+
+        for (let i = 0; i < lines.length; i++) {
             if (signal.aborted) throw new Error('Operation was cancelled');
 
-            const targetEndTokenIdx = Math.min(startTokenIdx + maxTokens, tokens.length);
+            const line = lines[i] + (i < lines.length - 1 ? '\n' : '');
+            const lineTokens = await this.tokenEstimator.countTokens(line);
 
-            if (targetEndTokenIdx >= tokens.length) {
-                if (startTokenIdx < tokenPositions.length) { // Check if startTokenIdx is valid
-                    const chunkText = text.substring(tokenPositions[startTokenIdx].start);
-                    if (chunkText.trim().length > 0) {
-                        chunks.push(chunkText);
-                        offsets.push(tokenPositions[startTokenIdx].start);
-                    }
+            // If a single line exceeds token limit, split it by characters
+            if (lineTokens > maxTokens) {
+                // Add current chunk if not empty
+                if (currentChunk.length > 0) {
+                    const chunk = currentChunk.join('');
+                    chunks.push(chunk);
+                    offsets.push(currentOffset);
+                    currentChunk = [];
+                    currentTokens = 0;
                 }
-                break;
+
+                // Split the long line
+                let startChar = 0;
+                let textOffset = 0;
+                for (let j = 0; j < line.length; j += maxTokens / 2) {
+                    const endChar = Math.min(j + maxTokens / 2, line.length);
+                    const segment = line.substring(startChar, endChar);
+
+                    chunks.push(segment);
+                    offsets.push(currentOffset + textOffset);
+
+                    textOffset += segment.length;
+                    startChar = endChar;
+                }
+
+                currentOffset += line.length;
             }
+            // If adding this line would exceed token limit
+            else if (currentTokens + lineTokens > maxTokens && currentChunk.length > 0) {
+                // Add current chunk
+                const chunk = currentChunk.join('');
+                chunks.push(chunk);
+                offsets.push(currentOffset);
 
-            // Ensure targetEndTokenIdx-1 is a valid index
-            const safeTargetEndIdx = Math.max(0, targetEndTokenIdx - 1);
-            if (safeTargetEndIdx >= tokenPositions.length) {
-                console.warn(`Worker: safeTargetEndIdx ${safeTargetEndIdx} out of bounds for tokenPositions (len ${tokenPositions.length}). Breaking loop.`);
-                break; // Prevent out-of-bounds access
+                // Start new chunk with this line
+                currentChunk = [line];
+                currentTokens = lineTokens;
+                currentOffset += chunk.length;
             }
-            const targetCharPos = tokenPositions[safeTargetEndIdx].end;
-
-
-            const searchWindow = 500;
-            const bestBreakPoint = this.findBestBreakPoint(
-                breakPoints,
-                targetCharPos - searchWindow,
-                targetCharPos + searchWindow
-            );
-
-            const breakPos = bestBreakPoint !== null ? bestBreakPoint.pos : tokenPositions[safeTargetEndIdx].end;
-
-            // Ensure startTokenIdx is valid before accessing tokenPositions
-            if (startTokenIdx >= tokenPositions.length) {
-                console.warn(`Worker: startTokenIdx ${startTokenIdx} out of bounds for tokenPositions (len ${tokenPositions.length}). Breaking loop.`);
-                break;
+            // Line fits in current chunk
+            else {
+                currentChunk.push(line);
+                currentTokens += lineTokens;
             }
-
-            const chunkText = text.substring(tokenPositions[startTokenIdx].start, breakPos);
-            if (chunkText.trim().length > 0) {
-                chunks.push(chunkText);
-                offsets.push(tokenPositions[startTokenIdx].start);
-            }
-
-            // Find overlap start position carefully
-            const overlapCharTarget = Math.max(tokenPositions[startTokenIdx].start, breakPos - 150); // Look back ~150 chars for overlap start
-            let nextStartTokenIdx = this.findTokenIndexNearPosition(
-                tokenPositions,
-                overlapCharTarget,
-                signal
-            );
-
-            // Ensure we always make forward progress
-            if (nextStartTokenIdx <= startTokenIdx) {
-                nextStartTokenIdx = startTokenIdx + 1;
-            }
-
-            startTokenIdx = nextStartTokenIdx;
         }
 
-        const endTime = performance.now();
-        console.log(`Worker: Optimized token chunking completed in ${(endTime - startTime).toFixed(2)}ms - created ${chunks.length} chunks`);
+        // Add final chunk if not empty
+        if (currentChunk.length > 0) {
+            const chunk = currentChunk.join('');
+            chunks.push(chunk);
+            offsets.push(currentOffset);
+        }
 
-        // Return DetailedChunkingResult with null metadata
+        return { chunks, offsets };
+    }
+
+    /**
+     * Basic chunking approach as a fallback when structure-aware chunking fails
+     */
+    private async createBasicChunks(
+        text: string,
+        maxTokens: number,
+        overlapSize: number,
+        signal: AbortSignal
+    ): Promise<DetailedChunkingResult> {
+        return this.splitTextByLines(text, maxTokens, overlapSize, signal).then(result => ({
+            ...result,
+            metadata: {
+                parentStructureIds: result.chunks.map(() => null),
+                structureOrders: result.chunks.map(() => null),
+                isOversizedFlags: result.chunks.map(() => false),
+                structureTypes: result.chunks.map(() => null)
+            }
+        }));
+    }
+
+    /**
+     * Emergency fallback chunking that always works
+     */
+    private createEmergencyChunks(
+        text: string,
+        maxTokens: number,
+        overlapSize: number
+    ): DetailedChunkingResult {
+        const chunks: string[] = [];
+        const offsets: number[] = [];
+
+        // Estimate characters per token (conservative estimate)
+        const charsPerToken = 4;
+        const chunkSize = Math.floor(maxTokens * charsPerToken * 0.8); // 80% to be safe
+
+        for (let i = 0; i < text.length; i += chunkSize - overlapSize) {
+            const end = Math.min(i + chunkSize, text.length);
+            chunks.push(text.substring(i, end));
+            offsets.push(i);
+        }
+
+        // If empty, add a single empty chunk
+        if (chunks.length === 0) {
+            chunks.push('');
+            offsets.push(0);
+        }
+
         return {
             chunks,
             offsets,
@@ -543,267 +579,15 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 parentStructureIds: chunks.map(() => null),
                 structureOrders: chunks.map(() => null),
                 isOversizedFlags: chunks.map(() => false),
-                structureTypes: chunks.map(() => null),
+                structureTypes: chunks.map(() => null)
             }
         };
     }
 
-
     /**
-     * Map tokens to their positions in the original text
-     * @param text Original text
-     * @param tokens Array of token IDs
-     * @param tokenizer The tokenizer instance
-     * @returns Array of token positions {start, end}
+     * Dispose resources
      */
-    private async mapTokensToPositions(
-        text: string,
-        tokens: number[],
-        tokenizer: PreTrainedTokenizer
-    ): Promise<Array<{ start: number, end: number }>> {
-        const positions: Array<{ start: number, end: number }> = [];
-        let currentPos = 0;
-        let remainingText = text;
-
-        // Process tokens in batches for efficiency
-        const batchSize = 100;
-        for (let i = 0; i < tokens.length; i += batchSize) {
-            const batch = tokens.slice(i, i + batchSize);
-
-            // Process each token in batch
-            for (let j = 0; j < batch.length; j++) {
-                const token = batch[j];
-                const tokenIdx = i + j;
-
-                try {
-                    // Decode the token to get its text representation
-                    const tokenText = await tokenizer.decode([token], {
-                        skip_special_tokens: true
-                    });
-
-                    if (tokenText && tokenText.length > 0) {
-                        // Try to find the token text in the remaining text
-                        // Be more robust with whitespace handling
-                        const trimmedTokenText = tokenText.trim();
-                        let tokenPos = -1;
-                        let searchStart = 0;
-
-                        // Search for trimmed version first, then original if needed
-                        if (trimmedTokenText.length > 0) {
-                            tokenPos = remainingText.indexOf(trimmedTokenText, searchStart);
-                        }
-
-                        // If trimmed not found, or if original token had leading/trailing space, search original
-                        if (tokenPos === -1 || tokenText !== trimmedTokenText) {
-                            tokenPos = remainingText.indexOf(tokenText, searchStart);
-                        }
-
-
-                        if (tokenPos !== -1) {
-                            // Found match
-                            const start = currentPos + tokenPos;
-                            const end = start + tokenText.length; // Use original token length
-                            positions.push({ start, end });
-
-                            // Update positions for next token
-                            currentPos = end;
-                            remainingText = text.substring(currentPos); // Reset remainingText based on absolute position
-                        } else {
-                            // Handle the case where direct match fails
-                            console.warn(`Worker: Token "${tokenText}" not found directly at pos ${currentPos}. Using fallback.`);
-                            const approximatePos = this.findApproximateTokenPosition(
-                                remainingText, tokenText, currentPos
-                            );
-                            positions.push(approximatePos);
-                            currentPos = approximatePos.end;
-                            remainingText = text.substring(currentPos);
-                        }
-                    } else {
-                        // Handle empty or special token
-                        positions.push({ start: currentPos, end: currentPos }); // Zero-length range for empty tokens
-                    }
-                } catch (error) {
-                    console.warn(`Worker: Error decoding token at index ${tokenIdx}:`, error);
-                    positions.push({ start: currentPos, end: currentPos + 1 }); // Fallback
-                    currentPos += 1;
-                    remainingText = text.substring(currentPos);
-                }
-            }
-        }
-
-        // Final validation and gap filling
-        if (positions.length > 0) {
-            let lastEnd = 0;
-            for (let i = 0; i < positions.length; i++) {
-                if (positions[i].start < lastEnd) {
-                    positions[i].start = lastEnd;
-                }
-                positions[i].end = Math.max(positions[i].start, positions[i].end); // Ensure end >= start
-                lastEnd = positions[i].end;
-            }
-        }
-
-
-        if (positions.length < tokens.length) {
-            console.warn(`Worker: Mapped ${positions.length} positions for ${tokens.length} tokens, filling gaps.`);
-            const lastPos = positions.length > 0 ? positions[positions.length - 1] : { start: 0, end: 0 };
-            while (positions.length < tokens.length) {
-                positions.push({ start: lastPos.end, end: lastPos.end + 1 }); // Estimate length 1 for missing tokens
-            }
-        }
-
-        this.validateTokenPositions(positions, text.length);
-        return positions;
-    }
-
-    /**
-     * Find approximate position for a token that doesn't directly match
-     */
-    private findApproximateTokenPosition(
-        text: string,
-        tokenText: string,
-        basePos: number
-    ): { start: number, end: number } {
-        // Simple fallback: assume token starts right after previous one
-        return { start: basePos, end: basePos + Math.max(1, tokenText.length) }; // Ensure at least length 1
-    }
-
-    /**
-     * Validate token positions to ensure they're within text boundaries
-     */
-    private validateTokenPositions(
-        positions: Array<{ start: number, end: number }>,
-        textLength: number
-    ): void {
-        let lastEnd = 0;
-        for (let i = 0; i < positions.length; i++) {
-            positions[i].start = Math.max(0, Math.min(positions[i].start, textLength));
-            // Ensure end is at least start, and within bounds
-            positions[i].end = Math.max(positions[i].start, Math.min(positions[i].end, textLength));
-
-            // Ensure positions increase monotonically (or at least don't overlap incorrectly)
-            if (positions[i].start < lastEnd) {
-                console.warn(`Correcting overlapping token position at index ${i}`);
-                positions[i].start = lastEnd;
-                positions[i].end = Math.max(positions[i].start, positions[i].end);
-            }
-            lastEnd = positions[i].end;
-        }
-    }
-
-    /**
-     * Find token index closest to a character position using binary search
-     */
-    private findTokenIndexNearPosition(
-        tokenPositions: Array<{ start: number, end: number }>,
-        targetPos: number,
-        signal: AbortSignal
-    ): number {
-        if (tokenPositions.length === 0) return 0; // Handle empty array
-
-        // Ensure targetPos is within bounds
-        targetPos = Math.max(0, Math.min(targetPos, tokenPositions[tokenPositions.length - 1].end));
-
-
-        let left = 0;
-        let right = tokenPositions.length - 1;
-        let bestIndex = 0;
-
-        while (left <= right) {
-            if (signal.aborted) throw new Error('Operation was cancelled');
-            const mid = Math.floor((left + right) / 2);
-
-            if (tokenPositions[mid].start <= targetPos && tokenPositions[mid].end > targetPos) {
-                return mid; // Exact match (targetPos is within this token)
-            }
-
-            if (tokenPositions[mid].start > targetPos) {
-                right = mid - 1;
-            } else {
-                bestIndex = mid; // This token starts before or at targetPos, potential candidate
-                left = mid + 1;
-            }
-        }
-
-        // After loop, 'bestIndex' holds the index of the last token starting <= targetPos
-        // Check if the next token (if exists) is closer
-        if (bestIndex + 1 < tokenPositions.length) {
-            const distBest = targetPos - tokenPositions[bestIndex].start;
-            const distNext = tokenPositions[bestIndex + 1].start - targetPos;
-            if (distNext < distBest) {
-                return bestIndex + 1;
-            }
-        }
-
-        return bestIndex;
-    }
-
-    /**
-     * Find potential break points in code with quality ratings
-     */
-    private findCodeBreakPoints(text: string): Array<{ pos: number, quality: number }> {
-        const breakPoints: Array<{ pos: number, quality: number }> = [];
-        const patterns: Array<{ regex: RegExp, quality: number }> = [
-            { regex: /}\s*\n/g, quality: 5 },
-            { regex: /;\s*\n\s*\n/g, quality: 4 },
-            { regex: /;\s*\n/g, quality: 3 },
-            { regex: /\)\s*\{/g, quality: 2 },
-            { regex: /\n\s*\n/g, quality: 1 }
-        ];
-
-        for (const { regex, quality } of patterns) {
-            let match: RegExpExecArray | null;
-            while ((match = regex.exec(text)) !== null) {
-                breakPoints.push({ pos: match.index + match[0].length, quality });
-            }
-        }
-        breakPoints.sort((a, b) => a.pos - b.pos);
-        return breakPoints;
-    }
-
-    /**
-     * Find best break point within a range
-     */
-    private findBestBreakPoint(
-        breakPoints: Array<{ pos: number, quality: number }>,
-        minPos: number,
-        maxPos: number
-    ): { pos: number, quality: number } | null {
-        let bestBreakPoint: { pos: number, quality: number } | null = null;
-        const startIdx = this.binarySearchBreakPoints(breakPoints, minPos);
-
-        for (let i = startIdx; i < breakPoints.length && breakPoints[i].pos <= maxPos; i++) {
-            if (!bestBreakPoint || breakPoints[i].quality > bestBreakPoint.quality) {
-                bestBreakPoint = breakPoints[i];
-            }
-        }
-        return bestBreakPoint;
-    }
-
-    /**
-     * Binary search to find index of first break point at or after position
-     */
-    private binarySearchBreakPoints(
-        breakPoints: Array<{ pos: number, quality: number }>,
-        position: number
-    ): number {
-        let low = 0;
-        let high = breakPoints.length - 1;
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            if (breakPoints[mid].pos < position) {
-                low = mid + 1;
-            } else {
-                high = mid - 1;
-            }
-        }
-        return low;
-    }
-
-    /**
-     * Release resources and clean up
-     */
-    public async dispose(): Promise<void> {
+    dispose() {
         this.resource?.dispose();
         this.resource = null;
         this.analyzer = null;

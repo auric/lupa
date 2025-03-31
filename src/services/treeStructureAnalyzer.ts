@@ -27,6 +27,11 @@ export interface CodeStructure {
     };
 }
 
+export interface BreakPoint {
+    position: number;
+    quality: number;
+}
+
 /**
  * Manages a pool of TreeStructureAnalyzer instances
  */
@@ -342,7 +347,31 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         language: string,
         variant?: string
     ): Promise<CodeStructure[]> {
+        const tree = await this.parseContent(content, language, variant);
+        if (!tree) {
+            console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
+            return [];
+        }
+        try {
+            return await this.findFunctionsImpl(tree, content, language, variant);
+        } catch (error) {
+            console.error(`Error finding functions in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            return [];
+        } finally {
+            if (tree) {
+                tree.delete();
+            }
+        }
+    }
+
+    public async findFunctionsImpl(
+        tree: Parser.Tree,
+        content: string,
+        language: string,
+        variant?: string
+    ): Promise<CodeStructure[]> {
         return this.findStructures(
+            tree,
             content,
             language,
             'functionQueries',
@@ -353,7 +382,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 'enum_specifier', 'template_declaration'
             ],
             (node) => {
-            // Check if this is a function-like node
+                // Check if this is a function-like node
                 return node.type.includes('function') ||
                     node.type.includes('method') ||
                     node.type.includes('procedure');
@@ -374,14 +403,42 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         language: string,
         variant?: string
     ): Promise<CodeStructure[]> {
-        return this.findStructures(content, language, 'classQueries', [
-            'namespace_definition', 'namespace_declaration', 'module'
-        ], (node) => {
-            // Check if this is a class-like node
-            const isClassLike = node.type.includes('class') ||
-                node.type.includes('struct') ||
-                node.type.includes('interface') ||
-                node.type.includes('enum');
+        const tree = await this.parseContent(content, language, variant);
+        if (!tree) {
+            console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
+            return [];
+        }
+        try {
+            return await this.findClassesImpl(tree, content, language, variant);
+        } catch (error) {
+            console.error(`Error finding classes in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            return [];
+        } finally {
+            if (tree) {
+                tree.delete();
+            }
+        }
+    }
+
+    public async findClassesImpl(
+        tree: Parser.Tree,
+        content: string,
+        language: string,
+        variant?: string
+    ): Promise<CodeStructure[]> {
+        return this.findStructures(
+            tree,
+            content,
+            language,
+            'classQueries',
+            [
+                'namespace_definition', 'namespace_declaration', 'module'
+            ], (node) => {
+                // Check if this is a class-like node
+                const isClassLike = node.type.includes('class') ||
+                    node.type.includes('struct') ||
+                    node.type.includes('interface') ||
+                    node.type.includes('enum');
 
             return isClassLike;
         }, variant);
@@ -398,6 +455,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @returns Array of code structures
      */
     private async findStructures(
+        tree: Parser.Tree,
         content: string,
         language: string,
         queryType: 'functionQueries' | 'classQueries',
@@ -407,20 +465,12 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     ): Promise<CodeStructure[]> {
         await this.ensureInitialized();
 
-        let tree = null;
         const structures: CodeStructure[] = [];
 
         // Map to track processed nodes by their unique position-based identifier
         const processedNodeMap = new Map<string, boolean>();
 
         try {
-            // Parse content into a tree
-            tree = await this.parseContent(content, language, variant);
-            if (!tree) {
-                console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
-                return [];
-            }
-
             // Get language configuration
             const config = TREE_SITTER_LANGUAGE_CONFIGS[language];
             if (!config || !config[queryType] || config[queryType].length === 0) {
@@ -608,10 +658,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         } catch (error) {
             console.error(`Error finding structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
             return [];
-        } finally {
-            if (tree) {
-                tree.delete();
-            }
         }
     }
 
@@ -846,16 +892,23 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     ): Promise<CodeStructure[]> {
         // First, find all functions and classes independently
         // Find all functions and classes using the refined queries
-        const functions = await this.findFunctions(content, language, variant);
-        const classes = await this.findClasses(content, language, variant);
 
-        // Combine functions and classes into a single list
-        let allFoundStructures: CodeStructure[] = [...functions, ...classes];
-
-        // --- Find File Header Comment ---
-        let fileHeaderComment: CodeStructure | null = null;
         const tree = await this.parseContent(content, language, variant);
-        if (tree) {
+        if (!tree) {
+            console.error(`Parsing returned null for ${language}${variant ? ' (' + variant + ')' : ''}`);
+            return [];
+        }
+
+        try {
+            const functions = await this.findFunctionsImpl(tree, content, language, variant);
+            const classes = await this.findClassesImpl(tree, content, language, variant);
+
+            // Combine functions and classes into a single list
+            let allFoundStructures: CodeStructure[] = [...functions, ...classes];
+
+            // --- Find File Header Comment ---
+            let fileHeaderComment: CodeStructure | null = null;
+
             const rootNode = tree.rootNode;
             if (rootNode.childCount > 0) {
                 let firstNode = rootNode.child(0);
@@ -877,10 +930,16 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     }
                 }
             }
-            tree.delete(); // Clean up the tree
-        }
 
-        return allFoundStructures;
+            return allFoundStructures;
+        } catch (error) {
+            console.error(`Error finding all structures in ${language}${variant ? ' (' + variant + ')' : ''} content:`, error);
+            return [];
+        } finally {
+            if (tree) {
+                tree.delete();
+            }
+        }
     }
 
     /**
@@ -894,12 +953,15 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         content: string,
         language: string,
         variant?: string
-    ): Promise<Array<{ position: number, quality: number }>> {
+    ): Promise<{
+        breakPoints: Array<BreakPoint>;
+        structures: CodeStructure[];
+    }> {
+        const structures = await this.findAllStructures(content, language, variant);
         try {
-            const breakPoints: Array<{ position: number, quality: number }> = [];
+            const breakPoints: Array<BreakPoint> = [];
 
             // Combine all relevant structures
-            const structures = await this.findAllStructures(content, language, variant);
 
             // Add structure start and end points as high-quality break points
             for (const struct of structures) {
@@ -939,7 +1001,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const uniqueBreakPoints = Array.from(new Map(breakPoints.map(item => [item.position, item])).values());
             uniqueBreakPoints.sort((a, b) => a.position - b.position);
 
-            return uniqueBreakPoints;
+            return { breakPoints: uniqueBreakPoints, structures };
         } catch (error) {
             console.error(`Error finding structure break points:`, error);
 
@@ -951,7 +1013,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     quality: 3 // Lower quality
                 }));
 
-            return lineBreaks;
+            return { breakPoints: lineBreaks, structures };
         }
     }
 
