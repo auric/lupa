@@ -1,12 +1,15 @@
-import { AutoTokenizer } from '@huggingface/transformers';
-import type { PreTrainedTokenizer } from '@huggingface/transformers';
-
+import {
+    AutoTokenizer,
+    type PreTrainedTokenizer
+} from '@huggingface/transformers';
+import { Mutex } from 'async-mutex';
 /**
  * WorkerTokenEstimator provides token counting functionality in worker threads.
  * It initializes a tokenizer for a specific model and offers methods to count tokens
  * and check if text fits within context windows.
  */
 export class WorkerTokenEstimator {
+    private static readonly mutex = new Mutex();
     private tokenizer: PreTrainedTokenizer | null = null;
     private readonly modelName: string;
     private readonly contextLength: number;
@@ -27,14 +30,20 @@ export class WorkerTokenEstimator {
      * @throws Error if initialization fails
      */
     async initialize(): Promise<PreTrainedTokenizer> {
-        if (!this.tokenizer) {
-            try {
+        if (this.tokenizer) {
+            return this.tokenizer;
+        }
+        const releaser = await WorkerTokenEstimator.mutex.acquire();
+        try {
+            if (!this.tokenizer) {
                 console.log(`Worker: Initializing tokenizer for ${this.modelName}`);
                 this.tokenizer = await AutoTokenizer.from_pretrained(this.modelName);
-            } catch (error) {
-                console.error(`Worker: Failed to initialize tokenizer for ${this.modelName}:`, error);
-                throw new Error(`Failed to initialize tokenizer: ${error instanceof Error ? error.message : String(error)}`);
             }
+        } catch (error) {
+            console.error(`Worker: Failed to initialize tokenizer for ${this.modelName}:`, error);
+            throw new Error(`Failed to initialize tokenizer: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            releaser();
         }
         return this.tokenizer;
     }

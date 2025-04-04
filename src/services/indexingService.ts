@@ -36,6 +36,7 @@ interface ProcessingOperation {
  */
 export class IndexingService implements vscode.Disposable {
     private readonly statusBarService: StatusBarService;
+    private readonly processor: AsyncIndexingProcessor;
 
     // Track current processing operation
     private currentOperation: ProcessingOperation | null = null;
@@ -74,6 +75,13 @@ export class IndexingService implements vscode.Disposable {
             ...options
         } as Required<IndexingServiceOptions>;
 
+        this.processor = new AsyncIndexingProcessor(
+            this.options.modelBasePath,
+            this.options.modelName,
+            this.options.contextLength,
+            this.options.embeddingOptions
+        );
+
         this.statusBarService = StatusBarService.getInstance();
 
         // Register indexing management command
@@ -90,18 +98,6 @@ export class IndexingService implements vscode.Disposable {
      */
     public getModelName(): string {
         return this.options.modelName;
-    }
-
-    /**
-     * Initialize or reinitialize the processor
-     */
-    private createProcessor(): AsyncIndexingProcessor {
-        return new AsyncIndexingProcessor(
-            this.options.modelBasePath,
-            this.options.modelName,
-            this.options.contextLength,
-            this.options.embeddingOptions
-        );
     }
 
     /**
@@ -164,11 +160,7 @@ export class IndexingService implements vscode.Disposable {
                         throw new Error('Operation was cancelled');
                     }
 
-                    const processor = this.createProcessor();
-                    const result = await processor.processFile(file, abortController.signal)
-                        .finally(() => {
-                            processor.dispose();
-                        });
+                    const result = await this.processor.processFile(file, abortController.signal);
 
                     // Update progress
                     completedCount++;
@@ -342,5 +334,6 @@ export class IndexingService implements vscode.Disposable {
     public async dispose(): Promise<void> {
         // Cancel any ongoing operations
         await this.cancelProcessing();
+        this.processor.dispose();
     }
 }

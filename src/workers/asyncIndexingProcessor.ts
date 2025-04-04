@@ -5,6 +5,7 @@ import {
     type FeatureExtractionPipeline,
     type Tensor
 } from '@huggingface/transformers';
+import { Mutex } from 'async-mutex';
 import { EmbeddingOptions, ChunkingMetadata } from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
@@ -36,9 +37,8 @@ export interface ProcessingResult {
  * An async file processor that generates embeddings without worker threads
  */
 export class AsyncIndexingProcessor {
-    private tokenEstimator: WorkerTokenEstimator | null = null;
+    private static readonly mutex = new Mutex();
     private codeChunker: WorkerCodeChunker | null = null;
-    private pipeline: FeatureExtractionPipeline | null = null;
 
     /**
      * Create a new async file processor
@@ -48,41 +48,19 @@ export class AsyncIndexingProcessor {
         private readonly modelName: string,
         private readonly contextLength: number,
         private readonly embeddingOptions: EmbeddingOptions = {}
-    ) { }
-
-    /**
-     * Initialize the processor
-     */
-    private async initialize(): Promise<void> {
+    ) {
+        transformersEnv.allowRemoteModels = false;
+        transformersEnv.allowLocalModels = true;
+        transformersEnv.cacheDir = this.modelBasePath;
         try {
-            // Set up transformer environment
-            transformersEnv.allowRemoteModels = false;
-            transformersEnv.allowLocalModels = true;
-            transformersEnv.cacheDir = this.modelBasePath;
+            const tokenEstimator = new WorkerTokenEstimator(
+                this.modelName,
+                this.contextLength
+            );
 
-            // Create embedding pipeline
-            this.pipeline = await pipeline('feature-extraction', this.modelName, {
-                dtype: 'q4'
-            });
-
-            if (!this.pipeline) {
-                throw new Error(`Failed to initialize embedding pipeline for ${this.modelName}`);
-            }
-
-            if (!this.codeChunker) {
-                // Initialize token estimator
-                this.tokenEstimator = new WorkerTokenEstimator(
-                    this.modelName,
-                    this.contextLength
-                );
-
-                // Initialize code chunker with the tokenEstimator
-                this.codeChunker = new WorkerCodeChunker(this.tokenEstimator);
-            }
-            console.log(`AsyncIndexingProcessor: Model ${this.modelName} initialized successfully`);
+            this.codeChunker = new WorkerCodeChunker(tokenEstimator);
         } catch (error) {
             console.error('Error initializing AsyncIndexingProcessor:', error);
-            this.dispose();
             throw error;
         }
     }
@@ -102,29 +80,28 @@ export class AsyncIndexingProcessor {
     private async generateEmbeddings(
         text: string,
         filePath: string,
-        options: EmbeddingOptions = {},
         signal: AbortSignal
     ): Promise<{ embeddings: Float32Array[], chunkOffsets: number[], metadata: ChunkingMetadata }> {
-        if (!this.pipeline || !this.codeChunker) {
-            await this.initialize();
+        if (!this.codeChunker) {
+            throw new Error('Code chunker is not initialized');
         }
-
         if (signal.aborted) {
             throw new Error('Operation was cancelled');
         }
 
         // Use provided options or defaults
-        const poolingStrategy = options.pooling || 'mean';
-        const shouldNormalize = options.normalize !== false; // Default to true if not specified
+        const poolingStrategy = this.embeddingOptions.pooling || 'mean';
+        const shouldNormalize = this.embeddingOptions.normalize !== false; // Default to true if not specified
 
         // Detect language from file path for better structure-aware chunking
         const language = this.getLanguageFromFilePath(filePath);
 
         // Chunk the text using smart code-aware chunking
-        const result = await this.codeChunker!.chunkCode(text, options, signal, language);
+        const result = await this.codeChunker!.chunkCode(text, this.embeddingOptions, signal, language);
 
         // Generate embeddings for each chunk
         const embeddings: Float32Array[] = [];
+        let pipe: FeatureExtractionPipeline | null = null;
         let output: Tensor | null = null;
         for (const chunk of result.chunks) {
             // Check for cancellation before processing each chunk
@@ -139,14 +116,20 @@ export class AsyncIndexingProcessor {
                     continue;
                 }
 
+                pipe = await AsyncIndexingProcessor.mutex.runExclusive(async () => {
+                    return await pipeline('feature-extraction', this.modelName, {
+                        dtype: 'q4'
+                    });
+                });
+
                 // Generate embedding for this chunk
-                output = await this.pipeline!(chunk, {
+                output = await pipe(chunk, {
                     pooling: poolingStrategy,
                     normalize: shouldNormalize
                 });
 
                 // Extract the embedding
-                const embedding = output!.data;
+                const embedding = output.data;
                 if (!(embedding instanceof Float32Array)) {
                     throw new Error('Embedding output not in expected format');
                 }
@@ -158,6 +141,11 @@ export class AsyncIndexingProcessor {
             } finally {
                 if (output) {
                     output.dispose();
+                    output = null;
+                }
+                if (pipe) {
+                    pipe.dispose();
+                    pipe = null;
                 }
             }
         }
@@ -178,7 +166,6 @@ export class AsyncIndexingProcessor {
             const { embeddings, chunkOffsets, metadata } = await this.generateEmbeddings(
                 file.content,
                 file.path,
-                this.embeddingOptions,
                 signal
             );
 
@@ -229,19 +216,10 @@ export class AsyncIndexingProcessor {
      * Dispose resources
      */
     public dispose(): void {
-        if (this.pipeline) {
-            try {
-                this.pipeline.dispose();
-            } catch (error) {
-                console.error('Error disposing embedding pipeline:', error);
-            }
-            this.pipeline = null;
-        }
         if (this.codeChunker) {
             this.codeChunker.dispose();
         }
 
-        this.tokenEstimator = null;
         this.codeChunker = null;
     }
 }

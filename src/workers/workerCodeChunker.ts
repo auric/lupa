@@ -91,7 +91,6 @@ export class WorkerCodeChunker implements vscode.Disposable {
             // Use Tree-sitter for structure-aware chunking if language is supported
             if (language) {
                 const analyzer = await this.getTreeStructureAnalyzer();
-                this.log('info', `Using structure-aware chunking for ${language}`);
 
                 // Get the structural information using the analyzer
                 const result = await this.createStructureAwareChunks(
