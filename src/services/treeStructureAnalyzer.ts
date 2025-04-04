@@ -567,10 +567,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             if (mainNode.type === 'field_declaration_list') continue;
 
                             // Skip forward declarations in C++
-                            if ((mainNode.type === 'class_specifier' || mainNode.type === 'struct_specifier') &&
-                                language === 'cpp') {
+                            if (language === 'cpp' && (mainNode.type === 'class_specifier' || mainNode.type === 'struct_specifier')) {
                                 const text = mainNode.text;
-                                if (text.trim().endsWith(';') && !text.includes('{')) {
+                                if (!text.includes('{')) {
                                     continue;
                                 }
                             }
