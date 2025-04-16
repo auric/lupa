@@ -13,6 +13,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
     private readonly defaultOverlapSize = 100;
     private resource: TreeStructureAnalyzerResource | null = null;
     private analyzer: TreeStructureAnalyzer | null = null;
+    private readonly MIN_CHUNK_CHARS = 40; // Minimum number of characters a chunk should have
 
     private readonly logLevel: 'debug' | 'info' | 'warn' | 'error' = 'info';
 
@@ -237,14 +238,27 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 return this.createBasicChunks(text, maxTokens, overlapSize, signal);
             }
 
-            return {
+            // Post-process chunks to filter out or merge those that are too small
+            const filteredResult = await this.filterSmallChunks(
                 chunks,
                 offsets,
-                metadata: {
+                {
                     parentStructureIds,
                     structureOrders,
                     isOversizedFlags,
                     structureTypes
+                },
+                maxTokens
+            );
+
+            return {
+                chunks: filteredResult.chunks,
+                offsets: filteredResult.offsets,
+                metadata: {
+                    parentStructureIds: filteredResult.metadata.parentStructureIds,
+                    structureOrders: filteredResult.metadata.structureOrders,
+                    isOversizedFlags: filteredResult.metadata.isOversizedFlags,
+                    structureTypes: filteredResult.metadata.structureTypes
                 }
             };
         } catch (error) {
@@ -533,7 +547,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
         overlapSize: number,
         signal: AbortSignal
     ): Promise<DetailedChunkingResult> {
-        return this.splitTextByLines(text, maxTokens, overlapSize, signal).then(result => ({
+        const initialResult = await this.splitTextByLines(text, maxTokens, overlapSize, signal).then(result => ({
             ...result,
             metadata: {
                 parentStructureIds: result.chunks.map(() => null),
@@ -542,6 +556,22 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 structureTypes: result.chunks.map(() => null)
             }
         }));
+
+        // Post-process chunks to filter out or merge those that are too small
+        const filteredResult = await this.filterSmallChunks(
+            initialResult.chunks,
+            initialResult.offsets,
+            initialResult.metadata,
+            maxTokens
+        );
+
+        this.log('info', `Basic chunking post-processed: ${filteredResult.filtered} filtered, ${filteredResult.merged} merged`);
+
+        return {
+            chunks: filteredResult.chunks,
+            offsets: filteredResult.offsets,
+            metadata: filteredResult.metadata
+        };
     }
 
     /**
@@ -580,6 +610,157 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 isOversizedFlags: chunks.map(() => false),
                 structureTypes: chunks.map(() => null)
             }
+        };
+    }
+
+    /**
+     * Post-processes chunks to filter out or merge those that are too small
+     * @param chunks Array of text chunks
+     * @param offsets Array of chunk start offsets
+     * @param metadata Metadata for all chunks
+     * @param maxTokens Maximum tokens allowed per chunk
+     * @returns Processed arrays with small chunks filtered or merged
+     */
+    private async filterSmallChunks(
+        chunks: string[],
+        offsets: number[],
+        metadata: {
+            parentStructureIds: (string | null)[];
+            structureOrders: (number | null)[];
+            isOversizedFlags: boolean[];
+            structureTypes: (string | null)[];
+        },
+        maxTokens: number
+    ): Promise<{
+        chunks: string[];
+        offsets: number[];
+        metadata: {
+            parentStructureIds: (string | null)[];
+            structureOrders: (number | null)[];
+            isOversizedFlags: boolean[];
+            structureTypes: (string | null)[];
+        };
+        filtered: number;
+        merged: number;
+    }> {
+        // Make copies of arrays to avoid modifying the originals during iteration
+        const newChunks: string[] = [...chunks];
+        const newOffsets: number[] = [...offsets];
+        const newParentStructureIds: (string | null)[] = [...metadata.parentStructureIds];
+        const newStructureOrders: (number | null)[] = [...metadata.structureOrders];
+        const newIsOversizedFlags: boolean[] = [...metadata.isOversizedFlags];
+        const newStructureTypes: (string | null)[] = [...metadata.structureTypes];
+
+        // Track indexes to remove after processing
+        const indexesToRemove: number[] = [];
+        let filteredCount = 0;
+        let mergedCount = 0;
+
+        // Process each chunk
+        for (let i = 0; i < newChunks.length; i++) {
+            const chunk = newChunks[i];
+            const trimmedChunk = chunk.trim();
+
+            // Check if chunk is empty or only whitespace
+            if (trimmedChunk.length === 0) {
+                indexesToRemove.push(i);
+                filteredCount++;
+                this.log('debug', `Filtering chunk #${i} - empty or whitespace only`);
+                continue;
+            }
+
+            // Check if chunk is smaller than minimum size
+            if (trimmedChunk.length < this.MIN_CHUNK_CHARS) {
+                // Try to merge with previous chunk first
+                if (i > 0 && !indexesToRemove.includes(i - 1)) {
+                    const prevChunk = newChunks[i - 1];
+                    const combinedChunk = prevChunk + chunk;
+
+                    // Check if combined chunk fits within token limit
+                    const combinedTokens = await this.tokenEstimator.countTokens(combinedChunk);
+
+                    if (combinedTokens <= maxTokens) {
+                        // Merge with previous chunk
+                        newChunks[i - 1] = combinedChunk;
+
+                        // Mark if mixed structure types
+                        if (newStructureTypes[i] !== newStructureTypes[i - 1]) {
+                            newStructureTypes[i - 1] = 'mixed';
+                        }
+
+                        // If either chunk was oversized, the combined chunk is oversized
+                        newIsOversizedFlags[i - 1] = newIsOversizedFlags[i - 1] || newIsOversizedFlags[i];
+
+                        indexesToRemove.push(i);
+                        mergedCount++;
+                        this.log('debug', `Merged small chunk #${i} with previous chunk #${i - 1}`);
+                        continue;
+                    }
+                }
+
+                // If can't merge with previous, try with next chunk
+                if (i < newChunks.length - 1 && !indexesToRemove.includes(i + 1)) {
+                    const nextChunk = newChunks[i + 1];
+                    const combinedChunk = chunk + nextChunk;
+
+                    // Check if combined chunk fits within token limit
+                    const combinedTokens = await this.tokenEstimator.countTokens(combinedChunk);
+
+                    if (combinedTokens <= maxTokens) {
+                        // Merge with next chunk
+                        newChunks[i + 1] = combinedChunk;
+                        newOffsets[i + 1] = newOffsets[i]; // Update offset to start at current chunk
+
+                        // Mark if mixed structure types
+                        if (newStructureTypes[i] !== newStructureTypes[i + 1]) {
+                            newStructureTypes[i + 1] = 'mixed';
+                        }
+
+                        // If either chunk was oversized, the combined chunk is oversized
+                        newIsOversizedFlags[i + 1] = newIsOversizedFlags[i + 1] || newIsOversizedFlags[i];
+
+                        indexesToRemove.push(i);
+                        mergedCount++;
+                        this.log('debug', `Merged small chunk #${i} with next chunk #${i + 1}`);
+                        continue;
+                    }
+                }
+
+                // If we can't merge with either, consider discarding if very small
+                if (trimmedChunk.length < this.MIN_CHUNK_CHARS / 2) {
+                    indexesToRemove.push(i);
+                    filteredCount++;
+                    this.log('warn', `Discarded very small chunk #${i} (${trimmedChunk.length} chars) that couldn't be merged`);
+                    continue;
+                }
+
+                // Otherwise, keep the small chunk as a last resort
+                this.log('info', `Keeping small chunk #${i} (${trimmedChunk.length} chars) as it couldn't be merged`);
+            }
+        }
+
+        // Remove marked indexes in reverse order to avoid shifting issues
+        indexesToRemove.sort((a, b) => b - a);
+        for (const index of indexesToRemove) {
+            newChunks.splice(index, 1);
+            newOffsets.splice(index, 1);
+            newParentStructureIds.splice(index, 1);
+            newStructureOrders.splice(index, 1);
+            newIsOversizedFlags.splice(index, 1);
+            newStructureTypes.splice(index, 1);
+        }
+
+        return {
+            chunks: newChunks,
+            offsets: newOffsets,
+            metadata: {
+                parentStructureIds: newParentStructureIds,
+                structureOrders: newStructureOrders,
+                isOversizedFlags: newIsOversizedFlags,
+                structureTypes: newStructureTypes
+            },
+            filtered: filteredCount,
+            merged: mergedCount
         };
     }
 
