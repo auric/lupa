@@ -154,6 +154,13 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         this.context.subscriptions.push(
             vscode.commands.registerCommand('codelens-pr-analyzer.stopContinuousIndexing', () => this.indexingManager.stopContinuousIndexing())
         );
+
+        this.context.subscriptions.push(
+            vscode.commands.registerCommand(
+                'codelens-pr-analyzer.manageIndexing',
+                () => this.indexingService.showIndexingManagementOptions()
+            )
+        );
     }
 
     /**
@@ -219,7 +226,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
                     // Step 1: Run the analysis with detailed progress reporting - 85% total
                     // We allocate most of the progress to the actual analysis
                     const { analysis, context } = await this.analysisProvider.analyzePullRequest(
-                        diffText, 
+                        diffText,
                         analysisMode,
                         (message, increment) => {
                             // Only update the message if no increment is specified
@@ -234,7 +241,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
                         },
                         token
                     );
-                    
+
                     // Step 2: Display the results - 10% remaining
                     progress.report({ message: 'Preparing analysis results...', increment: 5 });
 
@@ -288,7 +295,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      */
     private async showModelSelectionOptions(): Promise<void> {
         // Show model info first
-        this.modelSelectionService.showModelsInfo();
+        // this.modelSelectionService.showModelsInfo();
 
         // Show options and get selection
         const selected = await this.uiManager.showModelSelectionOptions();

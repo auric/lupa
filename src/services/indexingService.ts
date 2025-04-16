@@ -83,13 +83,6 @@ export class IndexingService implements vscode.Disposable {
         );
 
         this.statusBarService = StatusBarService.getInstance();
-
-        // Register indexing management command
-        const manageIndexingCommand = vscode.commands.registerCommand(
-            'codelens-pr-analyzer.manageIndexing',
-            () => this.showIndexingManagementOptions()
-        );
-        context.subscriptions.push(manageIndexingCommand);
     }
 
     /**
@@ -281,7 +274,7 @@ export class IndexingService implements vscode.Disposable {
     /**
      * Show indexing management options
      */
-    private async showIndexingManagementOptions(): Promise<void> {
+    public async showIndexingManagementOptions(): Promise<void> {
         const options = [
             "Cancel current indexing",
             "Restart processor",
