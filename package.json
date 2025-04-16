@@ -25,7 +25,7 @@
             },
             {
                 "command": "codelens-pr-analyzer.selectEmbeddingModel",
-                "title": "CodeLens PR: Select PR Analyzer Model"
+                "title": "CodeLens PR: Select Embedding Model"
             },
             {
                 "command": "codelens-pr-analyzer.showModelsInfo",
