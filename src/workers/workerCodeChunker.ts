@@ -480,9 +480,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
             if (signal.aborted) throw new Error('Operation was cancelled');
 
             const line = lines[i] + (i < lines.length - 1 ? '\n' : '');
+            // If a single line exceeds token limit, use smarter splitting
             const lineTokens = await this.tokenEstimator.countTokens(line);
-
-            // If a single line exceeds token limit, split it by characters
             if (lineTokens > maxTokens) {
                 // Add current chunk if not empty
                 if (currentChunk.length > 0) {
@@ -493,18 +492,86 @@ export class WorkerCodeChunker implements vscode.Disposable {
                     currentTokens = 0;
                 }
 
-                // Split the long line
-                let startChar = 0;
-                let textOffset = 0;
-                for (let j = 0; j < line.length; j += maxTokens / 2) {
-                    const endChar = Math.min(j + maxTokens / 2, line.length);
-                    const segment = line.substring(startChar, endChar);
+                // Try syntax-aware splitting of the oversized line
+                const remainingText = line;
+                let processedLength = 0;
+                let remainingOffset = currentOffset;
 
-                    chunks.push(segment);
-                    offsets.push(currentOffset + textOffset);
+                while (processedLength < remainingText.length) {
+                    if (signal.aborted) throw new Error('Operation was cancelled');
 
-                    textOffset += segment.length;
-                    startChar = endChar;
+                    // Get the text we still need to process
+                    const textToProcess = remainingText.substring(processedLength);
+
+                    // Find preferred split points
+                    const splitPoints = this.findPreferredSplitPoints(textToProcess);
+
+                    // If no split points found or only at the very beginning, we'll need a fallback
+                    if (splitPoints.length === 0 || (splitPoints.length === 1 && splitPoints[0] < 10)) {
+                        // Emergency fallback: character-based splitting as last resort
+                        this.log('warn', `No viable split points found in large line, using character-based splitting as fallback`);
+
+                        const safeCharLimit = Math.floor(maxTokens / 2); // Conservative estimate
+                        const segment = textToProcess.substring(0, Math.min(safeCharLimit, textToProcess.length));
+
+                        chunks.push(segment);
+                        offsets.push(remainingOffset);
+
+                        processedLength += segment.length;
+                        remainingOffset += segment.length;
+                        continue;
+                    }
+
+                    // Start with the whole textToProcess and find the largest portion that fits
+                    let currentEnd = textToProcess.length;
+                    let lastGoodEnd = 0;
+                    let lastGoodTokens = 0;
+
+                    // Binary search approach to find the largest fitting segment
+                    let left = 0;
+                    let right = splitPoints.length - 1;
+
+                    while (left <= right) {
+                        const mid = Math.floor((left + right) / 2);
+                        const splitPoint = splitPoints[mid];
+                        const segment = textToProcess.substring(0, splitPoint);
+
+                        // Check if this segment fits within token limit
+                        const segmentTokens = await this.tokenEstimator.countTokens(segment);
+
+                        if (segmentTokens <= maxTokens) {
+                            // This fits, try to find a larger segment
+                            lastGoodEnd = splitPoint;
+                            lastGoodTokens = segmentTokens;
+                            left = mid + 1;
+                        } else {
+                            // Too large, try smaller
+                            right = mid - 1;
+                        }
+                    }
+
+                    // If we found a good split point, use it
+                    if (lastGoodEnd > 0) {
+                        const segment = textToProcess.substring(0, lastGoodEnd);
+
+                        chunks.push(segment);
+                        offsets.push(remainingOffset);
+
+                        processedLength += lastGoodEnd;
+                        remainingOffset += lastGoodEnd;
+                    } else {
+                        // If we couldn't find any good split point, fall back to character-based splitting
+                        this.log('warn', `Couldn't find a split point that produces a segment within token limit, using fallback`);
+
+                        const safeCharLimit = Math.floor(maxTokens / 3); // Even more conservative
+                        const segment = textToProcess.substring(0, Math.min(safeCharLimit, textToProcess.length));
+
+                        chunks.push(segment);
+                        offsets.push(remainingOffset);
+
+                        processedLength += segment.length;
+                        remainingOffset += segment.length;
+                    }
                 }
 
                 currentOffset += line.length;
@@ -771,5 +838,42 @@ export class WorkerCodeChunker implements vscode.Disposable {
         this.resource?.dispose();
         this.resource = null;
         this.analyzer = null;
+    }
+
+    /**
+     * Find preferred split points in text based on syntax-aware boundaries
+     * @param text The text to analyze for split points
+     * @returns Array of indices where the text can be safely split
+     */
+    private findPreferredSplitPoints(text: string): number[] {
+        const splitPoints: number[] = [];
+
+        // Attempt 1: Find statement boundaries (semicolons, braces) and sentence endings in comments
+        const statementBoundaries = [...text.matchAll(/[;{}](?=\s|$)|(?<=\/\/.*)[.!?](?=\s|$)|(?<=\/\*.*)[.!?](?=\s|\*\/|$)/g)];
+        for (const match of statementBoundaries) {
+            if (match.index !== undefined) {
+                splitPoints.push(match.index + 1); // After the boundary character
+            }
+        }
+
+        // Attempt 2: Find whitespace sequences (prioritize after statements)
+        const whitespaceSequences = [...text.matchAll(/\s+/g)];
+        for (const match of whitespaceSequences) {
+            if (match.index !== undefined) {
+                splitPoints.push(match.index + match[0].length); // After the whitespace
+            }
+        }
+
+        // Attempt 3: Find operators and punctuation, avoiding multi-char operators
+        // Pattern matches common operators/punctuation not followed by characters that would make them multi-char operators
+        const operatorsAndPunctuation = [...text.matchAll(/(?<![\+\-\*\/\=\:\,\(\)\[\]\<\>])[\+\-\*\/\=\:\,\(\)\[\]\<\>](?![\+\-\=\>])/g)];
+        for (const match of operatorsAndPunctuation) {
+            if (match.index !== undefined) {
+                splitPoints.push(match.index + 1); // After the operator/punctuation
+            }
+        }
+
+        // Remove duplicates and sort
+        return [...new Set(splitPoints)].sort((a, b) => a - b);
     }
 }
