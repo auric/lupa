@@ -211,6 +211,13 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         }
     }
 
+    public isLanguageSupported(languageId: string, variant?: string): boolean {
+        const supportedLanguage = Object.values(SUPPORTED_LANGUAGES)
+            .find(lang => lang.language === languageId &&
+                (!variant || lang.variant === variant));
+        return !!supportedLanguage;
+    }
+
     /**
      * Ensure the analyzer is initialized before proceeding
      */

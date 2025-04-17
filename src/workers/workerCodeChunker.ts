@@ -87,26 +87,30 @@ export class WorkerCodeChunker implements vscode.Disposable {
             options.overlapSize : this.defaultOverlapSize;
 
         const safeTokenLimit = this.tokenEstimator.getSafeChunkSize();
-
         try {
             // Use Tree-sitter for structure-aware chunking if language is supported
             if (language) {
                 const analyzer = await this.getTreeStructureAnalyzer();
 
-                // Get the structural information using the analyzer
-                const result = await this.createStructureAwareChunks(
-                    text,
-                    language,
-                    safeTokenLimit,
+                // Check if the language is supported by Tree-sitter
+                const isLanguageSupported = await analyzer.isLanguageSupported(language);
+
+                if (isLanguageSupported) {
+                    // Get the structural information using the analyzer
+                    const result = await this.createStructureAwareChunks(
+                        text,
+                        language,
+                        safeTokenLimit,
                         overlapSize,
                         analyzer,
                         signal
                     );
 
-                const duration = performance.now() - chunkingStartTime;
-                this.log('info', `Structure-aware chunking completed in ${duration.toFixed(2)}ms, created ${result.chunks.length} chunks`);
+                    const duration = performance.now() - chunkingStartTime;
+                    this.log('info', `Structure-aware chunking completed in ${duration.toFixed(2)}ms, created ${result.chunks.length} chunks`);
 
-                return result;
+                    return result;
+                }
             }
 
             // Fallback to basic chunking if language not supported or analyzer not available
@@ -504,21 +508,38 @@ export class WorkerCodeChunker implements vscode.Disposable {
                     const textToProcess = remainingText.substring(processedLength);
 
                     // Find preferred split points
-                    const splitPoints = this.findPreferredSplitPoints(textToProcess);
-
-                    // If no split points found or only at the very beginning, we'll need a fallback
+                    const splitPoints = this.findPreferredSplitPoints(textToProcess);                    // If no split points found or only at the very beginning, we'll need a fallback
                     if (splitPoints.length === 0 || (splitPoints.length === 1 && splitPoints[0] < 10)) {
                         // Emergency fallback: character-based splitting as last resort
                         this.log('warn', `No viable split points found in large line, using character-based splitting as fallback`);
 
-                        const safeCharLimit = Math.floor(maxTokens / 2); // Conservative estimate
-                        const segment = textToProcess.substring(0, Math.min(safeCharLimit, textToProcess.length));
+                        // Try to find a clean word boundary if possible
+                        const wordMatch = textToProcess.match(/\b\s+\b/);
+                        if (wordMatch && wordMatch.index && wordMatch.index > 0 && wordMatch.index < Math.floor(maxTokens / 3)) {
+                            // We found a word boundary, use that
+                            const segment = textToProcess.substring(0, wordMatch.index + wordMatch[0].length);
+                            chunks.push(segment);
+                            offsets.push(remainingOffset);
+                            processedLength += segment.length;
+                            remainingOffset += segment.length;
+                        } else {
+                            // Force character-based splitting, but try to end on a space if possible
+                            const safeCharLimit = Math.floor(maxTokens / 3); // Conservative estimate
+                            let endPos = Math.min(safeCharLimit, textToProcess.length);
 
-                        chunks.push(segment);
-                        offsets.push(remainingOffset);
+                            // Try to find the last space within our limit to avoid splitting words
+                            const lastSpaceBeforeLimit = textToProcess.substring(0, endPos).lastIndexOf(' ');
+                            if (lastSpaceBeforeLimit > 0 && lastSpaceBeforeLimit > endPos * 0.5) {
+                                // Use the last space if it exists and isn't too far back
+                                endPos = lastSpaceBeforeLimit + 1; // Include the space
+                            }
 
-                        processedLength += segment.length;
-                        remainingOffset += segment.length;
+                            const segment = textToProcess.substring(0, endPos);
+                            chunks.push(segment);
+                            offsets.push(remainingOffset);
+                            processedLength += segment.length;
+                            remainingOffset += segment.length;
+                        }
                         continue;
                     }
 
@@ -804,9 +825,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 // Otherwise, keep the small chunk as a last resort
                 this.log('info', `Keeping small chunk #${i} (${trimmedChunk.length} chars) as it couldn't be merged`);
             }
-        }
-
-        // Remove marked indexes in reverse order to avoid shifting issues
+        }        // Remove marked indexes in reverse order to avoid shifting issues
         indexesToRemove.sort((a, b) => b - a);
         for (const index of indexesToRemove) {
             newChunks.splice(index, 1);
@@ -815,6 +834,23 @@ export class WorkerCodeChunker implements vscode.Disposable {
             newStructureOrders.splice(index, 1);
             newIsOversizedFlags.splice(index, 1);
             newStructureTypes.splice(index, 1);
+        }
+
+        // Special handling for the case when filtering has removed all chunks
+        // Always ensure we return at least one chunk, even if it's smaller than MIN_CHUNK_CHARS
+        if (newChunks.length === 0 && chunks.length > 0) {
+            this.log('info', `Restoring small chunk as it's the only content available`);
+            // Find the smallest index that wasn't removed (or the first one if all were marked)
+            const smallestIndex = indexesToRemove.length === chunks.length
+                ? 0
+                : indexesToRemove.sort((a, b) => a - b).find((val, idx) => val !== idx) || 0;
+
+            newChunks.push(chunks[smallestIndex]);
+            newOffsets.push(offsets[smallestIndex]);
+            newParentStructureIds.push(metadata.parentStructureIds[smallestIndex]);
+            newStructureOrders.push(metadata.structureOrders[smallestIndex]);
+            newIsOversizedFlags.push(metadata.isOversizedFlags[smallestIndex]);
+            newStructureTypes.push(metadata.structureTypes[smallestIndex]);
         }
 
         return {
@@ -838,9 +874,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
         this.resource?.dispose();
         this.resource = null;
         this.analyzer = null;
-    }
-
-    /**
+    }    /**
      * Find preferred split points in text based on syntax-aware boundaries
      * @param text The text to analyze for split points
      * @returns Array of indices where the text can be safely split
@@ -849,27 +883,38 @@ export class WorkerCodeChunker implements vscode.Disposable {
         const splitPoints: number[] = [];
 
         // Attempt 1: Find statement boundaries (semicolons, braces) and sentence endings in comments
-        const statementBoundaries = [...text.matchAll(/[;{}](?=\s|$)|(?<=\/\/.*)[.!?](?=\s|$)|(?<=\/\*.*)[.!?](?=\s|\*\/|$)/g)];
+        // Avoid splitting right after an opening brace/bracket/parenthesis
+        const statementBoundaries = [...text.matchAll(/[;](?=\s|$)|[}](?=\s|$)|(?<=\/\/.*)[.!?](?=\s|$)|(?<=\/\*.*)[.!?](?=\s|\*\/|$)/g)];
         for (const match of statementBoundaries) {
             if (match.index !== undefined) {
                 splitPoints.push(match.index + 1); // After the boundary character
             }
         }
 
-        // Attempt 2: Find whitespace sequences (prioritize after statements)
-        const whitespaceSequences = [...text.matchAll(/\s+/g)];
-        for (const match of whitespaceSequences) {
+        // Attempt 2: Find whitespace sequences that follow complete words (prioritize after statements)
+        // This ensures we don't split in the middle of words
+        const wordBoundaries = [...text.matchAll(/\b\s+/g)];
+        for (const match of wordBoundaries) {
             if (match.index !== undefined) {
                 splitPoints.push(match.index + match[0].length); // After the whitespace
             }
         }
 
-        // Attempt 3: Find operators and punctuation, avoiding multi-char operators
+        // Attempt 3: Find operators and punctuation, avoiding multi-char operators and opening brackets
         // Pattern matches common operators/punctuation not followed by characters that would make them multi-char operators
-        const operatorsAndPunctuation = [...text.matchAll(/(?<![\+\-\*\/\=\:\,\(\)\[\]\<\>])[\+\-\*\/\=\:\,\(\)\[\]\<\>](?![\+\-\=\>])/g)];
+        // Explicitly exclude opening brackets/braces/parentheses
+        const operatorsAndPunctuation = [...text.matchAll(/(?<![\+\-\*\/\=\:\,\<\>])[\+\-\*\/\=\:\,\]\>\)](?![\+\-\=\>])/g)];
         for (const match of operatorsAndPunctuation) {
             if (match.index !== undefined) {
                 splitPoints.push(match.index + 1); // After the operator/punctuation
+            }
+        }
+
+        // Attempt 4: Add newlines as potential split points if they're after a complete statement/expression
+        const newlines = [...text.matchAll(/[^{([;]\n/g)];
+        for (const match of newlines) {
+            if (match.index !== undefined) {
+                splitPoints.push(match.index + 1); // After the character before newline
             }
         }
 

@@ -57,7 +57,7 @@ export class WorkerTokenEstimator {
     async countTokens(text: string): Promise<number> {
         const tokenizer = await this.initialize();
         try {
-            const encoded = await tokenizer.encode(text);
+            const encoded = tokenizer.encode(text);
             return encoded.length;
         } catch (error) {
             console.error('Worker: Error counting tokens:', error);
@@ -74,7 +74,7 @@ export class WorkerTokenEstimator {
     async tokenize(text: string): Promise<number[]> {
         const tokenizer = await this.initialize();
         try {
-            const encoded = await tokenizer.encode(text);
+            const encoded = tokenizer.encode(text);
             return Array.from(encoded);
         } catch (error) {
             console.error('Worker: Error tokenizing text:', error);
