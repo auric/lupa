@@ -63,7 +63,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
         text: string,
         options: EmbeddingOptions,
         signal: AbortSignal,
-        language?: string
+        language: string,
+        variant?: string
     ): Promise<DetailedChunkingResult> {
         // Start with analytical logging
         const chunkingStartTime = performance.now();
@@ -99,11 +100,12 @@ export class WorkerCodeChunker implements vscode.Disposable {
                     // Get the structural information using the analyzer
                     const result = await this.createStructureAwareChunks(
                         text,
-                        language,
                         safeTokenLimit,
                         overlapSize,
                         analyzer,
-                        signal
+                        signal,
+                        language,
+                        variant
                     );
 
                     const duration = performance.now() - chunkingStartTime;
@@ -140,15 +142,16 @@ export class WorkerCodeChunker implements vscode.Disposable {
      */
     private async createStructureAwareChunks(
         text: string,
-        language: string,
         maxTokens: number,
         overlapSize: number,
         analyzer: TreeStructureAnalyzer,
-        signal: AbortSignal
+        signal: AbortSignal,
+        language: string,
+        variant?: string
     ): Promise<DetailedChunkingResult> {
         try {
             // Use TreeStructureAnalyzer to find all code structures
-            const structures = await analyzer.findAllStructures(text, language);
+            const structures = await analyzer.findAllStructures(text, language, variant);
             this.log('debug', `Found ${structures.length} code structures in ${language} file`);
 
             // Initialize result containers
@@ -868,13 +871,6 @@ export class WorkerCodeChunker implements vscode.Disposable {
     }
 
     /**
-     * Dispose resources
-     */
-    dispose() {
-        this.resource?.dispose();
-        this.resource = null;
-        this.analyzer = null;
-    }    /**
      * Find preferred split points in text based on syntax-aware boundaries
      * @param text The text to analyze for split points
      * @returns Array of indices where the text can be safely split
@@ -882,43 +878,137 @@ export class WorkerCodeChunker implements vscode.Disposable {
     private findPreferredSplitPoints(text: string): number[] {
         const splitPoints: number[] = [];
 
-        // Attempt 1: Find statement boundaries (semicolons, braces) and sentence endings in comments
-        // Avoid splitting right after an opening brace/bracket/parenthesis
-        const statementBoundaries = [...text.matchAll(/[;](?=\s|$)|[}](?=\s|$)|(?<=\/\/.*)[.!?](?=\s|$)|(?<=\/\*.*)[.!?](?=\s|\*\/|$)/g)];
-        for (const match of statementBoundaries) {
-            if (match.index !== undefined) {
-                splitPoints.push(match.index + 1); // After the boundary character
-            }
-        }
+        // Check if the text appears to be markdown
+        const isMarkdown = /^(#|\*|-|\d+\.|>|\s*```|\s*~~~|\|)|\[.*\]\(.*\)|^\s*\*\*.*\*\*|^\s*_.*_/m.test(text);
 
-        // Attempt 2: Find whitespace sequences that follow complete words (prioritize after statements)
-        // This ensures we don't split in the middle of words
-        const wordBoundaries = [...text.matchAll(/\b\s+/g)];
-        for (const match of wordBoundaries) {
-            if (match.index !== undefined) {
-                splitPoints.push(match.index + match[0].length); // After the whitespace
+        if (isMarkdown) {
+            // Markdown-specific split points
+            // Avoid splitting in the middle of code blocks
+            const codeBlockBoundaries = [...text.matchAll(/```|~~~|\b`[^`]*`\b/g)];
+            for (const match of codeBlockBoundaries) {
+                if (match.index !== undefined) {
+                    // Add split point before code block markers
+                    if (match.index > 0) {
+                        splitPoints.push(match.index);
+                    }
+                    // Add split point after code block markers
+                    splitPoints.push(match.index + match[0].length);
+                }
             }
-        }
 
-        // Attempt 3: Find operators and punctuation, avoiding multi-char operators and opening brackets
-        // Pattern matches common operators/punctuation not followed by characters that would make them multi-char operators
-        // Explicitly exclude opening brackets/braces/parentheses
-        const operatorsAndPunctuation = [...text.matchAll(/(?<![\+\-\*\/\=\:\,\<\>])[\+\-\*\/\=\:\,\]\>\)](?![\+\-\=\>])/g)];
-        for (const match of operatorsAndPunctuation) {
-            if (match.index !== undefined) {
-                splitPoints.push(match.index + 1); // After the operator/punctuation
+            // Avoid splitting inline code
+            const inlineCode = [...text.matchAll(/`[^`]+`/g)];
+            for (const match of inlineCode) {
+                if (match.index !== undefined) {
+                    // Add split points before and after inline code
+                    if (match.index > 0) {
+                        splitPoints.push(match.index);
+                    }
+                    splitPoints.push(match.index + match[0].length);
+                }
             }
-        }
 
-        // Attempt 4: Add newlines as potential split points if they're after a complete statement/expression
-        const newlines = [...text.matchAll(/[^{([;]\n/g)];
-        for (const match of newlines) {
-            if (match.index !== undefined) {
-                splitPoints.push(match.index + 1); // After the character before newline
+            // Avoid splitting table structure
+            const tableRows = [...text.matchAll(/^\|.*\|$/gm)];
+            for (const match of tableRows) {
+                if (match.index !== undefined) {
+                    // Add split points at the beginning and end of each table row
+                    if (match.index > 0) {
+                        splitPoints.push(match.index);
+                    }
+                    splitPoints.push(match.index + match[0].length);
+                }
+            }
+
+            // Split after paragraphs (blank lines)
+            const paragraphBoundaries = [...text.matchAll(/\n\s*\n/g)];
+            for (const match of paragraphBoundaries) {
+                if (match.index !== undefined) {
+                    splitPoints.push(match.index + match[0].length);
+                }
+            }
+
+            // Split after headings
+            const headings = [...text.matchAll(/^#+\s+.*$/gm)];
+            for (const match of headings) {
+                if (match.index !== undefined && match.index + match[0].length < text.length) {
+                    splitPoints.push(match.index + match[0].length);
+                }
+            }
+
+            // Split after list items
+            const listItems = [...text.matchAll(/^(\s*[-*+]|\s*\d+\.)\s+.*$/gm)];
+            for (const match of listItems) {
+                if (match.index !== undefined && match.index + match[0].length < text.length) {
+                    splitPoints.push(match.index + match[0].length);
+                }
+            }
+
+            // Avoid splitting markdown links [text](url)
+            const links = [...text.matchAll(/\[(?:[^\[\]]|\[[^\[\]]*\])*\]\([^()]*\)/g)];
+            for (const match of links) {
+                if (match.index !== undefined) {
+                    // Add split points before and after links
+                    if (match.index > 0) {
+                        splitPoints.push(match.index);
+                    }
+                    splitPoints.push(match.index + match[0].length);
+                }
+            }
+
+            // Avoid splitting YAML frontmatter blocks
+            const frontmatterMatches = text.match(/^---\n[\s\S]*?\n---/);
+            if (frontmatterMatches && frontmatterMatches.index !== undefined) {
+                splitPoints.push(frontmatterMatches.index + frontmatterMatches[0].length);
+            }
+        } else {
+        // Standard code handling for non-markdown content
+            // Attempt 1: Find statement boundaries (semicolons, braces) and sentence endings in comments
+            const statementBoundaries = [...text.matchAll(/[;](?=\s|$)|[}](?=\s|$)|(?<=\/\/.*)[.!?](?=\s|$)|(?<=\/\*.*)[.!?](?=\s|\*\/|$)/g)];
+            for (const match of statementBoundaries) {
+                if (match.index !== undefined) {
+                    splitPoints.push(match.index + 1); // After the boundary character
+                }
+            }
+
+            // Attempt 2: Find whitespace sequences that follow complete words (prioritize after statements)
+            // This ensures we don't split in the middle of words
+            const wordBoundaries = [...text.matchAll(/\b\s+/g)];
+            for (const match of wordBoundaries) {
+                if (match.index !== undefined) {
+                    splitPoints.push(match.index + match[0].length); // After the whitespace
+                }
+            }
+
+            // Attempt 3: Find operators and punctuation, avoiding multi-char operators and opening brackets
+            // Pattern matches common operators/punctuation not followed by characters that would make them multi-char operators
+            // Explicitly exclude opening brackets/braces/parentheses
+            const operatorsAndPunctuation = [...text.matchAll(/(?<![\+\-\*\/\=\:\,\<\>])[\+\-\*\/\=\:\,\]\>\)](?![\+\-\=\>])/g)];
+            for (const match of operatorsAndPunctuation) {
+                if (match.index !== undefined) {
+                    splitPoints.push(match.index + 1); // After the operator/punctuation
+                }
+            }
+
+            // Attempt 4: Add newlines as potential split points if they're after a complete statement/expression
+            const newlines = [...text.matchAll(/[^{([;]\n/g)];
+            for (const match of newlines) {
+                if (match.index !== undefined) {
+                    splitPoints.push(match.index + 1); // After the character before newline
+                }
             }
         }
 
         // Remove duplicates and sort
         return [...new Set(splitPoints)].sort((a, b) => a - b);
+    }
+
+    /**
+     * Dispose resources
+     */
+    dispose() {
+        this.resource?.dispose();
+        this.resource = null;
+        this.analyzer = null;
     }
 }

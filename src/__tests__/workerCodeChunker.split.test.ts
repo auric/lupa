@@ -59,9 +59,6 @@ function testNestedBrackets() {
     return result;
 }`;
 
-// New test fixture for character-based splitting test
-const UNSPLITTABLE_STRING = `const veryLongStringLiteral = "${Array(2000).fill('x').join('')}";`;
-
 describe('WorkerCodeChunker Improved Splitting Tests', () => {
     let extensionPath: string;
     let tokenEstimator: WorkerTokenEstimator;
@@ -559,6 +556,365 @@ public class TestClass
         expect(result.chunks.length).toBeGreaterThan(10);
 
         // Processing time should scale reasonably (specific threshold may need tuning)
-        expect(duration).toBeLessThan(10000); // 10 seconds max
-    }, 15000); // Increase timeout for this test
+        expect(duration).toBeLessThan(10000); // 10 seconds max    }, 15000); // Increase timeout for this test
+    });
+});
+
+describe('WorkerCodeChunker Basic Chunking Tests for Non-Code Content', () => {
+    let extensionPath: string;
+    let tokenEstimator: WorkerTokenEstimator;
+    let codeChunker: WorkerCodeChunker;
+    let abortController: AbortController;
+
+    // Test fixtures for different markdown content types
+    const BASIC_MARKDOWN = `# Main Title
+
+## Introduction
+This is an introduction paragraph that explains the purpose of this document.
+It spans multiple lines to represent a typical markdown content flow.
+
+## Section 1
+Content for section 1 with some **bold** and *italic* text formatting.
+- List item 1
+- List item 2
+  - Nested list item
+  - Another nested item
+
+## Section 2
+${Array(30).fill('content word').join(' ')}
+
+## Conclusion
+Final thoughts and summary of the document.`;
+
+    const MARKDOWN_WITH_CODE_BLOCKS = `# Document with Code Examples
+
+## JavaScript Example
+Here's a simple JavaScript function:
+
+\`\`\`javascript
+function calculateSum(a, b) {
+    // Add two numbers together
+    return a + b;
+}
+\`\`\`
+
+## Python Example
+And here's the equivalent in Python:
+
+\`\`\`python
+def calculate_sum(a, b):
+    # Add two numbers together
+    return a + b
+\`\`\`
+
+Inline code can be written like \`const x = 42;\`.
+
+${Array(20).fill('explanation word').join(' ')}`;
+
+    const MARKDOWN_WITH_TABLES = `# Data Report
+
+## Results Table
+
+| ID | Name | Value | Description |
+|----|------|-------|-------------|
+| 1 | Alpha | 42.5 | First test result with ${Array(15).fill('details').join(' ')} |
+| 2 | Beta | 37.8 | Second test result |
+| 3 | Gamma | 99.1 | Third test result |
+| 4 | Delta | 14.7 | Fourth test result |
+
+## Analysis
+
+The table shows our test results with detailed metrics.`;
+
+    const MARKDOWN_WITH_FRONTMATTER = `---
+title: Sample Document
+author: Test User
+date: 2025-04-17
+tags:
+  - markdown
+  - testing
+  - chunking
+---
+
+# Sample Document
+
+## Introduction
+
+This document has YAML frontmatter that should be handled properly.
+${Array(25).fill('content word').join(' ')}`;
+
+    const MARKDOWN_WITH_LINKS = `# Reference Document
+
+## Important Links
+
+- [Link to documentation](https://example.com/docs)
+- [API Reference](https://example.com/api)
+- [Another important resource](https://example.com/resource)
+
+## Images
+
+![Logo](https://example.com/logo.png)
+![Diagram](https://example.com/diagram.png)
+
+## References
+
+${Array(20).fill('[Citation link](https://example.com/citation)').join('\n')}`;
+
+    beforeEach(async () => {
+        // Set up extension path to project root
+        extensionPath = path.resolve(__dirname, '..', '..');
+
+        // Create TreeStructureAnalyzer pool
+        TreeStructureAnalyzerPool.createSingleton(extensionPath, 2);
+
+        // Initialize token estimator with a small context length to force chunking
+        tokenEstimator = new WorkerTokenEstimator(
+            'Xenova/all-MiniLM-L6-v2',
+            80 // Very small context length to force aggressive chunking
+        );
+
+        await tokenEstimator.initialize();
+
+        // Create the code chunker
+        codeChunker = new WorkerCodeChunker(tokenEstimator);
+
+        // Set up abort controller for tests
+        abortController = new AbortController();
+    });
+
+    afterEach(async () => {
+        await codeChunker.dispose();
+        abortController.abort();
+    });
+
+    it('should correctly chunk basic markdown content', async () => {
+        const options: EmbeddingOptions = { overlapSize: 10 };
+
+        const result = await codeChunker.chunkCode(
+            BASIC_MARKDOWN,
+            options,
+            abortController.signal,
+            'markdown'
+        );
+
+        // Verify chunking produced multiple chunks due to content length
+        expect(result.chunks.length).toBeGreaterThan(1);
+
+        // Verify headings aren't split mid-heading
+        const headingSplitCount = countPatternSplits(result.chunks, /^#+\s+[^#\n]*$/, /^[^#\n]+$/);
+        expect(headingSplitCount).toBe(0);
+
+        // Verify that the chunks together contain all section headings
+        const allText = result.chunks.join('');
+        expect(allText).toContain('# Main Title');
+        expect(allText).toContain('## Introduction');
+        expect(allText).toContain('## Section 1');
+        expect(allText).toContain('## Section 2');
+        expect(allText).toContain('## Conclusion');
+    });
+
+    it('should handle code blocks in markdown appropriately', async () => {
+        const options: EmbeddingOptions = { overlapSize: 10 };
+
+        const result = await codeChunker.chunkCode(
+            MARKDOWN_WITH_CODE_BLOCKS,
+            options,
+            abortController.signal,
+            'markdown'
+        );
+
+        // Verify chunking produced multiple chunks
+        expect(result.chunks.length).toBeGreaterThan(1);
+
+        // Count code fence splits (should ideally be 0)
+        // This counts how many times ``` gets split across chunks
+        const codeFenceSplits = countPatternSplits(result.chunks, /`{3}[^`]*$/, /^[^`]*`{3}/);
+
+        // We should aim for no code fence splits, but allow at most one in edge cases
+        expect(codeFenceSplits).toBeLessThanOrEqual(1);
+
+        // Verify inline code backticks aren't split
+        const inlineCodeSplits = countPatternSplits(result.chunks, /`[^`]*$/, /^[^`]*`/);
+        expect(inlineCodeSplits).toBe(0);
+    });
+
+    it('should handle markdown tables reasonably', async () => {
+        const options: EmbeddingOptions = { overlapSize: 10 };
+
+        const result = await codeChunker.chunkCode(
+            MARKDOWN_WITH_TABLES,
+            options,
+            abortController.signal,
+            'markdown'
+        );
+
+        // Count table structure splits
+        // This checks for table row splits (| at end of chunk and beginning of next chunk)
+        const tableRowSplits = countPatternSplits(result.chunks, /\|\s*$/, /^\s*\|/);
+
+        // Table header separator splits (| --- | style rows)
+        const tableHeaderSplits = countPatternSplits(result.chunks, /\|[-\s|]*$/, /^[-\s|]*\|/);
+
+        // We should minimize table structure splits, but allow some in complex tables
+        expect(tableRowSplits + tableHeaderSplits).toBeLessThanOrEqual(3);
+
+        // Verify that the actual table data is preserved across chunks
+        const combinedText = result.chunks.join('');
+        expect(combinedText).toContain('ID | Name | Value | Description');
+        expect(combinedText).toContain('Alpha | 42.5');
+        expect(combinedText).toContain('Beta | 37.8');
+    });
+
+    it('should preserve YAML frontmatter blocks', async () => {
+        const options: EmbeddingOptions = { overlapSize: 10 };
+
+        const result = await codeChunker.chunkCode(
+            MARKDOWN_WITH_FRONTMATTER,
+            options,
+            abortController.signal,
+            'markdown'
+        );
+
+        // Frontmatter should not be split between --- markers
+        const frontmatterSplits = countPatternSplits(result.chunks, /---\s*$/, /^[^-]|^---[^-]/);
+        expect(frontmatterSplits).toBe(0);
+
+        // Check that frontmatter content is preserved
+        const combinedText = result.chunks.join('');
+        expect(combinedText).toContain('title: Sample Document');
+        expect(combinedText).toContain('author: Test User');
+        expect(combinedText).toContain('tags:');
+        expect(combinedText).toContain('- markdown');
+    });
+
+    it('should handle markdown links and image references', async () => {
+        const options: EmbeddingOptions = { overlapSize: 10 };
+
+        const result = await codeChunker.chunkCode(
+            MARKDOWN_WITH_LINKS,
+            options,
+            abortController.signal,
+            'markdown'
+        );
+
+        // Count markdown link splits
+        // This checks for [ at end of chunk and ] at beginning of next chunk
+        const linkTextSplits = countPatternSplits(result.chunks, /\[[^\]]*$/, /^[^\[]*\]/);
+
+        // This checks for ]( at end of chunk and ) at beginning of next chunk
+        const linkUrlSplits = countPatternSplits(result.chunks, /\]\([^)]*$/, /^[^(]*\)/);
+
+        // Allow a few link splits for very long content, but should be minimal
+        const totalLinkSplits = linkTextSplits + linkUrlSplits;
+        expect(totalLinkSplits).toBeLessThanOrEqual(5);
+
+        // Verify that the actual link content is preserved
+        const combinedText = result.chunks.join('');
+        expect(combinedText).toContain('[Link to documentation](https://example.com/docs)');
+        expect(combinedText).toContain('![Logo](https://example.com/logo.png)');
+    });
+
+    it('should handle content without a specific language', async () => {
+        // Create a plaintext document with mixed content
+        const plaintext = `TITLE: Important Document
+
+DATE: April 17, 2025
+
+This is a plain text document with no specific language markers.
+It contains several paragraphs of text that should be chunked appropriately.
+
+${Array(50).fill('plain text word').join(' ')}
+
+* Some bullet points
+* More bullet points
+  * Sub bullet
+
+END OF DOCUMENT`;
+
+        const options: EmbeddingOptions = { overlapSize: 10 };
+
+        const result = await codeChunker.chunkCode(
+            plaintext,
+            options,
+            abortController.signal,
+            ''
+        );
+
+        // Verify basic chunking worked without a specified language
+        expect(result.chunks.length).toBeGreaterThan(1);
+
+        // Check that content is preserved
+        const allText = result.chunks.join('');
+        expect(allText).toContain('TITLE: Important Document');
+        expect(allText).toContain('DATE: April 17, 2025');
+        expect(allText).toContain('* Some bullet points');
+        expect(allText).toContain('END OF DOCUMENT');
+    });
+
+    it('should chunk large CSV content reasonably', async () => {
+        // Create a CSV document with many rows and columns
+        const headers = ['ID', 'Name', 'Email', 'Department', 'Title', 'Salary', 'StartDate', 'Notes'];
+
+        // Generate 50 rows of CSV data
+        const rows = Array(50).fill(0).map((_, i) => {
+            return [
+                i + 1,
+                `User ${i + 1}`,
+                `user${i + 1}@example.com`,
+                ['HR', 'Engineering', 'Marketing', 'Sales'][i % 4],
+                `Title ${i % 10}`,
+                50000 + (i * 1000),
+                `2025-${(i % 12) + 1}-${(i % 28) + 1}`,
+                `Notes for user ${i + 1}. ${Array(10).fill(`detail${i}`).join(' ')}`
+            ].join(',');
+        });
+
+        const csvContent = [headers.join(','), ...rows].join('\n');
+
+        const options: EmbeddingOptions = { overlapSize: 10 };
+
+        const result = await codeChunker.chunkCode(
+            csvContent,
+            options,
+            abortController.signal,
+            'csv'
+        );
+
+        // Verify chunking worked
+        expect(result.chunks.length).toBeGreaterThan(1);
+
+        // Count how many times a row was split (should ideally be 0)
+        let rowSplitCount = 0;
+        for (let i = 0; i < result.chunks.length - 1; i++) {
+            if (!result.chunks[i].endsWith('\n') && !result.chunks[i + 1].startsWith('\n')) {
+                rowSplitCount++;
+            }
+        }
+
+        // Allow at most one row to be split in edge cases
+        expect(rowSplitCount).toBeLessThanOrEqual(1);
+
+        // Check that the CSV header is in the first chunk
+        expect(result.chunks[0]).toContain(headers.join(','));
+    });
+
+    // Helper function to count pattern splits across chunks
+    function countPatternSplits(
+        chunks: string[],
+        endPattern: RegExp,
+        startPattern: RegExp
+    ): number {
+        let splitCount = 0;
+
+        for (let i = 0; i < chunks.length - 1; i++) {
+            const currentChunk = chunks[i].trimEnd();
+            const nextChunk = chunks[i + 1].trimStart();
+
+            if (endPattern.test(currentChunk) && startPattern.test(nextChunk)) {
+                splitCount++;
+            }
+        }
+
+        return splitCount;
+    }
 });
