@@ -63,14 +63,25 @@ The components interact through these primary mechanisms:
 5. **Event Subscription**: Services subscribe to events from other services
 
 #### 1.2.2 Analysis Workflow
-1. **Command Invocation**: User invokes the "Analyze PR" command
-2. **PR Selection**: User selects the PR or changes to analyze
-3. **Mode Selection**: User selects the analysis mode
-4. **Diff Extraction**: Git service extracts the relevant diff
-5. **Indexing Check**: System ensures all relevant files are indexed
-6. **Context Retrieval**: Context provider finds relevant code
-7. **Analysis Execution**: Analysis provider sends the query to the language model
-8. **Result Presentation**: UI manager displays the analysis results
+1.  **Command Invocation**: User invokes the "Analyze PR" command.
+2.  **PR Selection**: User selects the PR or changes to analyze via `GitOperationsManager`.
+3.  **Mode Selection**: User selects the analysis mode via `UIManager`.
+4.  **Diff Extraction**: `GitOperationsManager` provides the relevant diff text.
+5.  **Context Retrieval (`ContextProvider`)**:
+    *   Analyzes the diff to identify key symbols and changes.
+    *   **LSP Queries:** Uses VS Code's LSP (`executeDefinitionProvider`, `executeReferenceProvider`) to find precise definitions and usages of identified symbols across the workspace. Extracts relevant code snippets.
+    *   **Embedding Search:** Generates embeddings for diff chunks and queries the `EmbeddingDatabaseAdapter` (using an optimized backend like HNSWlib) for semantically similar code snippets from the indexed workspace.
+    *   Returns both structured LSP results and embedding-based context strings.
+6.  **Context Combination & Optimization (`AnalysisProvider`, `TokenManagerService`)**:
+    *   Formats LSP results (definitions, usages) into markdown.
+    *   Combines formatted LSP context and embedding context.
+    *   Uses `TokenManagerService` to ensure the combined context fits within the language model's token limits, potentially pruning less relevant parts.
+7.  **Analysis Execution (`AnalysisProvider`, `CopilotModelManager`)**:
+    *   Constructs the final prompt including the system prompt, PR diff, and the combined/optimized context.
+    *   Sends the prompt to the selected language model via `CopilotModelManager`.
+8.  **Result Presentation (`UIManager`)**:
+    *   Receives the analysis from `AnalysisProvider`.
+    *   Displays the analysis results, potentially highlighting or linking context snippets back to their source or type (LSP vs. embedding).
 
 #### 1.2.3 Indexing Workflow
 1. **File Selection**: Files to index are identified (new, changed, or requested)
@@ -81,13 +92,25 @@ The components interact through these primary mechanisms:
 6. **Database Storage**: Embeddings are stored in the vector database
 7. **Status Updates**: Progress is reported through the status bar
 
-#### 1.2.4 Context Retrieval Workflow
-1. **Query Extraction**: Query is extracted from diff or changes
-2. **Vector Search**: Similar code is found using vector similarity
-3. **Structure Enhancement**: Results are enhanced with structure awareness
-4. **Relevance Ranking**: Results are ranked by relevance to the query
-5. **Token Optimization**: Context is optimized to fit within token limits
-6. **Context Formatting**: Context is formatted for the language model
+#### 1.2.4 Context Retrieval Workflow (Current Implementation & Planned Enhancement)
+
+***Current Implementation (Embedding-Based):***
+
+1.  **Query Extraction**: The input diff text is analyzed (`ContextProvider`) to extract meaningful code chunks.
+2.  **Embedding Generation**: Embeddings are generated for these diff chunks (`EmbeddingDatabaseAdapter` -> `IndexingService`).
+3.  **Vector Search**: A similarity search is performed against the indexed codebase embeddings using the generated query vectors (`EmbeddingDatabaseAdapter` -> `VectorDatabaseService`). Results are based purely on semantic similarity.
+4.  **Context Formatting**: The content of the most similar code chunks found via embeddings is retrieved and formatted (`ContextProvider`).
+5.  **Basic Token Optimization**: The formatted context string is checked against token limits, potentially undergoing basic truncation if necessary (`TokenManagerService`).
+6.  **Context Delivery**: The formatted (and potentially truncated) context string is provided to the `AnalysisProvider`.
+
+***Planned Enhancement (Hybrid LSP + Embedding - See Improvement Plan):***
+
+1.  **Query Preparation**: Analyze the diff to identify key symbols and meaningful code chunks (`ContextProvider`).
+2.  **LSP-Based Structural Search**: Use VS Code LSP API (`executeDefinitionProvider`, `executeReferenceProvider`) to find exact definitions and usages of identified symbols. Retrieve code snippets around these locations (`ContextProvider`).
+3.  **Embedding-Based Semantic Search**: Generate embeddings for diff chunks and query the vector database for semantically similar code (`EmbeddingDatabaseAdapter` using ANN (hnswlib)).
+4.  **Context Aggregation & Combination**: Collect both LSP (structural) and embedding (semantic) results. Format and combine them intelligently (`ContextProvider`, `AnalysisProvider`).
+5.  **Relevance-Based Token Optimization**: Prune the *combined* context based on relevance scores and token limits, prioritizing LSP results and high-scoring embedding results (`TokenManagerService`).
+6.  **Context Delivery**: Provide the optimized, hybrid context to the `AnalysisProvider`.
 
 ### 1.3 Cross-Cutting Concerns
 
@@ -218,21 +241,22 @@ The vector database system manages the storage and retrieval of embeddings and c
 
 #### 2.3.1 Vector Database Service
 
-The `VectorDatabaseService` (src/services/vectorDatabaseService.ts) manages embedding storage:
+The `VectorDatabaseService` (src/services/vectorDatabaseService.ts) manages embedding storage and retrieval:
 
-- **Schema Management**: Creates and maintains database schema
-- **Transaction Handling**: Ensures data consistency with transactions
-- **File Tracking**: Tracks indexed files and their status
-- **Chunk Management**: Stores and retrieves code chunks
-- **Embedding Storage**: Efficiently stores embedding vectors
-- **Similarity Search**: Implements vector similarity search
-- **Database Optimization**: Optimizes database for performance
+- **Schema Management**: Creates and maintains the SQLite database schema for files, chunks, and metadata.
+- **Transaction Handling**: Ensures data consistency with transactions for write operations.
+- **File Tracking**: Tracks indexed files and their status (path, hash, modification time).
+- **Chunk Management**: Stores and retrieves code chunks associated with files.
+- **Embedding Metadata Storage**: Stores embedding metadata (model, dimension, chunk ID) in SQLite.
+- **Vector Storage & Search (Current & Planned)**: *Current:* Stores embedding vectors as BLOBs in SQLite and performs similarity search via direct computation within SQLite. *Planned Enhancement:* Will integrate a dedicated Approximate Nearest Neighbor (ANN) library (e.g., HNSWlib) for storing vectors and performing similarity searches, using SQLite only for the associated metadata lookup. This will drastically improve search performance.
+- **Database Optimization**: Provides methods to optimize the SQLite database (VACUUM, ANALYZE).
 
 Key interactions:
-- Receives storage requests from `EmbeddingDatabaseAdapter`
-- Provides search capabilities to `EmbeddingDatabaseAdapter`
-- Uses SQLite for persistent storage
-- Reports status to `WorkspaceSettingsService`
+- Receives storage requests from `EmbeddingDatabaseAdapter`.
+- Provides search capabilities (metadata lookup and *Planned:* ANN query results) to `EmbeddingDatabaseAdapter`.
+- Uses SQLite for persistent storage of metadata.
+- *Planned:* Will manage the lifecycle (loading/saving) of the ANN index.
+- Reports status to `WorkspaceSettingsService`.
 
 #### 2.3.2 Tree Structure Analyzer
 
@@ -252,39 +276,42 @@ Key interactions:
 
 ### 2.4 Context System
 
-The context system finds and optimizes relevant code context for analysis.
+The context system finds, retrieves, and optimizes relevant code context from the workspace to aid the language model in analyzing Pull Requests.
+
+***Current State:*** The system primarily relies on semantic similarity search using embeddings.
+
+***Planned Enhancements:*** The system will be enhanced to use a hybrid approach combining precise structural information via LSP and broader semantic similarity via embeddings.
 
 #### 2.4.1 Context Provider
 
-The `ContextProvider` (src/services/contextProvider.ts) manages context retrieval:
+The `ContextProvider` (`src/services/contextProvider.ts`) manages context retrieval:
 
-- **Diff Analysis**: Analyzes diffs to extract search queries
-- **Similarity Search**: Finds code related to changes
-- **Context Ranking**: Ranks context by relevance
-- **Context Optimization**: Optimizes context to fit token limits
-- **Context Formatting**: Formats context for language models
+*   **Diff Analysis (Current & Planned)**: Analyzes diffs to extract meaningful code chunks for querying. *Planned:* Will also identify key changed symbols (functions, classes, variables).
+*   **LSP Context Retrieval (Planned)**: *Planned:* Will interface with VS Code's LSP capabilities (`executeDefinitionProvider`, `executeReferenceProvider`) to find exact definitions and cross-file usages of symbols identified in the diff. Will retrieve snippets surrounding these locations.
+*   **Semantic Context Retrieval (Current & Planned)**: Generates embeddings for meaningful chunks within the diff and uses the `EmbeddingDatabaseAdapter` to perform semantic similarity searches against indexed codebase embeddings. *Planned:* Search will utilize an efficient ANN library.
+*   **Context Aggregation (Planned)**: *Planned:* Will collect results from both LSP and embedding searches.
+*   **Output (Current)**: Provides a string containing semantically similar code snippets found via embeddings. *Planned:* Will provide richer context including structured LSP results.
 
 Key interactions:
-- Uses `EmbeddingDatabaseAdapter` for similarity search
-- Works with `TokenManagerService` for optimization
-- Uses `TreeStructureAnalyzer` for structure awareness
-- Provides context to `AnalysisProvider`
+*   Uses `EmbeddingDatabaseAdapter` for semantic similarity search.
+*   Provides context results to `AnalysisProvider`.
+*   May use `TreeStructureAnalyzer` to parse diff content.
+*   *Planned:* Will use VS Code API for LSP queries.
 
 #### 2.4.2 Token Manager Service
 
-The `TokenManagerService` (src/services/tokenManagerService.ts) manages token allocation:
+The `TokenManagerService` (`src/services/tokenManagerService.ts`) manages token allocation for the language model prompt:
 
-- **Token Counting**: Counts tokens for different model families
-- **Token Allocation**: Allocates tokens between components
-- **Context Optimization**: Optimizes context to fit token limits
-- **Token Estimation**: Estimates token counts for different models
-- **Prompt Generation**: Generates prompts for analysis modes
+*   **Token Counting**: Accurately counts tokens for different components (system prompt, diff, context) using model-specific tokenizers.
+*   **Token Allocation**: Calculates the total token usage and compares it against the selected language model's limit.
+*   **Context Optimization (Current & Planned)**: Ensures the final context fits within token limits. *Current:* Uses basic truncation if limits are exceeded. *Planned:* Will implement relevance-based pruning, prioritizing more important context snippets (LSP results, high-scoring embeddings) when optimization is needed.
+*   **Token Estimation**: Provides estimates for planning context retrieval strategies.
+*   **Prompt Component Management**: Understands the different parts of the prompt (system, user, context) for allocation purposes.
 
 Key interactions:
-- Used by `ContextProvider` for context optimization
-- Used by `AnalysisProvider` for token allocation
-- Works with `CopilotModelManager` for model information
-- Supports different model families with custom counting
+*   Used by `AnalysisProvider` before sending the prompt to the LLM.
+*   Works with `CopilotModelManager` for model token limits and tokenizer information.
+*   Receives context string from `AnalysisProvider`.
 
 ### 2.5 Analysis System
 
@@ -449,64 +476,56 @@ The embedding generation process follows these steps:
    - Create metadata about embeddings for retrieval
    - Store results in the vector database
 
-### 3.2 Similarity Search Algorithm
+### 3.2 Similarity Search & Context Retrieval Algorithm
 
-The similarity search process follows these steps:
+The context retrieval process aims to find relevant code from the workspace to help the LLM understand the provided Pull Request diff.
 
-1. **Query Preparation**
-   - Extract meaningful query content from diff or changes
-   - Process the query to enhance search effectiveness
-   - Generate embedding vector for the query
+***Current Implementation (Embedding-Based):***
 
-2. **Vector Search**
-   - Calculate cosine similarity between query vector and stored vectors
-   - Filter results based on minimum similarity threshold
-   - Rank results by similarity score
+1.  **Query Preparation**: Meaningful code chunks are extracted from the input diff text (`ContextProvider`).
+2.  **Embedding Generation**: Embedding vectors are generated for these diff chunks (`EmbeddingDatabaseAdapter` -> `IndexingService`).
+3.  **Vector Search**: A similarity search is performed against *all* indexed embeddings in the SQLite database (`VectorDatabaseService`). The search iterates through stored embeddings, calculates cosine similarity against the query vector(s), and filters based on `minScore`.
+4.  **Result Ranking & Filtering**: Results are sorted by similarity score and limited (`EmbeddingDatabaseAdapter`).
+5.  **Context Formatting**: The content of the top N similar code chunks is retrieved and formatted into a single string (`ContextProvider`).
+6.  **Basic Token Optimization**: The formatted context string is checked against token limits and potentially truncated if needed (`TokenManagerService`).
 
-3. **Structure Enhancement**
-   - For each result, attempt to find complete structural elements
-   - Expand truncated functions or classes to their complete definitions
-   - Merge adjacent chunks that belong to the same structure
-   - Replace fragments with complete structures where possible
+***Planned Enhancement (Hybrid LSP + Embedding with ANN):***
 
-4. **Result Diversification**
-   - Ensure results cover diverse files and directories
-   - Limit results from any single file to prevent redundancy
-   - Include both definitions and usages for comprehensive context
-
-5. **Context Optimization**
-   - Calculate token usage for all results
-   - Optimize selection to fit within model token limits
-   - Prioritize highest relevance results
-   - Maintain structural integrity where possible
+1.  **Query Preparation**: Analyze the diff to identify key symbols (functions, classes, variables) and meaningful code chunks (`ContextProvider`).
+2.  **LSP-Based Structural Search**: Use VS Code LSP API to find exact definitions and usages of identified symbols. Retrieve code snippets around these locations (`ContextProvider`).
+3.  **Embedding-Based Semantic Search**: Generate embeddings for diff chunks. Query a dedicated ANN index (e.g., HNSWlib managed by `VectorDatabaseService`) with these vectors to efficiently find the K nearest chunk IDs and scores (`EmbeddingDatabaseAdapter`).
+4.  **Metadata Fetch**: Retrieve the chunk content and file metadata from SQLite for the top chunk IDs returned by the ANN search (`VectorDatabaseService` -> `EmbeddingDatabaseAdapter`).
+5.  **Context Combination**: Format LSP results and combine them with the embedding-based results. Prioritize or structure the combination based on relevance (`ContextProvider`, `AnalysisProvider`).
+6.  **Relevance-Based Token Optimization**: Prune the combined context string based on relevance scores (LSP > high-score embedding > low-score embedding) and token limits, using intelligent truncation/summarization where possible (`TokenManagerService`).
+7.  **Final Context**: Provide the optimized, hybrid context string for the LLM prompt.
 
 ### 3.3 Token Management Algorithm
 
-The token management process follows these steps:
+The token management process ensures that the final prompt sent to the language model respects its input token limits.
 
-1. **Token Allocation Planning**
-   - Identify token limit of the current model
-   - Allocate token budget for system prompt, diff, and context
-   - Reserve tokens for formatting and metadata
-   - Calculate remaining tokens for dynamic content
+1.  **Token Allocation Planning**
+    *   Identify token limit of the current language model (`CopilotModelManager`).
+    *   Estimate token budget for fixed components: system prompt (`TokenManagerService.getSystemPromptForMode`) and the input diff/changes (`TokenManagerService.calculateTokens`).
+    *   Reserve a buffer for formatting, separators, and potential model overhead.
+    *   Calculate the remaining token budget specifically available for the retrieved code context.
 
-2. **Token Counting**
-   - Count tokens in system prompt using model-specific tokenizer
-   - Count tokens in diff/changes
-   - Count tokens in initial context selection
+2.  **Token Counting**
+    *   Count tokens accurately for the system prompt and diff text using model-specific tokenizers (`TokenEstimator`).
+    *   Count tokens for the initially retrieved and combined context (LSP + Embeddings) (`TokenManagerService.calculateTokens`).
 
-3. **Token Optimization**
-   - If content fits within limits, use as is
-   - If content exceeds limits, prioritize components:
-      - Preserve system prompt completely
-      - Preserve diff/changes completely if possible
-      - Optimize context to fit in remaining tokens
+3.  **Token Optimization & Context Pruning (Planned Enhancement)**
+    *   Calculate the total required tokens (prompt + diff + initial context + buffer).
+    *   If the total fits within the model's limit, use the full context as is.
+    *   If the total exceeds the limit:
+        *   Determine the exact number of tokens the context needs to be reduced by.
+        *   Utilize the *relevance scores/priorities* associated with each context snippet (LSP definitions/references typically highest, then embedding results by score).
+        *   Iteratively build the final context string, starting with the highest relevance snippets.
+        *   Continue adding snippets in descending order of relevance until the available context token budget is nearly filled.
+        *   If the next highest relevance snippet doesn't fit entirely, attempt to truncate or summarize it intelligently (e.g., keeping signatures/headers).
+        *   If even partial inclusion isn't feasible or useful, stop adding snippets.
+        *   Add clear indicators (e.g., `[Context truncated...]`) to the final context string if pruning occurred.
 
-4. **Context Pruning**
-   - Sort context items by relevance
-   - Include items until token limit is reached
-   - For partially included items, preserve structural integrity
-   - Add indicators for truncated content
+4.  **Final Check**: Perform a final token count on the fully constructed prompt (system prompt + diff + optimized context + formatting) to ensure it's safely within the limit before sending to the LLM.
 
 ### 3.4 Analysis Workflow Algorithm
 
@@ -608,17 +627,17 @@ The analysis process follows these steps:
 - `endOffset`: number - End position in the file
 - `score`: number - Similarity score (0-1)
 
-#### 4.2.4 Token Allocation Format
-- `totalAvailableTokens`: number - Maximum tokens available
-- `totalRequiredTokens`: number - Total tokens needed
-- `systemPromptTokens`: number - Tokens used by system prompt
-- `diffTextTokens`: number - Tokens used by diff text
-- `contextTokens`: number - Tokens used by context
-- `userMessagesTokens`: number - Tokens used by user messages
-- `assistantMessagesTokens`: number - Tokens used by assistant messages
-- `otherTokens`: number - Tokens used by formatting and metadata
-- `fitsWithinLimit`: boolean - Whether content fits within token limit
-- `contextAllocationTokens`: number - Tokens allocated for context
+### 4.2.4 Token Allocation Format
+- `totalAvailableTokens`: number - Maximum tokens available for the selected language model.
+- `totalRequiredTokens`: number - Total tokens needed by all prompt components before optimization.
+- `systemPromptTokens`: number - Tokens used by the system prompt.
+- `diffTextTokens`: number - Tokens used by the input diff text.
+- `combinedContextTokens`: number - Tokens used by the combined LSP and embedding context *before* optimization.
+- `userMessagesTokens`: number - Tokens used by user messages (if applicable, e.g., follow-up questions).
+- `assistantMessagesTokens`: number - Tokens used by previous assistant messages (if applicable, e.g., conversation history).
+- `otherTokens`: number - Tokens potentially used by formatting, separators, or metadata.
+- `fitsWithinLimit`: boolean - Whether the initial components fit within the token limit.
+- `finalCombinedContextTokens`: number - Tokens used by the combined context *after* optimization/pruning (if optimization occurred).
 
 ## 5. Implementation Guidelines
 
@@ -769,23 +788,21 @@ Errors should be categorized as:
 
 #### 5.3.1 Resource Management
 
-1. **Memory Management**
-   - Release large objects when no longer needed
-   - Avoid keeping large datasets in memory
-   - Use streaming approaches for large data
-   - Monitor memory usage and implement limits
-
-2. **CPU Utilization**
-   - Offload CPU-intensive tasks to worker threads
-   - Implement batched processing for large workloads
-   - Monitor CPU usage and implement throttling
-   - Support cancellation of long-running operations
-
-3. **I/O Operations**
-   - Minimize synchronous I/O operations
-   - Implement caching for frequently accessed data
-   - Use batch operations for multiple I/O requests
-   - Monitor I/O performance and optimize as needed
+1.  **Memory Management**
+    *   Release large objects (e.g., diff strings, context strings, parsed trees) when no longer needed.
+    *   Be mindful of the in-memory ANN index (e.g., HNSWlib) size if used. Implement strategies to reload it if memory pressure is high or provide user options for memory limits.
+    *   Use streaming approaches if processing extremely large files or contexts, where possible.
+    *   Monitor extension host memory usage.
+2.  **CPU Utilization**
+    *   Offload embedding generation and potentially complex diff analysis to worker threads (`IndexingService`).
+    *   LSP queries are handled by the language server process, typically separate.
+    *   Ensure ANN search (e.g., HNSWlib) is efficient; it's CPU-intensive but typically fast for reasonable index sizes.
+    *   Support cancellation of long-running operations (analysis, context retrieval).
+3.  **I/O Operations**
+    *   Minimize synchronous file reads/writes. Use `vscode.workspace.fs` for asynchronous operations.
+    *   Batch database writes (`VectorDatabaseService` transactions).
+    *   Loading the ANN index from disk (if applicable) should be done efficiently.
+    *   LSP queries involve inter-process communication; ensure they don't excessively block.
 
 #### 5.3.2 Optimization Techniques
 
@@ -1052,3 +1069,76 @@ Implement external integrations and extensibility:
 - Logging configuration
 - Problem reporting
 - Self-help resources
+
+<improvement_plan>
+1.  **Implement Hybrid LSP + Embedding Context Gathering**
+    *   **Detailed Explanation:** The current embedding-only context lacks precision. This improvement integrates Language Server Protocol (LSP) lookups with the existing embedding search. LSP can find exact definitions and references of symbols changed in the diff, while embeddings find semantically related code. Combining both provides comprehensive and accurate context.
+    *   **Implementation Steps:**
+        1.  Modify `ContextProvider.getContextForDiff`.
+        2.  Add logic to parse the diff (using `TreeStructureAnalyzer` cautiously on relevant file content *around* the diff, or simpler heuristics/regex on the diff itself) to identify key changed symbols (functions, variables, classes).
+        3.  For each identified symbol, use `vscode.executeDefinitionProvider` and `vscode.executeReferenceProvider` to get precise `vscode.Location` results across the workspace.
+        4.  Retrieve code snippets surrounding the definition and reference locations returned by LSP.
+        5.  Run the *existing* embedding generation and similarity search (`EmbeddingDatabaseAdapter.findRelevantCodeContextForChunks`) in parallel or sequence.
+        6.  Modify `ContextProvider` to aggregate both LSP results (formatted snippets with path/line) and embedding results (ranked code chunks).
+        7.  Update `AnalysisProvider` and `TokenManagerService` to handle this richer, combined context structure.
+        8.  Update technical documentation (Sections 1.2.4, 3.2) to accurately reflect the implemented hybrid approach.
+    *   **Expected Benefits:** Drastically improved context relevance and accuracy, leading to more insightful and correct LLM analysis. Reduced reliance on purely semantic similarity, grounding the analysis in the actual code structure and dependencies.
+
+2.  **Enhance Diff-to-Context Linking in Prompt**
+    *   **Detailed Explanation:** Currently, the diff and the context are presented as separate blocks to the LLM. This improvement aims to explicitly link context snippets to the specific parts of the diff they relate to, guiding the LLM more effectively.
+    *   **Implementation Steps:**
+        1.  Modify `ContextProvider` to attempt associating retrieved context snippets (both LSP and embedding results) back to specific files and potentially line ranges or symbols within the input diff. This requires analyzing the diff structure (`@@ ... @@` hunks) and the source of each context snippet.
+        2.  Modify `AnalysisProvider.analyzeWithLanguageModel` prompt construction logic.
+        3.  *Option A (Annotation):* Before each diff hunk (`@@ ... @@ ...`), insert compact references to the most relevant context snippets identified for that hunk (e.g., `[Context: Definition of calculate_sum() found in context snippet 3]`).
+        4.  *Option B (Interleaving):* Restructure the prompt. Instead of a single large context block at the end, present the diff hunk by hunk, and immediately follow each hunk with its most relevant context snippets.
+        5.  Ensure the `TokenManagerService` accounts for any changes in prompt structure or added annotation tokens.
+    *   **Expected Benefits:** More focused LLM analysis directly relating context to changes. Improved understanding of the *impact* of changes. Reduced ambiguity for the LLM.
+
+3.  **Implement Relevance-Based Context Pruning**
+    *   **Detailed Explanation:** The current token optimization (`TokenManagerService.optimizeContext`) seems based on simple truncation. This improvement implements a more sophisticated pruning strategy that prioritizes keeping the most relevant context snippets when token limits are exceeded.
+    *   **Implementation Steps:**
+        1.  Enhance `ContextProvider` to assign relevance scores/priorities to context snippets. LSP definitions/references directly related to diff symbols get highest priority. Embedding results use their similarity score. Fallback context gets lower priority.
+        2.  Modify `TokenManagerService.optimizeContext`.
+        3.  Input: The combined context string *and* the relevance scores/priorities of its constituent snippets.
+        4.  Algorithm:
+            *   Calculate available tokens for context (Total Limit - Prompt Tokens - Diff Tokens - Buffer).
+            *   Iteratively add context snippets starting with the highest priority/score, until the token limit is approached.
+            *   If a snippet partially fits, attempt to summarize or truncate it intelligently (e.g., keep function signatures but truncate bodies).
+            *   Clearly mark where content was pruned or summarized.
+        5.  Update documentation regarding the new optimization strategy.
+    *   **Expected Benefits:** Retains the most critical information when token limits are tight, leading to better analysis quality under constraints. More graceful degradation compared to simple truncation.
+
+4.  **Refine Diff Chunking for Embedding Search**
+    *   **Detailed Explanation:** Using `TreeStructureAnalyzer` directly on diffs in `extractMeaningfulChunks` can be unreliable. This improvement refines how chunks are extracted from the diff for the purpose of triggering the embedding search.
+    *   **Implementation Steps:**
+        1.  Modify `ContextProvider.extractMeaningfulChunks`.
+        2.  Focus on added/modified lines (`+` lines) within diff hunks.
+        3.  Use heuristics or regex to identify key identifiers (function names, class names, important variable names) within these lines.
+        4.  Generate embeddings for:
+            *   The identified key identifiers themselves.
+            *   Small snippets of surrounding added/modified code (e.g., 3-5 lines around the identifier).
+            *   The entire added/modified block within a hunk if it's reasonably small.
+        5.  Query the `EmbeddingDatabaseAdapter` using this diverse set of embeddings to potentially retrieve a wider range of relevant semantic matches.
+    *   **Expected Benefits:** More robust generation of search queries from diffs, less prone to errors from parsing incomplete code. Potentially improved recall for semantic search.
+
+5.  **Integrate Efficient ANN Library for Vector Search**
+    *   **Detailed Explanation:** SQLite is unsuitable for fast, large-scale vector similarity search. Integrating a dedicated Approximate Nearest Neighbor (ANN) library like HNSWlib is crucial for performance.
+    *   **Implementation Steps:**
+        1.  Modify `VectorDatabaseService`.
+        2.  Choose and integrate an appropriate ANN library compatible with the Node.js/VS Code environment (e.g., `hnswlib-node`, or a WASM build of Faiss/ScaNN if feasible and licenses permit).
+        3.  Change data storage: Store embedding vectors *only* in the ANN index, persisted to disk separately. Store chunk metadata (ID, content, file path, offsets) in SQLite. The Chunk ID links the two.
+        4.  Update `storeEmbeddings`: Add vectors to the ANN index and save its state periodically. Store metadata in SQLite.
+        5.  Update `findSimilarCode`: Query the ANN index first to get the K nearest chunk IDs and scores. Then, fetch the corresponding metadata (content, path, etc.) for those IDs from the SQLite `chunks` and `files` tables.
+        6.  Implement loading/saving of the ANN index state on service initialization/disposal.
+        7.  Update documentation to reflect the use of the ANN library.
+    *   **Expected Benefits:** Massively improved similarity search speed (orders of magnitude faster), enabling context retrieval for larger codebases without significant delay. Reduced load on the SQLite database.
+
+6.  **Documentation Update: Current State vs. Target State**
+    *   **Detailed Explanation:** The technical documentation needs to clearly distinguish between the *currently implemented* state and the *target/planned* state, especially regarding LSP integration in the context retrieval workflow.
+    *   **Implementation Steps:**
+        1.  Review Sections 1.2.4 (Component Interactions / Context Retrieval Workflow) and 3.2 (Similarity Search & Context Retrieval Algorithm).
+        2.  Add explicit notes or subsections clarifying that the described LSP integration is part of the improvement plan and not yet fully implemented in the reviewed codebase state.
+        3.  Update the description to accurately reflect the *current* embedding-only context retrieval mechanism shown in the code snippets.
+        4.  Once Improvement #1 (Hybrid Context) is implemented, update the documentation fully to match the new hybrid workflow.
+    *   **Expected Benefits:** Clearer understanding for developers working on the project. Accurate representation of the system's current capabilities and planned enhancements. Avoids confusion based on aspirational documentation.
+</improvement_plan>
