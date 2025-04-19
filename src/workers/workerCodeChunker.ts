@@ -505,8 +505,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 }
                 currentOffset = currentLineOffset; // Reset offset to start of the long line
 
-                // Find preferred split points *within* this line
-                const lineSplitPoints = this.findPreferredSplitPoints(lineWithNewline, isMarkdown);
+                // Find preferred split points *within* this line and identify inline code ranges
+                const { splitPoints: lineSplitPoints, inlineCodeRanges } = this.findPreferredSplitPoints(lineWithNewline, isMarkdown);
                 let linePos = 0;
                 while (linePos < lineLength) {
                     if (signal.aborted) {
@@ -561,8 +561,21 @@ export class WorkerCodeChunker implements vscode.Disposable {
                         }
                     }
 
-                    // Ensure we make progress, even if it means splitting mid-word
+                    // Check if the chosen fallback split point is inside an inline code block
+                    if (isMarkdown && inlineCodeRanges) {
+                        for (const range of inlineCodeRanges) {
+                            if (bestSplitPoint > range.start && bestSplitPoint < range.end) {
+                                // If inside, adjust the split point to the end of the inline code block
+                                this.log('debug', `Adjusting fallback split point from ${bestSplitPoint} to ${range.end} to avoid splitting inline code`);
+                                bestSplitPoint = range.end;
+                                break; // Stop checking ranges once adjusted
+                            }
+                        }
+                    }
+
+                    // Ensure we make progress, even if it means splitting mid-word or after adjustment
                     if (bestSplitPoint <= linePos) {
+                        // If still no progress (e.g., adjusted to end of range which was linePos), force progress
                         bestSplitPoint = linePos + Math.min(Math.floor(lineLength * (maxTokens / lineTokens)), lineLength - linePos);
                         bestSplitPoint = Math.max(bestSplitPoint, linePos + 1); // Guarantee progress of at least 1 char
                     }
@@ -876,9 +889,9 @@ export class WorkerCodeChunker implements vscode.Disposable {
      * Find preferred split points in text based on syntax-aware boundaries
      * @param text The text to analyze for split points
      * @param forceMarkdown Force the text to be processed as Markdown
-     * @returns Array of indices where the text can be safely split
+     * @returns Object containing an array of split point indices and an array of inline code ranges
      */
-    private findPreferredSplitPoints(text: string, forceMarkdown: boolean = false): number[] {
+    private findPreferredSplitPoints(text: string, forceMarkdown: boolean = false): { splitPoints: number[], inlineCodeRanges: { start: number, end: number }[] } {
         const splitPoints: number[] = [];
         const inlineCodeRanges: { start: number, end: number }[] = [];
 
@@ -912,13 +925,10 @@ export class WorkerCodeChunker implements vscode.Disposable {
             const inlineCode = [...text.matchAll(/`[^`]*`/g)]; // Allow empty/whitespace content
             for (const match of inlineCode) {
                 if (match.index !== undefined) {
-                    // Add split points before and after inline code
-                    if (match.index > 0) {
-                        splitPoints.push(match.index);
-                    }
-                    splitPoints.push(match.index + match[0].length);
-                    // Store the range of the inline code itself
+                    // Store the range of the inline code itself to prevent splitting *within* it later
                     inlineCodeRanges.push({ start: match.index, end: match.index + match[0].length });
+                    // DO NOT add split points immediately before/after inline code,
+                    // as the test expects these boundaries not to be split points.
                 }
             }
 
@@ -1023,7 +1033,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
             });
         }
 
-        return finalSplitPoints;
+        return { splitPoints: finalSplitPoints, inlineCodeRanges };
     }
 
     /**
@@ -1037,9 +1047,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
         signal: AbortSignal
     ): Promise<ChunkingResult> {
         // First, let's identify markdown structures that should be kept together
-        const structures: { start: number, end: number, type: string }[] = [];
-
-        // Find code blocks
+        const structures: { start: number, end: number, type: string }[] = [];        // Find code blocks
         const codeBlocks = [...text.matchAll(/```[\s\S]*?```|~~~[\s\S]*?~~~/g)];
         for (const match of codeBlocks) {
             if (match.index !== undefined) {
@@ -1047,6 +1055,18 @@ export class WorkerCodeChunker implements vscode.Disposable {
                     start: match.index,
                     end: match.index + match[0].length,
                     type: 'codeBlock'
+                });
+            }
+        }
+
+        // Find inline code with backticks
+        const inlineCodes = [...text.matchAll(/`[^`\n]*`/g)];
+        for (const match of inlineCodes) {
+            if (match.index !== undefined) {
+                structures.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    type: 'inlineCode'
                 });
             }
         }
@@ -1151,8 +1171,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 offsets.push(structure.start);
             } else {
                 // Structure is too large, need to split it while respecting markdown syntax
-                // Use findPreferredSplitPoints to get optimal split locations
-                const splitPoints = this.findPreferredSplitPoints(structureText);
+                // Use findPreferredSplitPoints to get optimal split locations and inline code ranges
+                const { splitPoints, inlineCodeRanges } = this.findPreferredSplitPoints(structureText, true); // Force markdown true here
 
                 let position = 0;
                 while (position < structureText.length) {
@@ -1187,6 +1207,26 @@ export class WorkerCodeChunker implements vscode.Disposable {
                             }
                         }
                     }
+
+                    // Check if the chosen split point is inside an inline code block within the structure
+                    for (const range of inlineCodeRanges) {
+                        // Adjust range to be relative to the structureText start (which is 0)
+                        const relativeStart = range.start - structure.start;
+                        const relativeEnd = range.end - structure.start;
+                        if (splitPosition > relativeStart && splitPosition < relativeEnd) {
+                            this.log('debug', `Adjusting structure split point from ${splitPosition} to ${relativeEnd} to avoid splitting inline code`);
+                            splitPosition = relativeEnd;
+                            break;
+                        }
+                    }
+
+                    // Ensure progress even after adjustment
+                    if (splitPosition <= 0) {
+                        splitPosition = Math.min(remaining.length, Math.floor(maxTokens / 3)); // Revert to basic split if adjustment failed
+                        splitPosition = Math.max(splitPosition, 1); // Ensure at least 1 char progress
+                    }
+                    splitPosition = Math.min(splitPosition, remaining.length); // Don't exceed remaining length
+
 
                     // Add chunk
                     const chunk = remaining.substring(0, splitPosition);

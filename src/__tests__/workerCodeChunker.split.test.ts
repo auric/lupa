@@ -726,15 +726,22 @@ ${Array(20).fill('[Citation link](https://example.com/citation)').join('\n')}`;
         // Verify chunking produced multiple chunks
         expect(result.chunks.length).toBeGreaterThan(1);
 
-        // Count code fence splits (should ideally be 0)
-        // This counts how many times ``` gets split across chunks
-        const codeFenceSplits = countPatternSplits(result.chunks, /`{3}[^`]*$/, /^[^`]*`{3}/);
+        // Count code fence splits (content inside ``` shouldn't be split)
+        // Refined patterns:
+        // End pattern: Matches ``` followed by any content that does NOT contain another ``` until the end of the string.
+        // Start pattern: Matches any content from the start that does NOT contain ```, followed by ```.
+        const codeFenceSplits = countPatternSplits(
+            result.chunks,
+            /`{3}(?:(?!```)[\s\S])+$/s, // Chunk ends inside a code block
+            /^(?:(?!```)[\s\S])+```/s  // Chunk starts inside a code block (before the closing fence)
+        );
 
-        // We should aim for no code fence splits, but allow at most one in edge cases
-        expect(codeFenceSplits).toBeLessThanOrEqual(1);
+        // Code blocks should be kept intact, not split internally.
+        expect(codeFenceSplits).toBe(0);
 
-        // Verify inline code backticks aren't split
-        const inlineCodeSplits = countPatternSplits(result.chunks, /`[^`]*$/, /^[^`]*`/);
+        // Verify inline code backticks aren't split (content inside ` shouldn't be split)
+        // Using simpler patterns for inline code as they are less likely to span chunks significantly
+        const inlineCodeSplits = countPatternSplits(result.chunks, /`[^`]+$/, /^[^`]+`/);
         expect(inlineCodeSplits).toBe(0);
     });
 
