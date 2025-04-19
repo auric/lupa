@@ -9,7 +9,10 @@ import { Mutex } from 'async-mutex';
 import { EmbeddingOptions, ChunkingMetadata } from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
-import { getLanguageForExtension } from '../types/types';
+import {
+    getLanguageForExtension,
+    type SupportedLanguage
+} from '../types/types';
 
 /**
  * Interface representing a file to be processed
@@ -68,10 +71,10 @@ export class AsyncIndexingProcessor {
     /**
      * Get language from file path
      */
-    private getLanguageFromFilePath(filePath: string): string | undefined {
+    private getLanguageFromFilePath(filePath: string): SupportedLanguage | undefined {
         const extension = path.extname(filePath).substring(1).toLowerCase();
         const langData = getLanguageForExtension(extension);
-        return langData?.language;
+        return langData;
     }
 
     /**
@@ -94,10 +97,16 @@ export class AsyncIndexingProcessor {
         const shouldNormalize = this.embeddingOptions.normalize !== false; // Default to true if not specified
 
         // Detect language from file path for better structure-aware chunking
-        const language = this.getLanguageFromFilePath(filePath);
+        const supportedLanguage = this.getLanguageFromFilePath(filePath);
 
         // Chunk the text using smart code-aware chunking
-        const result = await this.codeChunker!.chunkCode(text, this.embeddingOptions, signal, language);
+        const result = await this.codeChunker!.chunkCode(
+            text,
+            this.embeddingOptions,
+            signal,
+            supportedLanguage?.language || '',
+            supportedLanguage?.variant
+        );
 
         // Generate embeddings for each chunk
         const embeddings: Float32Array[] = [];
