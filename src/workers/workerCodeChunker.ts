@@ -367,7 +367,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
             return this.splitByBoundaries(text, boundaries, maxTokens, overlapSize, signal);
         }
 
-        // If no good boundaries found, fall back to line-based splitting
+        // If no good boundaries found, fall back to line-based splitting, respecting markdown context
+        this.log('debug', `No logical boundaries found for oversized structure, falling back to line splitting (isMarkdown: ${language === 'markdown'})`);
         return this.splitTextByLines(text, maxTokens, overlapSize, signal, language === 'markdown');
     }
 
@@ -487,96 +488,121 @@ export class WorkerCodeChunker implements vscode.Disposable {
         let currentLineOffset = 0;
 
         for (let i = 0; i < lines.length; i++) {
-            if (signal.aborted) {
-                throw new Error('Operation was cancelled');
-            }
+            const line = lines[i];
+            const lineWithNewline = i < lines.length - 1 ? line + '\n' : line;
+            const lineLength = lineWithNewline.length;
+            const lineTokens = await this.tokenEstimator.countTokens(lineWithNewline);
 
-            const line = lines[i] + (i < lines.length - 1 ? '\n' : '');
-            const lineTokens = await this.tokenEstimator.countTokens(line);
-
-            // Special case: If a single line exceeds the token limit, we need to split it
             if (lineTokens > maxTokens) {
+                // Line itself is too long, needs splitting
                 this.log('warn', `Line ${i + 1} exceeds token limit (${lineTokens} tokens), splitting within line`);
 
-                // If we have content in the current chunk, add it first
+                // Add existing chunk before splitting the long line
+                if (currentChunk.length > 0) {
+                    chunks.push(currentChunk);
+                    offsets.push(currentOffset);
+                    currentChunk = '';
+                }
+                currentOffset = currentLineOffset; // Reset offset to start of the long line
+
+                // Find preferred split points *within* this line
+                const lineSplitPoints = this.findPreferredSplitPoints(lineWithNewline, isMarkdown);
+                let linePos = 0;
+                while (linePos < lineLength) {
+                    if (signal.aborted) {
+                        throw new Error('Operation was cancelled');
+                    }
+
+                    let bestSplitPoint = -1;
+                    let searchEnd = linePos + Math.floor((lineLength - linePos) * (maxTokens / lineTokens)); // Estimate split pos
+
+                    // Find the largest segment starting from linePos that fits maxTokens, ending at a preferred point
+                    let low = 0;
+                    let high = lineSplitPoints.length - 1;
+                    let bestFitIndex = -1;
+
+                    while (low <= high) {
+                        const midIndex = Math.floor((low + high) / 2);
+                        const point = lineSplitPoints[midIndex];
+                        if (point <= linePos) { // Ensure point is after current position
+                            low = midIndex + 1;
+                            continue;
+                        }
+                        const segment = lineWithNewline.substring(linePos, point);
+                        const segmentTokens = await this.tokenEstimator.countTokens(segment);
+                        if (segmentTokens <= maxTokens) {
+                            bestFitIndex = midIndex; // This point fits
+                            low = midIndex + 1; // Try larger points
+                        } else {
+                            high = midIndex - 1; // Point is too far
+                        }
+                    }
+
+                    if (bestFitIndex !== -1) {
+                        bestSplitPoint = lineSplitPoints[bestFitIndex];
+                    } else {
+                        // No preferred point fits, fallback needed
+                        // Find last whitespace before estimated token limit
+                        let approxCharLimit = Math.floor(lineLength * (maxTokens / lineTokens));
+                        let splitLimit = Math.min(linePos + approxCharLimit, lineLength);
+                        bestSplitPoint = lineWithNewline.lastIndexOf(' ', splitLimit);
+
+                        if (bestSplitPoint <= linePos) { // No whitespace found or only at the beginning
+                            // Last resort: split at the approximate character limit based on tokens
+                            bestSplitPoint = splitLimit > linePos ? splitLimit : linePos + 1; // Ensure progress
+                        }
+                        // Ensure we don't split mid-word if possible, adjust to nearest boundary
+                        if (bestSplitPoint < lineLength && /\w/.test(lineWithNewline[bestSplitPoint - 1]) && /\w/.test(lineWithNewline[bestSplitPoint])) {
+                            const prevSpace = lineWithNewline.lastIndexOf(' ', bestSplitPoint - 1);
+                            if (prevSpace > linePos) {
+                                bestSplitPoint = prevSpace + 1; // Split after the space
+                            }
+                            // If no prev space, we might have to split mid-word as last resort
+                        }
+                    }
+
+                    // Ensure we make progress, even if it means splitting mid-word
+                    if (bestSplitPoint <= linePos) {
+                        bestSplitPoint = linePos + Math.min(Math.floor(lineLength * (maxTokens / lineTokens)), lineLength - linePos);
+                        bestSplitPoint = Math.max(bestSplitPoint, linePos + 1); // Guarantee progress of at least 1 char
+                    }
+                    bestSplitPoint = Math.min(bestSplitPoint, lineLength); // Don't exceed line length
+
+
+                    const chunkText = lineWithNewline.substring(linePos, bestSplitPoint);
+                    if (chunkText.length > 0) {
+                        chunks.push(chunkText);
+                        offsets.push(currentOffset + linePos);
+                    }
+                    linePos = bestSplitPoint;
+                }
+
+            } else if (await this.tokenEstimator.countTokens(currentChunk + lineWithNewline) <= maxTokens) {
+                // Add line to current chunk
+                currentChunk += lineWithNewline;
+            } else {
+                // Current chunk is full, start a new one
                 if (currentChunk.length > 0) {
                     chunks.push(currentChunk);
                     offsets.push(currentOffset);
                 }
-                // Find good split points within this line
-                const splitPoints = this.findPreferredSplitPoints(line, isMarkdown);
+                // Start new chunk with overlap if possible
+                const overlapStart = Math.max(0, currentChunk.length - overlapSize);
+                const overlapText = currentChunk.substring(overlapStart);
+                const overlapTokens = await this.tokenEstimator.countTokens(overlapText);
 
-                let linePosition = 0;
-                let lineChunkStart = currentLineOffset;
-
-                // Split the line into chunks that fit within the token limit
-                while (linePosition < line.length) {
-                    const remainingLine = line.substring(linePosition);
-                    let chunkEnd = 0;
-
-                    // If we have split points, use them
-                    if (splitPoints.length > 0) {
-                        // Binary search to find largest portion that fits
-                        let left = 0;
-                        let right = splitPoints.length - 1;
-                        let bestSplitPoint = Math.min(remainingLine.length, Math.floor(maxTokens / 4));
-
-                        while (left <= right) {
-                            const mid = Math.floor((left + right) / 2);
-                            const splitPoint = splitPoints[mid];
-
-                            if (splitPoint > remainingLine.length) {
-                                right = mid - 1;
-                                continue;
-                            }
-
-                            const segment = remainingLine.substring(0, splitPoint);
-                            const segmentTokens = await this.tokenEstimator.countTokens(segment);
-
-                            if (segmentTokens <= maxTokens) {
-                                bestSplitPoint = splitPoint;
-                                left = mid + 1;
-                            } else {
-                                right = mid - 1;
-                            }
-                        }
-
-                        chunkEnd = bestSplitPoint;
-                    } else {
-                        // If no split points, use character-based splitting as last resort
-                        const charsPerToken = 4; // Conservative estimate
-                        chunkEnd = Math.min(remainingLine.length, Math.floor((maxTokens * charsPerToken * 0.8)));
-                    }
-
-                    // Add this segment as a chunk
-                    const segment = remainingLine.substring(0, chunkEnd);
-                    chunks.push(segment);
-                    offsets.push(lineChunkStart + linePosition);
-
-                    linePosition += chunkEnd;
-                }
-
-                // Reset for next line
-                currentChunk = '';
-                currentOffset = currentLineOffset + line.length;
-            }
-            // Normal case: Add line to current chunk if it fits
-            else {
-                const newChunk = currentChunk + line;
-                const newChunkTokens = await this.tokenEstimator.countTokens(newChunk);
-
-                if (newChunkTokens <= maxTokens || currentChunk.length === 0) {
-                    currentChunk = newChunk;
+                // Check if overlap + new line fits
+                if (overlapTokens + lineTokens <= maxTokens && overlapText.length > 0) {
+                    currentChunk = overlapText + lineWithNewline;
+                    // Adjust offset back by the non-overlapped part of the previous chunk
+                    currentOffset = currentLineOffset - overlapText.length + (lineWithNewline.startsWith('\n') ? 1 : 0); // Approximate, might need refinement
                 } else {
-                    // Current chunk is full, start a new one
-                    chunks.push(currentChunk);
-                    offsets.push(currentOffset);
-                    currentChunk = line;
+                    // Overlap doesn't fit or isn't possible, start chunk with just the new line
+                    currentChunk = lineWithNewline;
                     currentOffset = currentLineOffset;
                 }
             }
-
-            currentLineOffset += line.length;
+            currentLineOffset += lineLength;
         }
 
         // Add the last chunk if it has content
@@ -600,15 +626,18 @@ export class WorkerCodeChunker implements vscode.Disposable {
     ): Promise<DetailedChunkingResult> {
         // Check if content is markdown
         const isMarkdown = language === 'markdown';
+        this.log('info', `Using basic chunking as fallback${isMarkdown ? ' (markdown-aware)' : ''}`);
 
         let initialResult;
 
         if (isMarkdown) {
-            this.log('info', 'Using markdown-aware chunking');
-            // Use markdown-aware chunking approach
+            // Use markdown-aware splitting even in basic mode
+            this.log('info', 'Using markdown-aware line splitting for basic chunking');
             initialResult = await this.splitTextWithMarkdownAwareness(text, maxTokens, overlapSize, signal);
         } else {
-            initialResult = await this.splitTextByLines(text, maxTokens, overlapSize, signal);
+            // Use simple line splitting for other basic content
+            this.log('info', 'Using simple line splitting for basic chunking');
+            initialResult = await this.splitTextByLines(text, maxTokens, overlapSize, signal, false); // Explicitly pass isMarkdown=false
         }
 
         initialResult = {
@@ -851,9 +880,18 @@ export class WorkerCodeChunker implements vscode.Disposable {
      */
     private findPreferredSplitPoints(text: string, forceMarkdown: boolean = false): number[] {
         const splitPoints: number[] = [];
+        const inlineCodeRanges: { start: number, end: number }[] = [];
 
         // Check if the text appears to be markdown or if it's explicitly flagged as markdown
-        const isMarkdown = forceMarkdown || /^(#|\*|-|\d+\.|>|\s*```|\s*~~~|\|)|\[.*\]\(.*\)|^\s*\*\*.*\*\*|^\s*_.*_/m.test(text);
+        const isMarkdown = forceMarkdown ||
+            /^(#|\*|-|\d+\.|>|\s*```|\s*~~~|\|)|\[.*\]\(.*\)|^\s*\*\*.*\*\*|^\s*_.*_/m.test(text);
+
+        const wordBoundaryMatches = text.matchAll(/\b\w+\b/g);
+        for (const match of wordBoundaryMatches) {
+            if (match.index !== undefined) {
+                splitPoints.push(match.index + match[0].length);
+            }
+        }
 
         if (isMarkdown) {
             // Markdown-specific split points
@@ -871,7 +909,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
             }
 
             // Avoid splitting inline code
-            const inlineCode = [...text.matchAll(/`[^`]+`/g)];
+            const inlineCode = [...text.matchAll(/`[^`]*`/g)]; // Allow empty/whitespace content
             for (const match of inlineCode) {
                 if (match.index !== undefined) {
                     // Add split points before and after inline code
@@ -879,6 +917,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
                         splitPoints.push(match.index);
                     }
                     splitPoints.push(match.index + match[0].length);
+                    // Store the range of the inline code itself
+                    inlineCodeRanges.push({ start: match.index, end: match.index + match[0].length });
                 }
             }
 
@@ -973,8 +1013,17 @@ export class WorkerCodeChunker implements vscode.Disposable {
             }
         }
 
-        // Remove duplicates and sort
-        return [...new Set(splitPoints)].sort((a, b) => a - b);
+        // Remove duplicates and sort, then filter out points inside inline code if markdown
+        let finalSplitPoints = [...new Set(splitPoints)].sort((a, b) => a - b);
+
+        if (isMarkdown) {
+            finalSplitPoints = finalSplitPoints.filter(point => {
+                // Check if the point falls strictly inside any inline code range
+                return !inlineCodeRanges.some(range => point > range.start && point < range.end);
+            });
+        }
+
+        return finalSplitPoints;
     }
 
     /**
