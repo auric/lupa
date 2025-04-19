@@ -13,6 +13,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
     private readonly defaultOverlapSize = 100;
     private resource: TreeStructureAnalyzerResource | null = null;
     private analyzer: TreeStructureAnalyzer | null = null;
+    private resourcePromise: Promise<TreeStructureAnalyzerResource> | null = null;
     private readonly MIN_CHUNK_CHARS = 40; // Minimum number of characters a chunk should have
 
     private readonly logLevel: 'debug' | 'info' | 'warn' | 'error' = 'info';
@@ -31,12 +32,17 @@ export class WorkerCodeChunker implements vscode.Disposable {
      * Get a TreeStructureAnalyzer from the pool
      */
     private async getTreeStructureAnalyzer(): Promise<TreeStructureAnalyzer> {
-        if (!this.analyzer) {
-            this.resource = await TreeStructureAnalyzerResource.create();
+        if (!this.analyzer && this.resourcePromise) {
+            await this.resourcePromise;
+        }
+        if (!this.resource) {
+            this.resourcePromise = TreeStructureAnalyzerResource.create();
+            this.resource = await this.resourcePromise;
             this.analyzer = this.resource.instance;
+            this.resourcePromise = null;
             return this.analyzer;
         }
-        return this.analyzer;
+        return this.analyzer!;
     }
 
     /**
