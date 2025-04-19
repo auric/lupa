@@ -114,10 +114,9 @@ export class WorkerCodeChunker implements vscode.Disposable {
                     return result;
                 }
             }
-
             // Fallback to basic chunking if language not supported or analyzer not available
             this.log('info', 'Using basic chunking as fallback');
-            const result = await this.createBasicChunks(text, safeTokenLimit, overlapSize, signal);
+            const result = await this.createBasicChunks(text, safeTokenLimit, overlapSize, signal, language);
 
             const duration = performance.now() - chunkingStartTime;
             this.log('info', `Basic chunking completed in ${duration.toFixed(2)}ms, created ${result.chunks.length} chunks`);
@@ -206,7 +205,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
                         structureText,
                         maxTokens,
                         overlapSize,
-                        signal
+                        signal,
+                        language
                     );
 
                     // Add each split chunk with proper metadata
@@ -236,13 +236,14 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 structureOrders,
                 isOversizedFlags,
                 structureTypes,
-                signal
+                signal,
+                language
             );
 
             // If no chunks were created, fall back to basic chunking
             if (chunks.length === 0) {
                 this.log('warn', 'No chunks were created from structures, falling back to basic chunking');
-                return this.createBasicChunks(text, maxTokens, overlapSize, signal);
+                return this.createBasicChunks(text, maxTokens, overlapSize, signal, language);
             }
 
             // Post-process chunks to filter out or merge those that are too small
@@ -290,11 +291,12 @@ export class WorkerCodeChunker implements vscode.Disposable {
         structureOrders: (number | null)[],
         isOversizedFlags: boolean[],
         structureTypes: (string | null)[],
-        signal: AbortSignal
+        signal: AbortSignal,
+        language: string
     ): Promise<void> {
         if (coveredRanges.length === 0) {
             // If no ranges were covered, process the entire text
-            const basicResult = await this.createBasicChunks(text, maxTokens, overlapSize, signal);
+            const basicResult = await this.createBasicChunks(text, maxTokens, overlapSize, signal, language);
             chunks.push(...basicResult.chunks);
             offsets.push(...basicResult.offsets);
             parentStructureIds.push(...basicResult.metadata.parentStructureIds);
@@ -315,7 +317,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
             if (range.start > lastEnd) {
                 const gapText = text.substring(lastEnd, range.start);
                 if (gapText.trim().length > 0) {
-                    const gapResult = await this.splitTextByLines(gapText, maxTokens, overlapSize, signal);
+                    const gapResult = await this.splitTextByLines(gapText, maxTokens, overlapSize, signal, language === 'markdown');
 
                     // Add each gap chunk with metadata
                     for (let i = 0; i < gapResult.chunks.length; i++) {
@@ -336,7 +338,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
         if (lastEnd < text.length) {
             const trailingText = text.substring(lastEnd);
             if (trailingText.trim().length > 0) {
-                const trailingResult = await this.splitTextByLines(trailingText, maxTokens, overlapSize, signal);
+                const trailingResult = await this.splitTextByLines(trailingText, maxTokens, overlapSize, signal, language === 'markdown');
 
                 // Add each trailing chunk with metadata
                 for (let i = 0; i < trailingResult.chunks.length; i++) {
@@ -355,7 +357,8 @@ export class WorkerCodeChunker implements vscode.Disposable {
         text: string,
         maxTokens: number,
         overlapSize: number,
-        signal: AbortSignal
+        signal: AbortSignal,
+        language: string
     ): Promise<ChunkingResult> {
         // First try to split by logical boundaries like blank lines
         const boundaries = this.findLogicalBoundaries(text);
@@ -365,7 +368,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
         }
 
         // If no good boundaries found, fall back to line-based splitting
-        return this.splitTextByLines(text, maxTokens, overlapSize, signal);
+        return this.splitTextByLines(text, maxTokens, overlapSize, signal, language === 'markdown');
     }
 
     private findLogicalBoundaries(text: string): number[] {
@@ -466,163 +469,119 @@ export class WorkerCodeChunker implements vscode.Disposable {
     }
 
     /**
-     * Split text by lines trying to respect token limits
+     * Split text with special handling for Markdown content
      */
     private async splitTextByLines(
         text: string,
         maxTokens: number,
         overlapSize: number,
-        signal: AbortSignal
+        signal: AbortSignal,
+        isMarkdown: boolean = false
     ): Promise<ChunkingResult> {
+        const lines = text.split('\n');
         const chunks: string[] = [];
         const offsets: number[] = [];
 
-        // Split the text into lines
-        const lines = text.split(/\r?\n/);
-        let currentChunk: string[] = [];
+        let currentChunk = '';
         let currentOffset = 0;
-        let currentTokens = 0;
+        let currentLineOffset = 0;
 
         for (let i = 0; i < lines.length; i++) {
-            if (signal.aborted) throw new Error('Operation was cancelled');
+            if (signal.aborted) {
+                throw new Error('Operation was cancelled');
+            }
 
             const line = lines[i] + (i < lines.length - 1 ? '\n' : '');
-            // If a single line exceeds token limit, use smarter splitting
             const lineTokens = await this.tokenEstimator.countTokens(line);
+
+            // Special case: If a single line exceeds the token limit, we need to split it
             if (lineTokens > maxTokens) {
-                // Add current chunk if not empty
+                this.log('warn', `Line ${i + 1} exceeds token limit (${lineTokens} tokens), splitting within line`);
+
+                // If we have content in the current chunk, add it first
                 if (currentChunk.length > 0) {
-                    const chunk = currentChunk.join('');
-                    chunks.push(chunk);
+                    chunks.push(currentChunk);
                     offsets.push(currentOffset);
-                    currentChunk = [];
-                    currentTokens = 0;
                 }
+                // Find good split points within this line
+                const splitPoints = this.findPreferredSplitPoints(line, isMarkdown);
 
-                // Try syntax-aware splitting of the oversized line
-                const remainingText = line;
-                let processedLength = 0;
-                let remainingOffset = currentOffset;
+                let linePosition = 0;
+                let lineChunkStart = currentLineOffset;
 
-                while (processedLength < remainingText.length) {
-                    if (signal.aborted) throw new Error('Operation was cancelled');
+                // Split the line into chunks that fit within the token limit
+                while (linePosition < line.length) {
+                    const remainingLine = line.substring(linePosition);
+                    let chunkEnd = 0;
 
-                    // Get the text we still need to process
-                    const textToProcess = remainingText.substring(processedLength);
+                    // If we have split points, use them
+                    if (splitPoints.length > 0) {
+                        // Binary search to find largest portion that fits
+                        let left = 0;
+                        let right = splitPoints.length - 1;
+                        let bestSplitPoint = Math.min(remainingLine.length, Math.floor(maxTokens / 4));
 
-                    // Find preferred split points
-                    const splitPoints = this.findPreferredSplitPoints(textToProcess);                    // If no split points found or only at the very beginning, we'll need a fallback
-                    if (splitPoints.length === 0 || (splitPoints.length === 1 && splitPoints[0] < 10)) {
-                        // Emergency fallback: character-based splitting as last resort
-                        this.log('warn', `No viable split points found in large line, using character-based splitting as fallback`);
+                        while (left <= right) {
+                            const mid = Math.floor((left + right) / 2);
+                            const splitPoint = splitPoints[mid];
 
-                        // Try to find a clean word boundary if possible
-                        const wordMatch = textToProcess.match(/\b\s+\b/);
-                        if (wordMatch && wordMatch.index && wordMatch.index > 0 && wordMatch.index < Math.floor(maxTokens / 3)) {
-                            // We found a word boundary, use that
-                            const segment = textToProcess.substring(0, wordMatch.index + wordMatch[0].length);
-                            chunks.push(segment);
-                            offsets.push(remainingOffset);
-                            processedLength += segment.length;
-                            remainingOffset += segment.length;
-                        } else {
-                            // Force character-based splitting, but try to end on a space if possible
-                            const safeCharLimit = Math.floor(maxTokens / 3); // Conservative estimate
-                            let endPos = Math.min(safeCharLimit, textToProcess.length);
-
-                            // Try to find the last space within our limit to avoid splitting words
-                            const lastSpaceBeforeLimit = textToProcess.substring(0, endPos).lastIndexOf(' ');
-                            if (lastSpaceBeforeLimit > 0 && lastSpaceBeforeLimit > endPos * 0.5) {
-                                // Use the last space if it exists and isn't too far back
-                                endPos = lastSpaceBeforeLimit + 1; // Include the space
+                            if (splitPoint > remainingLine.length) {
+                                right = mid - 1;
+                                continue;
                             }
 
-                            const segment = textToProcess.substring(0, endPos);
-                            chunks.push(segment);
-                            offsets.push(remainingOffset);
-                            processedLength += segment.length;
-                            remainingOffset += segment.length;
+                            const segment = remainingLine.substring(0, splitPoint);
+                            const segmentTokens = await this.tokenEstimator.countTokens(segment);
+
+                            if (segmentTokens <= maxTokens) {
+                                bestSplitPoint = splitPoint;
+                                left = mid + 1;
+                            } else {
+                                right = mid - 1;
+                            }
                         }
-                        continue;
-                    }
 
-                    // Start with the whole textToProcess and find the largest portion that fits
-                    let currentEnd = textToProcess.length;
-                    let lastGoodEnd = 0;
-                    let lastGoodTokens = 0;
-
-                    // Binary search approach to find the largest fitting segment
-                    let left = 0;
-                    let right = splitPoints.length - 1;
-
-                    while (left <= right) {
-                        const mid = Math.floor((left + right) / 2);
-                        const splitPoint = splitPoints[mid];
-                        const segment = textToProcess.substring(0, splitPoint);
-
-                        // Check if this segment fits within token limit
-                        const segmentTokens = await this.tokenEstimator.countTokens(segment);
-
-                        if (segmentTokens <= maxTokens) {
-                            // This fits, try to find a larger segment
-                            lastGoodEnd = splitPoint;
-                            lastGoodTokens = segmentTokens;
-                            left = mid + 1;
-                        } else {
-                            // Too large, try smaller
-                            right = mid - 1;
-                        }
-                    }
-
-                    // If we found a good split point, use it
-                    if (lastGoodEnd > 0) {
-                        const segment = textToProcess.substring(0, lastGoodEnd);
-
-                        chunks.push(segment);
-                        offsets.push(remainingOffset);
-
-                        processedLength += lastGoodEnd;
-                        remainingOffset += lastGoodEnd;
+                        chunkEnd = bestSplitPoint;
                     } else {
-                        // If we couldn't find any good split point, fall back to character-based splitting
-                        this.log('warn', `Couldn't find a split point that produces a segment within token limit, using fallback`);
-
-                        const safeCharLimit = Math.floor(maxTokens / 3); // Even more conservative
-                        const segment = textToProcess.substring(0, Math.min(safeCharLimit, textToProcess.length));
-
-                        chunks.push(segment);
-                        offsets.push(remainingOffset);
-
-                        processedLength += segment.length;
-                        remainingOffset += segment.length;
+                        // If no split points, use character-based splitting as last resort
+                        const charsPerToken = 4; // Conservative estimate
+                        chunkEnd = Math.min(remainingLine.length, Math.floor((maxTokens * charsPerToken * 0.8)));
                     }
+
+                    // Add this segment as a chunk
+                    const segment = remainingLine.substring(0, chunkEnd);
+                    chunks.push(segment);
+                    offsets.push(lineChunkStart + linePosition);
+
+                    linePosition += chunkEnd;
                 }
 
-                currentOffset += line.length;
+                // Reset for next line
+                currentChunk = '';
+                currentOffset = currentLineOffset + line.length;
             }
-            // If adding this line would exceed token limit
-            else if (currentTokens + lineTokens > maxTokens && currentChunk.length > 0) {
-                // Add current chunk
-                const chunk = currentChunk.join('');
-                chunks.push(chunk);
-                offsets.push(currentOffset);
-
-                // Start new chunk with this line
-                currentChunk = [line];
-                currentTokens = lineTokens;
-                currentOffset += chunk.length;
-            }
-            // Line fits in current chunk
+            // Normal case: Add line to current chunk if it fits
             else {
-                currentChunk.push(line);
-                currentTokens += lineTokens;
+                const newChunk = currentChunk + line;
+                const newChunkTokens = await this.tokenEstimator.countTokens(newChunk);
+
+                if (newChunkTokens <= maxTokens || currentChunk.length === 0) {
+                    currentChunk = newChunk;
+                } else {
+                    // Current chunk is full, start a new one
+                    chunks.push(currentChunk);
+                    offsets.push(currentOffset);
+                    currentChunk = line;
+                    currentOffset = currentLineOffset;
+                }
             }
+
+            currentLineOffset += line.length;
         }
 
-        // Add final chunk if not empty
+        // Add the last chunk if it has content
         if (currentChunk.length > 0) {
-            const chunk = currentChunk.join('');
-            chunks.push(chunk);
+            chunks.push(currentChunk);
             offsets.push(currentOffset);
         }
 
@@ -636,17 +595,31 @@ export class WorkerCodeChunker implements vscode.Disposable {
         text: string,
         maxTokens: number,
         overlapSize: number,
-        signal: AbortSignal
+        signal: AbortSignal,
+        language: string // Add language parameter
     ): Promise<DetailedChunkingResult> {
-        const initialResult = await this.splitTextByLines(text, maxTokens, overlapSize, signal).then(result => ({
-            ...result,
+        // Check if content is markdown
+        const isMarkdown = language === 'markdown';
+
+        let initialResult;
+
+        if (isMarkdown) {
+            this.log('info', 'Using markdown-aware chunking');
+            // Use markdown-aware chunking approach
+            initialResult = await this.splitTextWithMarkdownAwareness(text, maxTokens, overlapSize, signal);
+        } else {
+            initialResult = await this.splitTextByLines(text, maxTokens, overlapSize, signal);
+        }
+
+        initialResult = {
+            ...initialResult,
             metadata: {
-                parentStructureIds: result.chunks.map(() => null),
-                structureOrders: result.chunks.map(() => null),
-                isOversizedFlags: result.chunks.map(() => false),
-                structureTypes: result.chunks.map(() => null)
+                parentStructureIds: initialResult.chunks.map(() => null),
+                structureOrders: initialResult.chunks.map(() => null),
+                isOversizedFlags: initialResult.chunks.map(() => false),
+                structureTypes: initialResult.chunks.map(() => null)
             }
-        }));
+        };
 
         // Post-process chunks to filter out or merge those that are too small
         const filteredResult = await this.filterSmallChunks(
@@ -873,13 +846,14 @@ export class WorkerCodeChunker implements vscode.Disposable {
     /**
      * Find preferred split points in text based on syntax-aware boundaries
      * @param text The text to analyze for split points
+     * @param forceMarkdown Force the text to be processed as Markdown
      * @returns Array of indices where the text can be safely split
      */
-    private findPreferredSplitPoints(text: string): number[] {
+    private findPreferredSplitPoints(text: string, forceMarkdown: boolean = false): number[] {
         const splitPoints: number[] = [];
 
-        // Check if the text appears to be markdown
-        const isMarkdown = /^(#|\*|-|\d+\.|>|\s*```|\s*~~~|\|)|\[.*\]\(.*\)|^\s*\*\*.*\*\*|^\s*_.*_/m.test(text);
+        // Check if the text appears to be markdown or if it's explicitly flagged as markdown
+        const isMarkdown = forceMarkdown || /^(#|\*|-|\d+\.|>|\s*```|\s*~~~|\|)|\[.*\]\(.*\)|^\s*\*\*.*\*\*|^\s*_.*_/m.test(text);
 
         if (isMarkdown) {
             // Markdown-specific split points
@@ -962,7 +936,7 @@ export class WorkerCodeChunker implements vscode.Disposable {
                 splitPoints.push(frontmatterMatches.index + frontmatterMatches[0].length);
             }
         } else {
-        // Standard code handling for non-markdown content
+            // Standard code handling for non-markdown content
             // Attempt 1: Find statement boundaries (semicolons, braces) and sentence endings in comments
             const statementBoundaries = [...text.matchAll(/[;](?=\s|$)|[}](?=\s|$)|(?<=\/\/.*)[.!?](?=\s|$)|(?<=\/\*.*)[.!?](?=\s|\*\/|$)/g)];
             for (const match of statementBoundaries) {
@@ -1001,6 +975,202 @@ export class WorkerCodeChunker implements vscode.Disposable {
 
         // Remove duplicates and sort
         return [...new Set(splitPoints)].sort((a, b) => a - b);
+    }
+
+    /**
+     * Split text with special handling for Markdown content
+     * This method ensures that markdown structures like code blocks and tables stay intact
+     */
+    private async splitTextWithMarkdownAwareness(
+        text: string,
+        maxTokens: number,
+        overlapSize: number,
+        signal: AbortSignal
+    ): Promise<ChunkingResult> {
+        // First, let's identify markdown structures that should be kept together
+        const structures: { start: number, end: number, type: string }[] = [];
+
+        // Find code blocks
+        const codeBlocks = [...text.matchAll(/```[\s\S]*?```|~~~[\s\S]*?~~~/g)];
+        for (const match of codeBlocks) {
+            if (match.index !== undefined) {
+                structures.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    type: 'codeBlock'
+                });
+            }
+        }
+
+        // Find tables
+        const tables = [...text.matchAll(/(^\|.*\|$\n)+/gm)];
+        for (const match of tables) {
+            if (match.index !== undefined) {
+                structures.push({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                    type: 'table'
+                });
+            }
+        }
+
+        // Find headers with content up to next header or blank line
+        const headers = [...text.matchAll(/^#{1,6}\s+.*$/gm)];
+        for (let i = 0; i < headers.length; i++) {
+            const match = headers[i];
+            if (match.index !== undefined) {
+                const start = match.index;
+                let end;
+
+                if (i < headers.length - 1 && headers[i + 1].index !== undefined) {
+                    // End at the next header
+                    end = headers[i + 1].index;
+                } else {
+                    // End at the next blank line or end of text
+                    const nextBlank = text.indexOf('\n\n', match.index);
+                    end = nextBlank > -1 ? nextBlank + 2 : text.length;
+                }
+
+                structures.push({
+                    start,
+                    end,
+                    type: 'header'
+                });
+            }
+        }
+
+        // Sort structures by start position
+        structures.sort((a, b) => a.start - b.start);
+
+        // Merge overlapping structures
+        const mergedStructures: { start: number, end: number, type: string }[] = [];
+        if (structures.length > 0) {
+            let current = structures[0];
+
+            for (let i = 1; i < structures.length; i++) {
+                if (structures[i].start <= current.end) {
+                    // Structures overlap, merge them
+                    current = {
+                        start: current.start,
+                        end: Math.max(current.end, structures[i].end),
+                        type: `${current.type}+${structures[i].type}`
+                    };
+                } else {
+                    // No overlap, add current to result and update current
+                    mergedStructures.push(current);
+                    current = structures[i];
+                }
+            }
+
+            // Add the last structure
+            mergedStructures.push(current);
+        }
+
+        // Now chunk the text respecting these structures
+        const chunks: string[] = [];
+        const offsets: number[] = [];
+
+        let lastEnd = 0;
+
+        // Process each structure and text between structures
+        for (const structure of mergedStructures) {
+            if (signal.aborted) {
+                throw new Error('Operation was cancelled');
+            }
+
+            // Process text before this structure if any
+            if (structure.start > lastEnd) {
+                const textBefore = text.substring(lastEnd, structure.start);
+                if (textBefore.trim().length > 0) {
+                    // Use line-based splitting for text between structures
+                    const beforeResult = await this.splitTextByLines(textBefore, maxTokens, overlapSize, signal, true);
+
+                    for (let i = 0; i < beforeResult.chunks.length; i++) {
+                        chunks.push(beforeResult.chunks[i]);
+                        offsets.push(lastEnd + beforeResult.offsets[i]);
+                    }
+                }
+            }
+
+            // Process the structure itself
+            const structureText = text.substring(structure.start, structure.end);
+            const structureTokens = await this.tokenEstimator.countTokens(structureText);
+
+            if (structureTokens <= maxTokens) {
+                // Structure fits in a single chunk
+                chunks.push(structureText);
+                offsets.push(structure.start);
+            } else {
+                // Structure is too large, need to split it while respecting markdown syntax
+                // Use findPreferredSplitPoints to get optimal split locations
+                const splitPoints = this.findPreferredSplitPoints(structureText);
+
+                let position = 0;
+                while (position < structureText.length) {
+                    // Get remaining text
+                    const remaining = structureText.substring(position);
+
+                    // Find best split point
+                    let splitPosition = Math.min(remaining.length, Math.floor(maxTokens / 3));
+
+                    if (splitPoints.length > 0) {
+                        // Binary search for best split point that fits token limit
+                        let left = 0;
+                        let right = splitPoints.length - 1;
+
+                        while (left <= right) {
+                            const mid = Math.floor((left + right) / 2);
+                            const point = splitPoints[mid];
+
+                            if (point >= remaining.length) {
+                                right = mid - 1;
+                                continue;
+                            }
+
+                            const chunk = remaining.substring(0, point);
+                            const tokens = await this.tokenEstimator.countTokens(chunk);
+
+                            if (tokens <= maxTokens) {
+                                splitPosition = point;
+                                left = mid + 1;
+                            } else {
+                                right = mid - 1;
+                            }
+                        }
+                    }
+
+                    // Add chunk
+                    const chunk = remaining.substring(0, splitPosition);
+                    chunks.push(chunk);
+                    offsets.push(structure.start + position);
+
+                    position += splitPosition;
+                }
+            }
+
+            lastEnd = structure.end;
+        }
+
+        // Process any remaining text after the last structure
+        if (lastEnd < text.length) {
+            const remaining = text.substring(lastEnd);
+            if (remaining.trim().length > 0) {
+                const remainingResult = await this.splitTextByLines(remaining, maxTokens, overlapSize, signal, true);
+
+                for (let i = 0; i < remainingResult.chunks.length; i++) {
+                    chunks.push(remainingResult.chunks[i]);
+                    offsets.push(lastEnd + remainingResult.offsets[i]);
+                }
+            }
+        }
+
+        // Handle empty result case
+        if (chunks.length === 0) {
+            chunks.push(text);
+            offsets.push(0);
+        }
+
+        return { chunks, offsets };
     }
 
     /**
