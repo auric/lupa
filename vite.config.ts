@@ -2,6 +2,7 @@
 
 // Configure Vitest (https://vitest.dev/config/)
 
+import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -18,7 +19,7 @@ export default defineConfig({
     },
     resolve: {
         alias: {
-            'vscode': './__mocks__/vscode.js'
+            'vscode': resolve(__dirname, './__mocks__/vscode.js')
         }
     }
 });

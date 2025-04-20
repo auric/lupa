@@ -5,7 +5,7 @@ function createVSCodeMock() {
   return vscodeMock;
 }
 
-let vscodeMock = createVSCodeMock();
+const vscodeMock = createVSCodeMock();
 
 vscodeMock.TextDocument = vi.fn().mockImplementation(() => ({
   getText: vi.fn().mockReturnValue('mocked document text'),
@@ -304,4 +304,21 @@ vscodeMock.window = {
   onDidChangeActiveColorTheme: vi.fn()
 };
 
-module.exports = vscodeMock;
+export const commands = vscodeMock.commands;
+export const workspace = vscodeMock.workspace;
+export const window = vscodeMock.window;
+export const Uri = vscodeMock.Uri;
+export const Position = vscodeMock.Position;
+export const Range = vscodeMock.Range;
+export const TextDocument = vscodeMock.TextDocument;
+export const InlineCompletionItem = vscodeMock.InlineCompletionItem;
+export const InlineCompletionList = vscodeMock.InlineCompletionList;
+export const ConfigurationTarget = vscodeMock.ConfigurationTarget;
+export const CancellationTokenSource = vscodeMock.CancellationTokenSource;
+export const ProgressLocation = vscodeMock.ProgressLocation;
+export const ViewColumn = vscodeMock.ViewColumn;
+export const languages = vscodeMock.languages;
+export const ThemeIcon = vscodeMock.ThemeIcon;
+
+// Default export for direct imports
+export default vscodeMock;
