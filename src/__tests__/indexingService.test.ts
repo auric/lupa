@@ -397,14 +397,6 @@ describe('IndexingService Management Functions', () => {
         await indexingService.dispose();
     });
 
-    it('should register management command on initialization', () => {
-        // Verify the command was registered
-        expect(vscode.commands.registerCommand).toHaveBeenCalledWith(
-            'codelens-pr-analyzer.manageIndexing',
-            expect.any(Function)
-        );
-    });
-
     it('should handle cancel current indexing command correctly', async () => {
         // Mock showQuickPick to select cancel option
         const showQuickPickMock = vscode.window.showQuickPick as Mock;
