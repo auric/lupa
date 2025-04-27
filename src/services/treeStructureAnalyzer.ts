@@ -1242,29 +1242,39 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                 if (overlaps) {
                     const symbolName = this.extractNodeName(node, language);
                     const symbolType = node.type; // Use the tree-sitter node type
-                    const position = new vscode.Position(node.startPosition.row, node.startPosition.column);
 
                     if (symbolName) {
+                        // --- Find the identifier node for precise positioning ---
+                        let identifierNode: Parser.SyntaxNode | null = null;
+                        // Try common name fields first
+                        identifierNode = node.childForFieldName('name') || node.childForFieldName('id') || node.childForFieldName('identifier');
+                        // If not found, search within declarators
+                        if (!identifierNode) {
+                            const declaratorNode = node.childForFieldName('declarator');
+                            if (declaratorNode) {
+                                identifierNode = declaratorNode.descendantsOfType(['identifier', 'property_identifier', 'type_identifier', 'field_identifier'])[0] || null;
+                            }
+                        }
+                        // Fallback: Search direct children for identifier type
+                        if (!identifierNode) {
+                            identifierNode = node.children.find(child => child.type === 'identifier' && child.text === symbolName) || null;
+                        }
+                        // Fallback: Search all descendants (less precise, use as last resort)
+                        if (!identifierNode) {
+                            identifierNode = node.descendantsOfType(['identifier', 'property_identifier', 'type_identifier', 'field_identifier']).find(n => n.text === symbolName) || null;
+                        }
+
+                        // Use identifier position if found, otherwise fallback to node position
+                        const startPos = identifierNode ? identifierNode.startPosition : node.startPosition;
+                        const position = new vscode.Position(startPos.row, startPos.column);
+                        // --- End of identifier positioning logic ---
+
                         // Create a unique key based on name and position to avoid duplicates
                         const symbolKey = `${symbolName}@${position.line}:${position.character}`;
 
                         if (!processedSymbolKeys.has(symbolKey)) {
-                            // Basic check: avoid adding if parent is almost identical range (like template_declaration wrapping function_definition)
-                            // This is a heuristic and might need refinement
-                            let isRedundant = false;
-                            if (node.parent && symbolNodeTypes.includes(node.parent.type)) {
-                                const parentName = this.extractNodeName(node.parent, language);
-                                if (parentName === symbolName &&
-                                    node.parent.startPosition.row === startLine &&
-                                    node.parent.startPosition.column === position.character) {
-                                    isRedundant = true;
-                                }
-                            }
-
-                            if (!isRedundant) {
-                                foundSymbols.push({ symbolName, symbolType, position });
-                                processedSymbolKeys.add(symbolKey);
-                            }
+                            foundSymbols.push({ symbolName, symbolType, position });
+                            processedSymbolKeys.add(symbolKey);
                         }
                     }
                 }

@@ -17,15 +17,34 @@ vscodeMock.TextDocument = vi.fn().mockImplementation(() => ({
   lineCount: 100
 }));
 
-// Add custom mocks for Position class
-vscodeMock.Position = vi.fn().mockImplementation((line, character) => {
-  return {
-    line,
-    character,
-    translate: vi.fn(function (lineDelta, characterDelta) {
-      return new vscodeMock.Position(this.line + lineDelta, this.character + characterDelta);
-    })
-  };
+// Add mock for Position class
+vscodeMock.Position = vi.fn(function (line, character) {
+  this.line = line;
+  this.character = character;
+
+  // Assign mock methods to the instance ('this')
+  this.isEqual = vi.fn((other) => other.line === this.line && other.character === this.character);
+  this.isBefore = vi.fn((other) => this.line < other.line || (this.line === other.line && this.character < other.character));
+  this.isAfter = vi.fn((other) => this.line > other.line || (this.line === other.line && this.character > other.character));
+  this.translate = vi.fn((lineDelta = 0, characterDelta = 0) => new vscodeMock.Position(this.line + lineDelta, this.character + characterDelta));
+  this.with = vi.fn((lineOrChange, character) => {
+    let newLine = this.line;
+    let newCharacter = this.character;
+    if (typeof lineOrChange === 'number') {
+      newLine = lineOrChange;
+      if (character !== undefined) {
+        newCharacter = character;
+      }
+    } else { // lineOrChange is an object like { line?: number; character?: number }
+      if (lineOrChange.line !== undefined) {
+        newLine = lineOrChange.line;
+      }
+      if (lineOrChange.character !== undefined) {
+        newCharacter = lineOrChange.character;
+      }
+    }
+    return new vscodeMock.Position(newLine, newCharacter);
+  });
 });
 
 // Add custom mocks for Range class
@@ -74,6 +93,22 @@ vscodeMock.InlineCompletionList = vi.fn().mockImplementation((items) => {
   };
 });
 
+// Add mock for FileType enum
+vscodeMock.FileType = {
+  Unknown: 0,
+  File: 1,
+  Directory: 2,
+  SymbolicLink: 64
+};
+
+// Add mock for FileStat interface (as a function returning an object)
+vscodeMock.FileStat = vi.fn().mockImplementation((type, ctime, mtime, size) => ({
+  type: type || vscodeMock.FileType.File, // Default to File
+  ctime: ctime || Date.now(),
+  mtime: mtime || Date.now(),
+  size: size || 0
+}));
+
 vscodeMock.workspace = {
   getConfiguration: vi.fn().mockReturnValue({
     get: vi.fn(),
@@ -90,13 +125,14 @@ vscodeMock.workspace = {
       dispose: vi.fn()
     };
   }),
+  // Define workspaceFolders as a mutable array within the mock
+  workspaceFolders: [],
   fs: {
     readDirectory: vi.fn().mockResolvedValue([]),
     readFile: vi.fn().mockResolvedValue(Buffer.from('')),
     writeFile: vi.fn().mockResolvedValue(),
-    stat: vi.fn().mockResolvedValue({
-      type: 1
-    }),
+    // Update stat mock to use FileType.File
+    stat: vi.fn().mockResolvedValue({ type: vscodeMock.FileType.File, ctime: 0, mtime: 0, size: 0 }),
     copy: vi.fn().mockResolvedValue(),
     createDirectory: vi.fn().mockResolvedValue(),
     delete: vi.fn().mockResolvedValue()
@@ -304,7 +340,43 @@ vscodeMock.window = {
   onDidChangeActiveColorTheme: vi.fn()
 };
 
+// Add custom mocks for LanguageModelChatMessageRole
+vscodeMock.LanguageModelChatMessageRole = {
+  User: 1,
+  Assistant: 2
+};
+
+// Add custom mocks for LanguageModelChatMessage
+vscodeMock.LanguageModelChatMessage = vi.fn().mockImplementation((role, content, name) => ({
+  role,
+  content,
+  name,
+}));
+
+// Add custom mocks for LanguageModelChat
+// Note: This is a simplified mock. Adjust sendRequest/countTokens as needed for tests.
+vscodeMock.LanguageModelChat = vi.fn().mockImplementation((id, name, vendor, family, version, maxInputTokens) => ({
+  id: id || 'mock-model-id',
+  name: name || 'mock-model-name',
+  vendor: vendor || 'mock-vendor',
+  family: family || 'mock-family',
+  version: version || '1.0',
+  maxInputTokens: maxInputTokens || 4096,
+  sendRequest: vi.fn().mockResolvedValue({ /* mock response structure */ }),
+  countTokens: vi.fn().mockResolvedValue(10),
+}));
+
+// Mock chat namespace and selectChatModels
+vscodeMock.chat = {
+  languageModels: {
+    selectChatModels: vi.fn().mockResolvedValue([]), // Mock function to select models
+    onDidChangeLanguageModels: vi.fn(() => ({ dispose: vi.fn() })), // Mock event
+    all: [], // Mock property for all models
+  }
+};
+
 export const commands = vscodeMock.commands;
+export const chat = vscodeMock.chat;
 export const workspace = vscodeMock.workspace;
 export const window = vscodeMock.window;
 export const Uri = vscodeMock.Uri;
@@ -319,6 +391,13 @@ export const ProgressLocation = vscodeMock.ProgressLocation;
 export const ViewColumn = vscodeMock.ViewColumn;
 export const languages = vscodeMock.languages;
 export const ThemeIcon = vscodeMock.ThemeIcon;
+export const LanguageModelChatMessageRole = vscodeMock.LanguageModelChatMessageRole;
+export const LanguageModelChatMessage = vscodeMock.LanguageModelChatMessage;
+export const LanguageModelChat = vscodeMock.LanguageModelChat;
+
+// Export the new mocks
+export const FileType = vscodeMock.FileType;
+export const FileStat = vscodeMock.FileStat;
 
 // Default export for direct imports
 export default vscodeMock;

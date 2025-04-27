@@ -2,9 +2,9 @@ import * as vscode from 'vscode';
 import { encoding_for_model as tiktokenCountTokens, TiktokenModel } from 'tiktoken';
 import { countTokens as anthropicCountTokens } from '@anthropic-ai/tokenizer';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { TreeStructureAnalyzerResource } from './treeStructureAnalyzer';
+import { TreeStructureAnalyzerResource, SymbolInfo as AnalyzerSymbolInfo } from './treeStructureAnalyzer'; // Import SymbolInfo as AnalyzerSymbolInfo
 import {
-    SUPPORTED_LANGUAGES
+    SUPPORTED_LANGUAGES, getLanguageForExtension // Import getLanguageForExtension
 } from '../types/types';
 import {
     AnalysisMode
@@ -15,6 +15,15 @@ import {
 } from '../types/embeddingTypes';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { TokenManagerService } from './tokenManagerService';
+import * as path from 'path'; // Import path
+
+/**
+ * Represents symbol information found within a diff, including file path.
+ */
+export interface DiffSymbolInfo extends AnalyzerSymbolInfo {
+    filePath: string;
+}
+
 
 /**
  * Token estimation functions for different model families
@@ -161,112 +170,192 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
-     * Extract meaningful code chunks from PR diff
-     * @param diff PR diff content
-     * @returns Extracted code chunks for similarity search
+     * Extract meaningful code chunks and identify symbols from PR diff.
+     * @param diff PR diff content.
+     * @param workspaceRoot The root path of the workspace.
+     * @returns An object containing extracted code chunks and identified symbols.
      */
-    private async extractMeaningfulChunks(diff: string): Promise<string[]> {
+    private async extractMeaningfulChunksAndSymbols(diff: string, workspaceRoot: string): Promise<{ chunks: string[]; symbols: DiffSymbolInfo[] }> {
         const chunks: string[] = [];
+        const identifiedSymbols: DiffSymbolInfo[] = [];
         const resource = await TreeStructureAnalyzerResource.create();
         const analyzer = resource.instance;
 
-        // Split the diff into files
-        const fileRegex = /^diff --git a\/(.+) b\/(.+)[\r\n]+(?:.+[\r\n]+)*?(?:@@.+@@)/gm;
-        let fileMatch;
-        const matches: { index: number, length: number, filePath: string, newContent: string }[] = [];
+        const parsedDiff = this.parseDiff(diff);
 
-        // Find all file sections in the diff
-        while ((fileMatch = fileRegex.exec(diff)) !== null) {
-            const filePath = fileMatch[2]; // Using the 'b/' path (new file path)
-            const start = fileMatch.index + fileMatch[0].length;
-            const end = diff.indexOf('\ndiff --git', start);
-            const fileContent = diff.substring(start, end !== -1 ? end : diff.length);
+        for (const fileDiff of parsedDiff) {
+            const filePath = fileDiff.filePath;
+            const absoluteFilePath = path.join(workspaceRoot, filePath); // Assume relative path
+            const langInfo = analyzer.getFileLanguage(filePath);
 
-            // Extract and process added/modified code
-            const newContent = fileContent
-                .split('\n')
-                .filter(line => line.startsWith('+') && !line.startsWith('+++'))
-                .map(line => line.substring(1)) // Remove the '+' prefix
-                .join('\n');
+            let fullFileContent: string | undefined = undefined;
+            let isNewFile = false;
 
-            if (newContent.trim().length > 0) {
-                matches.push({
-                    index: fileMatch.index,
-                    length: fileMatch[0].length,
-                    filePath,
-                    newContent
-                });
+            // Try to read the full file content for symbol analysis
+            if (langInfo) {
+                try {
+                    const fileUri = vscode.Uri.file(absoluteFilePath);
+                    const fileStat = await vscode.workspace.fs.stat(fileUri);
+                    if (fileStat.type === vscode.FileType.File) {
+                        const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+                        fullFileContent = Buffer.from(contentBytes).toString('utf8');
+                    }
+                } catch (error) {
+                    // File might not exist (e.g., it's a new file in the diff)
+                    // Check if the diff indicates a new file
+                    const newFilePattern = new RegExp(`^diff --git a\\/dev\\/null b\\/${filePath.replace(/\\/g, '\\\\/')}`, 'm');
+                    if (newFilePattern.test(diff)) {
+                        isNewFile = true;
+                        // Construct content from added lines only
+                        fullFileContent = fileDiff.hunks
+                            .flatMap(hunk => hunk.lines)
+                            .filter(line => line.startsWith('+'))
+                            .map(line => line.substring(1))
+                            .join('\n');
+                        console.log(`Identified ${filePath} as a new file.`);
+                    } else {
+                        console.warn(`Could not read file content for ${filePath}:`, error);
+                    }
+                }
             }
-        }
 
-        // Process each file's changes with structure awareness
-        for (const match of matches) {
-            try {
-                // Detect the language from the file extension
-                const fileExt = match.filePath.split('.').pop()?.toLowerCase();
-                const language = fileExt ? SUPPORTED_LANGUAGES[fileExt]?.language : undefined;
+            const addedLinesContent: string[] = [];
+            const lineRanges: { startLine: number; endLine: number }[] = [];
 
-                if (language && match.newContent.trim()) {
-                    // Try to analyze the code structure
-                    const functions = await analyzer.findFunctions(match.newContent, language);
-                    const classes = await analyzer.findClasses(match.newContent, language);
+            for (const hunk of fileDiff.hunks) {
+                let currentNewLineNumber = hunk.newStart; // 1-based
+                let rangeStartLine: number | null = null;
 
-                    // Add complete function/class definitions as chunks
-                    for (const func of functions) {
-                        if (func.text.trim()) {
-                            chunks.push(func.text);
+                for (const line of hunk.lines) {
+                    const currentLineIsAdded = line.startsWith('+');
+                    const currentLineIsRemoved = line.startsWith('-');
+
+                    if (currentLineIsAdded) {
+                        addedLinesContent.push(line.substring(1));
+                        if (rangeStartLine === null) {
+                            rangeStartLine = currentNewLineNumber - 1; // Convert to 0-based for analyzer
+                        }
+                    } else {
+                        // Line is context or removed, end the current range if active
+                        if (rangeStartLine !== null) {
+                            lineRanges.push({ startLine: rangeStartLine, endLine: currentNewLineNumber - 2 }); // End line is inclusive, previous line
+                            rangeStartLine = null;
                         }
                     }
 
-                    for (const cls of classes) {
-                        if (cls.text.trim()) {
-                            chunks.push(cls.text);
-                        }
+                    // Increment line number for added or context lines
+                    if (!currentLineIsRemoved) {
+                        currentNewLineNumber++;
                     }
+                }
+                // End the last range if the hunk ends with added lines
+                if (rangeStartLine !== null) {
+                    lineRanges.push({ startLine: rangeStartLine, endLine: currentNewLineNumber - 2 }); // End line is inclusive, previous line
+                }
+            }
 
-                    // If no structures found, add the modified code as is
-                    if (functions.length === 0 && classes.length === 0) {
-                        chunks.push(match.newContent);
+            // --- Symbol Identification ---
+            if (langInfo && fullFileContent !== undefined && lineRanges.length > 0) {
+                try {
+                    console.log(`Analyzing symbols in ${filePath} for ranges:`, lineRanges);
+                    const symbolsInRanges = await analyzer.findSymbolsInRanges(
+                        fullFileContent,
+                        langInfo.language,
+                        lineRanges,
+                        langInfo.variant
+                    );
+                    console.log(`Found ${symbolsInRanges.length} symbols in changed ranges for ${filePath}`);
+                    symbolsInRanges.forEach(symbol => {
+                        identifiedSymbols.push({ ...symbol, filePath });
+                    });
+                } catch (error) {
+                    console.error(`Error finding symbols in ranges for ${filePath}:`, error);
+                }
+            }
+
+            // --- Chunk Extraction (Simplified - keeping existing logic for now) ---
+            const newContentCombined = addedLinesContent.join('\\n');
+            if (newContentCombined.trim().length > 0) {
+                if (langInfo) {
+                    try {
+                        // Use the combined added lines for structure analysis for chunks
+                        const functions = await analyzer.findFunctions(newContentCombined, langInfo.language, langInfo.variant);
+                        const classes = await analyzer.findClasses(newContentCombined, langInfo.language, langInfo.variant);
+
+                        if (functions.length > 0 || classes.length > 0) {
+                            functions.forEach(f => chunks.push(f.text));
+                            classes.forEach(c => chunks.push(c.text));
+                        } else {
+                            chunks.push(newContentCombined); // Add combined content if no structures found
+                        }
+                    } catch (error) {
+                        console.warn(`Error analyzing structure for chunks in ${filePath}:`, error);
+                        chunks.push(newContentCombined); // Fallback
                     }
                 } else {
-                    // For unsupported languages or non-code files, add content as is
-                    chunks.push(match.newContent);
+                    chunks.push(newContentCombined); // Unsupported language
                 }
-
-                // Always add the file path as a chunk to find related files
-                chunks.push(match.filePath);
-
-                // Try to find parent structures (e.g., containing class/namespace)
-                if (language) {
-                    const hierarchy = await analyzer.getStructureHierarchyAtPosition(
-                        match.newContent,
-                        language,
-                        { row: 0, column: 0 }
-                    );
-
-                    // Add parent structures as chunks for better context
-                    for (const struct of hierarchy) {
-                        if (struct.text.trim() && !chunks.includes(struct.text)) {
-                            chunks.push(struct.text);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.warn(`Error analyzing structure for ${match.filePath}:`, error);
-                // Fallback: add the content without structure analysis
-                chunks.push(match.newContent);
             }
-        }
-
-        // If we couldn't extract any meaningful chunks, use the whole diff
-        if (chunks.length === 0) {
-            chunks.push(diff);
+            // Always add file path for context
+            chunks.push(filePath);
         }
 
         resource.dispose();
 
-        // Deduplicate chunks while preserving order
-        return [...new Set(chunks)];
+        // Deduplicate chunks
+        const uniqueChunks = [...new Set(chunks)];
+
+        // If no chunks extracted, use the whole diff as a fallback chunk
+        if (uniqueChunks.length === 0 && diff.trim().length > 0) {
+            uniqueChunks.push(diff);
+        }
+
+
+        console.log(`Extracted ${uniqueChunks.length} chunks and ${identifiedSymbols.length} symbols from diff.`);
+        return { chunks: uniqueChunks, symbols: identifiedSymbols };
+    }
+
+    /**
+     * Parses a diff string to extract file paths, hunks, and line number mappings.
+     * @param diff The diff string.
+     * @returns An array of objects, each representing a file in the diff.
+     */
+    private parseDiff(diff: string): { filePath: string; hunks: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }[] }[] {
+        const files: { filePath: string; hunks: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }[] }[] = [];
+        const fileRegex = /^diff --git a\/(.+) b\/(.+)$/gm;
+        const hunkHeaderRegex = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@/;
+        const lines = diff.split('\n'); // Fix: Split by actual newline character
+        let currentFile: { filePath: string; hunks: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }[] } | null = null;
+        let currentHunk: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] } | null = null;
+
+        for (const line of lines) {
+            const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+            if (fileMatch) {
+                currentFile = { filePath: fileMatch[2], hunks: [] };
+                files.push(currentFile);
+                currentHunk = null; // Reset hunk when a new file starts
+                continue; // Ensure continue is on a new line
+            }
+
+            if (currentFile) {
+                const hunkHeaderMatch = hunkHeaderRegex.exec(line);
+                if (hunkHeaderMatch) {
+                    const newHunk = { // Assign to a new variable first
+                        oldStart: parseInt(hunkHeaderMatch[1], 10),
+                        oldLines: parseInt(hunkHeaderMatch[2], 10),
+                        newStart: parseInt(hunkHeaderMatch[3], 10),
+                        newLines: parseInt(hunkHeaderMatch[4], 10),
+                        lines: []
+                    };
+                    currentHunk = newHunk; // Assign to currentHunk
+                    currentFile.hunks.push(currentHunk);
+                } else if (currentHunk && (line.startsWith('+') || line.startsWith('-') || line.startsWith(' '))) {
+                    // Only add context, added, or removed lines to the hunk lines
+                    currentHunk.lines.push(line);
+                }
+            }
+        }
+        return files;
     }
 
     /**
@@ -289,14 +378,23 @@ export class ContextProvider implements vscode.Disposable {
     ): Promise<string> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
 
+        // Get workspace root
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        const workspaceRoot = workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0].uri.fsPath : '.';
+
+
         try {
             // Check for cancellation
             if (token?.isCancellationRequested) {
                 throw new Error('Operation cancelled');
             }
 
-            // Extract meaningful chunks from the diff for better semantic search
-            const chunks = await this.extractMeaningfulChunks(diff);
+            // Extract meaningful chunks and symbols from the diff
+            const { chunks, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, workspaceRoot);
+
+            // --- TODO: Use identified 'symbols' for LSP lookups (Improvement Plan Item #1) ---
+            console.log(`Identified Symbols for potential LSP lookup:`, symbols.map(s => `${s.filePath} -> ${s.symbolName} (${s.symbolType})`));
+            // For now, we proceed with the embedding-based context using 'chunks'
 
             // Check for cancellation
             if (token?.isCancellationRequested) {
@@ -322,17 +420,19 @@ export class ContextProvider implements vscode.Disposable {
             }
 
             if (allResults.length === 0) {
-                console.log('No relevant context found');
+                console.log('No relevant context found via embeddings');
+                // --- TODO: Add LSP context here if available before falling back ---
                 return await this.getFallbackContext(diff, token);
             }
 
             // Rank and filter results based on relevance and analysis mode
             const rankedResults = this.rankAndFilterResults(allResults, analysisMode);
 
-            console.log(`Found ${rankedResults.length} relevant code snippets after ranking`);
+            console.log(`Found ${rankedResults.length} relevant code snippets via embeddings after ranking`);
 
-            // Format the results first to get the initial context
+            // --- TODO: Combine LSP context with embedding context here ---
             const initialFormattedContext = this.formatContextResults(rankedResults);
+
 
             // Check for cancellation
             if (token?.isCancellationRequested) {
@@ -350,7 +450,7 @@ export class ContextProvider implements vscode.Disposable {
             const tokenComponents = {
                 systemPrompt,
                 diffText: diff,
-                context: initialFormattedContext
+                context: initialFormattedContext // Use combined context once LSP is added
             };
 
             const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, analysisMode);
@@ -382,13 +482,14 @@ export class ContextProvider implements vscode.Disposable {
             console.log(`Context can use up to ${allocation.contextAllocationTokens} tokens`);
 
             // Optimize the context to fit within the available token allocation
+            // --- TODO: Update optimizeContext to handle structured context and relevance scores (Improvement Plan Item #3) ---
             const optimizedContext = await this.tokenManager.optimizeContext(
                 initialFormattedContext,
                 allocation.contextAllocationTokens
             );
 
             // Assess the quality of the context
-            const qualityScore = this.assessContextQuality(rankedResults);
+            const qualityScore = this.assessContextQuality(rankedResults); // TODO: Update to assess combined context
             console.log(`Context quality score: ${qualityScore.toFixed(2)}`);
 
             return optimizedContext;
@@ -916,6 +1017,7 @@ export class ContextProvider implements vscode.Disposable {
 
             // Format with markdown for better readability
             formattedFiles.push([
+
                 `${fileHeader}${contentDescription}`,
                 '```',
                 combinedContent,
