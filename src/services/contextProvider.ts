@@ -1139,6 +1139,119 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
+     * Find the definition(s) of a symbol at a given position in a file using LSP.
+     * @param filePath The absolute path to the file.
+     * @param position The position of the symbol in the file.
+     * @param token Optional cancellation token.
+     * @returns A promise that resolves to an array of locations, or undefined if not found or cancelled.
+     */
+    public async findSymbolDefinition(
+        filePath: string,
+        position: vscode.Position,
+        token?: vscode.CancellationToken
+    ): Promise<vscode.Location[] | undefined> {
+        // Early exit if cancellation is already requested
+        if (token?.isCancellationRequested) {
+            console.log('Symbol definition lookup cancelled before execution.');
+            return undefined;
+        }
+
+        try {
+            const uri = vscode.Uri.file(filePath);
+            console.log(`Finding definition for symbol at ${filePath}:${position.line}:${position.character}`);
+
+            // Use a CancellationTokenSource to manage cancellation for the command execution
+            const cts = new vscode.CancellationTokenSource();
+            if (token) {
+                token.onCancellationRequested(() => cts.cancel());
+            }
+
+            const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeDefinitionProvider',
+                uri,
+                position,
+                cts.token // Pass the token from the new source
+            );
+
+            if (token?.isCancellationRequested) {
+                console.log('Symbol definition lookup cancelled.');
+                return undefined;
+            }
+
+            if (locations && locations.length > 0) {
+                console.log(`Found ${locations.length} definition(s)`);
+                return locations;
+            } else {
+                console.log('No definition found.');
+                return undefined;
+            }
+        } catch (error) {
+            console.error(`Error finding symbol definition for ${filePath}:${position.line}:${position.character}:`, error);
+            // Don't throw, just return undefined if LSP fails
+            return undefined;
+        }
+    }
+
+    /**
+     * Find references to a symbol at a given position in a file using LSP.
+     * @param filePath The absolute path to the file.
+     * @param position The position of the symbol in the file.
+     * @param includeDeclaration Whether to include the declaration in the results.
+     * @param token Optional cancellation token.
+     * @returns A promise that resolves to an array of locations, or undefined if not found or cancelled.
+     */
+    public async findSymbolReferences(
+        filePath: string,
+        position: vscode.Position,
+        includeDeclaration: boolean = false,
+        token?: vscode.CancellationToken
+    ): Promise<vscode.Location[] | undefined> {
+        // Early exit if cancellation is already requested
+        if (token?.isCancellationRequested) {
+            console.log('Symbol reference lookup cancelled before execution.');
+            return undefined;
+        }
+
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const context: vscode.ReferenceContext = { includeDeclaration };
+            console.log(`Finding references for symbol at ${filePath}:${position.line}:${position.character} (includeDeclaration: ${includeDeclaration})`);
+
+            // Use a CancellationTokenSource to manage cancellation for the command execution
+            const cts = new vscode.CancellationTokenSource();
+            if (token) {
+                token.onCancellationRequested(() => cts.cancel());
+            }
+
+            const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeReferenceProvider',
+                uri,
+                position,
+                context,
+                cts.token // Pass the token from the new source
+            );
+
+            if (token?.isCancellationRequested) {
+                console.log('Symbol reference lookup cancelled.');
+                return undefined;
+            }
+
+            if (locations && locations.length > 0) {
+                console.log(`Found ${locations.length} reference(s)`);
+                return locations;
+            } else {
+                console.log('No references found.');
+                return undefined;
+            }
+        } catch (error) {
+            console.error(`Error finding symbol references for ${filePath}:${position.line}:${position.character}:`, error);
+            // Don't throw, just return undefined if LSP fails
+            return undefined;
+        }
+    }
+
+
+    /**
      * Dispose resources
      */
     dispose(): void {
