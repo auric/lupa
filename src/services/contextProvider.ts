@@ -1250,6 +1250,81 @@ export class ContextProvider implements vscode.Disposable {
         }
     }
 
+    /**
+     * Retrieve code snippets for a list of LSP locations.
+     * @param locations Array of vscode.Location objects.
+     * @param contextLines Number of lines to include before and after the target range.
+     * @param token Optional cancellation token.
+     * @returns A promise that resolves to an array of formatted markdown snippets.
+     */
+    public async getSnippetsForLocations(
+        locations: vscode.Location[],
+        contextLines: number,
+        token?: vscode.CancellationToken
+    ): Promise<string[]> {
+        if (!locations || locations.length === 0) {
+            return [];
+        }
+
+        const snippets: string[] = [];
+        // Simple cache for this run to avoid re-fetching identical locations if they appear multiple times.
+        const snippetCache = new Map<string, string>();
+
+        for (const location of locations) {
+            if (token?.isCancellationRequested) {
+                console.log('Snippet retrieval cancelled.');
+                break;
+            }
+
+            const cacheKey = `${location.uri.toString()}:${location.range.start.line}:${location.range.start.character}-${location.range.end.line}:${location.range.end.character}`;
+            if (snippetCache.has(cacheKey)) {
+                const cachedSnippet = snippetCache.get(cacheKey);
+                if (cachedSnippet) {
+                    snippets.push(cachedSnippet);
+                }
+                continue;
+            }
+
+            try {
+                const document = await vscode.workspace.openTextDocument(location.uri);
+                const startLine = Math.max(0, location.range.start.line - contextLines);
+                const endLine = Math.min(document.lineCount - 1, location.range.end.line + contextLines);
+
+                let snippetContent = '';
+                for (let i = startLine; i <= endLine; i++) {
+                    if (token?.isCancellationRequested) {
+                        break;
+                    }
+                    const lineText = document.lineAt(i).text;
+                    // Add 1 to i for 1-based line numbering in display
+                    snippetContent += `${String(i + 1).padStart(4, ' ')}: ${lineText}\n`;
+                }
+
+                if (token?.isCancellationRequested) {
+                    // If cancelled during line reading, don't add partial snippet
+                    console.log('Snippet retrieval cancelled during line reading.');
+                    break;
+                }
+
+                // Determine if it's a definition or reference for the title (heuristic)
+                // This is a placeholder; more sophisticated logic might be needed if we can distinguish.
+                // For now, we'll use a generic title or rely on the caller to provide more context.
+                const titleType = location.uri.fsPath.includes(document.fileName) ? "Context" : "Reference";
+                const relativePath = vscode.workspace.asRelativePath(location.uri, false);
+
+
+                const formattedSnippet = `**${titleType} in \`${relativePath}\` (L${location.range.start.line + 1}):**\n\`\`\`${document.languageId}\n${snippetContent.trimEnd()}\n\`\`\``;
+                snippets.push(formattedSnippet);
+                snippetCache.set(cacheKey, formattedSnippet);
+
+            } catch (error) {
+                console.error(`Error reading snippet for ${location.uri.fsPath}:`, error);
+                // Optionally add a placeholder error snippet or skip
+                // snippets.push(`**Error retrieving snippet for \`${location.uri.fsPath}\`**`);
+            }
+        }
+        return snippets;
+    }
 
     /**
      * Dispose resources

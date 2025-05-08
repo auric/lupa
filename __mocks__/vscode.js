@@ -150,6 +150,17 @@ vscodeMock.ConfigurationTarget = {
   WorkspaceFolder: 3
 };
 
+vscodeMock.ExtensionMode = {
+  Production: 1,
+  Development: 2,
+  Test: 3,
+}
+
+vscodeMock.ExtensionKind = {
+  UI: 1,
+  Workspace: 2,
+}
+
 vscodeMock.CancellationTokenSource = vi.fn(function () {
   // Using function() instead of arrow function so 'this' refers to the instance
   const listeners = [];
@@ -386,6 +397,8 @@ export const TextDocument = vscodeMock.TextDocument;
 export const InlineCompletionItem = vscodeMock.InlineCompletionItem;
 export const InlineCompletionList = vscodeMock.InlineCompletionList;
 export const ConfigurationTarget = vscodeMock.ConfigurationTarget;
+export const ExtensionMode = vscodeMock.ExtensionMode;
+export const ExtensionKind = vscodeMock.ExtensionKind;
 export const CancellationTokenSource = vscodeMock.CancellationTokenSource;
 export const ProgressLocation = vscodeMock.ProgressLocation;
 export const ViewColumn = vscodeMock.ViewColumn;
