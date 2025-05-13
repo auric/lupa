@@ -21,12 +21,14 @@ export class AnalysisProvider implements vscode.Disposable {
     /**
      * Analyze PR using language models
      * @param diffText The diff text to analyze
+     * @param gitRootPath The root path of the Git repository.
      * @param mode The analysis mode
      * @param progressCallback Optional callback for progress updates
      * @param token Optional cancellation token
      */
     public async analyzePullRequest(
-        diffText: string, 
+        diffText: string,
+        gitRootPath: string, // Added gitRootPath parameter
         mode: AnalysisMode,
         progressCallback?: (message: string, increment?: number) => void,
         token?: vscode.CancellationToken
@@ -48,6 +50,7 @@ export class AnalysisProvider implements vscode.Disposable {
             // Find relevant code context for the diff with progress reporting - 50% total
             const context = await this.contextProvider.getContextForDiff(
                 diffText,
+                gitRootPath, // Pass gitRootPath here
                 undefined,
                 mode,
                 undefined,

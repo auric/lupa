@@ -172,10 +172,10 @@ export class ContextProvider implements vscode.Disposable {
     /**
      * Extract meaningful code chunks and identify symbols from PR diff.
      * @param diff PR diff content.
-     * @param workspaceRoot The root path of the workspace.
+     * @param gitRepoRoot The root path of the workspace.
      * @returns An object containing extracted code chunks and identified symbols.
      */
-    private async extractMeaningfulChunksAndSymbols(diff: string, workspaceRoot: string): Promise<{ chunks: string[]; symbols: DiffSymbolInfo[] }> {
+    private async extractMeaningfulChunksAndSymbols(diff: string, gitRepoRoot: string): Promise<{ chunks: string[]; symbols: DiffSymbolInfo[] }> {
         const chunks: string[] = [];
         const identifiedSymbols: DiffSymbolInfo[] = [];
         const resource = await TreeStructureAnalyzerResource.create();
@@ -185,7 +185,7 @@ export class ContextProvider implements vscode.Disposable {
 
         for (const fileDiff of parsedDiff) {
             const filePath = fileDiff.filePath;
-            const absoluteFilePath = path.join(workspaceRoot, filePath); // Assume relative path
+            const absoluteFilePath = path.join(gitRepoRoot, filePath); // Assume relative path
             const langInfo = analyzer.getFileLanguage(filePath);
 
             let fullFileContent: string | undefined = undefined;
@@ -361,6 +361,7 @@ export class ContextProvider implements vscode.Disposable {
     /**
      * Get relevant code context for a diff
      * @param diff The PR diff
+     * @param gitRootPath The root path of the git repository
      * @param options Optional search options
      * @param analysisMode Analysis mode that determines relevance strategy
      * @param systemPrompt Optional system prompt
@@ -370,6 +371,7 @@ export class ContextProvider implements vscode.Disposable {
      */
     async getContextForDiff(
         diff: string,
+        gitRootPath: string,
         options?: SimilaritySearchOptions,
         analysisMode: AnalysisMode = AnalysisMode.Comprehensive,
         systemPrompt?: string,
@@ -378,11 +380,6 @@ export class ContextProvider implements vscode.Disposable {
     ): Promise<string> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
 
-        // Get workspace root
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        const workspaceRoot = workspaceFolders && workspaceFolders.length > 0 ? workspaceFolders[0].uri.fsPath : '.';
-
-
         try {
             // Check for cancellation
             if (token?.isCancellationRequested) {
@@ -390,7 +387,7 @@ export class ContextProvider implements vscode.Disposable {
             }
 
             // Extract meaningful chunks and symbols from the diff
-            const { chunks, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, workspaceRoot);
+            const { chunks, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, gitRootPath);
 
             // --- TODO: Use identified 'symbols' for LSP lookups (Improvement Plan Item #1) ---
             console.log(`Identified Symbols for potential LSP lookup:`, symbols.map(s => `${s.filePath} -> ${s.symbolName} (${s.symbolType})`));
@@ -741,59 +738,6 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
-     * Get relevant code context for a list of file paths
-     * This is useful when you already know which files have changed
-     * @param files Array of file paths
-     * @param analysisMode Analysis mode for context retrieval strategy
-     * @returns Formatted context
-     */
-    async getContextForFiles(
-        files: string[],
-        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
-    ): Promise<string> {
-        try {
-            // Extract file extensions to determine languages
-            const fileExtensions = files
-                .map(file => {
-                    const match = file.match(/\.([^./\\]+)$/);
-                    return match ? match[1] : null;
-                })
-                .filter(ext => ext !== null) as string[];
-
-            // Map extensions to languages using the shared definition
-            const languageSet = new Set<string>();
-
-            for (const ext of fileExtensions) {
-                const language = SUPPORTED_LANGUAGES[ext];
-                if (language) {
-                    languageSet.add(language.language);
-                }
-            }
-
-            const languages = Array.from(languageSet);
-
-            // If we have languages, use them as a filter
-            let options: SimilaritySearchOptions | undefined;
-            if (languages.length > 0) {
-                options = {
-                    languageFilter: languages
-                };
-            }
-
-            // Customize options based on analysis mode
-            options = this.getSearchOptionsForMode(analysisMode, options);
-
-            // Join file paths to create a search query
-            const searchQuery = files.join('\n');
-
-            return await this.getContextForDiff(searchQuery, options, analysisMode);
-        } catch (error) {
-            console.error('Error getting context for files:', error);
-            return 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error));
-        }
-    }
-
-    /**
      * Assess the quality of the retrieved context
      * @returns A score between 0-1 indicating context quality
      */
@@ -1059,83 +1003,6 @@ export class ContextProvider implements vscode.Disposable {
         }
 
         return hash;
-    }
-
-    /**
-     * Get summary context for PR analysis
-     * @param prDescription PR description
-     * @param diff PR diff
-     * @param changedFiles List of changed file paths
-     * @param analysisMode Analysis mode to determine context retrieval strategy
-     * @returns Complete context for analysis
-     */
-    async getPRContext(
-        prDescription: string,
-        diff: string,
-        changedFiles: string[],
-        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
-    ): Promise<string> {
-        console.log(`Getting PR context for analysis mode: ${analysisMode}`);
-
-        // First, get context based on the diff itself
-        const diffContext = await this.getContextForDiff(diff, undefined, analysisMode);
-
-        // Get additional context based on changed files
-        const filesContext = await this.getContextForFiles(changedFiles, analysisMode);
-
-        // Combine contexts, removing duplicates
-        // We'll include diff and PR description in all cases
-        const sections = [
-            '## PR Description',
-            prDescription || 'No description provided.',
-            '',
-            '## PR Changes',
-            `This PR changes ${changedFiles.length} files.`,
-            '',
-        ];
-
-        // For different modes, format content differently
-        switch (analysisMode) {
-            case 'critical':
-                // For critical issues, focus on the most relevant context only
-                sections.push(diffContext);
-                break;
-
-            case 'comprehensive':
-                // For comprehensive analysis, include both diff and file contexts
-                sections.push(diffContext);
-                sections.push('');
-                sections.push('## Additional Context');
-                sections.push(filesContext);
-                break;
-
-            case 'security':
-                // For security analysis, prioritize code context
-                sections.push(diffContext);
-                sections.push('');
-                sections.push('## Security-Related Context');
-                sections.push(filesContext);
-                break;
-
-            case 'performance':
-                // For performance analysis, focus on related algorithms and patterns
-                sections.push(diffContext);
-                sections.push('');
-                sections.push('## Performance-Related Context');
-                sections.push(filesContext);
-                break;
-        }
-
-        const combined = sections.join('\n');
-
-        // Check if the context is too large and might exceed token limits
-        if (combined.length > this.MAX_CONTENT_LENGTH) {
-            console.log('Context is very large, truncating to fit token limits');
-            return combined.substring(0, this.MAX_CONTENT_LENGTH) +
-                '\n\n[Note: Context was truncated due to length limits]';
-        }
-
-        return combined;
     }
 
     /**

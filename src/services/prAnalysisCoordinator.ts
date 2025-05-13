@@ -179,6 +179,14 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
                 return;
             }
 
+            const repository = this.gitOperationsManager.getRepository();
+            if (!repository) {
+                vscode.window.showErrorMessage('No active Git repository could be determined.');
+                this.uiManager.updateStatusBar(StatusBarState.Ready);
+                return;
+            }
+            const gitRootPath = repository.rootUri.fsPath;
+
             // Offer options for analysis type
             const selectedOption = await this.uiManager.showAnalysisTypeOptions();
 
@@ -227,6 +235,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
                     // We allocate most of the progress to the actual analysis
                     const { analysis, context } = await this.analysisProvider.analyzePullRequest(
                         diffText,
+                        gitRootPath, // Pass gitRootPath here
                         analysisMode,
                         (message, increment) => {
                             // Only update the message if no increment is specified
