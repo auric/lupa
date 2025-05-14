@@ -155,7 +155,11 @@ function newFunction() {
         const symbols = await testExtractSymbols(diff);
 
         // Check file path used for reading
-        expect(vi.mocked(mockFs.readFile)).toHaveBeenCalledWith(vscode.Uri.file(absoluteFilePath));
+        expect(vi.mocked(mockFs.readFile)).toHaveBeenCalled();
+        const firstCallArgs = vi.mocked(mockFs.readFile).mock.calls[0];
+        expect(firstCallArgs).toBeDefined();
+        const uriArg = firstCallArgs[0] as vscode.Uri;
+        expect(uriArg.fsPath).toBe(absoluteFilePath);
 
         // Assert the identified symbol
         expect(symbols).toHaveLength(1);
@@ -315,7 +319,7 @@ index 1111111..5555555 100644
         const symbols = await testExtractSymbols(diff);
 
         // Should attempt to read
-        expect(vi.mocked(mockFs.readFile)).toHaveBeenCalledWith(vscode.Uri.file(absoluteFilePath));
+        expect(vi.mocked(mockFs.readFile)).toHaveBeenCalledWith(expect.objectContaining({ fsPath: absoluteFilePath }));
         // Should not find symbols if read fails
         expect(symbols).toHaveLength(0);
     });
