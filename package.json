@@ -75,7 +75,6 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "@anthropic-ai/tokenizer": "^0.0.4",
         "@huggingface/transformers": "^3.4.0",
         "@vscode/sqlite3": "^5.1.8-vscode",
         "@vscode/tree-sitter-wasm": "^0.1.4",
@@ -86,7 +85,6 @@
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "sql-template-strings": "^2.2.2",
-        "tiktoken": "^1.0.20",
         "uuid": "^11.1.0",
         "web-tree-sitter": "^0.24.7"
     },

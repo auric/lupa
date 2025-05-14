@@ -66,22 +66,22 @@ export class TokenManagerService {
 
         // Calculate tokens for each component
         const systemPromptTokens = components.systemPrompt
-            ? TokenEstimator.estimateTokensByModelFamily(components.systemPrompt, modelFamily)
+            ? await this.currentModel!.countTokens(components.systemPrompt)
             : 0;
 
         const diffTextTokens = components.diffText
-            ? TokenEstimator.estimateTokensByModelFamily(components.diffText, modelFamily)
+            ? await this.currentModel!.countTokens(components.diffText)
             : 0;
 
         const contextTokens = components.context
-            ? TokenEstimator.estimateTokensByModelFamily(components.context, modelFamily)
+            ? await this.currentModel!.countTokens(components.context)
             : 0;
 
         // Calculate tokens for conversation history
         let userMessagesTokens = 0;
         if (components.userMessages) {
             for (const message of components.userMessages) {
-                userMessagesTokens += TokenEstimator.estimateTokensByModelFamily(message, modelFamily);
+                userMessagesTokens += await this.currentModel!.countTokens(message) || 0;
                 userMessagesTokens += TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
             }
         }
@@ -89,7 +89,7 @@ export class TokenManagerService {
         let assistantMessagesTokens = 0;
         if (components.assistantMessages) {
             for (const message of components.assistantMessages) {
-                assistantMessagesTokens += TokenEstimator.estimateTokensByModelFamily(message, modelFamily);
+                assistantMessagesTokens += await this.currentModel!.countTokens(message) || 0;
                 assistantMessagesTokens += TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
             }
         }
@@ -131,22 +131,6 @@ export class TokenManagerService {
     }
 
     /**
-     * Get system prompt token estimation for an analysis mode
-     * @param mode Analysis mode
-     * @returns Token count estimate
-     */
-    public async getSystemPromptTokens(mode: AnalysisMode): Promise<number> {
-        // Generate the appropriate system prompt
-        const systemPrompt = this.getSystemPromptForMode(mode);
-
-        // Get model info and estimate tokens
-        await this.updateModelInfo();
-        const modelFamily = this.modelDetails?.family || 'unknown';
-
-        return TokenEstimator.estimateTokensByModelFamily(systemPrompt, modelFamily);
-    }
-
-    /**
      * Optimizes context to fit within available token allocation
      * @param context Full context content
      * @param availableTokens Maximum tokens that can be allocated to context
@@ -160,7 +144,7 @@ export class TokenManagerService {
         const modelFamily = this.modelDetails?.family || 'unknown';
 
         // Calculate current context tokens
-        const contextTokens = TokenEstimator.estimateTokensByModelFamily(context, modelFamily);
+        const contextTokens = await this.currentModel!.countTokens(context);
 
         // If context already fits, return as is
         if (contextTokens <= availableTokens) {
@@ -186,12 +170,12 @@ export class TokenManagerService {
 
         // Keep intro text
         let optimizedContext = sections[0];
-        let currentTokens = TokenEstimator.estimateTokensByModelFamily(optimizedContext, modelFamily);
+        let currentTokens = await this.currentModel!.countTokens(optimizedContext);
 
         // Add sections until we approach the token limit
         for (let i = 1; i < sections.length; i++) {
             const section = '### File:' + sections[i];
-            const sectionTokens = TokenEstimator.estimateTokensByModelFamily(section, modelFamily);
+            const sectionTokens = await this.currentModel!.countTokens(section);
 
             if (currentTokens + sectionTokens <= availableTokens) {
                 // This section fits, add it
@@ -241,10 +225,7 @@ export class TokenManagerService {
      */
     public async calculateTokens(text: string): Promise<number> {
         await this.updateModelInfo();
-        return TokenEstimator.estimateTokensByModelFamily(
-            text,
-            this.modelDetails?.family || 'unknown'
-        );
+        return await this.currentModel!.countTokens(text);
     }
 
     /**
