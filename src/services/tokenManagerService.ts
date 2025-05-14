@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { TokenEstimator } from './contextProvider';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
 
