@@ -18,62 +18,79 @@ vscodeMock.TextDocument = vi.fn().mockImplementation(() => ({
 }));
 
 // Add mock for Position class
-vscodeMock.Position = vi.fn(function (line, character) {
-  this.line = line;
-  this.character = character;
-
-  // Assign mock methods to the instance ('this')
-  this.isEqual = vi.fn((other) => other.line === this.line && other.character === this.character);
-  this.isBefore = vi.fn((other) => this.line < other.line || (this.line === other.line && this.character < other.character));
-  this.isAfter = vi.fn((other) => this.line > other.line || (this.line === other.line && this.character > other.character));
-  this.translate = vi.fn((lineDelta = 0, characterDelta = 0) => new vscodeMock.Position(this.line + lineDelta, this.character + characterDelta));
-  this.with = vi.fn((lineOrChange, character) => {
-    let newLine = this.line;
-    let newCharacter = this.character;
-    if (typeof lineOrChange === 'number') {
-      newLine = lineOrChange;
-      if (character !== undefined) {
-        newCharacter = character;
+vscodeMock.Position = vi.fn((line, character) => {
+  // console.log(`[VSCODE_MOCK Position CONSTRUCTOR CALLED] line: ${line}, character: ${character}`);
+  const posInstance = {
+    line: line,
+    character: character,
+    isEqual: vi.fn((other) => other && other.line === line && other.character === character),
+    isBefore: vi.fn((other) => other && (line < other.line || (line === other.line && character < other.character))),
+    isAfter: vi.fn((other) => other && (line > other.line || (line === other.line && character > other.character))),
+    translate: vi.fn((lineDelta = 0, characterDelta = 0) => new vscodeMock.Position(line + lineDelta, character + characterDelta)),
+    with: vi.fn((lineOrChange, newChar) => {
+      let newLineVal = line;
+      let newCharVal = character;
+      if (typeof lineOrChange === 'number') {
+        newLineVal = lineOrChange;
+        if (newChar !== undefined) newCharVal = newChar;
+      } else {
+        if (lineOrChange.line !== undefined) {
+          newLineVal = lineOrChange.line;
+        }
+        if (lineOrChange.character !== undefined) {
+          newCharVal = lineOrChange.character;
+        }
       }
-    } else { // lineOrChange is an object like { line?: number; character?: number }
-      if (lineOrChange.line !== undefined) {
-        newLine = lineOrChange.line;
-      }
-      if (lineOrChange.character !== undefined) {
-        newCharacter = lineOrChange.character;
-      }
-    }
-    return new vscodeMock.Position(newLine, newCharacter);
-  });
+      return new vscodeMock.Position(newLineVal, newCharVal);
+    })
+  };
+  // console.log(`[VSCODE_MOCK Position INSTANCE CREATED]:`, JSON.stringify(posInstance));
+  return posInstance;
 });
 
 // Add custom mocks for Range class
 vscodeMock.Range = vi.fn().mockImplementation((startOrStartLine, endOrStartCharacter, endLine, endCharacter) => {
+  // console.log(`[VSCODE_MOCK Range CONSTRUCTOR CALLED]`);
+  let startPos, endPos;
   if (typeof startOrStartLine === 'number' && typeof endOrStartCharacter === 'number') {
-    return {
-      start: new vscodeMock.Position(startOrStartLine, endOrStartCharacter),
-      end: new vscodeMock.Position(endLine, endCharacter),
-      isEmpty: false,
-      isSingleLine: startOrStartLine === endLine,
-      contains: vi.fn(),
-      isEqual: vi.fn(),
-      intersection: vi.fn(),
-      union: vi.fn(),
-      with: vi.fn()
-    };
+    startPos = new vscodeMock.Position(startOrStartLine, endOrStartCharacter);
+    endPos = new vscodeMock.Position(endLine, endCharacter);
   } else {
-    return {
-      start: startOrStartLine,
-      end: endOrStartCharacter,
-      isEmpty: false,
-      isSingleLine: startOrStartLine.line === endOrStartCharacter.line,
-      contains: vi.fn(),
-      isEqual: vi.fn(),
-      intersection: vi.fn(),
-      union: vi.fn(),
-      with: vi.fn()
-    };
+    startPos = startOrStartLine;  // Assumed to be a Position instance
+    endPos = endOrStartCharacter; // Assumed to be a Position instance
   }
+
+  // Ensure startPos and endPos are valid before creating the range object
+  if (!startPos || typeof startPos.line !== 'number' || typeof startPos.character !== 'number') {
+    console.error('[VSCODE_MOCK Range] Invalid start position:', startPos);
+    // Fallback or throw, to avoid downstream errors
+    startPos = new vscodeMock.Position(0, 0); // Default fallback
+  }
+  if (!endPos || typeof endPos.line !== 'number' || typeof endPos.character !== 'number') {
+    console.error('[VSCODE_MOCK Range] Invalid end position:', endPos);
+    endPos = new vscodeMock.Position(0, 0); // Default fallback
+  }
+  // console.log(`[VSCODE_MOCK Range] startPos: ${JSON.stringify(startPos)}, endPos: ${JSON.stringify(endPos)}`);
+
+  const rangeInstance = {
+    start: startPos,
+    end: endPos,
+    isEmpty: startPos.isEqual(endPos),
+    isSingleLine: startPos.line === endPos.line,
+    contains: vi.fn((positionOrRange) => { // Basic mock, can be expanded
+      if (positionOrRange instanceof vscodeMock.Position) {
+        return !positionOrRange.isBefore(startPos) && !positionOrRange.isAfter(endPos);
+      }
+      // Simplified for Range containment
+      return !positionOrRange.start.isBefore(startPos) && !positionOrRange.end.isAfter(endPos);
+    }),
+    isEqual: vi.fn((other) => other && startPos.isEqual(other.start) && endPos.isEqual(other.end)),
+    intersection: vi.fn(), // Not implemented
+    union: vi.fn(),       // Not implemented
+    with: vi.fn()         // Not implemented
+  };
+  // console.log(`[VSCODE_MOCK Range INSTANCE CREATED]: ${JSON.stringify(rangeInstance)}`);
+  return rangeInstance;
 });
 
 // Add custom mocks for InlineCompletionItem class
@@ -127,6 +144,14 @@ vscodeMock.workspace = {
   }),
   // Define workspaceFolders as a mutable array within the mock
   workspaceFolders: [],
+  asRelativePath: vi.fn((uriOrPath) => {
+    // Basic mock: if it's a Uri, return its path, otherwise return the string itself.
+    // Tests can override this with more specific behavior if needed.
+    if (uriOrPath && typeof uriOrPath === 'object' && uriOrPath.fsPath) {
+      return uriOrPath.fsPath;
+    }
+    return String(uriOrPath);
+  }),
   fs: {
     readDirectory: vi.fn().mockResolvedValue([]),
     readFile: vi.fn().mockResolvedValue(Buffer.from('')),
@@ -160,6 +185,17 @@ vscodeMock.ExtensionKind = {
   UI: 1,
   Workspace: 2,
 }
+
+vscodeMock.CancellationError = vi.fn().mockImplementation(() => {
+  return {
+    name: 'CancellationError',
+    message: 'The operation was cancelled.',
+    stack: new Error().stack,
+    toString: function () {
+      return `${this.name}: ${this.message}`;
+    }
+  };
+});
 
 vscodeMock.CancellationTokenSource = vi.fn(function () {
   // Using function() instead of arrow function so 'this' refers to the instance
@@ -203,18 +239,175 @@ vscodeMock.ViewColumn = {
   Beside: 2
 };
 
-vscodeMock.Uri = {
-  file: vi.fn(path => ({ fsPath: path })),
-  parse: vi.fn(),
-  joinPath: vi.fn((base, ...paths) => {
-    const joinedPath = [base.fsPath, ...paths].join('/');
-    return {
-      ...base,
-      fsPath: joinedPath,
-      toString: () => joinedPath,
-    };
-  }),
-};
+vscodeMock.Uri = vi.fn(function (scheme, authority, path, query, fragment) {
+  this.scheme = scheme;
+  this.authority = authority;
+  this.path = path;
+  this.query = query;
+  this.fragment = fragment;
+
+  // Define fsPath as a getter to better mimic vscode.Uri behavior
+  Object.defineProperty(this, 'fsPath', {
+    get: () => {
+      // This is a simplified fsPath for mock purposes.
+      // Real vscode.Uri.fsPath involves platform-specific path handling.
+      if (this.scheme === 'file') {
+        // Assuming 'this.path' for file URIs already represents a file system path.
+        // For example, if path is '/c:/foo/bar.txt' or 'c:\\foo\\bar.txt'
+        return this.path;
+      }
+      // For non-file schemes, fsPath might be undefined or throw.
+      // Depending on test needs, this could be adjusted.
+      // For now, returning path or an empty string if not 'file' scheme.
+      return this.scheme === 'file' ? this.path : '';
+    },
+    configurable: true // Allow re-configuration if needed in specific tests
+  });
+
+  this.toString = vi.fn((skipEncoding = false) => {
+    // Simplified toString for mock
+    let s = `${this.scheme}:`;
+    if (this.authority) {
+      s += `//${this.authority}`;
+    }
+    s += this.path;
+    if (this.query) {
+      s += `?${this.query}`;
+    }
+    if (this.fragment) {
+      s += `#${this.fragment}`;
+    }
+    return s;
+  });
+
+  this.with = vi.fn((change) => {
+    return new vscodeMock.Uri(
+      change.scheme !== undefined ? change.scheme : this.scheme,
+      change.authority !== undefined ? change.authority : this.authority,
+      change.path !== undefined ? change.path : this.path,
+      change.query !== undefined ? change.query : this.query,
+      change.fragment !== undefined ? change.fragment : this.fragment
+    );
+  });
+
+  this.toJSON = vi.fn(() => ({
+    scheme: this.scheme,
+    authority: this.authority,
+    path: this.path,
+    query: this.query,
+    fragment: this.fragment,
+    fsPath: this.fsPath, // Include fsPath in JSON representation
+  }));
+});
+
+// Static methods for the Uri mock constructor
+vscodeMock.Uri.file = vi.fn(filePath => {
+  // For file URIs, the path component should be the absolute path.
+  // The scheme is 'file', authority is empty for local files.
+  const instance = new vscodeMock.Uri('file', '', filePath, '', '');
+  // Ensure fsPath directly returns the input filePath for .file()
+  Object.defineProperty(instance, 'fsPath', {
+    value: filePath,
+    writable: false, // fsPath is typically read-only
+    configurable: true
+  });
+  return instance;
+});
+
+vscodeMock.Uri.parse = vi.fn((value, strict = false) => {
+  // Extremely simplified parser for mock purposes.
+  // A real URI parser is much more complex.
+  try {
+    const url = new URL(value); // Use built-in URL for basic parsing
+    const instance = new vscodeMock.Uri(
+      url.protocol.replace(':', ''),
+      url.hostname + (url.port ? `:${url.port}` : ''),
+      url.pathname,
+      url.search.startsWith('?') ? url.search.substring(1) : url.search,
+      url.hash.startsWith('#') ? url.hash.substring(1) : url.hash
+    );
+    if (instance.scheme === 'file') {
+      // For file URIs, fsPath should be the decoded path.
+      // URL.pathname for file URIs is usually like /C:/path/to/file on Windows.
+      // This needs to be normalized.
+      let fsPathValue = decodeURIComponent(url.pathname);
+      // Remove leading slash for Windows drive letters, e.g., /C:/ -> C:/
+      if (/^\/[a-zA-Z]:\//.test(fsPathValue)) {
+        fsPathValue = fsPathValue.substring(1);
+      }
+      Object.defineProperty(instance, 'fsPath', {
+        value: fsPathValue,
+        writable: false,
+        configurable: true
+      });
+    }
+    return instance;
+  } catch (e) {
+    // Fallback for non-standard URIs or if URL parsing fails (e.g. just a path)
+    // This is a very basic fallback and might not cover all cases.
+    console.warn(`[VSCODE_MOCK Uri.parse] Failed to parse "${value}" with URL constructor, using basic file path assumption. Error: ${e.message}`);
+    const instance = new vscodeMock.Uri('file', '', value, '', '');
+    Object.defineProperty(instance, 'fsPath', {
+      value: value, // Assume value is a file path
+      writable: false,
+      configurable: true
+    });
+    return instance;
+  }
+});
+
+vscodeMock.Uri.joinPath = vi.fn((baseUri, ...pathSegments) => {
+  if (!(baseUri instanceof vscodeMock.Uri)) {
+    // Attempt to coerce if a plain object with fsPath is passed (common in tests)
+    if (baseUri && typeof baseUri.fsPath === 'string' && typeof baseUri.scheme === 'string') {
+      baseUri = new vscodeMock.Uri(baseUri.scheme, baseUri.authority || '', baseUri.path || '', baseUri.query || '', baseUri.fragment || '');
+      // If it was a file URI, ensure fsPath is correctly set from the original fsPath
+      if (baseUri.scheme === 'file' && typeof arguments[0].fsPath === 'string') {
+        Object.defineProperty(baseUri, 'fsPath', {
+          value: arguments[0].fsPath,
+          writable: false,
+          configurable: true
+        });
+      }
+    } else {
+      console.error('[VSCODE_MOCK Uri.joinPath] baseUri is not an instance of vscodeMock.Uri:', baseUri);
+      // Fallback: treat baseUri as a string path and create a file URI
+      const basePath = (typeof baseUri === 'string') ? baseUri : (baseUri?.fsPath || baseUri?.path || '');
+      baseUri = vscodeMock.Uri.file(basePath);
+    }
+  }
+
+  // Simplified path joining: assumes baseUri.path and pathSegments are filesystem-like paths.
+  // This does not correctly handle URI encoding or complex path normalization like the real vscode.Uri.joinPath.
+  let newPath = baseUri.path;
+  for (const segment of pathSegments) {
+    if (newPath.endsWith('/') && segment.startsWith('/')) {
+      newPath += segment.substring(1);
+    } else if (!newPath.endsWith('/') && !segment.startsWith('/')) {
+      newPath += '/' + segment;
+    } else {
+      newPath += segment;
+    }
+  }
+  // Basic normalization
+  newPath = newPath.replace(/\/\//g, '/');
+
+  const joinedUri = new vscodeMock.Uri(baseUri.scheme, baseUri.authority, newPath, baseUri.query, baseUri.fragment);
+  // If the original baseUri was a file URI, the joined URI should also have a correctly derived fsPath.
+  if (baseUri.scheme === 'file') {
+    // This fsPath derivation is simplified. Real one handles URI decoding and platform specifics.
+    let fsPathValue = joinedUri.path;
+    if (process.platform === 'win32' && /^\/[a-zA-Z]:\//.test(fsPathValue)) {
+      fsPathValue = fsPathValue.substring(1); // e.g. /c:/foo -> c:/foo
+    }
+    Object.defineProperty(joinedUri, 'fsPath', {
+      value: fsPathValue,
+      writable: false,
+      configurable: true
+    });
+  }
+  return joinedUri;
+});
 
 vscodeMock.languages = {
   registerInlineCompletionItemProvider: vi.fn(),
@@ -399,6 +592,7 @@ export const InlineCompletionList = vscodeMock.InlineCompletionList;
 export const ConfigurationTarget = vscodeMock.ConfigurationTarget;
 export const ExtensionMode = vscodeMock.ExtensionMode;
 export const ExtensionKind = vscodeMock.ExtensionKind;
+export const CancellationError = vscodeMock.CancellationError;
 export const CancellationTokenSource = vscodeMock.CancellationTokenSource;
 export const ProgressLocation = vscodeMock.ProgressLocation;
 export const ViewColumn = vscodeMock.ViewColumn;

@@ -389,47 +389,102 @@ export class ContextProvider implements vscode.Disposable {
             // Extract meaningful chunks and symbols from the diff
             const { chunks, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, gitRootPath);
 
-            // --- TODO: Use identified 'symbols' for LSP lookups (Improvement Plan Item #1) ---
-            console.log(`Identified Symbols for potential LSP lookup:`, symbols.map(s => `${s.filePath} -> ${s.symbolName} (${s.symbolType})`));
-            // For now, we proceed with the embedding-based context using 'chunks'
-
-            // Check for cancellation
             if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
+                throw new Error('Operation cancelled: After chunk and symbol extraction');
             }
 
-            // Set search options based on analysis mode
+            // --- LSP Context Retrieval ---
+            let lspDefinitionSnippets: string[] = [];
+            let lspReferenceSnippets: string[] = [];
+            const lspContextPromises: Promise<void>[] = [];
+
+            if (symbols.length > 0) {
+                console.log(`Attempting LSP lookup for ${symbols.length} symbols.`);
+                for (const symbol of symbols) {
+                    if (token?.isCancellationRequested) break;
+
+                    const absoluteSymbolPath = path.join(gitRootPath, symbol.filePath);
+
+                    // Definitions
+                    lspContextPromises.push(
+                        this.findSymbolDefinition(absoluteSymbolPath, symbol.position, token)
+                            .then(async (defLocations) => {
+                                if (token?.isCancellationRequested) return;
+                                if (defLocations && defLocations.length > 0) {
+                                    const snippets = await this.getSnippetsForLocations(defLocations, 3, token, "Definition");
+                                    lspDefinitionSnippets.push(...snippets);
+                                }
+                            }).catch(err => console.warn(`Error finding definition for ${symbol.symbolName} in ${symbol.filePath}:`, err))
+                    );
+
+                    // References
+                    lspContextPromises.push(
+                        this.findSymbolReferences(absoluteSymbolPath, symbol.position, false, token)
+                            .then(async (refLocations) => {
+                                if (token?.isCancellationRequested) return;
+                                if (refLocations && refLocations.length > 0) {
+                                    const snippets = await this.getSnippetsForLocations(refLocations, 2, token, "Reference");
+                                    lspReferenceSnippets.push(...snippets);
+                                }
+                            }).catch(err => console.warn(`Error finding references for ${symbol.symbolName} in ${symbol.filePath}:`, err))
+                    );
+                }
+                await Promise.allSettled(lspContextPromises);
+                console.log(`LSP: Found ${lspDefinitionSnippets.length} definition snippets and ${lspReferenceSnippets.length} reference snippets.`);
+            } else {
+                console.log('No symbols identified for LSP lookup.');
+            }
+
+
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled: After LSP context retrieval');
+            }
+
+            // --- Embedding-based Context Retrieval ---
             const searchOptions = this.getSearchOptionsForMode(analysisMode, options);
-
-            // Find relevant context for all chunks in a single batch with progress reporting
-            const allResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
-                chunks,
-                searchOptions,
-                progressCallback || ((processed, total) => {
-                    console.log(`Generating embeddings: ${processed} of ${total}`);
-                }),
-                token
-            );
-
-            // Check for cancellation
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
+            let embeddingResults: SimilaritySearchResult[] = [];
+            if (chunks.length > 0) {
+                embeddingResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
+                    chunks,
+                    searchOptions,
+                    progressCallback || ((processed, total) => {
+                        console.log(`Generating embeddings: ${processed} of ${total}`);
+                    }),
+                    token
+                );
+            } else {
+                console.log('No chunks extracted for embedding search.');
             }
 
-            if (allResults.length === 0) {
-                console.log('No relevant context found via embeddings');
-                // --- TODO: Add LSP context here if available before falling back ---
+
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled: After embedding search');
+            }
+
+            const rankedEmbeddingResults = this.rankAndFilterResults(embeddingResults, analysisMode);
+            console.log(`Found ${rankedEmbeddingResults.length} relevant code snippets via embeddings after ranking.`);
+
+            // --- Combine Context ---
+            let combinedContextParts: string[] = [];
+
+            if (lspDefinitionSnippets.length > 0) {
+                combinedContextParts.push("## Definitions Found (LSP)\n");
+                combinedContextParts.push(...lspDefinitionSnippets);
+            }
+            if (lspReferenceSnippets.length > 0) {
+                combinedContextParts.push("\n## References Found (LSP)\n");
+                combinedContextParts.push(...lspReferenceSnippets);
+            }
+            if (rankedEmbeddingResults.length > 0) {
+                combinedContextParts.push("\n" + this.formatContextResults(rankedEmbeddingResults)); // formatContextResults already adds "## Related Code Context"
+            }
+
+            const initialFormattedContext = combinedContextParts.join('\n\n').trim();
+
+            if (!initialFormattedContext && rankedEmbeddingResults.length === 0 && lspDefinitionSnippets.length === 0 && lspReferenceSnippets.length === 0) {
+                console.log('No relevant context found from LSP or embeddings.');
                 return await this.getFallbackContext(diff, token);
             }
-
-            // Rank and filter results based on relevance and analysis mode
-            const rankedResults = this.rankAndFilterResults(allResults, analysisMode);
-
-            console.log(`Found ${rankedResults.length} relevant code snippets via embeddings after ranking`);
-
-            // --- TODO: Combine LSP context with embedding context here ---
-            const initialFormattedContext = this.formatContextResults(rankedResults);
-
 
             // Check for cancellation
             if (token?.isCancellationRequested) {
@@ -486,7 +541,7 @@ export class ContextProvider implements vscode.Disposable {
             );
 
             // Assess the quality of the context
-            const qualityScore = this.assessContextQuality(rankedResults); // TODO: Update to assess combined context
+            const qualityScore = this.assessContextQuality(rankedEmbeddingResults); // TODO: Update to assess combined context
             console.log(`Context quality score: ${qualityScore.toFixed(2)}`);
 
             return optimizedContext;
@@ -1127,14 +1182,14 @@ export class ContextProvider implements vscode.Disposable {
     public async getSnippetsForLocations(
         locations: vscode.Location[],
         contextLines: number,
-        token?: vscode.CancellationToken
+        token?: vscode.CancellationToken,
+        defaultTitleType: "Definition" | "Reference" | "Context" = "Context"
     ): Promise<string[]> {
         if (!locations || locations.length === 0) {
             return [];
         }
 
         const snippets: string[] = [];
-        // Simple cache for this run to avoid re-fetching identical locations if they appear multiple times.
         const snippetCache = new Map<string, string>();
 
         for (const location of locations) {
@@ -1143,7 +1198,7 @@ export class ContextProvider implements vscode.Disposable {
                 break;
             }
 
-            const cacheKey = `${location.uri.toString()}:${location.range.start.line}:${location.range.start.character}-${location.range.end.line}:${location.range.end.character}`;
+            const cacheKey = `${location.uri.toString()}:${location.range.start.line}:${location.range.start.character}-${location.range.end.line}:${location.range.end.character}-${defaultTitleType}`;
             if (snippetCache.has(cacheKey)) {
                 const cachedSnippet = snippetCache.get(cacheKey);
                 if (cachedSnippet) {
@@ -1159,35 +1214,25 @@ export class ContextProvider implements vscode.Disposable {
 
                 let snippetContent = '';
                 for (let i = startLine; i <= endLine; i++) {
-                    if (token?.isCancellationRequested) {
-                        break;
-                    }
+                    if (token?.isCancellationRequested) break;
                     const lineText = document.lineAt(i).text;
-                    // Add 1 to i for 1-based line numbering in display
                     snippetContent += `${String(i + 1).padStart(4, ' ')}: ${lineText}\n`;
                 }
 
                 if (token?.isCancellationRequested) {
-                    // If cancelled during line reading, don't add partial snippet
                     console.log('Snippet retrieval cancelled during line reading.');
                     break;
                 }
 
-                // Determine if it's a definition or reference for the title (heuristic)
-                // This is a placeholder; more sophisticated logic might be needed if we can distinguish.
-                // For now, we'll use a generic title or rely on the caller to provide more context.
-                const titleType = location.uri.fsPath.includes(document.fileName) ? "Context" : "Reference";
                 const relativePath = vscode.workspace.asRelativePath(location.uri, false);
+                const languageId = getLanguageForExtension(path.extname(relativePath))?.language || document.languageId || 'plaintext';
 
-
-                const formattedSnippet = `**${titleType} in \`${relativePath}\` (L${location.range.start.line + 1}):**\n\`\`\`${document.languageId}\n${snippetContent.trimEnd()}\n\`\`\``;
+                const formattedSnippet = `**${defaultTitleType} in \`${relativePath}\` (L${location.range.start.line + 1}):**\n\`\`\`${languageId}\n${snippetContent.trimEnd()}\n\`\`\``;
                 snippets.push(formattedSnippet);
                 snippetCache.set(cacheKey, formattedSnippet);
 
             } catch (error) {
                 console.error(`Error reading snippet for ${location.uri.fsPath}:`, error);
-                // Optionally add a placeholder error snippet or skip
-                // snippets.push(`**Error retrieving snippet for \`${location.uri.fsPath}\`**`);
             }
         }
         return snippets;
