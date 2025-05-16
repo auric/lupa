@@ -130,7 +130,9 @@ describe('ContextProvider Symbol Identification', () => {
     // Helper function to access private method for testing
     async function testExtractSymbols(diff: string): Promise<DiffSymbolInfo[]> {
         // @ts-ignore - Accessing private method for testing
-        const result = await contextProvider.extractMeaningfulChunksAndSymbols(diff, workspaceRoot);
+        const diffHunks = contextProvider.parseDiff(diff);
+        // @ts-ignore - Accessing private method for testing
+        const result = await contextProvider.extractMeaningfulChunksAndSymbols(diff, diffHunks, workspaceRoot);
         return result.symbols;
     }
 

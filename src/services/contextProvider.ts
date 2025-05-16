@@ -2,12 +2,16 @@ import * as vscode from 'vscode';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { TreeStructureAnalyzerResource, SymbolInfo as AnalyzerSymbolInfo } from './treeStructureAnalyzer'; // Import SymbolInfo as AnalyzerSymbolInfo
 import {
-    SUPPORTED_LANGUAGES, getLanguageForExtension // Import getLanguageForExtension
+    getLanguageForExtension
 } from '../types/types';
 import {
     AnalysisMode
 } from '../types/modelTypes';
-import { ContextSnippet } from '../types/contextTypes'; // Import ContextSnippet
+import {
+    type ContextSnippet,
+    type DiffHunk,
+    type DiffHunkLine
+} from '../types/contextTypes';
 import {
     SimilaritySearchOptions,
     SimilaritySearchResult
@@ -71,18 +75,27 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
+     * Generates a unique string identifier for a diff hunk.
+     * @param filePath The path of the file the hunk belongs to.
+     * @param hunkData An object containing hunk information, typically `newStart` line.
+     * @returns A string identifier for the hunk.
+     */
+    private getHunkIdentifier(filePath: string, hunkData: { newStart: number }): string {
+        return `${filePath}:L${hunkData.newStart}`;
+    }
+
+    /**
      * Extract meaningful code chunks and identify symbols from PR diff.
      * @param diff PR diff content.
-     * @param gitRepoRoot The root path of the workspace.
+     * @param parsedDiff Parsed diff data.
+     * @param gitRepoRoot The root path of the git repository.
      * @returns An object containing extracted code chunks and identified symbols.
      */
-    private async extractMeaningfulChunksAndSymbols(diff: string, gitRepoRoot: string): Promise<{ chunks: string[]; symbols: DiffSymbolInfo[] }> {
+    private async extractMeaningfulChunksAndSymbols(diff: string, parsedDiff: DiffHunk[], gitRepoRoot: string): Promise<{ chunks: string[]; symbols: DiffSymbolInfo[] }> {
         const chunks: string[] = [];
         const identifiedSymbols: DiffSymbolInfo[] = [];
         const resource = await TreeStructureAnalyzerResource.create();
         const analyzer = resource.instance;
-
-        const parsedDiff = this.parseDiff(diff);
 
         for (const fileDiff of parsedDiff) {
             const filePath = fileDiff.filePath;
@@ -180,11 +193,11 @@ export class ContextProvider implements vscode.Disposable {
         return { chunks: uniqueChunks, symbols: identifiedSymbols };
     }
 
-    private parseDiff(diff: string): { filePath: string; hunks: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }[] }[] {
-        const files: { filePath: string; hunks: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }[] }[] = [];
+    private parseDiff(diff: string): DiffHunk[] {
+        const files: DiffHunk[] = [];
         const lines = diff.split('\n');
-        let currentFile: { filePath: string; hunks: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }[] } | null = null;
-        let currentHunk: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] } | null = null;
+        let currentFile: DiffHunk | null = null;
+        let currentHunk: DiffHunkLine | null = null;
 
         for (const line of lines) {
             const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
@@ -234,12 +247,17 @@ export class ContextProvider implements vscode.Disposable {
     ): Promise<ContextSnippet[]> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
         const allContextSnippets: ContextSnippet[] = [];
+        const parsedDiffFileHunks = this.parseDiff(diff);
 
         try {
-            if (token?.isCancellationRequested) throw new Error('Operation cancelled');
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
+            }
 
-            const { chunks, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, gitRootPath);
-            if (token?.isCancellationRequested) throw new Error('Operation cancelled: After chunk/symbol extraction');
+            const { chunks, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, parsedDiffFileHunks, gitRootPath);
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled: After chunk/symbol extraction');
+            }
 
             // --- LSP Context Retrieval ---
             const lspContextPromises: Promise<void>[] = [];
@@ -249,6 +267,20 @@ export class ContextProvider implements vscode.Disposable {
                     if (token?.isCancellationRequested) break;
                     const absoluteSymbolPath = path.join(gitRootPath, symbol.filePath);
 
+                    // Determine associated hunk for the symbol
+                    let symbolHunkIdentifier: string | undefined;
+                    const fileDiffData = parsedDiffFileHunks.find(f => f.filePath === symbol.filePath);
+                    if (fileDiffData) {
+                        for (const hunk of fileDiffData.hunks) {
+                            const hunkEndLine = hunk.newStart + hunk.newLines - 1;
+                            // Check if symbol's start line is within this hunk's new line range
+                            if (symbol.position.line >= (hunk.newStart - 1) && symbol.position.line <= hunkEndLine) {
+                                symbolHunkIdentifier = this.getHunkIdentifier(symbol.filePath, hunk);
+                                break;
+                            }
+                        }
+                    }
+
                     lspContextPromises.push(
                         this.findSymbolDefinition(absoluteSymbolPath, symbol.position, token)
                             .then(async (defLocations) => {
@@ -257,7 +289,8 @@ export class ContextProvider implements vscode.Disposable {
                                 snippets.forEach(s => allContextSnippets.push({
                                     id: `lsp-def-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
                                     type: 'lsp-definition', content: s, relevanceScore: 1.0, // Highest relevance
-                                    filePath: symbol.filePath, startLine: symbol.position.line
+                                    filePath: symbol.filePath, startLine: symbol.position.line,
+                                    associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
                             }).catch(err => console.warn(`Error finding definition for ${symbol.symbolName} in ${symbol.filePath}:`, err))
                     );
@@ -269,7 +302,8 @@ export class ContextProvider implements vscode.Disposable {
                                 snippets.forEach(s => allContextSnippets.push({
                                     id: `lsp-ref-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
                                     type: 'lsp-reference', content: s, relevanceScore: 0.9, // High relevance
-                                    filePath: symbol.filePath, startLine: symbol.position.line
+                                    filePath: symbol.filePath, startLine: symbol.position.line,
+                                    associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
                             }).catch(err => console.warn(`Error finding references for ${symbol.symbolName} in ${symbol.filePath}:`, err))
                     );
@@ -298,57 +332,53 @@ export class ContextProvider implements vscode.Disposable {
             const rankedEmbeddingResults = this.rankAndFilterResults(embeddingResults, analysisMode);
             console.log(`Found ${rankedEmbeddingResults.length} relevant code snippets via embeddings after ranking.`);
 
-            // Convert embedding results to ContextSnippet objects
-            // The formatContextResults method is now part of TokenManagerService for final string assembly
-            // Here, we just convert raw embedding results to ContextSnippet structure.
             rankedEmbeddingResults.forEach(embResult => {
-                // We need to format each embedding result individually as a markdown block
-                // This is a simplified version of what formatContextResults used to do for a single item
                 const scoreDisplay = (embResult.score * 100).toFixed(1);
                 const fileHeader = `### File: \`${embResult.filePath}\` (Relevance: ${scoreDisplay}%)`;
                 const formattedContent = `${fileHeader}\n\`\`\`\n${embResult.content}\n\`\`\``;
 
+                let embHunkIdentifiers: string[] = [];
+                const fileDiffData = parsedDiffFileHunks.find(f => f.filePath === embResult.filePath);
+                if (fileDiffData) {
+                    embHunkIdentifiers = fileDiffData.hunks.map(hunk => this.getHunkIdentifier(embResult.filePath, hunk));
+                }
+
                 allContextSnippets.push({
                     id: `emb-${embResult.fileId}-${embResult.chunkId || this.quickHash(embResult.content)}`,
                     type: 'embedding',
-                    content: formattedContent, // Store the pre-formatted markdown string
+                    content: formattedContent,
                     relevanceScore: embResult.score,
                     filePath: embResult.filePath,
-                    startLine: embResult.startOffset // Assuming startOffset can map to a line or is a good proxy
+                    startLine: embResult.startOffset,
+                    associatedHunkIdentifiers: embHunkIdentifiers.length > 0 ? embHunkIdentifiers : undefined
                 });
             });
 
 
             if (allContextSnippets.length === 0) {
                 console.log('No relevant context found from LSP or embeddings. Attempting fallback.');
-                // Fallback should also return ContextSnippet[]
                 const fallbackSnippets = await this.getFallbackContextSnippets(diff, token);
-                allContextSnippets.push(...fallbackSnippets);
+                allContextSnippets.push(...fallbackSnippets); // Fallback snippets are already ContextSnippet[]
                 if (allContextSnippets.length === 0) {
                     console.log('Fallback also yielded no context.');
-                    // Add a placeholder snippet indicating no context was found.
-                    // This allows TokenManagerService to format it correctly.
                     allContextSnippets.push({
                         id: 'no-context-found',
-                        type: 'embedding', // or a new 'system-message' type
+                        type: 'embedding',
                         content: 'No relevant context could be found in the codebase. Analysis will be based solely on the changes in the PR.',
                         relevanceScore: 0
                     });
                 }
             }
 
-            // The final string formatting and optimization will be done by TokenManagerService
-            // based on these structured snippets.
             console.log(`Returning ${allContextSnippets.length} context snippets to AnalysisProvider.`);
             return allContextSnippets;
 
         } catch (error) {
             if (token?.isCancellationRequested) throw new Error('Operation cancelled');
             console.error('Error getting context for diff:', error);
-            // Return a snippet indicating error, so it can be formatted by TokenManager
             return [{
                 id: 'error-context',
-                type: 'embedding', // Or a new 'error' type
+                type: 'embedding',
                 content: 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error)),
                 relevanceScore: 0
             }];
