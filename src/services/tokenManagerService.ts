@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
+import { ContextSnippet } from '../types/contextTypes';
 
 /**
  * Components of an analysis that consume tokens
@@ -8,7 +9,7 @@ import { AnalysisMode } from '../types/modelTypes';
 export interface TokenComponents {
     systemPrompt?: string;
     diffText?: string;
-    context?: string;
+    context?: string; // This will be the preliminary formatted string of all snippets
     userMessages?: string[];
     assistantMessages?: string[];
 }
@@ -21,7 +22,7 @@ export interface TokenAllocation {
     totalRequiredTokens: number;
     systemPromptTokens: number;
     diffTextTokens: number;
-    contextTokens: number;
+    contextTokens: number; // Tokens of the preliminary formatted string
     userMessagesTokens: number;
     assistantMessagesTokens: number;
     otherTokens: number; // Reserved for formatting, metadata, etc.
@@ -36,8 +37,11 @@ export interface TokenAllocation {
 export class TokenManagerService {
     // Standard overhead for different token components
     private static readonly TOKEN_OVERHEAD_PER_MESSAGE = 5;
-    private static readonly FORMATTING_OVERHEAD = 50;
+    private static readonly FORMATTING_OVERHEAD = 50; // For overall prompt structure
     private static readonly SAFETY_MARGIN_RATIO = 0.95; // 5% safety margin
+    private static readonly TRUNCATION_MESSAGE = '\n\n[Context truncated to fit token limit. Some information might be missing.]';
+    private static readonly PARTIAL_TRUNCATION_MESSAGE = '\n\n[File content partially truncated to fit token limit]';
+
 
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelDetails: { family: string; maxInputTokens: number } | null = null;
@@ -54,65 +58,38 @@ export class TokenManagerService {
         components: TokenComponents,
         analysisMode: AnalysisMode
     ): Promise<TokenAllocation> {
-        // Get current model information
         await this.updateModelInfo();
 
-        const modelFamily = this.modelDetails?.family || 'unknown';
         const maxInputTokens = this.modelDetails?.maxInputTokens || 8000;
-
-        // Apply safety margin
         const safeMaxTokens = Math.floor(maxInputTokens * TokenManagerService.SAFETY_MARGIN_RATIO);
 
-        // Calculate tokens for each component
         const systemPromptTokens = components.systemPrompt
-            ? await this.currentModel!.countTokens(components.systemPrompt)
-            : 0;
-
+            ? await this.currentModel!.countTokens(components.systemPrompt) : 0;
         const diffTextTokens = components.diffText
-            ? await this.currentModel!.countTokens(components.diffText)
-            : 0;
+            ? await this.currentModel!.countTokens(components.diffText) : 0;
+        const contextTokens = components.context // Assuming components.context is the full, unoptimized string
+            ? await this.currentModel!.countTokens(components.context) : 0;
 
-        const contextTokens = components.context
-            ? await this.currentModel!.countTokens(components.context)
-            : 0;
-
-        // Calculate tokens for conversation history
         let userMessagesTokens = 0;
         if (components.userMessages) {
             for (const message of components.userMessages) {
-                userMessagesTokens += await this.currentModel!.countTokens(message) || 0;
-                userMessagesTokens += TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+                userMessagesTokens += (await this.currentModel!.countTokens(message) || 0) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
             }
         }
 
         let assistantMessagesTokens = 0;
         if (components.assistantMessages) {
             for (const message of components.assistantMessages) {
-                assistantMessagesTokens += await this.currentModel!.countTokens(message) || 0;
-                assistantMessagesTokens += TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+                assistantMessagesTokens += (await this.currentModel!.countTokens(message) || 0) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
             }
         }
 
-        // Formatting overhead for markdown, etc.
         const otherTokens = TokenManagerService.FORMATTING_OVERHEAD;
+        const totalRequiredTokens = systemPromptTokens + diffTextTokens + contextTokens +
+            userMessagesTokens + assistantMessagesTokens + otherTokens;
 
-        // Calculate total tokens required
-        const totalRequiredTokens =
-            systemPromptTokens +
-            diffTextTokens +
-            contextTokens +
-            userMessagesTokens +
-            assistantMessagesTokens +
-            otherTokens;
-
-        // Calculate how many tokens would be available for context after accounting for other components
-        const nonContextTokens =
-            systemPromptTokens +
-            diffTextTokens +
-            userMessagesTokens +
-            assistantMessagesTokens +
-            otherTokens;
-
+        const nonContextTokens = systemPromptTokens + diffTextTokens +
+            userMessagesTokens + assistantMessagesTokens + otherTokens;
         const contextAllocation = Math.max(0, safeMaxTokens - nonContextTokens);
 
         return {
@@ -120,7 +97,7 @@ export class TokenManagerService {
             totalRequiredTokens,
             systemPromptTokens,
             diffTextTokens,
-            contextTokens,
+            contextTokens, // Tokens of the full unoptimized context string
             userMessagesTokens,
             assistantMessagesTokens,
             otherTokens,
@@ -130,83 +107,167 @@ export class TokenManagerService {
     }
 
     /**
-     * Optimizes context to fit within available token allocation
-     * @param context Full context content
-     * @param availableTokens Maximum tokens that can be allocated to context
-     * @returns Optimized context that fits within token limit
+     * Optimizes a list of context snippets to fit within available token allocation
+     * by prioritizing based on relevance.
+     * @param snippets A list of ContextSnippet objects.
+     * @param availableTokens Maximum tokens that can be allocated to the context.
+     * @returns A formatted string of the optimized context.
      */
     public async optimizeContext(
-        context: string,
+        snippets: ContextSnippet[],
         availableTokens: number
     ): Promise<string> {
         await this.updateModelInfo();
-        const modelFamily = this.modelDetails?.family || 'unknown';
-
-        // Calculate current context tokens
-        const contextTokens = await this.currentModel!.countTokens(context);
-
-        // If context already fits, return as is
-        if (contextTokens <= availableTokens) {
-            return context;
+        if (!this.currentModel) {
+            console.error("Language model not available for token counting in optimizeContext.");
+            return this.formatContextSnippetsToString([], true); // Return empty with truncation msg
         }
 
-        console.log(`Context needs optimization: ${contextTokens} > ${availableTokens}`);
+        // Sort snippets: LSP defs > LSP refs > Embeddings (by score)
+        const sortedSnippets = [...snippets].sort((a, b) => {
+            const typePriority = (type: ContextSnippet['type']): number => {
+                if (type === 'lsp-definition') return 3;
+                if (type === 'lsp-reference') return 2;
+                return 1; // embedding
+            };
+            const priorityA = typePriority(a.type);
+            const priorityB = typePriority(b.type);
 
-        // Simple optimization strategy: Truncate context sections
-        // This is a basic approach - a more sophisticated implementation would
-        // prioritize sections by relevance scores and preserve the most relevant ones
+            if (priorityA !== priorityB) {
+                return priorityB - priorityA; // Higher priority first
+            }
+            return b.relevanceScore - a.relevanceScore; // Higher score first
+        });
 
-        // Split context into sections (each file is a section)
-        const sections = context.split('### File:');
+        const selectedSnippets: ContextSnippet[] = [];
+        let currentTokens = 0;
+        let wasTruncated = false;
 
-        if (sections.length <= 1) {
-            // If can't split by sections, just truncate
-            const ratio = availableTokens / contextTokens;
-            const maxLength = Math.floor(context.length * ratio);
-            return context.substring(0, maxLength) +
-                '\n\n[Context truncated to fit token limit]';
-        }
+        for (const snippet of sortedSnippets) {
+            const snippetTokens = await this.currentModel.countTokens(snippet.content);
+            // Add a small buffer for newlines between snippets
+            const tokensWithBuffer = snippetTokens + (selectedSnippets.length > 0 ? await this.currentModel.countTokens('\n\n') : 0);
 
-        // Keep intro text
-        let optimizedContext = sections[0];
-        let currentTokens = await this.currentModel!.countTokens(optimizedContext);
 
-        // Add sections until we approach the token limit
-        for (let i = 1; i < sections.length; i++) {
-            const section = '### File:' + sections[i];
-            const sectionTokens = await this.currentModel!.countTokens(section);
-
-            if (currentTokens + sectionTokens <= availableTokens) {
-                // This section fits, add it
-                optimizedContext += section;
-                currentTokens += sectionTokens;
+            if (currentTokens + tokensWithBuffer <= availableTokens) {
+                selectedSnippets.push(snippet);
+                currentTokens += tokensWithBuffer;
             } else {
-                // This section doesn't fit entirely
-                // Calculate how much of it we can include
-                const remainingTokens = availableTokens - currentTokens;
-                if (remainingTokens > 100) { // Only add partial section if we have meaningful space
-                    // Estimate characters per token for this model
-                    let charsPerToken = 4;
-                    if (modelFamily.toLowerCase().includes('claude')) {
-                        charsPerToken = 5;
-                    } else if (modelFamily.toLowerCase().includes('gemini')) {
-                        charsPerToken = 4.5;
+                wasTruncated = true;
+                // Attempt to partially include the current snippet if it's large and some space remains
+                const remainingTokensForPartial = availableTokens - currentTokens;
+                if (snippet.type === 'embedding' && remainingTokensForPartial > 100 && snippetTokens > remainingTokensForPartial) { // Arbitrary threshold
+                    try {
+                        const modelFamily = this.modelDetails?.family || 'unknown';
+                        let charsPerToken = 4;
+                        if (modelFamily.toLowerCase().includes('claude')) charsPerToken = 5;
+                        else if (modelFamily.toLowerCase().includes('gemini')) charsPerToken = 4.5;
+
+                        const maxChars = Math.floor(remainingTokensForPartial * charsPerToken * 0.8); // 80% to be safe
+
+                        // Find a good place to break (e.g., end of a line)
+                        let partialContent = snippet.content.substring(0, maxChars);
+                        const lastNewline = partialContent.lastIndexOf('\n');
+                        if (lastNewline > 0) {
+                            partialContent = partialContent.substring(0, lastNewline);
+                        }
+
+                        // Ensure the partial content ends correctly for markdown code blocks
+                        const codeBlockStart = '```';
+                        const codeBlockEnd = '```';
+                        if (partialContent.includes(codeBlockStart) && !partialContent.endsWith(codeBlockEnd)) {
+                            if (partialContent.lastIndexOf(codeBlockStart) > partialContent.lastIndexOf(codeBlockEnd)) {
+                                partialContent += `\n${codeBlockEnd}`; // Close the code block
+                            }
+                        }
+                        partialContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+
+
+                        const partialSnippetTokens = await this.currentModel.countTokens(partialContent);
+                        if (currentTokens + partialSnippetTokens <= availableTokens) {
+                            selectedSnippets.push({ ...snippet, content: partialContent, id: snippet.id + "-partial" });
+                            currentTokens += partialSnippetTokens;
+                        }
+                    } catch (e) {
+                        console.warn("Error during partial snippet truncation:", e);
                     }
-
-                    // Truncate section to fit
-                    const maxChars = Math.floor(remainingTokens * charsPerToken);
-                    const truncatedSection = section.substring(0, maxChars);
-                    optimizedContext += truncatedSection + '\n\n[File content truncated to fit token limit]';
                 }
-
-                // Add note about omitted content
-                optimizedContext += '\n\n[Additional context omitted to fit token limit]';
-                break;
+                break; // Stop adding snippets if the current one doesn't fit
             }
         }
 
-        return optimizedContext;
+        if (sortedSnippets.length > 0 && selectedSnippets.length === 0 && availableTokens > await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGE) + 50) {
+            // If no snippets fit but there's some space, try to add a very small part of the most relevant one
+            const mostRelevantSnippet = sortedSnippets[0];
+            let tinyContent = mostRelevantSnippet.content.substring(0, Math.floor(availableTokens * 0.5)); // Very rough estimate
+            const lastNewline = tinyContent.lastIndexOf('\n');
+            if (lastNewline > 0) tinyContent = tinyContent.substring(0, lastNewline);
+
+            const codeBlockStart = '```';
+            const codeBlockEnd = '```';
+            if (tinyContent.includes(codeBlockStart) && !tinyContent.endsWith(codeBlockEnd)) {
+                if (tinyContent.lastIndexOf(codeBlockStart) > tinyContent.lastIndexOf(codeBlockEnd)) {
+                    tinyContent += `\n${codeBlockEnd}`;
+                }
+            }
+            tinyContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+            const tinySnippetTokens = await this.currentModel.countTokens(tinyContent);
+
+            if (tinySnippetTokens <= availableTokens) {
+                selectedSnippets.push({ ...mostRelevantSnippet, content: tinyContent, id: mostRelevantSnippet.id + "-tiny" });
+                wasTruncated = true;
+            }
+        }
+
+
+        console.log(`Context optimization: ${selectedSnippets.length} of ${snippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
+        return this.formatContextSnippetsToString(selectedSnippets, wasTruncated);
     }
+
+    /**
+     * Formats a list of context snippets into a single markdown string.
+     * @param snippets The list of ContextSnippet objects to format.
+     * @param wasTruncated Whether to add a truncation message at the end.
+     * @returns A formatted markdown string.
+     */
+    public formatContextSnippetsToString(snippets: ContextSnippet[], wasTruncated: boolean = false): string {
+        const lspDefinitions = snippets.filter(s => s.type === 'lsp-definition');
+        const lspReferences = snippets.filter(s => s.type === 'lsp-reference');
+        const embeddings = snippets.filter(s => s.type === 'embedding');
+
+        const parts: string[] = [];
+
+        if (lspDefinitions.length > 0) {
+            parts.push("## Definitions Found (LSP)");
+            lspDefinitions.forEach(s => parts.push(s.content));
+        }
+
+        if (lspReferences.length > 0) {
+            parts.push(lspReferences.length > 0 && lspDefinitions.length > 0 ? "\n## References Found (LSP)" : "## References Found (LSP)");
+            lspReferences.forEach(s => parts.push(s.content));
+        }
+
+        if (embeddings.length > 0) {
+            parts.push((lspDefinitions.length > 0 || lspReferences.length > 0) ? "\n## Semantically Similar Code (Embeddings)" : "## Semantically Similar Code (Embeddings)");
+            // Embeddings content is already formatted markdown from ContextProvider
+            embeddings.forEach(s => parts.push(s.content));
+        }
+
+        let result = parts.join('\n\n').trim();
+
+        if (wasTruncated && snippets.length < 1 && result.length === 0) { // If all snippets were too large
+            result += TokenManagerService.TRUNCATION_MESSAGE.replace("Some information might be missing", "All context snippets were too large to fit");
+        } else if (wasTruncated) {
+            result += TokenManagerService.TRUNCATION_MESSAGE;
+        }
+
+        if (result.length === 0 && !wasTruncated && snippets.length === 0) {
+            return "No relevant context snippets were selected or found.";
+        }
+
+        return result;
+    }
+
 
     /**
      * Get the current model's token limit

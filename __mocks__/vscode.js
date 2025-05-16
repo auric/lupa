@@ -557,6 +557,18 @@ vscodeMock.LanguageModelChatMessage = vi.fn().mockImplementation((role, content,
   name,
 }));
 
+vscodeMock.LanguageModelChatMessage.User = vi.fn((content, name) => ({
+  role: vscodeMock.LanguageModelChatMessageRole.User,
+  content,
+  name
+}));
+
+vscodeMock.LanguageModelChatMessage.Assistant = vi.fn((content, name) => ({
+  role: vscodeMock.LanguageModelChatMessageRole.Assistant,
+  content,
+  name
+}));
+
 // Add custom mocks for LanguageModelChat
 // Note: This is a simplified mock. Adjust sendRequest/countTokens as needed for tests.
 vscodeMock.LanguageModelChat = vi.fn().mockImplementation((id, name, vendor, family, version, maxInputTokens) => ({

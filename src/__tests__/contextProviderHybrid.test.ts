@@ -6,7 +6,14 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { TreeStructureAnalyzerResource, SymbolInfo as AnalyzerSymbolInfo } from '../services/treeStructureAnalyzer';
 import { SimilaritySearchResult } from '../types/embeddingTypes';
 import { AnalysisMode } from '../types/modelTypes';
+import {
+    type ContextSnippet
+} from '../types/contextTypes';
 import * as path from 'path';
+
+function snippetsContainText(snippets: ContextSnippet[], text: string): boolean {
+    return snippets.some(snippet => snippet.content.includes(text));
+}
 
 // Hoist all mock functions needed by mock factories
 const hoistedMocks = vi.hoisted(() => {
@@ -414,20 +421,25 @@ index 123..456 100644
         const context = await contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive);
 
         // Check for LSP definition snippets
-        expect(context).toContain('## Definitions Found (LSP)');
-        expect(context).toContain('**Definition in `src/file1.ts` (L3):**');
-        expect(context).toContain('export function changedFunction(param: string): void {');
+        // Headers like "## Definitions Found (LSP)" are typically added by TokenManagerService during final formatting,
+        // not by ContextProvider directly into the snippet content.
+        expect(snippetsContainText(context, '**Definition in `src/file1.ts` (L3):**')).toBe(true);
+        expect(snippetsContainText(context, 'export function changedFunction(param: string): void {')).toBe(true);
 
         // Check for LSP reference snippets
-        expect(context).toContain('## References Found (LSP)');
-        expect(context).toContain('**Reference in `src/dep.ts` (L1):**'); // L1 because getSnippetsForLocations adds context lines
-        expect(context).toContain('export function helper(): number { return 1; }');
+        expect(snippetsContainText(context, '**Reference in `src/dep.ts` (L1):**')).toBe(true);
+        expect(snippetsContainText(context, 'export function helper(): number { return 1; }')).toBe(true);
 
 
         // Check for embedding results
-        expect(context).toContain('## Related Code Context');
-        expect(context).toContain('### File: `src/utils/helpers.ts`');
-        expect(context).toContain('export function helperUtil() { /* ... */ }');
+        // The "## Related Code Context" header is also part of final formatting.
+        // Individual embedding snippets will have "### File: ..."
+        expect(snippetsContainText(context, '### File: `src/utils/helpers.ts`')).toBe(true);
+        expect(snippetsContainText(context, 'export function helperUtil() { /* ... */ }')).toBe(true);
+        // Verify that if embedding results are expected, some file header for embeddings is present
+        if (mockEmbeddingResults.length > 0) {
+            expect(snippetsContainText(context, '### File:')).toBe(true);
+        }
 
         // Verify mocks
         expect(hoistedMocks.analyzerFindSymbolsInRanges).toHaveBeenCalled();
@@ -466,10 +478,12 @@ index 123..456 100644
 
         const context = await contextProvider.getContextForDiff(diff, gitRootPath);
 
-        expect(context).not.toContain('## Definitions Found (LSP)');
-        expect(context).not.toContain('## References Found (LSP)');
-        expect(context).toContain('## Related Code Context');
-        expect(context).toContain('src/some_other_file.ts');
+        // No LSP symbols, so no LSP-specific content like "**Definition in" is expected.
+        expect(snippetsContainText(context, '**Definition in')).toBe(false);
+        expect(snippetsContainText(context, '**Reference in')).toBe(false);
+        // Embeddings are expected, so check for their content and file header.
+        expect(snippetsContainText(context, '### File:')).toBe(true);
+        expect(snippetsContainText(context, 'src/some_other_file.ts')).toBe(true);
         expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.executeDefinitionProvider', expect.anything(), expect.anything(), expect.anything());
         expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.executeReferenceProvider', expect.anything(), expect.anything(), expect.anything(), expect.anything());
     });
@@ -495,9 +509,12 @@ diff --git a/src/file1.ts b/src/file1.ts
 
         const context = await contextProvider.getContextForDiff(diff, gitRootPath);
 
-        expect(context).not.toContain('## Definitions Found (LSP)');
-        expect(context).not.toContain('## References Found (LSP)');
-        expect(context).toContain('## Related Code Context');
+        // LSP calls return no locations, so no LSP-specific content expected
+        expect(snippetsContainText(context, '**Definition in')).toBe(false);
+        expect(snippetsContainText(context, '**Reference in')).toBe(false);
+        expect(snippetsContainText(context, 'src/some_other_file.ts')).toBe(true);
+        // Check if the embedding section header is present
+        expect(snippetsContainText(context, '### File:')).toBe(true);
         expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.executeDefinitionProvider', expect.anything(), expect.anything(), expect.anything());
     });
 
@@ -560,13 +577,15 @@ diff --git a/src/file1.ts b/src/file1.ts
         vi.spyOn(vscode.commands, 'executeCommand').mockResolvedValue([]); // No LSP results
         hoistedMocks.findRelevantCodeContextForChunks.mockResolvedValue([]); // No embedding results
 
-        // Mock getFallbackContext to check if it's called
-        const fallbackSpy = vi.spyOn(contextProvider as any, 'getFallbackContext').mockResolvedValue("Fallback context triggered.");
+        // Mock getFallbackContextSnippets to check if it's called
+        const fallbackSnippets = [{ id: 'fallback-1', type: 'embedding', content: 'Fallback context triggered.', relevanceScore: 0.5, filePath: 'fallback.txt', startLine: 0 }];
+        const fallbackSpy = vi.spyOn(contextProvider as any, 'getFallbackContextSnippets').mockResolvedValue(fallbackSnippets);
 
         const context = await contextProvider.getContextForDiff(diff, gitRootPath);
 
         expect(fallbackSpy).toHaveBeenCalled();
-        expect(context).toBe("Fallback context triggered.");
+        expect(snippetsContainText(context, "Fallback context triggered.")).toBe(true);
+        expect(context).toEqual(expect.arrayContaining(fallbackSnippets)); // Ensure the fallback snippets are returned
     });
 });
 
