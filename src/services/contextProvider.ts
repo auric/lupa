@@ -10,7 +10,8 @@ import {
 import {
     type ContextSnippet,
     type DiffHunk,
-    type DiffHunkLine
+    type DiffHunkLine,
+    type HybridContextResult
 } from '../types/contextTypes';
 import {
     SimilaritySearchOptions,
@@ -211,10 +212,12 @@ export class ContextProvider implements vscode.Disposable {
             if (currentFile) {
                 const hunkHeaderMatch = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@/.exec(line);
                 if (hunkHeaderMatch) {
+                    const newStartLine = parseInt(hunkHeaderMatch[3], 10);
                     currentHunk = {
                         oldStart: parseInt(hunkHeaderMatch[1], 10), oldLines: parseInt(hunkHeaderMatch[2], 10),
-                        newStart: parseInt(hunkHeaderMatch[3], 10), newLines: parseInt(hunkHeaderMatch[4], 10),
-                        lines: []
+                        newStart: newStartLine, newLines: parseInt(hunkHeaderMatch[4], 10),
+                        lines: [],
+                        hunkId: this.getHunkIdentifier(currentFile.filePath, { newStart: newStartLine })
                     };
                     currentFile.hunks.push(currentHunk);
                 } else if (currentHunk && (line.startsWith('+') || line.startsWith('-') || line.startsWith(' '))) {
@@ -234,7 +237,7 @@ export class ContextProvider implements vscode.Disposable {
      * @param _systemPrompt Optional system prompt (now handled by AnalysisProvider/TokenManager)
      * @param progressCallback Optional callback for progress updates
      * @param token Optional cancellation token
-     * @returns A promise resolving to an array of ContextSnippet objects.
+     * @returns A promise resolving to a HybridContextResult object.
      */
     async getContextForDiff(
         diff: string,
@@ -244,10 +247,10 @@ export class ContextProvider implements vscode.Disposable {
         _systemPrompt?: string, // No longer used here for optimization logic
         progressCallback?: (processed: number, total: number) => void,
         token?: vscode.CancellationToken
-    ): Promise<ContextSnippet[]> {
+    ): Promise<HybridContextResult> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
         const allContextSnippets: ContextSnippet[] = [];
-        const parsedDiffFileHunks = this.parseDiff(diff);
+        const parsedDiffFileHunks = this.parseDiff(diff); // Now includes hunkId
 
         try {
             if (token?.isCancellationRequested) {
@@ -267,15 +270,13 @@ export class ContextProvider implements vscode.Disposable {
                     if (token?.isCancellationRequested) break;
                     const absoluteSymbolPath = path.join(gitRootPath, symbol.filePath);
 
-                    // Determine associated hunk for the symbol
                     let symbolHunkIdentifier: string | undefined;
                     const fileDiffData = parsedDiffFileHunks.find(f => f.filePath === symbol.filePath);
                     if (fileDiffData) {
                         for (const hunk of fileDiffData.hunks) {
                             const hunkEndLine = hunk.newStart + hunk.newLines - 1;
-                            // Check if symbol's start line is within this hunk's new line range
                             if (symbol.position.line >= (hunk.newStart - 1) && symbol.position.line <= hunkEndLine) {
-                                symbolHunkIdentifier = this.getHunkIdentifier(symbol.filePath, hunk);
+                                symbolHunkIdentifier = hunk.hunkId; // Use pre-calculated hunkId
                                 break;
                             }
                         }
@@ -288,7 +289,7 @@ export class ContextProvider implements vscode.Disposable {
                                 const snippets = await this.getSnippetsForLocations(defLocations, 3, token, "Definition");
                                 snippets.forEach(s => allContextSnippets.push({
                                     id: `lsp-def-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
-                                    type: 'lsp-definition', content: s, relevanceScore: 1.0, // Highest relevance
+                                    type: 'lsp-definition', content: s, relevanceScore: 1.0,
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
@@ -301,7 +302,7 @@ export class ContextProvider implements vscode.Disposable {
                                 const snippets = await this.getSnippetsForLocations(refLocations, 2, token, "Reference");
                                 snippets.forEach(s => allContextSnippets.push({
                                     id: `lsp-ref-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
-                                    type: 'lsp-reference', content: s, relevanceScore: 0.9, // High relevance
+                                    type: 'lsp-reference', content: s, relevanceScore: 0.9,
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
@@ -340,7 +341,8 @@ export class ContextProvider implements vscode.Disposable {
                 let embHunkIdentifiers: string[] = [];
                 const fileDiffData = parsedDiffFileHunks.find(f => f.filePath === embResult.filePath);
                 if (fileDiffData) {
-                    embHunkIdentifiers = fileDiffData.hunks.map(hunk => this.getHunkIdentifier(embResult.filePath, hunk));
+                    // Associate with all hunks in the file for embeddings, or refine if query source is known
+                    embHunkIdentifiers = fileDiffData.hunks.map(hunk => hunk.hunkId).filter(id => !!id) as string[];
                 }
 
                 allContextSnippets.push({
@@ -358,7 +360,7 @@ export class ContextProvider implements vscode.Disposable {
             if (allContextSnippets.length === 0) {
                 console.log('No relevant context found from LSP or embeddings. Attempting fallback.');
                 const fallbackSnippets = await this.getFallbackContextSnippets(diff, token);
-                allContextSnippets.push(...fallbackSnippets); // Fallback snippets are already ContextSnippet[]
+                allContextSnippets.push(...fallbackSnippets);
                 if (allContextSnippets.length === 0) {
                     console.log('Fallback also yielded no context.');
                     allContextSnippets.push({
@@ -370,24 +372,27 @@ export class ContextProvider implements vscode.Disposable {
                 }
             }
 
-            console.log(`Returning ${allContextSnippets.length} context snippets to AnalysisProvider.`);
-            return allContextSnippets;
+            console.log(`Returning ${allContextSnippets.length} context snippets and parsed diff to AnalysisProvider.`);
+            return { snippets: allContextSnippets, parsedDiff: parsedDiffFileHunks };
 
         } catch (error) {
             if (token?.isCancellationRequested) throw new Error('Operation cancelled');
             console.error('Error getting context for diff:', error);
-            return [{
-                id: 'error-context',
-                type: 'embedding',
-                content: 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error)),
-                relevanceScore: 0
-            }];
+            return {
+                snippets: [{
+                    id: 'error-context',
+                    type: 'embedding',
+                    content: 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error)),
+                    relevanceScore: 0
+                }],
+                parsedDiff: parsedDiffFileHunks // Return parsed diff even on error
+            };
         }
     }
 
     /**
-     * Get custom search options based on the analysis mode
-     */
+    * Get custom search options based on the analysis mode
+    */
     private getSearchOptionsForMode(
         mode: AnalysisMode,
         baseOptions?: SimilaritySearchOptions

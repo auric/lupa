@@ -58,21 +58,24 @@ vi.mock('vscode', async () => {
 vi.mock('../services/embeddingDatabaseAdapter');
 vi.mock('../models/copilotModelManager');
 vi.mock('../services/tokenManagerService');
-vi.mock('../services/treeStructureAnalyzer', () => ({
-    TreeStructureAnalyzerResource: {
-        create: vi.fn().mockResolvedValue({
-            instance: {
-                getFileLanguage: vi.fn().mockReturnValue({ language: 'typescript', variant: undefined }),
-                findSymbolsInRanges: vi.fn().mockResolvedValue([]),
-                findFunctions: vi.fn().mockResolvedValue([]),
-                findClasses: vi.fn().mockResolvedValue([]),
+vi.mock('../services/treeStructureAnalyzer', () => {
+    const mockAnalyzerInstance = {
+        getFileLanguage: vi.fn().mockReturnValue({ language: 'typescript', variant: undefined }),
+        findSymbolsInRanges: vi.fn().mockResolvedValue([]), // Used by extractMeaningfulChunksAndSymbols
+        findFunctions: vi.fn().mockResolvedValue([]),       // Used by extractMeaningfulChunksAndSymbols
+        findClasses: vi.fn().mockResolvedValue([]),         // Used by extractMeaningfulChunksAndSymbols
+        dispose: vi.fn(),
+    };
+    return {
+        TreeStructureAnalyzerResource: {
+            create: vi.fn().mockResolvedValue({
+                instance: mockAnalyzerInstance,
                 dispose: vi.fn(),
-            },
-            dispose: vi.fn(),
-        }),
-    },
-    // Mock other exports if needed
-}));
+            }),
+        },
+        // SymbolInfo: vi.fn(), // If it were a class
+    };
+});
 
 describe('ContextProvider LSP Methods', () => {
     let contextProvider: ContextProvider;

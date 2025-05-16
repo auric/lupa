@@ -15,9 +15,15 @@ export interface DiffHunkLine {
     newStart: number;
     newLines: number;
     lines: string[];
+    hunkId?: string; // Unique identifier for this hunk within its file
 }
 
 export interface DiffHunk {
     filePath: string;
     hunks: DiffHunkLine[];
+}
+
+export interface HybridContextResult {
+    snippets: ContextSnippet[];
+    parsedDiff: DiffHunk[];
 }

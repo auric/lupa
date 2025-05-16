@@ -93,8 +93,8 @@ describe('ContextProvider Symbol Identification', () => {
         vi.mocked(mockTokenManager.calculateTokenAllocation).mockResolvedValue(mockTokenAllocation);
         vi.mocked(mockTokenManager.getSystemPromptForMode).mockResolvedValue('System Prompt');
         vi.mocked(mockTokenManager.optimizeContext).mockImplementation(async (snippets, _limit) => {
-            // Simulate formatting snippets to a string, as TokenManagerService would
-            return snippets.map(s => s.content).join('\n\n');
+            // Updated mock to return the new structure
+            return { optimizedSnippets: snippets, wasTruncated: false };
         });
 
         // Use the mocked vscode.LanguageModelChat for the type

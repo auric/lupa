@@ -111,16 +111,16 @@ export class TokenManagerService {
      * by prioritizing based on relevance.
      * @param snippets A list of ContextSnippet objects.
      * @param availableTokens Maximum tokens that can be allocated to the context.
-     * @returns A formatted string of the optimized context.
+     * @returns An object containing the array of optimized snippets and a boolean indicating if truncation occurred.
      */
     public async optimizeContext(
         snippets: ContextSnippet[],
         availableTokens: number
-    ): Promise<string> {
+    ): Promise<{ optimizedSnippets: ContextSnippet[], wasTruncated: boolean }> {
         await this.updateModelInfo();
         if (!this.currentModel) {
             console.error("Language model not available for token counting in optimizeContext.");
-            return this.formatContextSnippetsToString([], true); // Return empty with truncation msg
+            return { optimizedSnippets: [], wasTruncated: true };
         }
 
         // Sort snippets: LSP defs > LSP refs > Embeddings (by score)
@@ -221,15 +221,15 @@ export class TokenManagerService {
 
 
         console.log(`Context optimization: ${selectedSnippets.length} of ${snippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
-        return this.formatContextSnippetsToString(selectedSnippets, wasTruncated);
+        return { optimizedSnippets: selectedSnippets, wasTruncated };
     }
 
     /**
-     * Formats a list of context snippets into a single markdown string.
-     * @param snippets The list of ContextSnippet objects to format.
-     * @param wasTruncated Whether to add a truncation message at the end.
-     * @returns A formatted markdown string.
-     */
+    * Formats a list of context snippets into a single markdown string.
+    * @param snippets The list of ContextSnippet objects to format.
+    * @param wasTruncated Whether to add a truncation message at the end.
+    * @returns A formatted markdown string.
+    */
     public formatContextSnippetsToString(snippets: ContextSnippet[], wasTruncated: boolean = false): string {
         const lspDefinitions = snippets.filter(s => s.type === 'lsp-definition');
         const lspReferences = snippets.filter(s => s.type === 'lsp-reference');

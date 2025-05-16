@@ -7,7 +7,9 @@ import { TreeStructureAnalyzerResource, SymbolInfo as AnalyzerSymbolInfo } from 
 import { SimilaritySearchResult } from '../types/embeddingTypes';
 import { AnalysisMode } from '../types/modelTypes';
 import {
-    type ContextSnippet
+    type ContextSnippet,
+    type DiffHunk, // Added for checking parsedDiff
+    type HybridContextResult // Added for the new return type
 } from '../types/contextTypes';
 import * as path from 'path';
 
@@ -418,28 +420,39 @@ index 123..456 100644
         ];
         hoistedMocks.findRelevantCodeContextForChunks.mockResolvedValue(mockEmbeddingResults);
 
-        const context = await contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive);
+        const result: HybridContextResult = await contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive);
+        const { snippets, parsedDiff } = result;
 
         // Check for LSP definition snippets
-        // Headers like "## Definitions Found (LSP)" are typically added by TokenManagerService during final formatting,
-        // not by ContextProvider directly into the snippet content.
-        expect(snippetsContainText(context, '**Definition in `src/file1.ts` (L3):**')).toBe(true);
-        expect(snippetsContainText(context, 'export function changedFunction(param: string): void {')).toBe(true);
+        expect(snippetsContainText(snippets, '**Definition in `src/file1.ts` (L3):**')).toBe(true);
+        expect(snippetsContainText(snippets, 'export function changedFunction(param: string): void {')).toBe(true);
 
         // Check for LSP reference snippets
-        expect(snippetsContainText(context, '**Reference in `src/dep.ts` (L1):**')).toBe(true);
-        expect(snippetsContainText(context, 'export function helper(): number { return 1; }')).toBe(true);
+        expect(snippetsContainText(snippets, '**Reference in `src/dep.ts` (L1):**')).toBe(true);
+        expect(snippetsContainText(snippets, 'export function helper(): number { return 1; }')).toBe(true);
 
 
         // Check for embedding results
-        // The "## Related Code Context" header is also part of final formatting.
-        // Individual embedding snippets will have "### File: ..."
-        expect(snippetsContainText(context, '### File: `src/utils/helpers.ts`')).toBe(true);
-        expect(snippetsContainText(context, 'export function helperUtil() { /* ... */ }')).toBe(true);
-        // Verify that if embedding results are expected, some file header for embeddings is present
+        expect(snippetsContainText(snippets, '### File: `src/utils/helpers.ts`')).toBe(true);
+        expect(snippetsContainText(snippets, 'export function helperUtil() { /* ... */ }')).toBe(true);
         if (mockEmbeddingResults.length > 0) {
-            expect(snippetsContainText(context, '### File:')).toBe(true);
+            expect(snippetsContainText(snippets, '### File:')).toBe(true);
         }
+
+        // Verify parsedDiff structure and hunkId
+        expect(parsedDiff).toBeInstanceOf(Array);
+        expect(parsedDiff.length).toBeGreaterThan(0);
+        const file1Diff = parsedDiff.find(pd => pd.filePath === 'src/file1.ts');
+        expect(file1Diff).toBeDefined();
+        expect(file1Diff?.hunks).toBeInstanceOf(Array);
+        expect(file1Diff?.hunks.length).toBeGreaterThan(0);
+        expect(file1Diff?.hunks[0].hunkId).toBe('src/file1.ts:L1'); // Based on @@ -1,3 +1,3 @@
+
+        // Verify snippet association with hunkId
+        const lspDefSnippet = snippets.find(s => s.type === 'lsp-definition' && s.content.includes('changedFunction'));
+        expect(lspDefSnippet).toBeDefined();
+        expect(lspDefSnippet?.associatedHunkIdentifiers).toContain('src/file1.ts:L1');
+
 
         // Verify mocks
         expect(hoistedMocks.analyzerFindSymbolsInRanges).toHaveBeenCalled();
@@ -476,14 +489,21 @@ index 123..456 100644
         }];
         hoistedMocks.findRelevantCodeContextForChunks.mockResolvedValue(mockEmbeddingResults);
 
-        const context = await contextProvider.getContextForDiff(diff, gitRootPath);
+        const result = await contextProvider.getContextForDiff(diff, gitRootPath);
+        const { snippets, parsedDiff } = result;
 
         // No LSP symbols, so no LSP-specific content like "**Definition in" is expected.
-        expect(snippetsContainText(context, '**Definition in')).toBe(false);
-        expect(snippetsContainText(context, '**Reference in')).toBe(false);
+        expect(snippetsContainText(snippets, '**Definition in')).toBe(false);
+        expect(snippetsContainText(snippets, '**Reference in')).toBe(false);
         // Embeddings are expected, so check for their content and file header.
-        expect(snippetsContainText(context, '### File:')).toBe(true);
-        expect(snippetsContainText(context, 'src/some_other_file.ts')).toBe(true);
+        expect(snippetsContainText(snippets, '### File:')).toBe(true);
+        expect(snippetsContainText(snippets, 'src/some_other_file.ts')).toBe(true);
+
+        // Check parsedDiff
+        expect(parsedDiff.length).toBeGreaterThan(0);
+        expect(parsedDiff[0].hunks[0].hunkId).toBeDefined();
+
+
         expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.executeDefinitionProvider', expect.anything(), expect.anything(), expect.anything());
         expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.executeReferenceProvider', expect.anything(), expect.anything(), expect.anything(), expect.anything());
     });
@@ -507,14 +527,20 @@ diff --git a/src/file1.ts b/src/file1.ts
         }];
         hoistedMocks.findRelevantCodeContextForChunks.mockResolvedValue(mockEmbeddingResults);
 
-        const context = await contextProvider.getContextForDiff(diff, gitRootPath);
+        const result = await contextProvider.getContextForDiff(diff, gitRootPath);
+        const { snippets, parsedDiff } = result;
 
         // LSP calls return no locations, so no LSP-specific content expected
-        expect(snippetsContainText(context, '**Definition in')).toBe(false);
-        expect(snippetsContainText(context, '**Reference in')).toBe(false);
-        expect(snippetsContainText(context, 'src/some_other_file.ts')).toBe(true);
+        expect(snippetsContainText(snippets, '**Definition in')).toBe(false);
+        expect(snippetsContainText(snippets, '**Reference in')).toBe(false);
+        expect(snippetsContainText(snippets, 'src/some_other_file.ts')).toBe(true);
         // Check if the embedding section header is present
-        expect(snippetsContainText(context, '### File:')).toBe(true);
+        expect(snippetsContainText(snippets, '### File:')).toBe(true);
+
+        // Check parsedDiff
+        expect(parsedDiff.length).toBeGreaterThan(0);
+        expect(parsedDiff[0].hunks[0].hunkId).toBeDefined();
+
         expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.executeDefinitionProvider', expect.anything(), expect.anything(), expect.anything());
     });
 
@@ -581,11 +607,17 @@ diff --git a/src/file1.ts b/src/file1.ts
         const fallbackSnippets = [{ id: 'fallback-1', type: 'embedding', content: 'Fallback context triggered.', relevanceScore: 0.5, filePath: 'fallback.txt', startLine: 0 }];
         const fallbackSpy = vi.spyOn(contextProvider as any, 'getFallbackContextSnippets').mockResolvedValue(fallbackSnippets);
 
-        const context = await contextProvider.getContextForDiff(diff, gitRootPath);
+        const result = await contextProvider.getContextForDiff(diff, gitRootPath);
+        const { snippets, parsedDiff } = result;
+
 
         expect(fallbackSpy).toHaveBeenCalled();
-        expect(snippetsContainText(context, "Fallback context triggered.")).toBe(true);
-        expect(context).toEqual(expect.arrayContaining(fallbackSnippets)); // Ensure the fallback snippets are returned
+        expect(snippetsContainText(snippets, "Fallback context triggered.")).toBe(true);
+        expect(snippets).toEqual(expect.arrayContaining(fallbackSnippets)); // Ensure the fallback snippets are returned
+
+        // Check parsedDiff even in fallback case
+        expect(parsedDiff.length).toBeGreaterThan(0);
+        expect(parsedDiff[0].hunks[0].hunkId).toBeDefined();
     });
 });
 

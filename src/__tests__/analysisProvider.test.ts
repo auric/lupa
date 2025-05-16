@@ -4,7 +4,7 @@ import { ContextProvider } from '../services/contextProvider';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { AnalysisMode } from '../types/modelTypes';
-import { ContextSnippet } from '../types/contextTypes';
+import { ContextSnippet, DiffHunk, HybridContextResult } from '../types/contextTypes';
 import { TokenManagerService } from '../services/tokenManagerService';
 import * as vscode from 'vscode';
 
@@ -220,68 +220,123 @@ describe('AnalysisProvider', () => {
         const gitRootPath = '/test/repo';
         const mode = AnalysisMode.Comprehensive;
         const mockSnippets: ContextSnippet[] = [
-            { id: 's1', type: 'embedding', content: 'Snippet 1 content', relevanceScore: 0.8, filePath: 'file1.ts', startLine: 10 },
+            { id: 's1', type: 'embedding', content: 'Snippet 1 content', relevanceScore: 0.8, filePath: 'file1.ts', startLine: 10, associatedHunkIdentifiers: ['file.ts:L1'] },
         ];
+        const mockParsedDiff: DiffHunk[] = [
+            { filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }] }
+        ];
+        const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
 
-        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockSnippets);
+        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
         mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
-            fitsWithinLimit: true,
+            fitsWithinLimit: true, // optimizeContext will not be called, optimizedSnippets will be mockSnippets
             contextAllocationTokens: 5000,
             totalAvailableTokens: 7600,
             totalRequiredTokens: 1000,
             systemPromptTokens: 50,
             diffTextTokens: 100,
-            contextTokens: 200, // Tokens for preliminaryContextString
+            contextTokens: 200,
             userMessagesTokens: 0,
             assistantMessagesTokens: 0,
             otherTokens: 50,
         });
-        // If fitsWithinLimit is true, optimizeContext is not called, formatContextSnippetsToString is used for preliminary.
-        // The result of formatContextSnippetsToString will be used as final context.
+        // Since fitsWithinLimit is true, optimizeContext is not strictly called for reduction,
+        // but analyzeWithLanguageModel will call it to get the { optimizedSnippets, wasTruncated } structure.
+        // We'll mock it to return the initial snippets as if no optimization was needed.
+        mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: mockSnippets, wasTruncated: false });
+
 
         const result = await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
 
         expect(mockContextProviderInstance.getContextForDiff).toHaveBeenCalledWith(diffText, gitRootPath, undefined, mode, undefined, expect.any(Function), undefined);
         expect(mockTokenManagerInstance.calculateTokenAllocation).toHaveBeenCalled();
-        expect(mockTokenManagerInstance.optimizeContext).not.toHaveBeenCalled(); // Because fitsWithinLimit was true
+        // optimizeContext IS called to get the structured snippets, even if no actual optimization occurs
+        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(mockSnippets, 5000);
         expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
+
+        // Verify interleaved prompt structure
+        const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
+        const userMessageContent = (sentMessages[0].content as Array<vscode.LanguageModelTextPart>)[0].value;
+
+        expect(userMessageContent).toContain('System prompt for comprehensive');
+        expect(userMessageContent).toContain('File: file.ts');
+        expect(userMessageContent).toContain('@@ -1,1 +1,1 @@'); // Hunk header from diffText
+        expect(userMessageContent).toContain('-console.log("old");\n+console.log("new");'); // Hunk lines
+        expect(userMessageContent).toContain('--- Relevant Context for this Hunk ---');
+        expect(userMessageContent).toContain('Snippet 1 content');
+        expect(userMessageContent).toContain('--- End Context for this Hunk ---');
+
         expect(result.analysis).toBe("Mocked LLM analysis result.");
-        expect(result.context).toBe("Snippet 1 content"); // From formatContextSnippetsToString
+        // result.context is now the string formatted from optimizedSnippets
+        expect(mockTokenManagerInstance.formatContextSnippetsToString).toHaveBeenCalledWith(mockSnippets, false);
+        expect(result.context).toBe("Snippet 1 content");
     });
 
-    it('should call optimizeContext when context exceeds token limits', async () => {
-        const diffText = 'diff text';
+    it('should call optimizeContext and build interleaved prompt when context exceeds token limits', async () => {
+        const diffText = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-old\n+new';
         const gitRootPath = '/test/repo';
         const mode = AnalysisMode.Critical;
-        const mockSnippets: ContextSnippet[] = [
-            { id: 's1', type: 'lsp-definition', content: 'Long snippet 1', relevanceScore: 1.0 },
-            { id: 's2', type: 'embedding', content: 'Long snippet 2', relevanceScore: 0.7 },
+        const allSnippets: ContextSnippet[] = [
+            { id: 's1', type: 'lsp-definition', content: 'Long snippet 1 DEF', relevanceScore: 1.0, associatedHunkIdentifiers: ['file.ts:L1'] },
+            { id: 's2', type: 'embedding', content: 'Long snippet 2 EMB', relevanceScore: 0.7, associatedHunkIdentifiers: ['file.ts:L1'] },
+            { id: 's3', type: 'embedding', content: 'Unrelated snippet', relevanceScore: 0.6 }, // Should be filtered by hunk or optimization
         ];
-        const optimizedContextString = "Optimized: Long snippet 1";
+        const optimizedSnippetsFromManager: ContextSnippet[] = [ // What optimizeContext returns
+            { id: 's1', type: 'lsp-definition', content: 'Long snippet 1 DEF', relevanceScore: 1.0, associatedHunkIdentifiers: ['file.ts:L1'] },
+        ];
+        const mockParsedDiff: DiffHunk[] = [
+            { filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-old', '+new'], hunkId: 'file.ts:L1' }] }
+        ];
+        const mockHybridResult: HybridContextResult = { snippets: allSnippets, parsedDiff: mockParsedDiff };
 
-        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockSnippets);
+
+        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
         mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
             fitsWithinLimit: false, // Key for this test
-            contextAllocationTokens: 100, // Budget for context
+            contextAllocationTokens: 10, // Very small budget, forcing optimization
             totalAvailableTokens: 7600,
-            totalRequiredTokens: 8000, // Exceeds
+            totalRequiredTokens: 8000,
             systemPromptTokens: 50,
             diffTextTokens: 100,
-            contextTokens: 7800, // Tokens for preliminaryContextString (too large)
+            contextTokens: 7800,
             userMessagesTokens: 0,
             assistantMessagesTokens: 0,
             otherTokens: 50,
         });
-        mockTokenManagerInstance.optimizeContext.mockResolvedValue(optimizedContextString);
+        // optimizeContext will be called and should return the subset
+        mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: optimizedSnippetsFromManager, wasTruncated: true });
+        // formatContextSnippetsToString will be called with the result of optimizeContext
+        mockTokenManagerInstance.formatContextSnippetsToString.mockImplementation((snippets, truncated) => {
+            const content = snippets.map(s => s.content).join('\n\n');
+            return content + (truncated ? " [Truncated]" : "");
+        });
+
 
         const result = await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
 
         expect(mockContextProviderInstance.getContextForDiff).toHaveBeenCalled();
         expect(mockTokenManagerInstance.calculateTokenAllocation).toHaveBeenCalled();
-        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(mockSnippets, 100); // Called with snippets and budget
+        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(allSnippets, 10); // Called with all snippets and budget
         expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
+
+        // Verify interleaved prompt structure
+        const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
+        const userMessageContent = (sentMessages[0].content as Array<vscode.LanguageModelTextPart>)[0].value;
+
+        expect(userMessageContent).toContain('System prompt for critical');
+        expect(userMessageContent).toContain('File: file.ts');
+        expect(userMessageContent).toContain('@@ -1,1 +1,1 @@');
+        expect(userMessageContent).toContain('-old\n+new');
+        expect(userMessageContent).toContain('--- Relevant Context for this Hunk ---');
+        expect(userMessageContent).toContain('Long snippet 1 DEF'); // Only the optimized snippet
+        expect(userMessageContent).not.toContain('Long snippet 2 EMB');
+        expect(userMessageContent).not.toContain('Unrelated snippet');
+        expect(userMessageContent).toContain('--- End Context for this Hunk ---');
+
+
         expect(result.analysis).toBe("Mocked LLM analysis result.");
-        expect(result.context).toBe(optimizedContextString);
+        expect(mockTokenManagerInstance.formatContextSnippetsToString).toHaveBeenCalledWith(optimizedSnippetsFromManager, true);
+        expect(result.context).toBe("Long snippet 1 DEF [Truncated]");
     });
 
     it('should handle cancellation during context retrieval', async () => {
@@ -293,7 +348,8 @@ describe('AnalysisProvider', () => {
 
         mockContextProviderInstance.getContextForDiff.mockImplementation(async (_d, _g, _o, _m, _sP, _pC, ct) => {
             if (ct?.isCancellationRequested) throw new Error('Operation cancelled');
-            return [];
+            // Return a valid HybridContextResult structure even if empty
+            return { snippets: [], parsedDiff: [] };
         });
 
         await expect(analysisProvider.analyzePullRequest(diffText, gitRootPath, mode, undefined, cancellationToken))
@@ -305,13 +361,18 @@ describe('AnalysisProvider', () => {
         const gitRootPath = '/test/repo';
         const mode = AnalysisMode.Comprehensive;
         const mockSnippets: ContextSnippet[] = [{ id: 's1', type: 'embedding', content: 'Snippet 1', relevanceScore: 0.8, filePath: 'file.ts', startLine: 1 }];
+        const mockParsedDiff: DiffHunk[] = [{ filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['+a'], hunkId: 'h1' }] }];
+        const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
+
 
         // Use a real CancellationTokenSource for the external token
         const externalCancellationSource = new vscode.CancellationTokenSource();
         const externalCancellationToken = externalCancellationSource.token;
 
-        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockSnippets);
+        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
         mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({ fitsWithinLimit: true, contextAllocationTokens: 500 } as any);
+        mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: mockSnippets, wasTruncated: false });
+
 
         vi.mocked(mockLanguageModel.sendRequest).mockImplementation(async (_messages, _options, internalToken) => {
             // internalToken is the requestTokenSource.token from AnalysisProvider
