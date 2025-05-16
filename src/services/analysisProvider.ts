@@ -172,7 +172,8 @@ export class AnalysisProvider implements vscode.Disposable {
             }
 
             const messages = [
-                vscode.LanguageModelChatMessage.User(systemPrompt + '\n' + interleavedPromptContent)
+                vscode.LanguageModelChatMessage.Assistant(systemPrompt),
+                vscode.LanguageModelChatMessage.User(interleavedPromptContent)
             ];
 
             const requestTokenSource = new vscode.CancellationTokenSource();
