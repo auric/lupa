@@ -547,11 +547,12 @@ export class VectorDatabaseService implements vscode.Disposable {
     ): Promise<SimilaritySearchResult[]> {
         await this.ensureInitialized();
 
-        // Default options
         const limit = options.limit || 5;
-        const minScore = options.minScore || 0.65; // Cosine similarity: 1 is identical, -1 is opposite. HNSW returns distances.
-        // For cosine space, distance = 1 - similarity. So, maxDistance = 1 - minScore.
-        const numNeighbors = limit * 5; // Fetch more neighbors initially for better filtering
+        const minScore = options.minScore || 0.65;
+        // Fetch more neighbors initially to allow for filtering and still meet the limit.
+        // HNSWlib searchKnn is efficient, so over-fetching slightly is generally fine.
+        const numNeighborsToFetch = Math.max(limit * 3, 10);
+
 
         if (!this.annIndex) {
             console.warn('ANN index is not initialized. Cannot perform similarity search.');
@@ -562,39 +563,48 @@ export class VectorDatabaseService implements vscode.Disposable {
             return [];
         }
 
-        // Convert Float32Array to number[] for HNSWlib
         const queryVectorAsArray = Array.from(queryVector);
-        const searchResult = this.annIndex.searchKnn(queryVectorAsArray, numNeighbors);
+        let searchResult;
+        try {
+            searchResult = this.annIndex.searchKnn(queryVectorAsArray, numNeighborsToFetch);
+        } catch (error) {
+            console.error('Error during ANN searchKnn:', error);
+            return [];
+        }
+
         const { neighbors, distances } = searchResult;
 
         if (!neighbors || neighbors.length === 0) {
             return [];
         }
 
-        const results: SimilaritySearchResult[] = [];
-        const labelsToFetch: number[] = [];
-        const scoresMap: Map<number, number> = new Map();
-
+        const potentialResults: Array<{ label: number; score: number }> = [];
         for (let i = 0; i < neighbors.length; i++) {
             const label = neighbors[i];
             const distance = distances[i];
-            const score = 1 - distance; // Convert HNSW distance (cosine) to similarity score
+            // For cosine space, similarity = 1 - distance.
+            // HNSWlib returns distance, so we convert it.
+            const score = 1 - distance;
 
             if (score >= minScore) {
-                labelsToFetch.push(label);
-                scoresMap.set(label, score);
+                potentialResults.push({ label, score });
             }
         }
 
-        if (labelsToFetch.length === 0) {
+        if (potentialResults.length === 0) {
             return [];
         }
 
+        // Sort by score descending before fetching metadata to prioritize higher scores if DB query is slow
+        potentialResults.sort((a, b) => b.score - a.score);
+
+        const labelsToFetch = potentialResults.map(r => r.label);
+        const scoresMap = new Map(potentialResults.map(r => [r.label, r.score]));
+
         // Fetch metadata for these labels from SQLite
-        // Ensure labelsToFetch is not empty before creating the IN clause
         const placeholders = labelsToFetch.map(() => '?').join(',');
         const sql = `
-            SELECT e.chunk_id, c.content, c.file_id, c.start_offset, c.end_offset, f.path, e.label
+            SELECT e.chunk_id, c.content, c.file_id, c.start_offset, c.end_offset, f.path, f.language, e.label
             FROM embeddings e
             INNER JOIN chunks c ON e.chunk_id = c.id
             INNER JOIN files f ON c.file_id = f.id
@@ -608,37 +618,45 @@ export class VectorDatabaseService implements vscode.Disposable {
             start_offset: number;
             end_offset: number;
             path: string;
+            language: string | null;
             label: number;
         };
 
-        const metadataRows = await this.all<EmbeddingMetadataRow>(sql, labelsToFetch);
-
-        for (const row of metadataRows) {
-            const score = scoresMap.get(row.label);
-            if (score !== undefined) { // Should always be defined if label was in labelsToFetch
-                // Apply file and language filters if provided
-                if (options.fileFilter && options.fileFilter.length > 0 && !options.fileFilter.includes(row.path)) {
-                    continue;
-                }
-                // Assuming language is stored on fileRecord, which needs to be fetched or joined.
-                // For now, language filter is harder to apply here without another join or fetching all file records.
-                // This part needs to be adjusted if language filter is critical at this stage.
-                // A simpler approach might be to filter after fetching if performance allows.
-
-                results.push({
-                    chunkId: row.chunk_id,
-                    fileId: row.file_id,
-                    filePath: row.path,
-                    content: row.content,
-                    startOffset: row.start_offset,
-                    endOffset: row.end_offset,
-                    score: score,
-                });
-            }
+        let metadataRows: EmbeddingMetadataRow[];
+        try {
+            metadataRows = await this.all<EmbeddingMetadataRow>(sql, labelsToFetch);
+        } catch (error) {
+            console.error('Error fetching metadata for ANN results:', error);
+            return [];
         }
 
-        // Sort by score (highest first) and limit results
-        return results.sort((a, b) => b.score - a.score).slice(0, limit);
+        const finalResults: SimilaritySearchResult[] = [];
+        for (const row of metadataRows) {
+            const score = scoresMap.get(row.label);
+            if (score === undefined) continue; // Should not happen if SQL is correct
+
+            // Apply file and language filters if provided
+            if (options.fileFilter && options.fileFilter.length > 0 && !options.fileFilter.includes(row.path)) {
+                continue;
+            }
+            if (options.languageFilter && options.languageFilter.length > 0 && row.language && !options.languageFilter.includes(row.language)) {
+                continue;
+            }
+
+            finalResults.push({
+                chunkId: row.chunk_id,
+                fileId: row.file_id,
+                filePath: row.path,
+                content: row.content,
+                startOffset: row.start_offset,
+                endOffset: row.end_offset,
+                score: score,
+            });
+        }
+
+        // The results from DB might not be in the same order as `potentialResults`
+        // So, re-sort based on the scores we have and then slice.
+        return finalResults.sort((a, b) => b.score - a.score).slice(0, limit);
     }
 
     /**
@@ -922,19 +940,83 @@ export class VectorDatabaseService implements vscode.Disposable {
     async deleteChunksForFile(fileId: string): Promise<void> {
         await this.ensureInitialized();
 
-        // Due to foreign key constraints, deleting chunks will also delete embeddings
+        // Get labels of embeddings associated with chunks of this file
+        const embeddingsToDelete = await this.all<{ label: number }>(
+            `SELECT e.label FROM embeddings e
+             INNER JOIN chunks c ON e.chunk_id = c.id
+             WHERE c.file_id = ?`,
+            [fileId]
+        );
+
+        if (this.annIndex && embeddingsToDelete.length > 0) {
+            let markedCount = 0;
+            for (const emb of embeddingsToDelete) {
+                try {
+                    // Check if label exists before marking for deletion
+                    // Note: HNSWlib doesn't have a direct `exists(label)` check.
+                    // `markDelete` might not error if label doesn't exist, but it's good practice.
+                    // We assume if it's in DB, it should be in ANN.
+                    this.annIndex.markDelete(emb.label);
+                    markedCount++;
+                } catch (error) {
+                    // Log error if marking for deletion fails for a specific label
+                    console.warn(`Failed to mark label ${emb.label} for deletion in ANN index:`, error);
+                }
+            }
+            if (markedCount > 0) {
+                console.log(`Marked ${markedCount} embeddings for deletion in ANN index for fileId ${fileId}.`);
+                this.saveAnnIndex(); // Persist changes to ANN index
+            }
+        }
+
+        // Due to foreign key constraints (ON DELETE CASCADE for embeddings referencing chunks),
+        // deleting chunks will also delete their corresponding entries in the embeddings table.
         await this.run('DELETE FROM chunks WHERE file_id = ?', [fileId]);
+        console.log(`Deleted chunks and associated SQLite embedding metadata for fileId ${fileId}.`);
     }
 
     /**
-     * Delete a file and all associated chunks and embeddings
+     * Delete a file and all associated chunks and embeddings (both in SQLite and ANN index)
      * @param filePath Path of the file
      */
     async deleteFile(filePath: string): Promise<void> {
         await this.ensureInitialized();
 
-        // Due to foreign key constraints, deleting the file will cascade
-        await this.run('DELETE FROM files WHERE path = ?', [filePath]);
+        const fileRecord = await this.getFileByPath(filePath);
+        if (!fileRecord) {
+            console.log(`File ${filePath} not found in database. Nothing to delete.`);
+            return;
+        }
+
+        // First, handle ANN index deletions by getting all relevant labels
+        const embeddingsToDelete = await this.all<{ label: number }>(
+            `SELECT e.label FROM embeddings e
+             INNER JOIN chunks c ON e.chunk_id = c.id
+             WHERE c.file_id = ?`,
+            [fileRecord.id]
+        );
+
+        if (this.annIndex && embeddingsToDelete.length > 0) {
+            let markedCount = 0;
+            for (const emb of embeddingsToDelete) {
+                try {
+                    this.annIndex.markDelete(emb.label);
+                    markedCount++;
+                } catch (error) {
+                    console.warn(`Failed to mark label ${emb.label} for deletion in ANN index for file ${filePath}:`, error);
+                }
+            }
+            if (markedCount > 0) {
+                console.log(`Marked ${markedCount} embeddings for deletion in ANN index for file ${filePath}.`);
+                this.saveAnnIndex(); // Persist changes to ANN index
+            }
+        }
+
+        // Due to foreign key constraints (ON DELETE CASCADE for chunks referencing files,
+        // and embeddings referencing chunks), deleting the file from the 'files' table
+        // will cascade and delete associated chunks and SQLite embedding metadata.
+        await this.run('DELETE FROM files WHERE id = ?', [fileRecord.id]);
+        console.log(`Deleted file ${filePath} and all associated SQLite data (chunks, embeddings).`);
     }
 
     /**

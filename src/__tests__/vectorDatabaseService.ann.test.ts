@@ -834,4 +834,196 @@ describe('VectorDatabaseService ANN Integration', () => {
             expect(result?.vector).toEqual(new Float32Array(0));
         });
     });
+
+    // --- Tests for deleteChunksForFile ---
+    describe('deleteChunksForFile', () => {
+        const dimension = 3;
+        let mockHNSW: ReturnType<typeof getMockHNSWInstanceMethods>;
+        let mockDB: ReturnType<typeof getMockSqliteDbMethods>;
+        const fileId = 'test-file-id';
+
+        beforeEach(() => { // Nested beforeEach
+            vectorDbService.setCurrentModelDimension(dimension);
+            mockHNSW = getMockHNSWInstanceMethods();
+            mockDB = getMockSqliteDbMethods();
+
+            mockHNSW.markDelete.mockClear();
+            mockHNSW.writeIndexSync.mockClear();
+            vi.mocked(mockDB.all).mockClear();
+            vi.mocked(mockDB.run).mockClear();
+        });
+
+        it('should mark embeddings for deletion in ANN and delete from SQLite', async () => {
+            const embeddingsToDelete = [{ label: 0 }, { label: 1 }];
+            vi.mocked(mockDB.all).mockImplementationOnce((sql, params, cb) => {
+                // Simulate finding embeddings to delete
+                if (sql.includes('SELECT e.label FROM embeddings e')) {
+                    cb(null, embeddingsToDelete);
+                } else {
+                    cb(null, []);
+                }
+            });
+
+            await vectorDbService.deleteChunksForFile(fileId);
+
+            expect(vi.mocked(mockDB.all)).toHaveBeenCalledWith(
+                expect.stringContaining('SELECT e.label FROM embeddings e'),
+                [fileId],
+                expect.any(Function)
+            );
+            expect(mockHNSW.markDelete).toHaveBeenCalledTimes(embeddingsToDelete.length);
+            expect(mockHNSW.markDelete).toHaveBeenCalledWith(0);
+            expect(mockHNSW.markDelete).toHaveBeenCalledWith(1);
+            expect(mockHNSW.writeIndexSync).toHaveBeenCalledWith(annIndexPath); // saveAnnIndex called
+
+            expect(vi.mocked(mockDB.run)).toHaveBeenCalledWith(
+                'DELETE FROM chunks WHERE file_id = ?',
+                [fileId],
+                expect.any(Function)
+            );
+        });
+
+        it('should not interact with ANN if no embeddings are found for the file', async () => {
+            vi.mocked(mockDB.all).mockImplementationOnce((sql, params, cb) => cb(null, [])); // No embeddings
+
+            await vectorDbService.deleteChunksForFile(fileId);
+
+            expect(mockHNSW.markDelete).not.toHaveBeenCalled();
+            expect(mockHNSW.writeIndexSync).not.toHaveBeenCalled(); // saveAnnIndex should not be called if no marks
+            expect(vi.mocked(mockDB.run)).toHaveBeenCalledWith(
+                'DELETE FROM chunks WHERE file_id = ?',
+                [fileId],
+                expect.any(Function)
+            );
+        });
+
+        it('should handle errors during markDelete gracefully and still delete from SQLite', async () => {
+            const embeddingsToDelete = [{ label: 0 }, { label: 1 }];
+            vi.mocked(mockDB.all).mockImplementationOnce((sql, params, cb) => cb(null, embeddingsToDelete));
+            mockHNSW.markDelete.mockImplementationOnce(() => { throw new Error('ANN markDelete failed'); });
+            const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+
+            await vectorDbService.deleteChunksForFile(fileId);
+
+            expect(consoleWarnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to mark label 0 for deletion in ANN index'),
+                expect.any(Error)
+            );
+            expect(mockHNSW.markDelete).toHaveBeenCalledTimes(embeddingsToDelete.length); // Both attempted
+            expect(mockHNSW.markDelete).toHaveBeenCalledWith(0); // Failed one
+            expect(mockHNSW.markDelete).toHaveBeenCalledWith(1); // Successful one
+            expect(mockHNSW.writeIndexSync).toHaveBeenCalled(); // Still save if at least one was marked (or attempted)
+
+            expect(vi.mocked(mockDB.run)).toHaveBeenCalledWith(
+                'DELETE FROM chunks WHERE file_id = ?',
+                [fileId],
+                expect.any(Function)
+            );
+            consoleWarnSpy.mockRestore();
+        });
+    });
+
+    // --- Tests for deleteFile ---
+    describe('deleteFile', () => {
+        const dimension = 3;
+        let mockHNSW: ReturnType<typeof getMockHNSWInstanceMethods>;
+        let mockDB: ReturnType<typeof getMockSqliteDbMethods>;
+        const filePath = '/path/to/test-file.ts';
+        const fileId = 'file-id-for-delete';
+
+        beforeEach(() => { // Nested beforeEach
+            vectorDbService.setCurrentModelDimension(dimension);
+            mockHNSW = getMockHNSWInstanceMethods();
+            mockDB = getMockSqliteDbMethods();
+
+            mockHNSW.markDelete.mockClear();
+            mockHNSW.writeIndexSync.mockClear();
+            vi.mocked(mockDB.get).mockClear();
+            vi.mocked(mockDB.all).mockClear();
+            vi.mocked(mockDB.run).mockClear();
+        });
+
+        it('should mark associated embeddings for deletion in ANN and delete file from SQLite', async () => {
+            const fileRecord = { id: fileId, path: filePath, hash: 'hash', language: 'typescript', indexed_at: Date.now() };
+            const embeddingsToDelete = [{ label: 10 }, { label: 11 }];
+
+            vi.mocked(mockDB.get).mockImplementationOnce((sql, params, cb) => {
+                // Simulate finding the file
+                const getFileByPathQueryRegex = /SELECT\s+id,\s*path,\s*hash,\s*last_modified\s+as\s+lastModified,\s*language,\s*is_indexed\s+as\s+isIndexed,\s*size\s+FROM\s+files\s+WHERE\s+path\s*=\s*\?/;
+                if (getFileByPathQueryRegex.test(sql) && params[0] === filePath) {
+                    cb(null, fileRecord);
+                } else {
+                    // Important: If the SQL doesn't match, we might want to ensure it's not an unexpected call.
+                    // For this specific test, if it's not the getFileByPath query, returning undefined is okay
+                    // as other tests might mock .get differently.
+                    cb(null, undefined);
+                }
+            });
+            vi.mocked(mockDB.all).mockImplementationOnce((sql, params, cb) => {
+                // Simulate finding embeddings for the file
+                if (sql.includes('SELECT e.label FROM embeddings e')) {
+                    cb(null, embeddingsToDelete);
+                } else {
+                    cb(null, []);
+                }
+            });
+
+            await vectorDbService.deleteFile(filePath);
+
+            expect(vi.mocked(mockDB.get)).toHaveBeenCalledWith(
+                expect.stringMatching(/SELECT\s+id,\s*path,\s*hash,\s*last_modified\s+as\s+lastModified,\s*language,\s*is_indexed\s+as\s+isIndexed,\s*size\s+FROM\s+files\s+WHERE\s+path\s*=\s*\?/),
+                [filePath],
+                expect.any(Function)
+            );
+            expect(vi.mocked(mockDB.all)).toHaveBeenCalledWith(
+                expect.stringContaining('SELECT e.label FROM embeddings e'),
+                [fileId],
+                expect.any(Function)
+            );
+
+            expect(mockHNSW.markDelete).toHaveBeenCalledTimes(embeddingsToDelete.length);
+            expect(mockHNSW.markDelete).toHaveBeenCalledWith(10);
+            expect(mockHNSW.markDelete).toHaveBeenCalledWith(11);
+            expect(mockHNSW.writeIndexSync).toHaveBeenCalledWith(annIndexPath);
+
+            expect(vi.mocked(mockDB.run)).toHaveBeenCalledWith(
+                'DELETE FROM files WHERE id = ?',
+                [fileId],
+                expect.any(Function)
+            );
+        });
+
+        it('should do nothing if file not found in DB', async () => {
+            vi.mocked(mockDB.get).mockImplementationOnce((sql, params, cb) => cb(null, undefined)); // File not found
+
+            await vectorDbService.deleteFile(filePath);
+
+            expect(vi.mocked(mockDB.all)).not.toHaveBeenCalled();
+            expect(mockHNSW.markDelete).not.toHaveBeenCalled();
+            expect(mockHNSW.writeIndexSync).not.toHaveBeenCalled();
+            expect(vi.mocked(mockDB.run)).not.toHaveBeenCalled(); // No delete from files table
+        });
+
+        it('should not interact with ANN if file found but has no embeddings', async () => {
+            const fileRecord = { id: fileId, path: filePath, hash: 'hash', language: 'typescript', indexed_at: Date.now() };
+            vi.mocked(mockDB.get).mockImplementationOnce((sql, params, cb) => cb(null, fileRecord));
+            vi.mocked(mockDB.all).mockImplementationOnce((sql, params, cb) => cb(null, [])); // No embeddings
+
+            await vectorDbService.deleteFile(filePath);
+
+            expect(mockHNSW.markDelete).not.toHaveBeenCalled();
+            // saveAnnIndex might still be called if the logic always saves after attempting to find embeddings,
+            // but ideally it shouldn't if no changes were made to the index.
+            // Based on current implementation, saveAnnIndex is called if embeddingsToDelete.length > 0.
+            // So, if it's 0, writeIndexSync should not be called.
+            expect(mockHNSW.writeIndexSync).not.toHaveBeenCalled();
+
+
+            expect(vi.mocked(mockDB.run)).toHaveBeenCalledWith(
+                'DELETE FROM files WHERE id = ?',
+                [fileId],
+                expect.any(Function)
+            );
+        });
+    });
 });
