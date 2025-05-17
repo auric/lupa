@@ -467,7 +467,26 @@ index 123..456 100644
             { includeDeclaration: false },
             expect.any(Object) // CancellationToken
         );
-        expect(hoistedMocks.findRelevantCodeContextForChunks).toHaveBeenCalled();
+        // The first argument (embeddingQueries) is dynamically generated based on the diff.
+        // We'll check its type and that it contains expected substrings.
+        const findRelevantCodeContextForChunksCalls = hoistedMocks.findRelevantCodeContextForChunks.mock.calls;
+        expect(findRelevantCodeContextForChunksCalls.length).toBeGreaterThanOrEqual(1);
+        const firstCallArgs = findRelevantCodeContextForChunksCalls[0];
+        expect(firstCallArgs[0]).toEqual(expect.arrayContaining([
+            expect.stringContaining('changedFunction'),
+            expect.stringContaining('export function anotherFunction()')
+        ]));
+        expect(firstCallArgs[1]).toEqual(expect.objectContaining({ // SearchOptions
+            limit: 25,
+            minScore: 0.65,
+        }));
+        expect(firstCallArgs[2]).toEqual(expect.any(Function)); // ProgressCallback
+        expect(firstCallArgs[3]).toBeUndefined(); // CancellationToken
+        // Optionally, check if the first argument is an array of strings if it's not empty
+        const calls = hoistedMocks.findRelevantCodeContextForChunks.mock.calls;
+        if (calls.length > 0 && calls[0][0].length > 0) {
+            expect(calls[0][0].every((item: any) => typeof item === 'string')).toBe(true);
+        }
     });
 
 
@@ -503,6 +522,18 @@ index 123..456 100644
         expect(parsedDiff.length).toBeGreaterThan(0);
         expect(parsedDiff[0].hunks[0].hunkId).toBeDefined();
 
+
+        // Check the call to findRelevantCodeContextForChunks
+        const noSymbolsCalls = hoistedMocks.findRelevantCodeContextForChunks.mock.calls;
+        expect(noSymbolsCalls.length).toBeGreaterThanOrEqual(1);
+        const noSymbolsFirstCallArgs = noSymbolsCalls[0];
+        expect(noSymbolsFirstCallArgs[0]).toEqual(expect.any(Array)); // Embedding queries (might be just the raw diff lines)
+        expect(noSymbolsFirstCallArgs[1]).toEqual(expect.objectContaining({ // SearchOptions
+            minScore: expect.any(Number), // Default or mode-specific minScore
+            limit: expect.any(Number)     // Default or mode-specific limit
+        }));
+        expect(noSymbolsFirstCallArgs[2]).toEqual(expect.any(Function)); // ProgressCallback
+        expect(noSymbolsFirstCallArgs[3]).toBeUndefined(); // CancellationToken
 
         expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.executeDefinitionProvider', expect.anything(), expect.anything(), expect.anything());
         expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith('vscode.executeReferenceProvider', expect.anything(), expect.anything(), expect.anything(), expect.anything());
@@ -540,6 +571,18 @@ diff --git a/src/file1.ts b/src/file1.ts
         // Check parsedDiff
         expect(parsedDiff.length).toBeGreaterThan(0);
         expect(parsedDiff[0].hunks[0].hunkId).toBeDefined();
+
+        // Check the call to findRelevantCodeContextForChunks
+        const noLspLocationsCalls = hoistedMocks.findRelevantCodeContextForChunks.mock.calls;
+        expect(noLspLocationsCalls.length).toBeGreaterThanOrEqual(1);
+        const noLspLocationsFirstCallArgs = noLspLocationsCalls[0];
+        expect(noLspLocationsFirstCallArgs[0]).toEqual(expect.any(Array)); // Embedding queries
+        expect(noLspLocationsFirstCallArgs[1]).toEqual(expect.objectContaining({ // SearchOptions
+            minScore: expect.any(Number),
+            limit: expect.any(Number)
+        }));
+        expect(noLspLocationsFirstCallArgs[2]).toEqual(expect.any(Function)); // ProgressCallback
+        expect(noLspLocationsFirstCallArgs[3]).toBeUndefined(); // CancellationToken
 
         expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.executeDefinitionProvider', expect.anything(), expect.anything(), expect.anything());
     });
@@ -614,6 +657,44 @@ diff --git a/src/file1.ts b/src/file1.ts
         expect(fallbackSpy).toHaveBeenCalled();
         expect(snippetsContainText(snippets, "Fallback context triggered.")).toBe(true);
         expect(snippets).toEqual(expect.arrayContaining(fallbackSnippets)); // Ensure the fallback snippets are returned
+
+        // Check the call to findRelevantCodeContextForChunks (this might be called by fallback)
+        // The fallback mechanism in ContextProvider calls findRelevantCodeContextForChunks
+        // with file paths or parent directories as queries.
+        const fallbackCalls = hoistedMocks.findRelevantCodeContextForChunks.mock.calls;
+        // Depending on whether the primary embedding search ran (even if it yielded no results)
+        // vs. only the fallback ran, the number of calls might vary.
+        // We are interested in the call made by the fallback logic.
+        // The mock for findRelevantCodeContextForChunks is reset in beforeEach,
+        // but the test itself calls getContextForDiff which internally calls findRelevantCodeContextForChunks.
+        // If the initial embedding search (before fallback) uses empty queries, it might not call the adapter.
+        // The test setup: hoistedMocks.findRelevantCodeContextForChunks.mockResolvedValue([]);
+        // This means the primary embedding search will "succeed" with no results.
+        // Then, getFallbackContextSnippets is called, which itself calls findRelevantCodeContextForChunks.
+
+        // So, we expect at least one call from the fallback mechanism.
+        // If the primary search with empty queries *doesn't* call the adapter, then exactly one call from fallback.
+        // If the primary search *does* call with empty queries, then potentially two calls.
+        // Let's assume the fallback call is the one we care about here.
+        // The `contextProvider.ts` logic for `getContextForDiff` (line 382) checks `embeddingQueries.length > 0`
+        // before calling `this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks`.
+        // In this test, `extractMeaningfulChunksAndSymbols` for `+content` diff will produce `['content']` as query.
+        // So, the primary search *will* run.
+        // However, getFallbackContextSnippets is mocked directly to return fallbackSnippets.
+        // Its actual implementation (which calls findRelevantCodeContextForChunks) is NOT run.
+        // Therefore, findRelevantCodeContextForChunks is only called ONCE by the primary embedding search.
+
+        expect(fallbackCalls.length).toBe(1); // Only the primary call
+
+        const firstCallArgs = fallbackCalls[0]; // Args for the primary embedding call
+        // The embeddingQueries for "+content" diff will be ["content"]
+        expect(firstCallArgs[0]).toEqual(expect.arrayContaining(["content"]));
+        expect(firstCallArgs[1]).toEqual(expect.objectContaining({ // SearchOptions for primary search
+            minScore: expect.any(Number), // Default or mode-specific minScore
+            limit: expect.any(Number)     // Default or mode-specific limit
+        }));
+        expect(firstCallArgs[2]).toEqual(expect.any(Function)); // ProgressCallback
+        expect(firstCallArgs[3]).toBeUndefined(); // CancellationToken
 
         // Check parsedDiff even in fallback case
         expect(parsedDiff.length).toBeGreaterThan(0);

@@ -90,10 +90,10 @@ export class ContextProvider implements vscode.Disposable {
      * @param diff PR diff content.
      * @param parsedDiff Parsed diff data.
      * @param gitRepoRoot The root path of the git repository.
-     * @returns An object containing extracted code chunks and identified symbols.
+     * @returns An object containing extracted embedding query strings and identified symbols.
      */
-    private async extractMeaningfulChunksAndSymbols(diff: string, parsedDiff: DiffHunk[], gitRepoRoot: string): Promise<{ chunks: string[]; symbols: DiffSymbolInfo[] }> {
-        const chunks: string[] = [];
+    private async extractMeaningfulChunksAndSymbols(diff: string, parsedDiff: DiffHunk[], gitRepoRoot: string): Promise<{ embeddingQueries: string[]; symbols: DiffSymbolInfo[] }> {
+        const embeddingQueriesSet = new Set<string>();
         const identifiedSymbols: DiffSymbolInfo[] = [];
         const resource = await TreeStructureAnalyzerResource.create();
         const analyzer = resource.instance;
@@ -104,6 +104,7 @@ export class ContextProvider implements vscode.Disposable {
             const langInfo = analyzer.getFileLanguage(filePath);
 
             let fullFileContent: string | undefined = undefined;
+            const addedLinesForSymbolSnippets: { fileLine: number, text: string }[] = [];
 
             if (langInfo) {
                 try {
@@ -127,35 +128,38 @@ export class ContextProvider implements vscode.Disposable {
                 }
             }
 
-            const addedLinesContent: string[] = [];
-            const lineRanges: { startLine: number; endLine: number }[] = [];
+            const lineRangesForSymbolExtraction: { startLine: number; endLine: number }[] = [];
 
+            // First pass: collect all added lines and their file line numbers, and identify line ranges for symbol extraction
             for (const hunk of fileDiff.hunks) {
-                let currentNewLineNumber = hunk.newStart;
+                let currentNewLineInFile = hunk.newStart - 1; // 0-based file line number
                 let rangeStartLine: number | null = null;
+
                 for (const line of hunk.lines) {
-                    const currentLineIsAdded = line.startsWith('+');
-                    const currentLineIsRemoved = line.startsWith('-');
-                    if (currentLineIsAdded) {
-                        addedLinesContent.push(line.substring(1));
-                        if (rangeStartLine === null) rangeStartLine = currentNewLineNumber - 1;
+                    const isAdded = line.startsWith('+');
+                    const isRemoved = line.startsWith('-');
+
+                    if (isAdded) {
+                        addedLinesForSymbolSnippets.push({ fileLine: currentNewLineInFile, text: line.substring(1) });
+                        if (rangeStartLine === null) rangeStartLine = currentNewLineInFile;
                     } else {
                         if (rangeStartLine !== null) {
-                            lineRanges.push({ startLine: rangeStartLine, endLine: currentNewLineNumber - 2 });
+                            lineRangesForSymbolExtraction.push({ startLine: rangeStartLine, endLine: currentNewLineInFile - 1 });
                             rangeStartLine = null;
                         }
                     }
-                    if (!currentLineIsRemoved) currentNewLineNumber++;
+                    if (!isRemoved) currentNewLineInFile++;
                 }
-                if (rangeStartLine !== null) {
-                    lineRanges.push({ startLine: rangeStartLine, endLine: currentNewLineNumber - 2 });
+                if (rangeStartLine !== null) { // Hunk ends with added lines
+                    lineRangesForSymbolExtraction.push({ startLine: rangeStartLine, endLine: currentNewLineInFile - 1 });
                 }
             }
 
-            if (langInfo && fullFileContent !== undefined && lineRanges.length > 0) {
+            // Identify symbols within the collected added line ranges
+            if (langInfo && fullFileContent !== undefined && lineRangesForSymbolExtraction.length > 0) {
                 try {
                     const symbolsInRanges = await analyzer.findSymbolsInRanges(
-                        fullFileContent, langInfo.language, lineRanges, langInfo.variant
+                        fullFileContent, langInfo.language, lineRangesForSymbolExtraction, langInfo.variant
                     );
                     symbolsInRanges.forEach(symbol => identifiedSymbols.push({ ...symbol, filePath }));
                 } catch (error) {
@@ -163,35 +167,92 @@ export class ContextProvider implements vscode.Disposable {
                 }
             }
 
-            const newContentCombined = addedLinesContent.join('\n'); // Use \n for actual newlines
-            if (newContentCombined.trim().length > 0) {
-                if (langInfo) {
-                    try {
-                        const functions = await analyzer.findFunctions(newContentCombined, langInfo.language, langInfo.variant);
-                        const classes = await analyzer.findClasses(newContentCombined, langInfo.language, langInfo.variant);
-                        if (functions.length > 0 || classes.length > 0) {
-                            functions.forEach(f => chunks.push(f.text));
-                            classes.forEach(c => chunks.push(c.text));
-                        } else {
-                            chunks.push(newContentCombined);
+            // Add identified symbol names to queries
+            const symbolsInThisFile = identifiedSymbols.filter(s => s.filePath === filePath);
+            for (const symbol of symbolsInThisFile) {
+                embeddingQueriesSet.add(symbol.symbolName);
+            }
+
+            // Process hunks for small added blocks and symbol-centered snippets
+            for (const hunk of fileDiff.hunks) {
+                let currentAddedBlockLines: string[] = [];
+                let currentHunkAddedLinesWithFileNumbers: { fileLine: number, text: string }[] = [];
+                let currentFileLineForHunkProcessing = hunk.newStart - 1; // 0-based
+
+                for (const line of hunk.lines) {
+                    const isAdded = line.startsWith('+');
+                    const isRemoved = line.startsWith('-');
+
+                    if (isAdded) {
+                        const lineContent = line.substring(1);
+                        currentAddedBlockLines.push(lineContent);
+                        currentHunkAddedLinesWithFileNumbers.push({ fileLine: currentFileLineForHunkProcessing, text: lineContent });
+                    } else {
+                        if (currentAddedBlockLines.length > 0) {
+                            const blockText = currentAddedBlockLines.join('\n');
+                            if (currentAddedBlockLines.length < 15 && blockText.trim().length > 0) {
+                                embeddingQueriesSet.add(blockText);
+                            }
+                            currentAddedBlockLines = [];
                         }
-                    } catch (error) {
-                        console.warn(`Error analyzing structure for chunks in ${filePath}:`, error);
-                        chunks.push(newContentCombined);
                     }
-                } else {
-                    chunks.push(newContentCombined);
+                    if (!isRemoved) {
+                        currentFileLineForHunkProcessing++;
+                    }
+                }
+                if (currentAddedBlockLines.length > 0) { // Process block at end of hunk
+                    const blockText = currentAddedBlockLines.join('\n');
+                    if (currentAddedBlockLines.length < 15 && blockText.trim().length > 0) {
+                        embeddingQueriesSet.add(blockText);
+                    }
+                }
+
+                // Add short code snippets around identifiers on '+' lines within this hunk
+                for (const symbol of symbolsInThisFile) {
+                    const symbolFileLine = symbol.position.line; // 0-based
+                    // Check if symbol's line is within this hunk's added lines
+                    const symbolLineInHunkAdded = currentHunkAddedLinesWithFileNumbers.find(l => l.fileLine === symbolFileLine);
+
+                    if (symbolLineInHunkAdded && symbolLineInHunkAdded.text.includes(symbol.symbolName)) {
+                        const lineIndexInHunkAdded = currentHunkAddedLinesWithFileNumbers.findIndex(l => l.fileLine === symbolFileLine);
+                        if (lineIndexInHunkAdded !== -1) {
+                            const snippetStart = Math.max(0, lineIndexInHunkAdded - 2);
+                            const snippetEnd = Math.min(currentHunkAddedLinesWithFileNumbers.length, lineIndexInHunkAdded + 3);
+                            const snippetLines = currentHunkAddedLinesWithFileNumbers.slice(snippetStart, snippetEnd).map(l => l.text);
+                            if (snippetLines.length > 0) {
+                                const snippetText = snippetLines.join('\n');
+                                if (snippetText.trim().length > 0) {
+                                    embeddingQueriesSet.add(snippetText);
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            chunks.push(filePath); // Keep adding file path for context, might be useful for embedding search query
         }
         resource.dispose();
-        const uniqueChunks = [...new Set(chunks.filter(c => c.trim().length > 0))];
-        if (uniqueChunks.length === 0 && diff.trim().length > 0) {
-            uniqueChunks.push(diff);
+
+        const finalEmbeddingQueries = [...embeddingQueriesSet].filter(q => q.trim().length > 0);
+
+        // Fallback logic
+        if (finalEmbeddingQueries.length === 0 && diff.trim().length > 0) {
+            let allAddedLinesFromDiff = "";
+            for (const fileDiff of parsedDiff) {
+                for (const hunk of fileDiff.hunks) {
+                    for (const line of hunk.lines) {
+                        if (line.startsWith('+')) {
+                            allAddedLinesFromDiff += line.substring(1) + '\n';
+                        }
+                    }
+                }
+            }
+            if (allAddedLinesFromDiff.trim().length > 0) {
+                finalEmbeddingQueries.push(allAddedLinesFromDiff.trim());
+            }
         }
-        console.log(`Extracted ${uniqueChunks.length} chunks and ${identifiedSymbols.length} symbols from diff.`);
-        return { chunks: uniqueChunks, symbols: identifiedSymbols };
+
+        console.log(`Extracted ${finalEmbeddingQueries.length} embedding queries and ${identifiedSymbols.length} symbols from diff.`); // Existing log
+        return { embeddingQueries: finalEmbeddingQueries, symbols: identifiedSymbols };
     }
 
     private parseDiff(diff: string): DiffHunk[] {
@@ -210,14 +271,18 @@ export class ContextProvider implements vscode.Disposable {
             }
 
             if (currentFile) {
-                const hunkHeaderMatch = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@/.exec(line);
+                const hunkHeaderMatch = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
                 if (hunkHeaderMatch) {
-                    const newStartLine = parseInt(hunkHeaderMatch[3], 10);
+                    const oldStart = parseInt(hunkHeaderMatch[1], 10);
+                    const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1; // Group 2 is optional for oldLines
+                    const newStart = parseInt(hunkHeaderMatch[3], 10); // Group 3 is newStart
+                    const newLines = hunkHeaderMatch[4] ? parseInt(hunkHeaderMatch[4], 10) : 1; // Group 4 is optional for newLines
+
                     currentHunk = {
-                        oldStart: parseInt(hunkHeaderMatch[1], 10), oldLines: parseInt(hunkHeaderMatch[2], 10),
-                        newStart: newStartLine, newLines: parseInt(hunkHeaderMatch[4], 10),
+                        oldStart: oldStart, oldLines: oldLines,
+                        newStart: newStart, newLines: newLines,
                         lines: [],
-                        hunkId: this.getHunkIdentifier(currentFile.filePath, { newStart: newStartLine })
+                        hunkId: this.getHunkIdentifier(currentFile.filePath, { newStart: newStart })
                     };
                     currentFile.hunks.push(currentHunk);
                 } else if (currentHunk && (line.startsWith('+') || line.startsWith('-') || line.startsWith(' '))) {
@@ -257,9 +322,9 @@ export class ContextProvider implements vscode.Disposable {
                 throw new Error('Operation cancelled');
             }
 
-            const { chunks, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, parsedDiffFileHunks, gitRootPath);
+            const { embeddingQueries, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, parsedDiffFileHunks, gitRootPath);
             if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled: After chunk/symbol extraction');
+                throw new Error('Operation cancelled: After embedding query/symbol extraction');
             }
 
             // --- LSP Context Retrieval ---
@@ -319,14 +384,14 @@ export class ContextProvider implements vscode.Disposable {
             // --- Embedding-based Context Retrieval ---
             const searchOptions = this.getSearchOptionsForMode(analysisMode, options);
             let embeddingResults: SimilaritySearchResult[] = [];
-            if (chunks.length > 0) {
+            if (embeddingQueries.length > 0) {
                 embeddingResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
-                    chunks, searchOptions,
-                    progressCallback || ((p, t) => console.log(`Generating embeddings: ${p} of ${t}`)),
+                    embeddingQueries, searchOptions,
+                    progressCallback || ((p, t) => console.log(`Generating embeddings for queries: ${p} of ${t}`)),
                     token
                 );
             } else {
-                console.log('No chunks extracted for embedding search.');
+                console.log('No embedding queries extracted for embedding search.');
             }
             if (token?.isCancellationRequested) throw new Error('Operation cancelled: After embedding search');
 

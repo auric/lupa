@@ -128,15 +128,15 @@ describe('ContextProvider Symbol Identification', () => {
     });
 
     // Helper function to access private method for testing
-    async function testExtractSymbols(diff: string): Promise<DiffSymbolInfo[]> {
+    async function testExtractSymbolsAndQueries(diff: string): Promise<{ embeddingQueries: string[]; symbols: DiffSymbolInfo[] }> {
         // @ts-ignore - Accessing private method for testing
         const diffHunks = contextProvider.parseDiff(diff);
         // @ts-ignore - Accessing private method for testing
         const result = await contextProvider.extractMeaningfulChunksAndSymbols(diff, diffHunks, workspaceRoot);
-        return result.symbols;
+        return result;
     }
 
-    it('should identify added function symbol in JS file', async () => {
+    it('should identify added function symbol in JS file and generate relevant embedding queries', async () => {
         const diff = `diff --git a/src/test.js b/src/test.js
 index 0000000..1111111 100644
 --- a/src/test.js
@@ -157,7 +157,7 @@ function newFunction() {
 
         vi.mocked(mockFs.readFile).mockResolvedValue(Buffer.from(finalContent));
 
-        const symbols = await testExtractSymbols(diff);
+        const { embeddingQueries, symbols } = await testExtractSymbolsAndQueries(diff);
 
         // Check file path used for reading
         expect(vi.mocked(mockFs.readFile)).toHaveBeenCalled();
@@ -175,6 +175,15 @@ function newFunction() {
             // Expect position at the start of 'newFunction'
             position: expect.objectContaining({ line: 1, character: 9 })
         });
+
+        // Assert embedding queries
+        expect(embeddingQueries).toContain('newFunction'); // Symbol name
+        const addedBlock = `function newFunction() {
+  console.log("new");
+}`;
+        expect(embeddingQueries).toContain(addedBlock); // Small added block
+        // Snippet around symbol (might be same as addedBlock if symbol is the whole block)
+        expect(embeddingQueries).toContain(addedBlock);
     });
 
     it('should identify added class symbol in new TS file', async () => {
@@ -195,7 +204,7 @@ index 0000000..2222222
         // Mock stat to indicate file not found initially
         vi.mocked(mockFs.stat).mockRejectedValue(new Error('File not found'));
 
-        const symbols = await testExtractSymbols(diff);
+        const { embeddingQueries, symbols } = await testExtractSymbolsAndQueries(diff);
 
         // Should not try to read file if it's new
         expect(vi.mocked(mockFs.readFile)).not.toHaveBeenCalled();
@@ -221,9 +230,30 @@ index 0000000..2222222
         );
         // Check the total number of symbols found (might include others)
         expect(symbols.length).toBeGreaterThanOrEqual(2);
+
+        // Assert embedding queries
+        expect(embeddingQueries).toContain('MyClass');
+        expect(embeddingQueries).toContain('constructor');
+        const addedBlock = `export class MyClass {
+    constructor() {
+        console.log('created');
+    }
+}`;
+        expect(embeddingQueries.some(q => q.trim() === addedBlock.trim())).toBe(true); // Entire new file content as a block
+        // Check for snippet around constructor
+        const constructorSnippetQuery = `    constructor() {
+        console.log('created');
+    }`;
+        // It's possible the snippet is the whole block or a subset.
+        // We expect at least the symbol name and the block.
+        // A more precise snippet check would depend on the exact snippet generation logic for multi-line symbols.
+        // For now, we ensure the main block and symbol names are there.
+        // The current logic for snippets around symbols on added lines will create a snippet.
+        // For a new file, the symbol is on an added line.
+        expect(embeddingQueries.some(q => q.includes('constructor() {') && q.includes("console.log('created');"))).toBe(true);
     });
 
-    it('should identify symbols across multiple hunks in Python file', async () => {
+    it('should identify symbols across multiple hunks in Python file and generate relevant queries', async () => {
         const diff = `diff --git a/src/multiHunk.py b/src/multiHunk.py
 index 0000000..3333333 100644
 --- a/src/multiHunk.py
@@ -260,29 +290,43 @@ def func3():
         const filePath = 'src/multiHunk.py';
         vi.mocked(mockFs.readFile).mockResolvedValue(Buffer.from(finalContent));
 
-        const symbols = await testExtractSymbols(diff);
+        const { embeddingQueries, symbols } = await testExtractSymbolsAndQueries(diff);
 
-        // Depending on findSymbolsInRanges logic, it might find func1 and func3 if the added lines
-        // are considered part of their definition range, or it might find nothing if only looking
-        // for symbols *defined* strictly within the added lines.
-        // Assuming findSymbolsInRanges finds symbols whose definition *overlaps* the range:
-        expect(symbols.length).toBeGreaterThanOrEqual(0); // Be flexible based on exact implementation
+        expect(vi.mocked(mockFs.readFile)).toHaveBeenCalledTimes(1);
 
-        // Example: If func1 and func3 are identified because their bodies were changed
+        // Assert symbols (func1 and func3 should be identified due to changes in their scope)
         const func1Symbol = symbols.find(s => s.symbolName === 'func1');
         const func3Symbol = symbols.find(s => s.symbolName === 'func3');
-
-        // We expect at least one of these if overlap logic is used
         expect(func1Symbol).toBeDefined();
+        expect(func1Symbol).toMatchObject({ symbolType: 'function_definition', filePath: filePath, position: expect.objectContaining({ line: 0 }) });
         expect(func3Symbol).toBeDefined();
+        expect(func3Symbol).toMatchObject({ symbolType: 'function_definition', filePath: filePath, position: expect.objectContaining({ line: 8 }) }); // Line numbers are 0-based in AST
 
-        // If func1 is found:
-        expect(func1Symbol).toMatchObject({ symbolType: 'function_definition', filePath: filePath });
-        // If func3 is found:
-        expect(func3Symbol).toMatchObject({ symbolType: 'function_definition', filePath: filePath });
+        // Assert embedding queries
+        expect(embeddingQueries).toContain('func1');
+        expect(embeddingQueries).toContain('func3');
 
-        // For this test, let's just ensure it runs without error and reads the file
-        expect(vi.mocked(mockFs.readFile)).toHaveBeenCalledTimes(1);
+        const hunk1AddedBlock = `    # Added line 1
+    print("hunk 1")`;
+        expect(embeddingQueries.some(q => q.trim() === hunk1AddedBlock.trim())).toBe(true);
+
+        const hunk2AddedBlock = `    # Added line 2
+    print("hunk 2")`;
+        expect(embeddingQueries.some(q => q.trim() === hunk2AddedBlock.trim())).toBe(true);
+
+        // Snippets around symbols.
+        // For func1, the added lines are within its scope.
+        // The symbol 'func1' is at line 0 of the file. The added lines are file lines 2 and 3.
+        // The snippet generation logic for symbols looks at lines *containing* the symbol name *that are also added lines*.
+        // Since 'def func1():' is not an added line, a snippet directly from it won't be generated this way.
+        // However, the small added blocks themselves are queries.
+        // If there were other symbols *defined on the added lines*, they would generate snippets.
+        // Let's verify the blocks are present, which is the primary goal here.
+        // If we wanted to ensure context *around* modified existing symbols, that's a different type of query generation.
+        // The current logic focuses on: 1. Symbol names, 2. Small added blocks, 3. Snippets of added lines around *newly defined* symbols on those added lines.
+
+        // For this test, the key is that `hunk1AddedBlock` and `hunk2AddedBlock` are present.
+        // And the symbol names `func1` and `func3` are present.
     });
 
     it('should not identify symbols for unsupported file types', async () => {
@@ -292,17 +336,23 @@ index 0000000..4444444 100644
 +++ b/README.md
 @@ -1 +1,2 @@
  # Project Title
-+Added a line.
-+`;
++Added a line.`; // Ensure no ambiguous trailing characters like a solitary '+'
+
         const finalContent = `# Project Title
 Added a line.
 `;
         const filePath = 'README.md';
         vi.mocked(mockFs.readFile).mockResolvedValue(Buffer.from(finalContent));
 
-        const symbols = await testExtractSymbols(diff);
+        const { embeddingQueries, symbols } = await testExtractSymbolsAndQueries(diff);
 
         expect(symbols).toHaveLength(0);
+
+        // For unsupported files, embedding queries should contain the added lines as a fallback
+        // The diff has one added line: "+Added a line."
+        // The extractMeaningfulChunksAndSymbols logic will create a block for this.
+        expect(embeddingQueries.some(q => q.trim() === 'Added a line.')).toBe(true);
+        expect(embeddingQueries.filter(q => q.trim().length > 0).length).toBe(1); // Only this one query
     });
 
     it('should not identify symbols if file read fails (and not a new file)', async () => {
@@ -321,12 +371,17 @@ index 1111111..5555555 100644
         vi.mocked(mockFs.stat).mockResolvedValue({ type: vscode.FileType.File } as vscode.FileStat);
         vi.mocked(mockFs.readFile).mockRejectedValue(new Error('Failed to read'));
 
-        const symbols = await testExtractSymbols(diff);
+        const { embeddingQueries, symbols } = await testExtractSymbolsAndQueries(diff);
 
         // Should attempt to read
         expect(vi.mocked(mockFs.readFile)).toHaveBeenCalledWith(expect.objectContaining({ fsPath: absoluteFilePath }));
         // Should not find symbols if read fails
         expect(symbols).toHaveLength(0);
+
+        // Embedding queries should contain the added lines as fallback because symbol analysis might be skipped or fail.
+        // The diff has one added line: "+console.log("new");"
+        expect(embeddingQueries.some(q => q.trim() === 'console.log("new");')).toBe(true);
+        expect(embeddingQueries.filter(q => q.trim().length > 0).length).toBe(1);
     });
 
     it('should not identify symbols for diffs with only removed lines', async () => {
@@ -345,10 +400,13 @@ index 6666666..0000000 100644
         const filePath = 'src/remove.js';
         vi.mocked(mockFs.readFile).mockResolvedValue(Buffer.from(finalContent));
 
-        const symbols = await testExtractSymbols(diff);
+        const { embeddingQueries, symbols } = await testExtractSymbolsAndQueries(diff);
 
         // No added lines, so no ranges to analyze, no symbols expected
         expect(symbols).toHaveLength(0);
+        // No added lines, so embedding queries should be empty.
+        // The fallback for empty queries (all added lines from diff) will also result in empty if no lines start with '+'.
+        expect(embeddingQueries).toHaveLength(0);
     });
 
 });
