@@ -104,24 +104,44 @@ export class AnalysisProvider implements vscode.Disposable {
             // Format all initially retrieved snippets into a preliminary string for token budget calculation
             const preliminaryContextStringForAllSnippets = this.tokenManager.formatContextSnippetsToString(allContextSnippets, false);
 
+            // --- Calculate diffStructureTokens ---
+            // Construct the diff part of the prompt *without* context snippets to get its token cost
+            let diffStructureForTokenCalc = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
+            for (const fileDiff of parsedDiff) {
+                diffStructureForTokenCalc += `File: ${fileDiff.filePath}\n`;
+                for (const hunk of fileDiff.hunks) {
+                    const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
+                    if (hunkHeaderMatch) {
+                        diffStructureForTokenCalc += `${hunkHeaderMatch[0]}\n`;
+                    } else {
+                        diffStructureForTokenCalc += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                    }
+                    diffStructureForTokenCalc += hunk.lines.join('\n') + '\n';
+                    // Add placeholders for context markers to account for their tokens
+                    diffStructureForTokenCalc += "\n--- Relevant Context for this Hunk ---\n";
+                    diffStructureForTokenCalc += "--- End Context for this Hunk ---\n\n";
+                }
+            }
+            const calculatedDiffStructureTokens = await this.tokenManager.calculateTokens(diffStructureForTokenCalc);
+            // --- End Calculate diffStructureTokens ---
+
             const tokenComponents = {
                 systemPrompt,
-                // For allocation, we use the original diffText and the *potential* full context string
-                // The actual prompt will be constructed differently (interleaved)
-                diffText: diffText, // Full diff for budgeting
-                context: preliminaryContextStringForAllSnippets
+                diffStructureTokens: calculatedDiffStructureTokens, // Use the calculated tokens for the interleaved diff structure
+                context: preliminaryContextStringForAllSnippets, // Full potential context for optimizeContext to choose from
+                // diffText: diffText, // Original diffText can be omitted if diffStructureTokens is always used
             };
 
             const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
             console.log(`Token allocation (pre-optimization): ${JSON.stringify({
                 systemPrompt: allocation.systemPromptTokens,
-                diff: allocation.diffTextTokens, // Based on full diff
-                context: allocation.contextTokens, // Based on all potential snippets
-                available: allocation.totalAvailableTokens,
-                total: allocation.totalRequiredTokens,
-                contextAllocation: allocation.contextAllocationTokens,
-                fits: allocation.fitsWithinLimit
+                diffStructure: allocation.diffTextTokens, // This now reflects diffStructureTokens
+                contextPotential: allocation.contextTokens, // Based on all potential snippets
+                availableForLLM: allocation.totalAvailableTokens,
+                totalRequiredPotential: allocation.totalRequiredTokens,
+                budgetForContextSnippets: allocation.contextAllocationTokens,
+                fitsPotential: allocation.fitsWithinLimit
             })}`);
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
@@ -138,43 +158,61 @@ export class AnalysisProvider implements vscode.Disposable {
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
 
-            // Construct the interleaved prompt
-            let interleavedPromptContent = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
+            // Construct the final interleaved prompt using the optimized snippets
+            let finalInterleavedPromptContent = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
             const MAX_SNIPPETS_PER_HUNK = 3; // Configurable: Max context snippets to show per hunk
 
             for (const fileDiff of parsedDiff) {
-                interleavedPromptContent += `File: ${fileDiff.filePath}\n`;
+                finalInterleavedPromptContent += `File: ${fileDiff.filePath}\n`;
                 for (const hunk of fileDiff.hunks) {
                     // Append hunk header and lines
                     const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
                     if (hunkHeaderMatch) {
-                        interleavedPromptContent += `${hunkHeaderMatch[0]}\n`;
+                        finalInterleavedPromptContent += `${hunkHeaderMatch[0]}\n`;
                     } else {
                         // Fallback if regex fails, though it should ideally match
-                        interleavedPromptContent += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                        finalInterleavedPromptContent += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
                     }
-                    interleavedPromptContent += hunk.lines.join('\n') + '\n';
+                    finalInterleavedPromptContent += hunk.lines.join('\n') + '\n';
 
-                    // Find and append relevant context snippets for this hunk
+                    // Find and append relevant *optimized* context snippets for this hunk
                     const relevantSnippetsForHunk = optimizedSnippets
                         .filter(snippet => snippet.associatedHunkIdentifiers?.includes(hunk.hunkId || ''))
                         .sort((a, b) => b.relevanceScore - a.relevanceScore) // Sort by relevance
                         .slice(0, MAX_SNIPPETS_PER_HUNK); // Take top N
 
                     if (relevantSnippetsForHunk.length > 0) {
-                        interleavedPromptContent += "\n--- Relevant Context for this Hunk ---\n";
+                        finalInterleavedPromptContent += "\n--- Relevant Context for this Hunk ---\n";
                         for (const snippet of relevantSnippetsForHunk) {
-                            interleavedPromptContent += `${snippet.content}\n\n`; // Snippet content is already formatted
+                            finalInterleavedPromptContent += `${snippet.content}\n\n`; // Snippet content is already formatted
                         }
-                        interleavedPromptContent += "--- End Context for this Hunk ---\n\n";
+                        finalInterleavedPromptContent += "--- End Context for this Hunk ---\n\n";
+                    } else {
+                        // If no snippets for this hunk, ensure the structure is consistent for token calculation
+                        // (though this part was already included in diffStructureForTokenCalc)
+                        // We can optionally add a "No specific context for this hunk." message if desired,
+                        // but it might add unnecessary tokens if not adding value.
+                        // For now, just ensure the structure is consistent with the pre-calculation.
+                        // Adding the markers even if empty ensures the pre-calculated diffStructureTokens is accurate.
+                        finalInterleavedPromptContent += "\n--- Relevant Context for this Hunk ---\n";
+                        finalInterleavedPromptContent += "--- End Context for this Hunk ---\n\n";
                     }
                 }
             }
 
             const messages = [
                 vscode.LanguageModelChatMessage.Assistant(systemPrompt),
-                vscode.LanguageModelChatMessage.User(interleavedPromptContent)
+                vscode.LanguageModelChatMessage.User(finalInterleavedPromptContent)
             ];
+
+            // Final check (optional, for debugging or very strict scenarios)
+            // const finalPromptTokens = await this.tokenManager.calculateTokens(systemPrompt + finalInterleavedPromptContent);
+            // console.log(`Final prompt tokens: ${finalPromptTokens} / ${allocation.totalAvailableTokens}`);
+            // if (finalPromptTokens > allocation.totalAvailableTokens) {
+            //     console.warn("Final prompt exceeded token limit despite pre-calculation. This may indicate an issue in token estimation or structural overhead.");
+            //     // Potentially truncate finalInterleavedPromptContent further, though this should be rare.
+            // }
+
 
             const requestTokenSource = new vscode.CancellationTokenSource();
             if (token) {

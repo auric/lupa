@@ -74,6 +74,7 @@ const mockTokenManagerInstance = {
     calculateTokenAllocation: vi.fn(),
     optimizeContext: vi.fn(),
     formatContextSnippetsToString: vi.fn((snippets, _truncated) => snippets.map(s => s.content).join('\n\n')),
+    calculateTokens: vi.fn(async (text: string) => Math.ceil(text.length / 4)), // Add this line
 };
 vi.mock('../services/tokenManagerService', () => ({
     TokenManagerService: vi.fn(() => mockTokenManagerInstance),
@@ -202,6 +203,7 @@ describe('AnalysisProvider', () => {
         vi.mocked(mockTokenManagerInstance.calculateTokenAllocation).mockReset();
         vi.mocked(mockTokenManagerInstance.optimizeContext).mockReset();
         vi.mocked(mockTokenManagerInstance.formatContextSnippetsToString).mockImplementation((snippets, _truncated) => snippets.map(s => s.content).join('\n\n'));
+        vi.mocked(mockTokenManagerInstance.calculateTokens).mockReset().mockImplementation(async (text: string) => Math.ceil(text.length / 4)); // Add this line for reset
 
         // Ensure methods on mockLanguageModel are reset/re-implemented if they were vi.fn()
         // sendRequest is already re-implemented below, countTokens might need .mockReset() if its state matters between tests
@@ -407,5 +409,144 @@ describe('AnalysisProvider', () => {
             .rejects.toThrow(/Operation cancelled by token|Operation cancelled during model response streaming|Operation cancelled/);
 
         externalCancellationSource.dispose(); // Clean up the source
+    });
+
+    it('should correctly calculate and use diffStructureTokens for token allocation', async () => {
+        const diffText = 'diff --git a/file1.ts b/file1.ts\n--- a/file1.ts\n+++ b/file1.ts\n@@ -1,2 +1,2 @@\n-old line 1\n-old line 2\n+new line 1\n+new line 2\n';
+        const gitRootPath = '/test/repo';
+        const mode = AnalysisMode.Comprehensive;
+        const mockSnippets: ContextSnippet[] = [
+            { id: 's1', type: 'embedding', content: 'Snippet for hunk 1', relevanceScore: 0.9, filePath: 'file1.ts', startLine: 10, associatedHunkIdentifiers: ['file1.ts:L1'] },
+        ];
+        const mockParsedDiff: DiffHunk[] = [
+            {
+                filePath: 'file1.ts',
+                hunks: [{ oldStart: 1, oldLines: 2, newStart: 1, newLines: 2, lines: ['-old line 1', '-old line 2', '+new line 1', '+new line 2'], hunkId: 'file1.ts:L1' }]
+            }
+        ];
+        const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
+
+        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
+
+        // 1. Manually construct the expected diffStructureForTokenCalc string
+        let expectedDiffStructure = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
+        expectedDiffStructure += `File: ${mockParsedDiff[0].filePath}\n`;
+        expectedDiffStructure += `@@ -1,2 +1,2 @@\n`; // Hunk header from diffText
+        expectedDiffStructure += mockParsedDiff[0].hunks[0].lines.join('\n') + '\n';
+        expectedDiffStructure += "\n--- Relevant Context for this Hunk ---\n";
+        expectedDiffStructure += "--- End Context for this Hunk ---\n\n";
+
+        const MOCKED_DIFF_STRUCTURE_TOKENS = 75; // Arbitrary mock value
+        const MOCKED_CONTEXT_ALLOCATION_BUDGET = 1000; // Arbitrary mock value
+
+        // Spy and mock calculateTokens
+        vi.mocked(mockTokenManagerInstance.calculateTokens).mockImplementation(async (text: string) => {
+            // 2. Assert that calculateTokens is called with the correct structure
+            expect(text).toBe(expectedDiffStructure);
+            return MOCKED_DIFF_STRUCTURE_TOKENS;
+        });
+
+        // Spy and mock calculateTokenAllocation
+        vi.mocked(mockTokenManagerInstance.calculateTokenAllocation).mockImplementation(async (components, _analysisMode) => {
+            // 3. Assert that diffStructureTokens is passed correctly
+            expect(components.diffStructureTokens).toBe(MOCKED_DIFF_STRUCTURE_TOKENS);
+            expect(components.diffText).toBeUndefined(); // Or whatever is expected if diffText is also passed
+            return {
+                fitsWithinLimit: true,
+                contextAllocationTokens: MOCKED_CONTEXT_ALLOCATION_BUDGET,
+                totalAvailableTokens: 7600,
+                totalRequiredTokens: 500, // system + diffStructure + preliminaryContext + other
+                systemPromptTokens: 50,
+                diffTextTokens: MOCKED_DIFF_STRUCTURE_TOKENS, // This field in result should reflect diffStructureTokens
+                contextTokens: 20, // Mocked preliminary context tokens
+                userMessagesTokens: 0,
+                assistantMessagesTokens: 0,
+                otherTokens: 50,
+            };
+        });
+
+        // Mock optimizeContext to check its budget argument
+        mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: mockSnippets, wasTruncated: false });
+
+
+        await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
+
+        // 4. Verify optimizeContext was called with the correct budget
+        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(
+            mockSnippets,
+            MOCKED_CONTEXT_ALLOCATION_BUDGET
+        );
+
+        // Ensure other main mocks were called
+        expect(mockContextProviderInstance.getContextForDiff).toHaveBeenCalled();
+        expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
+    });
+
+    it('should include context markers in final prompt even if a hunk has no optimized snippets', async () => {
+        const diffText = 'diff --git a/file.empty.ts b/file.empty.ts\n--- a/file.empty.ts\n+++ b/file.empty.ts\n@@ -1,1 +1,1 @@\n-old content\n+new content\n';
+        const gitRootPath = '/test/repo';
+        const mode = AnalysisMode.Comprehensive;
+        const mockSnippets: ContextSnippet[] = [
+            // No snippets, or snippets not associated with 'file.empty.ts:L1'
+            { id: 's-other', type: 'embedding', content: 'Some other snippet', relevanceScore: 0.5, filePath: 'other.ts', startLine: 1, associatedHunkIdentifiers: ['other.ts:L1'] }
+        ];
+        const mockParsedDiff: DiffHunk[] = [
+            {
+                filePath: 'file.empty.ts',
+                hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-old content', '+new content'], hunkId: 'file.empty.ts:L1' }]
+            }
+        ];
+        const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
+
+        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
+
+        // Mock token calculations - values are not critical for this test's assertion, just need to allow flow
+        mockTokenManagerInstance.calculateTokens.mockResolvedValue(50); // For diffStructureForTokenCalc
+        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
+            fitsWithinLimit: true,
+            contextAllocationTokens: 1000, // Ample budget
+            totalAvailableTokens: 7000,
+            totalRequiredTokens: 600,
+            systemPromptTokens: 50,
+            diffTextTokens: 50, // from calculateTokens
+            contextTokens: 10, // from preliminaryContextStringForAllSnippets
+            userMessagesTokens: 0,
+            assistantMessagesTokens: 0,
+            otherTokens: 50,
+        });
+
+        // Key mock for this test: optimizeContext returns NO snippets for the hunk
+        mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: [], wasTruncated: false });
+
+        // formatContextSnippetsToString will be called with empty snippets
+        mockTokenManagerInstance.formatContextSnippetsToString.mockImplementation((snippets, _truncated) => {
+            if (snippets.length === 0) return "No relevant context snippets were selected or found."; // Simulate its behavior
+            return snippets.map(s => s.content).join('\n\n');
+        });
+
+        await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
+
+        expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
+        const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
+        const interleavedUserMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
+
+        // Construct the expected segment for the hunk with empty context
+        let expectedHunkSegment = `File: ${mockParsedDiff[0].filePath}\n`;
+        expectedHunkSegment += `@@ -1,1 +1,1 @@\n`;
+        expectedHunkSegment += mockParsedDiff[0].hunks[0].lines.join('\n') + '\n';
+        expectedHunkSegment += "\n--- Relevant Context for this Hunk ---\n";
+        // No snippet content here
+        expectedHunkSegment += "--- End Context for this Hunk ---\n\n";
+
+        expect(interleavedUserMessageContent).toContain(expectedHunkSegment);
+        // Also check that no actual snippet content (like "Some other snippet") is present for this hunk
+        const hunkContextContent = interleavedUserMessageContent.substring(
+            interleavedUserMessageContent.indexOf("--- Relevant Context for this Hunk ---"),
+            interleavedUserMessageContent.indexOf("--- End Context for this Hunk ---") + "--- End Context for this Hunk ---".length
+        );
+        expect(hunkContextContent).not.toContain("Some other snippet"); // Ensure unrelated snippets aren't leaking in
+        expect(hunkContextContent).toBe("--- Relevant Context for this Hunk ---\n--- End Context for this Hunk ---");
+
+
     });
 });

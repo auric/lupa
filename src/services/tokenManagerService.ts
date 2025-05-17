@@ -8,10 +8,11 @@ import { ContextSnippet } from '../types/contextTypes';
  */
 export interface TokenComponents {
     systemPrompt?: string;
-    diffText?: string;
+    diffText?: string; // Original flat diff, can be used as fallback or for non-interleaved
     context?: string; // This will be the preliminary formatted string of all snippets
     userMessages?: string[];
     assistantMessages?: string[];
+    diffStructureTokens?: number; // Tokens for the diff's structural representation in an interleaved prompt
 }
 
 /**
@@ -65,8 +66,10 @@ export class TokenManagerService {
 
         const systemPromptTokens = components.systemPrompt
             ? await this.currentModel!.countTokens(components.systemPrompt) : 0;
-        const diffTextTokens = components.diffText
-            ? await this.currentModel!.countTokens(components.diffText) : 0;
+        const diffTokens = components.diffStructureTokens !== undefined
+            ? components.diffStructureTokens
+            : (components.diffText ? await this.currentModel!.countTokens(components.diffText) : 0);
+
         const contextTokens = components.context // Assuming components.context is the full, unoptimized string
             ? await this.currentModel!.countTokens(components.context) : 0;
 
@@ -85,10 +88,10 @@ export class TokenManagerService {
         }
 
         const otherTokens = TokenManagerService.FORMATTING_OVERHEAD;
-        const totalRequiredTokens = systemPromptTokens + diffTextTokens + contextTokens +
+        const totalRequiredTokens = systemPromptTokens + diffTokens + contextTokens +
             userMessagesTokens + assistantMessagesTokens + otherTokens;
 
-        const nonContextTokens = systemPromptTokens + diffTextTokens +
+        const nonContextTokens = systemPromptTokens + diffTokens +
             userMessagesTokens + assistantMessagesTokens + otherTokens;
         const contextAllocation = Math.max(0, safeMaxTokens - nonContextTokens);
 
@@ -96,7 +99,7 @@ export class TokenManagerService {
             totalAvailableTokens: safeMaxTokens,
             totalRequiredTokens,
             systemPromptTokens,
-            diffTextTokens,
+            diffTextTokens: diffTokens, // This now reflects either flat diff or structured diff tokens
             contextTokens, // Tokens of the full unoptimized context string
             userMessagesTokens,
             assistantMessagesTokens,
