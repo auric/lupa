@@ -289,7 +289,7 @@ export class ContextProvider implements vscode.Disposable {
                                 const snippets = await this.getSnippetsForLocations(defLocations, 3, token, "Definition");
                                 snippets.forEach(s => allContextSnippets.push({
                                     id: `lsp-def-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
-                                    type: 'lsp-definition', content: s, relevanceScore: 1.0,
+                                    type: 'lsp-definition', content: s, relevanceScore: 1.0, // Highest priority for LSP definitions
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
@@ -302,7 +302,7 @@ export class ContextProvider implements vscode.Disposable {
                                 const snippets = await this.getSnippetsForLocations(refLocations, 2, token, "Reference");
                                 snippets.forEach(s => allContextSnippets.push({
                                     id: `lsp-ref-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
-                                    type: 'lsp-reference', content: s, relevanceScore: 0.9,
+                                    type: 'lsp-reference', content: s, relevanceScore: 0.9, // High priority for LSP references
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
@@ -349,7 +349,7 @@ export class ContextProvider implements vscode.Disposable {
                     id: `emb-${embResult.fileId}-${embResult.chunkId || this.quickHash(embResult.content)}`,
                     type: 'embedding',
                     content: formattedContent,
-                    relevanceScore: embResult.score,
+                    relevanceScore: embResult.score, // Relevance based on embedding similarity score
                     filePath: embResult.filePath,
                     startLine: embResult.startOffset,
                     associatedHunkIdentifiers: embHunkIdentifiers.length > 0 ? embHunkIdentifiers : undefined
@@ -367,7 +367,7 @@ export class ContextProvider implements vscode.Disposable {
                         id: 'no-context-found',
                         type: 'embedding',
                         content: 'No relevant context could be found in the codebase. Analysis will be based solely on the changes in the PR.',
-                        relevanceScore: 0
+                        relevanceScore: 0 // Lowest priority for no-context placeholder
                     });
                 }
             }
@@ -383,7 +383,7 @@ export class ContextProvider implements vscode.Disposable {
                     id: 'error-context',
                     type: 'embedding',
                     content: 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error)),
-                    relevanceScore: 0
+                    relevanceScore: 0 // Lowest priority for error context
                 }],
                 parsedDiff: parsedDiffFileHunks // Return parsed diff even on error
             };
@@ -590,7 +590,7 @@ export class ContextProvider implements vscode.Disposable {
                             id: `fallback-emb-${embResult.fileId}-${embResult.chunkId || this.quickHash(embResult.content)}`,
                             type: 'embedding',
                             content: formattedContent,
-                            relevanceScore: embResult.score * 0.5, // Downgrade score for fallback
+                            relevanceScore: embResult.score * 0.5, // Lower priority for fallback embeddings, scaled by original score
                             filePath: embResult.filePath,
                             startLine: embResult.startOffset
                         });
@@ -604,7 +604,7 @@ export class ContextProvider implements vscode.Disposable {
                 id: 'no-fallback-context',
                 type: 'embedding',
                 content: 'No directly relevant context could be found in the codebase via primary or fallback methods. Analysis will be based solely on the changes in the PR.',
-                relevanceScore: 0
+                relevanceScore: 0 // Lowest priority for no-fallback placeholder
             });
             return fallbackSnippets;
 
@@ -614,7 +614,7 @@ export class ContextProvider implements vscode.Disposable {
                 id: 'error-fallback-context',
                 type: 'embedding',
                 content: 'Error retrieving fallback context: ' + (error instanceof Error ? error.message : String(error)),
-                relevanceScore: 0
+                relevanceScore: 0 // Lowest priority for error in fallback
             });
             return fallbackSnippets;
         }

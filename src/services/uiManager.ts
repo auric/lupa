@@ -78,13 +78,17 @@ export class UIManager {
      * Generate PR analysis with HTML
      */
     public generatePRAnalysisHtml(title: string, diffText: string, context: string, analysis: string): string {
+        let titleTruncated = title;
+        if (title.length > 100) {
+            titleTruncated = title.substring(0, 97) + '...';
+        }
         return `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>${title}</title>
+            <title>${titleTruncated}</title>
             <style>
                 body {
                     font-family: var(--vscode-font-family);
@@ -157,10 +161,16 @@ export class UIManager {
                     color: var(--vscode-descriptionForeground);
                     margin-top: 10px;
                 }
+                .partial-truncation-notice {
+                    font-style: italic;
+                    color: var(--vscode-descriptionForeground); /* Same as hint or a bit more subtle */
+                    display: inline-block; /* To allow margin if needed, though <br> handles spacing */
+                    /* margin-top: 5px; */ /* Optional: if more space is desired around it */
+                }
             </style>
         </head>
         <body>
-            <h1>${title}</h1>
+            <h1>${titleTruncated}</h1>
 
             <div class="tabs">
                 <div class="tab active" onclick="switchTab('analysis')">AI Analysis</div>
@@ -224,7 +234,9 @@ export class UIManager {
             .replace(/`([^`]+)`/g, '<code>$1</code>')
             // Line breaks
             .replace(/\n/g, '<br>')
-            // File paths with relevance scores
+            // Specific message for partially truncated files
+            .replace(/\[File content partially truncated to fit token limit\]/g, '<span class="partial-truncation-notice">[File content partially truncated to fit token limit]</span>')
+            // File paths with relevance scores (ensure this comes after more specific replacements if there's overlap)
             .replace(/### File: `([^`]+)` \(Relevance: ([0-9.]+)%\)/g,
                 '<h3>File: <code>$1</code> <span class="relevance">(Relevance: $2%)</span></h3>');
     }

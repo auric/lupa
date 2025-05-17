@@ -256,15 +256,18 @@ describe('AnalysisProvider', () => {
 
         // Verify interleaved prompt structure
         const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
-        const userMessageContent = (sentMessages[0].content as Array<vscode.LanguageModelTextPart>)[0].value;
+        const systemPromptMessageContent = (sentMessages[0].content as Array<vscode.LanguageModelTextPart>)[0].value;
+        const interleavedUserMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
 
-        expect(userMessageContent).toContain('System prompt for comprehensive');
-        expect(userMessageContent).toContain('File: file.ts');
-        expect(userMessageContent).toContain('@@ -1,1 +1,1 @@'); // Hunk header from diffText
-        expect(userMessageContent).toContain('-console.log("old");\n+console.log("new");'); // Hunk lines
-        expect(userMessageContent).toContain('--- Relevant Context for this Hunk ---');
-        expect(userMessageContent).toContain('Snippet 1 content');
-        expect(userMessageContent).toContain('--- End Context for this Hunk ---');
+
+        expect(systemPromptMessageContent).toContain('System prompt for comprehensive');
+
+        expect(interleavedUserMessageContent).toContain('File: file.ts');
+        expect(interleavedUserMessageContent).toContain('@@ -1,1 +1,1 @@'); // Hunk header from diffText
+        expect(interleavedUserMessageContent).toContain('-console.log("old");\n+console.log("new");'); // Hunk lines
+        expect(interleavedUserMessageContent).toContain('--- Relevant Context for this Hunk ---');
+        expect(interleavedUserMessageContent).toContain('Snippet 1 content');
+        expect(interleavedUserMessageContent).toContain('--- End Context for this Hunk ---');
 
         expect(result.analysis).toBe("Mocked LLM analysis result.");
         // result.context is now the string formatted from optimizedSnippets
@@ -321,17 +324,19 @@ describe('AnalysisProvider', () => {
 
         // Verify interleaved prompt structure
         const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
-        const userMessageContent = (sentMessages[0].content as Array<vscode.LanguageModelTextPart>)[0].value;
+        const systemPromptMessageContent = (sentMessages[0].content as Array<vscode.LanguageModelTextPart>)[0].value;
+        const interleavedUserMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
 
-        expect(userMessageContent).toContain('System prompt for critical');
-        expect(userMessageContent).toContain('File: file.ts');
-        expect(userMessageContent).toContain('@@ -1,1 +1,1 @@');
-        expect(userMessageContent).toContain('-old\n+new');
-        expect(userMessageContent).toContain('--- Relevant Context for this Hunk ---');
-        expect(userMessageContent).toContain('Long snippet 1 DEF'); // Only the optimized snippet
-        expect(userMessageContent).not.toContain('Long snippet 2 EMB');
-        expect(userMessageContent).not.toContain('Unrelated snippet');
-        expect(userMessageContent).toContain('--- End Context for this Hunk ---');
+        expect(systemPromptMessageContent).toContain('System prompt for critical');
+
+        expect(interleavedUserMessageContent).toContain('File: file.ts');
+        expect(interleavedUserMessageContent).toContain('@@ -1,1 +1,1 @@');
+        expect(interleavedUserMessageContent).toContain('-old\n+new');
+        expect(interleavedUserMessageContent).toContain('--- Relevant Context for this Hunk ---');
+        expect(interleavedUserMessageContent).toContain('Long snippet 1 DEF'); // Only the optimized snippet
+        expect(interleavedUserMessageContent).not.toContain('Long snippet 2 EMB');
+        expect(interleavedUserMessageContent).not.toContain('Unrelated snippet');
+        expect(interleavedUserMessageContent).toContain('--- End Context for this Hunk ---');
 
 
         expect(result.analysis).toBe("Mocked LLM analysis result.");

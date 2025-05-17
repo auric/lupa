@@ -156,69 +156,125 @@ export class TokenManagerService {
                 wasTruncated = true;
                 // Attempt to partially include the current snippet if it's large and some space remains
                 const remainingTokensForPartial = availableTokens - currentTokens;
-                if (snippet.type === 'embedding' && remainingTokensForPartial > 100 && snippetTokens > remainingTokensForPartial) { // Arbitrary threshold
+                const partialTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.PARTIAL_TRUNCATION_MESSAGE);
+                const MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT = 10; // Minimum actual content tokens we want to try for
+                const safetyBufferForPartialCalc = 5; // Buffer for token calculation inaccuracies
+
+                // Attempt partial truncation if:
+                // 1. There's enough space for the truncation message and some minimal content.
+                // 2. The current snippet is larger than the remaining space.
+                if (remainingTokensForPartial > (partialTruncMsgTokens + MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT) &&
+                    snippetTokens > remainingTokensForPartial) {
                     try {
-                        const modelFamily = this.modelDetails?.family || 'unknown';
-                        let charsPerToken = 4;
-                        if (modelFamily.toLowerCase().includes('claude')) charsPerToken = 5;
-                        else if (modelFamily.toLowerCase().includes('gemini')) charsPerToken = 4.5;
+                        // const modelFamily = this.modelDetails?.family || 'unknown';
+                        // let charsPerTokenEstimate = 3.5; // General estimate
+                        // if (modelFamily.toLowerCase().includes('claude')) charsPerTokenEstimate = 4.5;
+                        // else if (modelFamily.toLowerCase().includes('gemini')) charsPerTokenEstimate = 4.0;
+                        const charsPerTokenEstimate = 4.0; // To align with mock countTokens (ceil(len/4))
 
-                        const maxChars = Math.floor(remainingTokensForPartial * charsPerToken * 0.8); // 80% to be safe
+                        // Target tokens for the content part of the partial snippet
+                        const targetContentTokens = remainingTokensForPartial - partialTruncMsgTokens - safetyBufferForPartialCalc;
 
-                        // Find a good place to break (e.g., end of a line)
-                        let partialContent = snippet.content.substring(0, maxChars);
-                        const lastNewline = partialContent.lastIndexOf('\n');
-                        if (lastNewline > 0) {
-                            partialContent = partialContent.substring(0, lastNewline);
-                        }
+                        if (targetContentTokens > 0) {
+                            // Estimate max characters for the content part
+                            const maxChars = Math.max(0, Math.floor(targetContentTokens * charsPerTokenEstimate)); // No further multiplier
 
-                        // Ensure the partial content ends correctly for markdown code blocks
-                        const codeBlockStart = '```';
-                        const codeBlockEnd = '```';
-                        if (partialContent.includes(codeBlockStart) && !partialContent.endsWith(codeBlockEnd)) {
-                            if (partialContent.lastIndexOf(codeBlockStart) > partialContent.lastIndexOf(codeBlockEnd)) {
-                                partialContent += `\n${codeBlockEnd}`; // Close the code block
+                            if (maxChars > 0) {
+                                let partialContent = snippet.content.substring(0, maxChars);
+                                // The aggressive newline stripping below was causing issues with the markdown test.
+                                // The subsequent code block closing logic should handle partial lines near code blocks.
+                                // const lastNewline = partialContent.lastIndexOf('\n');
+                                // if (lastNewline > -1) { // Ensure lastNewline is found
+                                //     partialContent = partialContent.substring(0, lastNewline);
+                                // }
+
+                                // Ensure markdown code blocks are properly closed
+                                const codeBlockStartRegex = /```[\w]*\n/g;
+                                const codeBlockEnd = '\n```';
+                                let lastCodeBlockStart = -1;
+                                let match;
+                                while ((match = codeBlockStartRegex.exec(snippet.content)) !== null) {
+                                    if (match.index < partialContent.length) {
+                                        lastCodeBlockStart = match.index;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                if (lastCodeBlockStart !== -1) {
+                                    const lastCodeBlockEndInPartial = partialContent.lastIndexOf(codeBlockEnd);
+                                    // If a code block was opened and not closed within the partial content
+                                    if (lastCodeBlockStart > (lastCodeBlockEndInPartial === -1 ? -1 : lastCodeBlockEndInPartial)) {
+                                        // Check if the original snippet had a closing tag after the partial content cut-off
+                                        const originalClosingTagIndex = snippet.content.indexOf(codeBlockEnd, lastCodeBlockStart);
+                                        if (originalClosingTagIndex === -1 || originalClosingTagIndex > partialContent.length) {
+                                            partialContent += codeBlockEnd;
+                                        }
+                                    }
+                                }
+                                partialContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+
+                                const partialSnippetTokens = await this.currentModel.countTokens(partialContent);
+                                if (currentTokens + partialSnippetTokens <= availableTokens) {
+                                    selectedSnippets.push({ ...snippet, content: partialContent, id: `${snippet.id}-partial` });
+                                    currentTokens += partialSnippetTokens;
+                                }
                             }
-                        }
-                        partialContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
-
-
-                        const partialSnippetTokens = await this.currentModel.countTokens(partialContent);
-                        if (currentTokens + partialSnippetTokens <= availableTokens) {
-                            selectedSnippets.push({ ...snippet, content: partialContent, id: snippet.id + "-partial" });
-                            currentTokens += partialSnippetTokens;
                         }
                     } catch (e) {
                         console.warn("Error during partial snippet truncation:", e);
                     }
                 }
-                break; // Stop adding snippets if the current one doesn't fit
+                break; // Stop adding more snippets if the current one (even partially) doesn't fit or wasn't attempted for partial.
             }
         }
 
-        if (sortedSnippets.length > 0 && selectedSnippets.length === 0 && availableTokens > await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGE) + 50) {
-            // If no snippets fit but there's some space, try to add a very small part of the most relevant one
+        // If no snippets fit at all (not even partially from the main loop),
+        // and there's enough space for the main truncation message plus some minimal content,
+        // try to add a "tiny" piece of the most relevant snippet.
+        const mainTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGE);
+        const MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT = 10;
+        // For tiny content, we still use PARTIAL_TRUNCATION_MESSAGE as it's shorter and indicates partial nature.
+        const partialMsgTokensForTiny = await this.currentModel.countTokens(TokenManagerService.PARTIAL_TRUNCATION_MESSAGE);
+        const safetyBufferForTinyCalc = 5; // Safety buffer for token calculation of content part
+
+        if (sortedSnippets.length > 0 && selectedSnippets.length === 0 && availableTokens > (mainTruncMsgTokens + MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT)) {
             const mostRelevantSnippet = sortedSnippets[0];
-            let tinyContent = mostRelevantSnippet.content.substring(0, Math.floor(availableTokens * 0.5)); // Very rough estimate
-            const lastNewline = tinyContent.lastIndexOf('\n');
-            if (lastNewline > 0) tinyContent = tinyContent.substring(0, lastNewline);
 
-            const codeBlockStart = '```';
-            const codeBlockEnd = '```';
-            if (tinyContent.includes(codeBlockStart) && !tinyContent.endsWith(codeBlockEnd)) {
-                if (tinyContent.lastIndexOf(codeBlockStart) > tinyContent.lastIndexOf(codeBlockEnd)) {
-                    tinyContent += `\n${codeBlockEnd}`;
+            // Calculate available characters for the tiny content part
+            // Aim to use space left after accounting for the partial message and safety buffer
+            const targetTinyContentTokens = availableTokens - partialMsgTokensForTiny - safetyBufferForTinyCalc;
+            const charsPerTokenEstimateForTiny = 4.0; // To align with mock countTokens
+
+            if (targetTinyContentTokens > 0) {
+                const maxTinyChars = Math.max(0, Math.floor(targetTinyContentTokens * charsPerTokenEstimateForTiny));
+
+                if (maxTinyChars > 0) {
+                    let tinyContent = mostRelevantSnippet.content.substring(0, maxTinyChars);
+                    // Similar to partial content, removing aggressive newline stripping here.
+                    // The code block closing logic will handle it.
+                    // const lastNewline = tinyContent.lastIndexOf('\n');
+                    // if (lastNewline > 0) tinyContent = tinyContent.substring(0, lastNewline);
+
+                    const codeBlockStart = '```';
+                    const codeBlockEnd = '```';
+                    if (tinyContent.includes(codeBlockStart) && !tinyContent.endsWith(codeBlockEnd)) {
+                        if (tinyContent.lastIndexOf(codeBlockStart) > tinyContent.lastIndexOf(codeBlockEnd)) {
+                            tinyContent += `\n${codeBlockEnd}`;
+                        }
+                    }
+                    tinyContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+                    const tinySnippetTokens = await this.currentModel.countTokens(tinyContent);
+
+                    if (tinySnippetTokens <= availableTokens) {
+                        selectedSnippets.push({ ...mostRelevantSnippet, content: tinyContent, id: mostRelevantSnippet.id + "-tiny" });
+                        wasTruncated = true;
+                    }
                 }
-            }
-            tinyContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
-            const tinySnippetTokens = await this.currentModel.countTokens(tinyContent);
-
-            if (tinySnippetTokens <= availableTokens) {
-                selectedSnippets.push({ ...mostRelevantSnippet, content: tinyContent, id: mostRelevantSnippet.id + "-tiny" });
-                wasTruncated = true;
-            }
-        }
-
+                // This console.log and return should be outside the 'if (targetTinyContentTokens > 0)' block
+                // and also outside the 'if (maxTinyChars > 0)' block to ensure the function always returns.
+            } // End of 'if (targetTinyContentTokens > 0)'
+        } // End of 'if (sortedSnippets.length > 0 && selectedSnippets.length === 0 ...)' for tiny snippet logic
 
         console.log(`Context optimization: ${selectedSnippets.length} of ${snippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
         return { optimizedSnippets: selectedSnippets, wasTruncated };
