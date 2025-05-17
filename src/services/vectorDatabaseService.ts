@@ -5,6 +5,7 @@ import { createHash } from 'crypto';
 import * as sqlite3 from '@vscode/sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import { similarity } from 'ml-distance';
+import { HierarchicalNSW } from 'hnswlib-node';
 import {
     FileRecord,
     ChunkRecord,
@@ -16,9 +17,13 @@ import {
     ChunkingMetadata
 } from '../types/embeddingTypes';
 
+// TODO: Implement dynamic resizing for the HNSW index if the number of elements exceeds this initial configuration.
+// This might involve using HierarchicalNSW.prototype.resizeIndex and potentially re-adding points.
+const ANN_MAX_ELEMENTS_CONFIG = 1000000; // Max elements for HNSW index
+
 /**
  * VectorDatabaseService implements a SQLite-based storage system for code embeddings
- * with efficient similarity search capabilities.
+ * with efficient similarity search capabilities using HNSWlib for ANN search.
  */
 export class VectorDatabaseService implements vscode.Disposable {
     private db: sqlite3.Database | null = null;
@@ -27,6 +32,11 @@ export class VectorDatabaseService implements vscode.Disposable {
     private isInitialized = false;
     private initPromise: Promise<void> | null = null;
     private inTransaction = false; // Track if we're already in a transaction
+
+    // ANN Index related members
+    private annIndex: HierarchicalNSW | null = null;
+    private currentModelDimension: number | null = null;
+    private annIndexPath: string = '';
 
     // Default configuration values
     private static readonly DEFAULT_CONFIG: Required<Omit<DatabaseConfig, 'dbPath'>> = {
@@ -84,9 +94,11 @@ export class VectorDatabaseService implements vscode.Disposable {
             ...VectorDatabaseService.DEFAULT_CONFIG,
             ...config
         };
+        this.annIndexPath = path.join(path.dirname(this.config.dbPath), 'embeddings.ann.idx');
 
         // Initialize database
         console.log(`Initializing vector database at ${this.config.dbPath}`);
+        console.log(`ANN index path will be ${this.annIndexPath}`);
         this.initPromise = this.initializeDatabase();
     }
 
@@ -833,8 +845,8 @@ export class VectorDatabaseService implements vscode.Disposable {
     }
 
     /**
-     * Delete all embeddings and chunks from the database.
-     * This is typically used when the embedding model changes, requiring a full rebuild.
+     * Delete all embeddings, chunks, files, metadata, and clear the ANN index.
+     * This is typically used when the embedding model changes or for a full rebuild.
      */
     async deleteAllEmbeddingsAndChunks(): Promise<void> {
         await this.ensureInitialized();
@@ -844,9 +856,26 @@ export class VectorDatabaseService implements vscode.Disposable {
             await this.run('DELETE FROM chunks', []);
             await this.run('DELETE FROM files', []);
             await this.run('DELETE FROM metadata', []);
-            // Files will be re-evaluated and their is_indexed status updated during re-indexing.
         });
-        console.log('All embeddings and chunks have been deleted.');
+
+        // Clear the ANN index
+        if (this.currentModelDimension && this.annIndex) {
+            console.log('Re-initializing existing ANN index to an empty state.');
+            this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG); // Clears the current instance
+            this.saveAnnIndex(); // Save the now empty index
+        } else {
+            console.log(`No current ANN dimension or index instance. Attempting to delete index file: ${this.annIndexPath}`);
+            if (fs.existsSync(this.annIndexPath)) {
+                try {
+                    fs.unlinkSync(this.annIndexPath);
+                    console.log(`Deleted ANN index file: ${this.annIndexPath}`);
+                } catch (e) {
+                    console.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
+                }
+            }
+            this.annIndex = null; // Ensure it's null
+        }
+        console.log('All embeddings, chunks, files, metadata, and ANN index data have been cleared/reset.');
     }
 
     /**
@@ -982,35 +1011,141 @@ export class VectorDatabaseService implements vscode.Disposable {
     }
 
     /**
-     * Dispose resources
+     * Sets the dimension for the current embedding model and initializes/re-initializes the ANN index.
+     * This should be called by the coordinator when the model is selected or changed.
+     * @param dimension The dimension of the embedding vectors for the current model.
+     */
+    public setCurrentModelDimension(dimension: number): void {
+        // ensureInitialized is not strictly needed here if annIndexPath is set in constructor
+        // and this method is called after VectorDatabaseService constructor has completed.
+
+        if (this.currentModelDimension === dimension && this.annIndex) {
+            // console.log(`ANN index dimension ${dimension} already set and index exists.`);
+            return; // No change needed
+        }
+
+        console.log(`Setting ANN index dimension to ${dimension}. Previous: ${this.currentModelDimension}`);
+        this.currentModelDimension = dimension;
+
+        if (!this.currentModelDimension) {
+            console.warn('Cannot initialize ANN index without a model dimension.');
+            this.annIndex = null;
+            // Attempt to delete existing index file if dimension becomes unknown
+            if (fs.existsSync(this.annIndexPath)) {
+                try {
+                    fs.unlinkSync(this.annIndexPath);
+                    console.log(`Deleted ANN index file ${this.annIndexPath} as model dimension is now unknown.`);
+                } catch (e) {
+                    console.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
+                }
+            }
+            return;
+        }
+
+        // Initialize or re-initialize the ANN index
+        console.log(`Initializing HNSW index with space 'cosine' and dimension ${this.currentModelDimension}`);
+        this.annIndex = new HierarchicalNSW('cosine', this.currentModelDimension);
+
+        if (this.loadAnnIndex()) { // loadAnnIndex is synchronous
+            console.log(`ANN index loaded successfully from ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
+        } else {
+            console.log(`Initializing new ANN index at ${this.annIndexPath}. Max elements: ${ANN_MAX_ELEMENTS_CONFIG}`);
+            this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG);
+            // No need to save here, will be saved on dispose or when data is added.
+        }
+    }
+
+    /**
+     * Loads the ANN index from disk.
+     * @returns True if loading was successful, false otherwise.
+     */
+    private loadAnnIndex(): boolean {
+        if (!this.annIndex || !this.annIndexPath || !this.currentModelDimension) {
+            console.warn('ANN index, path, or dimension not set. Cannot load index.');
+            return false;
+        }
+        try {
+            if (fs.existsSync(this.annIndexPath)) {
+                console.log(`Attempting to load ANN index from ${this.annIndexPath}`);
+                this.annIndex.readIndexSync(this.annIndexPath); // This might throw if dimensions mismatch
+                // It's good practice to check if the loaded index actually has items if it's not empty
+                // For example, if an empty index was saved, getCurrentCount() would be 0.
+                // If readIndexSync doesn't throw on dimension mismatch, we might need another check here,
+                // but typically it should handle it.
+                return true;
+            }
+            console.log(`ANN index file not found at ${this.annIndexPath}. A new index will be used.`);
+            return false;
+        } catch (error) {
+            console.warn(`Failed to load ANN index from ${this.annIndexPath}:`, error);
+            // If loading fails, ensure we have a fresh, empty index for the current dimension
+            console.log(`Re-initializing a fresh ANN index due to load failure for dimension ${this.currentModelDimension}.`);
+            this.annIndex = new HierarchicalNSW('cosine', this.currentModelDimension);
+            // this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG); // Caller will init if loadAnnIndex returns false
+            return false;
+        }
+    }
+
+    /**
+     * Saves the ANN index to disk.
+     */
+    private saveAnnIndex(): void {
+        if (!this.annIndex || !this.annIndexPath) {
+            console.warn('ANN index or path not set. Cannot save index.');
+            return;
+        }
+        try {
+            console.log(`Saving ANN index to ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
+            const dir = path.dirname(this.annIndexPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            this.annIndex.writeIndexSync(this.annIndexPath);
+            console.log(`ANN index saved successfully to ${this.annIndexPath}.`);
+        } catch (error) {
+            console.error(`Failed to save ANN index to ${this.annIndexPath}:`, error);
+        }
+    }
+
+    /**
+     * Provides access to the HNSWLib index instance.
+     * @returns The HierarchicalNSW instance or null if not initialized.
+     */
+    public getAnnIndex(): HierarchicalNSW | null {
+        return this.annIndex;
+    }
+
+    /**
+     * Dispose resources: save ANN index, optimize and close SQLite DB.
      */
     async dispose(): Promise<void> {
+        if (this.annIndex) {
+            this.saveAnnIndex();
+        }
+
         if (this.db) {
-            // Optimize before closing
             try {
                 await this.optimizeDatabase();
             } catch (error) {
                 console.error('Error optimizing database during disposal:', error);
             }
 
-            // Close the database connection
             return new Promise<void>((resolve) => {
-                if (!this.db) {
+                if (!this.db) { // Check again in case it was nulled elsewhere
                     resolve();
                     return;
                 }
-
                 this.db.close((err) => {
                     if (err) {
-                        console.error('Error closing database:', err);
+                        console.error('Error closing SQLite database:', err);
                     }
                     this.db = null;
+                    console.log('SQLite database closed.');
                     resolve();
                 });
             });
         }
 
-        // Clear singleton instance
         if (VectorDatabaseService.instance === this) {
             VectorDatabaseService.instance = null;
         }

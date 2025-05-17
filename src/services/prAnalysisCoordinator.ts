@@ -61,6 +61,14 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         // Initialize the vector database service
         this.vectorDatabaseService = VectorDatabaseService.getInstance(context);
 
+        // Set initial model dimension for VectorDatabaseService
+        const initialModelInfo = this.modelSelectionService.selectOptimalModel().modelInfo;
+        if (initialModelInfo && initialModelInfo.dimensions) {
+            this.vectorDatabaseService.setCurrentModelDimension(initialModelInfo.dimensions);
+        } else {
+            console.warn('PRAnalysisCoordinator: Could not determine initial model dimension for VectorDatabaseService.');
+        }
+
         this.indexingManager = new IndexingManager(
             context,
             this.workspaceSettingsService,
@@ -346,24 +354,26 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
                 `Embedding model changed from "${previousModel || 'auto'}" to "${actualNewModelName}". The existing embedding database is incompatible and must be rebuilt.`
             );
 
+            // Set the new model dimension in VectorDatabaseService BEFORE re-initializing IndexingManager
+            // or performing a full reindex, as deleteAllEmbeddingsAndChunks might be called.
+            const newDimension = actualNewModelInfo.modelInfo.dimensions;
+            if (newDimension) {
+                this.vectorDatabaseService.setCurrentModelDimension(newDimension);
+            } else {
+                console.warn('PRAnalysisCoordinator: Could not determine new model dimension for VectorDatabaseService during model change.');
+            }
+
             // Reinitialize IndexingManager and dependent services with the new model
-            // IndexingManager's constructor or a dedicated method should handle re-creating IndexingService
-            // and ensuring EmbeddingDatabaseAdapter gets the new IndexingService instance.
-            // For now, we assume initializeIndexingService in IndexingManager handles this.
             this.indexingManager.initializeIndexingService(actualNewModelInfo.modelInfo);
 
-            // Crucially, update the EmbeddingDatabaseAdapter with the new IndexingService instance
-            // This ensures it uses the correct model for generating query embeddings.
-            // The IndexingManager should ideally manage this relationship.
-            // A simplified approach for now:
+            // Update the EmbeddingDatabaseAdapter with the new IndexingService instance
             this.embeddingDatabaseAdapter = EmbeddingDatabaseAdapter.getInstance(
                 this.context,
                 this.vectorDatabaseService,
                 this.workspaceSettingsService,
-                this.indexingManager.getIndexingService()! // Get the newly initialized IndexingService
+                this.indexingManager.getIndexingService()!
             );
             this.indexingManager.setEmbeddingDatabaseAdapter(this.embeddingDatabaseAdapter);
-
 
             // Ask if user wants to rebuild database with new model
             const rebuildChoice = await vscode.window.showQuickPick(['Yes, rebuild now', 'No, I will do it later'], {
