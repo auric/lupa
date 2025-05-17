@@ -232,13 +232,16 @@ export class TokenManagerService {
         // If no snippets fit at all (not even partially from the main loop),
         // and there's enough space for the main truncation message plus some minimal content,
         // try to add a "tiny" piece of the most relevant snippet.
-        const mainTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGE);
         const MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT = 10;
         // For tiny content, we still use PARTIAL_TRUNCATION_MESSAGE as it's shorter and indicates partial nature.
         const partialMsgTokensForTiny = await this.currentModel.countTokens(TokenManagerService.PARTIAL_TRUNCATION_MESSAGE);
         const safetyBufferForTinyCalc = 5; // Safety buffer for token calculation of content part
 
-        if (sortedSnippets.length > 0 && selectedSnippets.length === 0 && availableTokens > (mainTruncMsgTokens + MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT)) {
+        // If no snippets fit (not even partially from main loop), and there's enough space for
+        // the partial truncation message, some minimal content, and a safety buffer,
+        // try to add a "tiny" piece of the most relevant snippet.
+        if (sortedSnippets.length > 0 && selectedSnippets.length === 0 &&
+            availableTokens > (partialMsgTokensForTiny + MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT + safetyBufferForTinyCalc)) {
             const mostRelevantSnippet = sortedSnippets[0];
 
             // Calculate available characters for the tiny content part
