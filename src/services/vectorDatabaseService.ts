@@ -192,15 +192,12 @@ export class VectorDatabaseService implements vscode.Disposable {
                 id TEXT PRIMARY KEY,
                 chunk_id TEXT NOT NULL,
                 vector BLOB NOT NULL,
-                model TEXT NOT NULL,
-                dimension INTEGER NOT NULL,
                 created_at INTEGER NOT NULL,
                 FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
             )
         `, []);
 
         await this.run('CREATE INDEX IF NOT EXISTS idx_embeddings_chunk_id ON embeddings(chunk_id)', []);
-        await this.run('CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model)', []);
 
         // Metadata table - stores database metadata
         await this.run(`
@@ -458,14 +455,12 @@ export class VectorDatabaseService implements vscode.Disposable {
                 const buffer = Buffer.from(embedding.vector.buffer);
 
                 await this.run(`
-                    INSERT INTO embeddings (id, chunk_id, vector, model, dimension, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO embeddings (id, chunk_id, vector, created_at)
+                    VALUES (?, ?, ?, ?)
                 `, [
                     embeddingId,
                     embedding.chunkId,
                     buffer,
-                    embedding.model,
-                    embedding.dimension,
                     now
                 ]);
             }
@@ -490,7 +485,6 @@ export class VectorDatabaseService implements vscode.Disposable {
      */
     async findSimilarCode(
         queryVector: Float32Array,
-        model: string,
         options: SimilaritySearchOptions = {}
     ): Promise<SimilaritySearchResult[]> {
         await this.ensureInitialized();
@@ -501,24 +495,24 @@ export class VectorDatabaseService implements vscode.Disposable {
 
         // Build the query
         let sql = `
-            SELECT e.id, e.chunk_id, e.vector, e.dimension, c.content, c.file_id, c.start_offset, c.end_offset, f.path
+            SELECT e.id, e.chunk_id, e.vector, c.content, c.file_id, c.start_offset, c.end_offset, f.path
             FROM embeddings e
             INNER JOIN chunks c ON e.chunk_id = c.id
             INNER JOIN files f ON c.file_id = f.id
-            WHERE e.model = ?
         `;
 
-        const params: any[] = [model];
+        const params: any[] = [];
 
         // Add file filter if provided
         if (options.fileFilter && options.fileFilter.length > 0) {
-            sql += ` AND f.path IN (${options.fileFilter.map(() => '?').join(',')})`;
+            sql += ` WHERE f.path IN (${options.fileFilter.map(() => '?').join(',')})`;
             params.push(...options.fileFilter);
         }
 
         // Add language filter if provided
         if (options.languageFilter && options.languageFilter.length > 0) {
-            sql += ` AND f.language IN (${options.languageFilter.map(() => '?').join(',')})`;
+            sql += params.length > 0 ? ' AND' : ' WHERE';
+            sql += ` f.language IN (${options.languageFilter.map(() => '?').join(',')})`;
             params.push(...options.languageFilter);
         }
 
@@ -527,7 +521,6 @@ export class VectorDatabaseService implements vscode.Disposable {
             id: string;
             chunk_id: string;
             vector: Buffer;
-            dimension: number;
             content: string;
             file_id: string;
             start_offset: number;
@@ -582,13 +575,11 @@ export class VectorDatabaseService implements vscode.Disposable {
             id: string;
             chunk_id: string;
             vector: Buffer;
-            model: string;
-            dimension: number;
             created_at: number;
         };
 
         const embedding = await this.get<EmbeddingRow>(
-            `SELECT id, chunk_id, vector, model, dimension, created_at
+            `SELECT id, chunk_id, vector, created_at
              FROM embeddings
              WHERE chunk_id = ?`,
             [chunkId]
@@ -608,8 +599,6 @@ export class VectorDatabaseService implements vscode.Disposable {
             id: embedding.id,
             chunkId: embedding.chunk_id,
             vector: vectorFloat32,
-            model: embedding.model,
-            dimension: embedding.dimension,
             createdAt: embedding.created_at
         };
     }
@@ -844,16 +833,20 @@ export class VectorDatabaseService implements vscode.Disposable {
     }
 
     /**
-     * Delete all embeddings generated with a specific model
-     * @param model Model name
+     * Delete all embeddings and chunks from the database.
+     * This is typically used when the embedding model changes, requiring a full rebuild.
      */
-    async deleteEmbeddingsByModel(model: string): Promise<void> {
+    async deleteAllEmbeddingsAndChunks(): Promise<void> {
         await this.ensureInitialized();
 
-        await this.run('DELETE FROM embeddings WHERE model = ?', [model]);
-
-        // Reset indexed status for all files
-        await this.run('UPDATE files SET is_indexed = 0', []);
+        await this.transaction(async () => {
+            await this.run('DELETE FROM embeddings', []);
+            await this.run('DELETE FROM chunks', []);
+            await this.run('DELETE FROM files', []);
+            await this.run('DELETE FROM metadata', []);
+            // Files will be re-evaluated and their is_indexed status updated during re-indexing.
+        });
+        console.log('All embeddings and chunks have been deleted.');
     }
 
     /**

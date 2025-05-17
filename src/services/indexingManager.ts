@@ -162,9 +162,9 @@ export class IndexingManager implements vscode.Disposable {
             cancellable: true
         }, async (progress, token) => {
             try {
-                // Delete all embeddings for current model (database cleanup)
-                progress.report({ message: 'Deleting old embeddings...' });
-                this.vectorDatabaseService.deleteEmbeddingsByModel(this.selectedModel || '');
+                // Delete all existing embeddings and chunks (database cleanup)
+                progress.report({ message: 'Deleting old embeddings and chunks...' });
+                await this.vectorDatabaseService.deleteAllEmbeddingsAndChunks();
 
                 // Find files and process them using the common indexing method
                 await this.processFilesWithIndexing(progress, token, true);
@@ -373,7 +373,7 @@ export class IndexingManager implements vscode.Disposable {
                 (processed, total) => {
                     // Update progress message showing overall indexing progress
                     totalProcessed = processed;
-                    
+
                     // Calculate percentage based on the actual number of files to process
                     // not the total files checked
                     const processedPercent = Math.round((processed / totalToProcess) * 100);
@@ -386,7 +386,7 @@ export class IndexingManager implements vscode.Disposable {
                         const currentProcessedPercent = (processed / totalToProcess) * 100;
                         const incrementValue = Math.max(0, currentProcessedPercent - lastProcessedPercent);
                         lastProcessedPercent = currentProcessedPercent;
-                        
+
                         if (incrementValue > 0) {
                             progress.report({
                                 message: `Indexing ${processed} of ${totalToProcess} files (${processedPercent}%)...`,
@@ -421,7 +421,7 @@ export class IndexingManager implements vscode.Disposable {
                                     });
                                 }
                             );
-                            
+
                             // Update the total stored count after the batch is complete
                             totalStored += batchFiles.length;
 

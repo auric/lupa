@@ -90,8 +90,6 @@ export interface EmbeddingRecord {
     id: string;
     chunkId: string;
     vector: Float32Array;
-    model: string;
-    dimension: number;
     createdAt: number;
 }
 

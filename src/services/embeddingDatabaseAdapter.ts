@@ -110,9 +110,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                     await this.vectorDb.storeEmbeddings(
                         chunkRecords.map((chunk, index) => ({
                             chunkId: chunk.id,
-                            vector: result.embeddings[index],
-                            model: this.embeddingModel,
-                            dimension: result.embeddings[index].length
+                            vector: result.embeddings[index]
                         }))
                     );
                 } else {
@@ -183,7 +181,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
 
         // Update database metadata
         this.vectorDb.updateLastIndexingTimestamp();
-        this.vectorDb.setEmbeddingModel(this.embeddingModel);
+        // this.vectorDb.setEmbeddingModel(this.embeddingModel); // Model is set when it changes
     }
 
     /**
@@ -213,7 +211,6 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             // Find similar code using the vector database
             const initialResults = await this.vectorDb.findSimilarCode(
                 diffEmbedding,
-                this.embeddingModel,
                 options
             );
 
@@ -433,7 +430,6 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                 // Find similar documents using the embedding
                 const results = await this.vectorDb.findSimilarCode(
                     embedding,
-                    this.embeddingModel,
                     {
                         limit: searchOptions.limit,
                         minScore: searchOptions.minScore
