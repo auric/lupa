@@ -91,6 +91,7 @@ export interface EmbeddingRecord {
     chunkId: string;
     vector: Float32Array;
     createdAt: number;
+    label?: number; // Numerical label used by HNSW index
 }
 
 /**
