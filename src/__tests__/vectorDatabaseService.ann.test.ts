@@ -6,7 +6,6 @@ import * as path from 'path';
 import { VectorDatabaseService } from '../services/vectorDatabaseService';
 // Import 'HierarchicalNSW' to allow type checking and access to the mocked constructor
 import { HierarchicalNSW } from 'hnswlib-node';
-import { EmbeddingRecord } from '../types/embeddingTypes';
 // Import '@vscode/sqlite3' to access its mocked Database constructor
 import * as sqlite3 from '@vscode/sqlite3';
 
@@ -583,7 +582,7 @@ describe('VectorDatabaseService ANN Integration', () => {
         });
 
         it('should store embeddings in ANN index and metadata in SQLite', async () => {
-            const embeddingsToStore: Array<Omit<EmbeddingRecord, 'id' | 'createdAt' | 'label'>> = [
+            const embeddingsToStore: Array<{ chunkId: string; vector: Float32Array; }> = [
                 { chunkId: 'chunk1', vector: new Float32Array([0.1, 0.2, 0.3]) },
                 { chunkId: 'chunk2', vector: new Float32Array([0.4, 0.5, 0.6]) },
             ];

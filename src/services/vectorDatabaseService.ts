@@ -459,7 +459,7 @@ export class VectorDatabaseService implements vscode.Disposable {
      * Store embeddings for chunks
      * @param embeddings Array of embedding records (vector is part of the input but not stored in SQLite)
      */
-    async storeEmbeddings(embeddings: Array<Omit<EmbeddingRecord, 'id' | 'createdAt' | 'label'>>): Promise<void> {
+    async storeEmbeddings(embeddings: Array<{ chunkId: string; vector: Float32Array; }>): Promise<void> {
         await this.ensureInitialized();
 
         if (!this.annIndex || this.currentModelDimension === null) {
