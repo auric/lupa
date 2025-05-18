@@ -1,112 +1,32 @@
 import * as vscode from 'vscode';
-import { encoding_for_model as tiktokenCountTokens, TiktokenModel } from 'tiktoken';
-import { countTokens as anthropicCountTokens } from '@anthropic-ai/tokenizer';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { TreeStructureAnalyzerResource } from './treeStructureAnalyzer';
+import { TreeStructureAnalyzerResource, SymbolInfo as AnalyzerSymbolInfo } from './treeStructureAnalyzer'; // Import SymbolInfo as AnalyzerSymbolInfo
 import {
-    SUPPORTED_LANGUAGES
+    getLanguageForExtension
 } from '../types/types';
 import {
     AnalysisMode
 } from '../types/modelTypes';
 import {
+    type ContextSnippet,
+    type DiffHunk,
+    type DiffHunkLine,
+    type HybridContextResult
+} from '../types/contextTypes';
+import {
     SimilaritySearchOptions,
     SimilaritySearchResult
 } from '../types/embeddingTypes';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { TokenManagerService } from './tokenManagerService';
+import * as path from 'path';
 
 /**
- * Token estimation functions for different model families
+ * Represents symbol information found within a diff, including file path.
  */
-export class TokenEstimator {
-    // OpenAI models use tiktoken (cl100k_base for GPT-4, etc.)
-    static estimateOpenAITokens(text: string, modelName: string = 'gpt-4'): number {
-        try {
-            try {
-                const encoding = tiktokenCountTokens(modelName as TiktokenModel);
-                const tokens = encoding.encode(text);
-                const tokenCount = tokens.length;
-
-                // Free the encoding when done
-                if (typeof encoding.free === 'function') {
-                    encoding.free();
-                }
-
-                return tokenCount;
-            } catch (error) {
-                console.warn(`Error using tiktoken for ${modelName} token calculation:`, error);
-                // Fallback to approximation
-            }
-
-            // Character-based approximation for OpenAI models
-            return Math.ceil(text.length / 4);
-        } catch (error) {
-            console.error('Error in OpenAI token estimation:', error);
-            // Safe fallback
-            return Math.ceil(text.length / 3.5);
-        }
-    }
-
-    // Anthropic Claude models use their own tokenizer
-    static estimateClaudeTokens(text: string): number {
-        try {
-            try {
-                const tokens = anthropicCountTokens(text);
-                return tokens;
-            } catch (error) {
-                console.warn('Error using Anthropic tokenizer:', error);
-                // Fallback to approximation
-            }
-
-            // Character-based approximation for Claude models
-            return Math.ceil(text.length / 5);
-        } catch (error) {
-            console.error('Error in Claude token estimation:', error);
-            // Safe fallback
-            return Math.ceil(text.length / 4);
-        }
-    }
-
-    // Google Gemini models use SentencePiece tokenizer
-    static estimateGeminiTokens(text: string): number {
-        try {
-            // Need API key for this, use fallback
-            // Character-based approximation for Gemini models
-            return Math.ceil(text.length / 4.5);
-        } catch (error) {
-            console.error('Error in Gemini token estimation:', error);
-            // Safe fallback
-            return Math.ceil(text.length / 4);
-        }
-    }
-
-    // Code is typically more token-dense than natural language
-    static estimateCodeTokens(text: string): number {
-        return Math.ceil(text.length / 3.5);
-    }
-
-    // Fallback estimator when model family is unknown
-    static estimateGenericTokens(text: string): number {
-        return Math.ceil(text.length / 3.5);
-    }
-
-    // Select the appropriate estimator based on model family
-    static estimateTokensByModelFamily(text: string, modelFamily: string, modelName: string = ''): number {
-        const lowerFamily = modelFamily.toLowerCase();
-
-        if (lowerFamily.includes('gpt') || lowerFamily.includes('openai')) {
-            return this.estimateOpenAITokens(text, modelName || 'gpt-4o');
-        } else if (lowerFamily.includes('claude') || lowerFamily.includes('anthropic')) {
-            return this.estimateClaudeTokens(text);
-        } else if (lowerFamily.includes('gemini') || lowerFamily.includes('google')) {
-            return this.estimateGeminiTokens(text);
-        } else {
-            // For unknown models, use the generic estimator
-            return this.estimateGenericTokens(text);
-        }
-    }
+export interface DiffSymbolInfo extends AnalyzerSymbolInfo {
+    filePath: string;
 }
+
 
 /**
  * ContextProvider is responsible for retrieving relevant code context
@@ -117,7 +37,6 @@ export class ContextProvider implements vscode.Disposable {
     private readonly MAX_CONTENT_LENGTH = 800000; // Characters limit to avoid excessive token use
 
     private readonly modelManager: CopilotModelManager;
-    private readonly tokenManager: TokenManagerService;
 
     /**
      * Get singleton instance of ContextProvider
@@ -153,257 +72,392 @@ export class ContextProvider implements vscode.Disposable {
         private readonly embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
         modelManager: CopilotModelManager
     ) {
-        // Initialize the model manager if provided, otherwise create a new one
         this.modelManager = modelManager;
-
-        // Initialize the token manager
-        this.tokenManager = new TokenManagerService(this.modelManager);
     }
 
     /**
-     * Extract meaningful code chunks from PR diff
-     * @param diff PR diff content
-     * @returns Extracted code chunks for similarity search
+     * Generates a unique string identifier for a diff hunk.
+     * @param filePath The path of the file the hunk belongs to.
+     * @param hunkData An object containing hunk information, typically `newStart` line.
+     * @returns A string identifier for the hunk.
      */
-    private async extractMeaningfulChunks(diff: string): Promise<string[]> {
-        const chunks: string[] = [];
+    private getHunkIdentifier(filePath: string, hunkData: { newStart: number }): string {
+        return `${filePath}:L${hunkData.newStart}`;
+    }
+
+    /**
+     * Extract meaningful code chunks and identify symbols from PR diff.
+     * @param diff PR diff content.
+     * @param parsedDiff Parsed diff data.
+     * @param gitRepoRoot The root path of the git repository.
+     * @returns An object containing extracted embedding query strings and identified symbols.
+     */
+    private async extractMeaningfulChunksAndSymbols(diff: string, parsedDiff: DiffHunk[], gitRepoRoot: string): Promise<{ embeddingQueries: string[]; symbols: DiffSymbolInfo[] }> {
+        const embeddingQueriesSet = new Set<string>();
+        const identifiedSymbols: DiffSymbolInfo[] = [];
         const resource = await TreeStructureAnalyzerResource.create();
         const analyzer = resource.instance;
 
-        // Split the diff into files
-        const fileRegex = /^diff --git a\/(.+) b\/(.+)[\r\n]+(?:.+[\r\n]+)*?(?:@@.+@@)/gm;
-        let fileMatch;
-        const matches: { index: number, length: number, filePath: string, newContent: string }[] = [];
+        for (const fileDiff of parsedDiff) {
+            const filePath = fileDiff.filePath;
+            const absoluteFilePath = path.join(gitRepoRoot, filePath);
+            const langInfo = analyzer.getFileLanguage(filePath);
 
-        // Find all file sections in the diff
-        while ((fileMatch = fileRegex.exec(diff)) !== null) {
-            const filePath = fileMatch[2]; // Using the 'b/' path (new file path)
-            const start = fileMatch.index + fileMatch[0].length;
-            const end = diff.indexOf('\ndiff --git', start);
-            const fileContent = diff.substring(start, end !== -1 ? end : diff.length);
+            let fullFileContent: string | undefined = undefined;
+            const addedLinesForSymbolSnippets: { fileLine: number, text: string }[] = [];
 
-            // Extract and process added/modified code
-            const newContent = fileContent
-                .split('\n')
-                .filter(line => line.startsWith('+') && !line.startsWith('+++'))
-                .map(line => line.substring(1)) // Remove the '+' prefix
-                .join('\n');
-
-            if (newContent.trim().length > 0) {
-                matches.push({
-                    index: fileMatch.index,
-                    length: fileMatch[0].length,
-                    filePath,
-                    newContent
-                });
-            }
-        }
-
-        // Process each file's changes with structure awareness
-        for (const match of matches) {
-            try {
-                // Detect the language from the file extension
-                const fileExt = match.filePath.split('.').pop()?.toLowerCase();
-                const language = fileExt ? SUPPORTED_LANGUAGES[fileExt]?.language : undefined;
-
-                if (language && match.newContent.trim()) {
-                    // Try to analyze the code structure
-                    const functions = await analyzer.findFunctions(match.newContent, language);
-                    const classes = await analyzer.findClasses(match.newContent, language);
-
-                    // Add complete function/class definitions as chunks
-                    for (const func of functions) {
-                        if (func.text.trim()) {
-                            chunks.push(func.text);
-                        }
+            if (langInfo) {
+                try {
+                    const fileUri = vscode.Uri.file(absoluteFilePath);
+                    const fileStat = await vscode.workspace.fs.stat(fileUri);
+                    if (fileStat.type === vscode.FileType.File) {
+                        const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+                        fullFileContent = Buffer.from(contentBytes).toString('utf8');
                     }
-
-                    for (const cls of classes) {
-                        if (cls.text.trim()) {
-                            chunks.push(cls.text);
-                        }
+                } catch (error) {
+                    const newFilePattern = new RegExp(`^diff --git a\\/dev\\/null b\\/${filePath.replace(/\\/g, '\\\\/')}`, 'm');
+                    if (newFilePattern.test(diff)) {
+                        fullFileContent = fileDiff.hunks
+                            .flatMap(hunk => hunk.lines)
+                            .filter(line => line.startsWith('+'))
+                            .map(line => line.substring(1))
+                            .join('\n');
+                    } else {
+                        console.warn(`Could not read file content for ${filePath}:`, error);
                     }
-
-                    // If no structures found, add the modified code as is
-                    if (functions.length === 0 && classes.length === 0) {
-                        chunks.push(match.newContent);
-                    }
-                } else {
-                    // For unsupported languages or non-code files, add content as is
-                    chunks.push(match.newContent);
                 }
+            }
 
-                // Always add the file path as a chunk to find related files
-                chunks.push(match.filePath);
+            const lineRangesForSymbolExtraction: { startLine: number; endLine: number }[] = [];
 
-                // Try to find parent structures (e.g., containing class/namespace)
-                if (language) {
-                    const hierarchy = await analyzer.getStructureHierarchyAtPosition(
-                        match.newContent,
-                        language,
-                        { row: 0, column: 0 }
+            // First pass: collect all added lines and their file line numbers, and identify line ranges for symbol extraction
+            for (const hunk of fileDiff.hunks) {
+                let currentNewLineInFile = hunk.newStart - 1; // 0-based file line number
+                let rangeStartLine: number | null = null;
+
+                for (const line of hunk.lines) {
+                    const isAdded = line.startsWith('+');
+                    const isRemoved = line.startsWith('-');
+
+                    if (isAdded) {
+                        addedLinesForSymbolSnippets.push({ fileLine: currentNewLineInFile, text: line.substring(1) });
+                        if (rangeStartLine === null) rangeStartLine = currentNewLineInFile;
+                    } else {
+                        if (rangeStartLine !== null) {
+                            lineRangesForSymbolExtraction.push({ startLine: rangeStartLine, endLine: currentNewLineInFile - 1 });
+                            rangeStartLine = null;
+                        }
+                    }
+                    if (!isRemoved) currentNewLineInFile++;
+                }
+                if (rangeStartLine !== null) { // Hunk ends with added lines
+                    lineRangesForSymbolExtraction.push({ startLine: rangeStartLine, endLine: currentNewLineInFile - 1 });
+                }
+            }
+
+            // Identify symbols within the collected added line ranges
+            if (langInfo && fullFileContent !== undefined && lineRangesForSymbolExtraction.length > 0) {
+                try {
+                    const symbolsInRanges = await analyzer.findSymbolsInRanges(
+                        fullFileContent, langInfo.language, lineRangesForSymbolExtraction, langInfo.variant
                     );
+                    symbolsInRanges.forEach(symbol => identifiedSymbols.push({ ...symbol, filePath }));
+                } catch (error) {
+                    console.error(`Error finding symbols in ranges for ${filePath}:`, error);
+                }
+            }
 
-                    // Add parent structures as chunks for better context
-                    for (const struct of hierarchy) {
-                        if (struct.text.trim() && !chunks.includes(struct.text)) {
-                            chunks.push(struct.text);
+            // Add identified symbol names to queries
+            const symbolsInThisFile = identifiedSymbols.filter(s => s.filePath === filePath);
+            for (const symbol of symbolsInThisFile) {
+                embeddingQueriesSet.add(symbol.symbolName);
+            }
+
+            // Process hunks for small added blocks and symbol-centered snippets
+            for (const hunk of fileDiff.hunks) {
+                let currentAddedBlockLines: string[] = [];
+                let currentHunkAddedLinesWithFileNumbers: { fileLine: number, text: string }[] = [];
+                let currentFileLineForHunkProcessing = hunk.newStart - 1; // 0-based
+
+                for (const line of hunk.lines) {
+                    const isAdded = line.startsWith('+');
+                    const isRemoved = line.startsWith('-');
+
+                    if (isAdded) {
+                        const lineContent = line.substring(1);
+                        currentAddedBlockLines.push(lineContent);
+                        currentHunkAddedLinesWithFileNumbers.push({ fileLine: currentFileLineForHunkProcessing, text: lineContent });
+                    } else {
+                        if (currentAddedBlockLines.length > 0) {
+                            const blockText = currentAddedBlockLines.join('\n');
+                            if (currentAddedBlockLines.length < 15 && blockText.trim().length > 0) {
+                                embeddingQueriesSet.add(blockText);
+                            }
+                            currentAddedBlockLines = [];
+                        }
+                    }
+                    if (!isRemoved) {
+                        currentFileLineForHunkProcessing++;
+                    }
+                }
+                if (currentAddedBlockLines.length > 0) { // Process block at end of hunk
+                    const blockText = currentAddedBlockLines.join('\n');
+                    if (currentAddedBlockLines.length < 15 && blockText.trim().length > 0) {
+                        embeddingQueriesSet.add(blockText);
+                    }
+                }
+
+                // Add short code snippets around identifiers on '+' lines within this hunk
+                for (const symbol of symbolsInThisFile) {
+                    const symbolFileLine = symbol.position.line; // 0-based
+                    // Check if symbol's line is within this hunk's added lines
+                    const symbolLineInHunkAdded = currentHunkAddedLinesWithFileNumbers.find(l => l.fileLine === symbolFileLine);
+
+                    if (symbolLineInHunkAdded && symbolLineInHunkAdded.text.includes(symbol.symbolName)) {
+                        const lineIndexInHunkAdded = currentHunkAddedLinesWithFileNumbers.findIndex(l => l.fileLine === symbolFileLine);
+                        if (lineIndexInHunkAdded !== -1) {
+                            const snippetStart = Math.max(0, lineIndexInHunkAdded - 2);
+                            const snippetEnd = Math.min(currentHunkAddedLinesWithFileNumbers.length, lineIndexInHunkAdded + 3);
+                            const snippetLines = currentHunkAddedLinesWithFileNumbers.slice(snippetStart, snippetEnd).map(l => l.text);
+                            if (snippetLines.length > 0) {
+                                const snippetText = snippetLines.join('\n');
+                                if (snippetText.trim().length > 0) {
+                                    embeddingQueriesSet.add(snippetText);
+                                }
+                            }
                         }
                     }
                 }
-            } catch (error) {
-                console.warn(`Error analyzing structure for ${match.filePath}:`, error);
-                // Fallback: add the content without structure analysis
-                chunks.push(match.newContent);
             }
         }
-
-        // If we couldn't extract any meaningful chunks, use the whole diff
-        if (chunks.length === 0) {
-            chunks.push(diff);
-        }
-
         resource.dispose();
 
-        // Deduplicate chunks while preserving order
-        return [...new Set(chunks)];
+        const finalEmbeddingQueries = [...embeddingQueriesSet].filter(q => q.trim().length > 0);
+
+        // Fallback logic
+        if (finalEmbeddingQueries.length === 0 && diff.trim().length > 0) {
+            let allAddedLinesFromDiff = "";
+            for (const fileDiff of parsedDiff) {
+                for (const hunk of fileDiff.hunks) {
+                    for (const line of hunk.lines) {
+                        if (line.startsWith('+')) {
+                            allAddedLinesFromDiff += line.substring(1) + '\n';
+                        }
+                    }
+                }
+            }
+            if (allAddedLinesFromDiff.trim().length > 0) {
+                finalEmbeddingQueries.push(allAddedLinesFromDiff.trim());
+            }
+        }
+
+        console.log(`Extracted ${finalEmbeddingQueries.length} embedding queries and ${identifiedSymbols.length} symbols from diff.`); // Existing log
+        return { embeddingQueries: finalEmbeddingQueries, symbols: identifiedSymbols };
+    }
+
+    private parseDiff(diff: string): DiffHunk[] {
+        const files: DiffHunk[] = [];
+        const lines = diff.split('\n');
+        let currentFile: DiffHunk | null = null;
+        let currentHunk: DiffHunkLine | null = null;
+
+        for (const line of lines) {
+            const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+            if (fileMatch) {
+                currentFile = { filePath: fileMatch[2], hunks: [] };
+                files.push(currentFile);
+                currentHunk = null;
+                continue;
+            }
+
+            if (currentFile) {
+                const hunkHeaderMatch = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
+                if (hunkHeaderMatch) {
+                    const oldStart = parseInt(hunkHeaderMatch[1], 10);
+                    const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1; // Group 2 is optional for oldLines
+                    const newStart = parseInt(hunkHeaderMatch[3], 10); // Group 3 is newStart
+                    const newLines = hunkHeaderMatch[4] ? parseInt(hunkHeaderMatch[4], 10) : 1; // Group 4 is optional for newLines
+
+                    currentHunk = {
+                        oldStart: oldStart, oldLines: oldLines,
+                        newStart: newStart, newLines: newLines,
+                        lines: [],
+                        hunkId: this.getHunkIdentifier(currentFile.filePath, { newStart: newStart })
+                    };
+                    currentFile.hunks.push(currentHunk);
+                } else if (currentHunk && (line.startsWith('+') || line.startsWith('-') || line.startsWith(' '))) {
+                    currentHunk.lines.push(line);
+                }
+            }
+        }
+        return files;
     }
 
     /**
-     * Get relevant code context for a diff
+     * Get relevant code context for a diff, now returns an array of ContextSnippet objects.
      * @param diff The PR diff
+     * @param gitRootPath The root path of the git repository
      * @param options Optional search options
      * @param analysisMode Analysis mode that determines relevance strategy
-     * @param systemPrompt Optional system prompt
+     * @param _systemPrompt Optional system prompt (now handled by AnalysisProvider/TokenManager)
      * @param progressCallback Optional callback for progress updates
      * @param token Optional cancellation token
-     * @returns The formatted context
+     * @returns A promise resolving to a HybridContextResult object.
      */
     async getContextForDiff(
         diff: string,
+        gitRootPath: string,
         options?: SimilaritySearchOptions,
         analysisMode: AnalysisMode = AnalysisMode.Comprehensive,
-        systemPrompt?: string,
+        _systemPrompt?: string, // No longer used here for optimization logic
         progressCallback?: (processed: number, total: number) => void,
         token?: vscode.CancellationToken
-    ): Promise<string> {
+    ): Promise<HybridContextResult> {
         console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
+        const allContextSnippets: ContextSnippet[] = [];
+        const parsedDiffFileHunks = this.parseDiff(diff); // Now includes hunkId
 
         try {
-            // Check for cancellation
             if (token?.isCancellationRequested) {
                 throw new Error('Operation cancelled');
             }
 
-            // Extract meaningful chunks from the diff for better semantic search
-            const chunks = await this.extractMeaningfulChunks(diff);
-
-            // Check for cancellation
+            const { embeddingQueries, symbols } = await this.extractMeaningfulChunksAndSymbols(diff, parsedDiffFileHunks, gitRootPath);
             if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
+                throw new Error('Operation cancelled: After embedding query/symbol extraction');
             }
 
-            // Set search options based on analysis mode
+            // --- LSP Context Retrieval ---
+            const lspContextPromises: Promise<void>[] = [];
+            if (symbols.length > 0) {
+                console.log(`Attempting LSP lookup for ${symbols.length} symbols.`);
+                for (const symbol of symbols) {
+                    if (token?.isCancellationRequested) break;
+                    const absoluteSymbolPath = path.join(gitRootPath, symbol.filePath);
+
+                    let symbolHunkIdentifier: string | undefined;
+                    const fileDiffData = parsedDiffFileHunks.find(f => f.filePath === symbol.filePath);
+                    if (fileDiffData) {
+                        for (const hunk of fileDiffData.hunks) {
+                            const hunkEndLine = hunk.newStart + hunk.newLines - 1;
+                            if (symbol.position.line >= (hunk.newStart - 1) && symbol.position.line <= hunkEndLine) {
+                                symbolHunkIdentifier = hunk.hunkId; // Use pre-calculated hunkId
+                                break;
+                            }
+                        }
+                    }
+
+                    lspContextPromises.push(
+                        this.findSymbolDefinition(absoluteSymbolPath, symbol.position, token)
+                            .then(async (defLocations) => {
+                                if (token?.isCancellationRequested || !defLocations) return;
+                                const snippets = await this.getSnippetsForLocations(defLocations, 3, token, "Definition");
+                                snippets.forEach(s => allContextSnippets.push({
+                                    id: `lsp-def-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
+                                    type: 'lsp-definition', content: s, relevanceScore: 1.0, // Highest priority for LSP definitions
+                                    filePath: symbol.filePath, startLine: symbol.position.line,
+                                    associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
+                                }));
+                            }).catch(err => console.warn(`Error finding definition for ${symbol.symbolName} in ${symbol.filePath}:`, err))
+                    );
+                    lspContextPromises.push(
+                        this.findSymbolReferences(absoluteSymbolPath, symbol.position, false, token)
+                            .then(async (refLocations) => {
+                                if (token?.isCancellationRequested || !refLocations) return;
+                                const snippets = await this.getSnippetsForLocations(refLocations, 2, token, "Reference");
+                                snippets.forEach(s => allContextSnippets.push({
+                                    id: `lsp-ref-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
+                                    type: 'lsp-reference', content: s, relevanceScore: 0.9, // High priority for LSP references
+                                    filePath: symbol.filePath, startLine: symbol.position.line,
+                                    associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
+                                }));
+                            }).catch(err => console.warn(`Error finding references for ${symbol.symbolName} in ${symbol.filePath}:`, err))
+                    );
+                }
+                await Promise.allSettled(lspContextPromises);
+                console.log(`LSP: Added ${allContextSnippets.filter(s => s.type.startsWith('lsp-')).length} snippets.`);
+            } else {
+                console.log('No symbols identified for LSP lookup.');
+            }
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled: After LSP context retrieval');
+
+            // --- Embedding-based Context Retrieval ---
             const searchOptions = this.getSearchOptionsForMode(analysisMode, options);
+            let embeddingResults: SimilaritySearchResult[] = [];
+            if (embeddingQueries.length > 0) {
+                embeddingResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
+                    embeddingQueries, searchOptions,
+                    progressCallback || ((p, t) => console.log(`Generating embeddings for queries: ${p} of ${t}`)),
+                    token
+                );
+            } else {
+                console.log('No embedding queries extracted for embedding search.');
+            }
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled: After embedding search');
 
-            // Find relevant context for all chunks in a single batch with progress reporting
-            const allResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
-                chunks,
-                searchOptions,
-                progressCallback || ((processed, total) => {
-                    console.log(`Generating embeddings: ${processed} of ${total}`);
-                }),
-                token
-            );
+            const rankedEmbeddingResults = this.rankAndFilterResults(embeddingResults, analysisMode);
+            console.log(`Found ${rankedEmbeddingResults.length} relevant code snippets via embeddings after ranking.`);
 
-            // Check for cancellation
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
+            rankedEmbeddingResults.forEach(embResult => {
+                const scoreDisplay = (embResult.score * 100).toFixed(1);
+                const fileHeader = `### File: \`${embResult.filePath}\` (Relevance: ${scoreDisplay}%)`;
+                const formattedContent = `${fileHeader}\n\`\`\`\n${embResult.content}\n\`\`\``;
+
+                let embHunkIdentifiers: string[] = [];
+                const fileDiffData = parsedDiffFileHunks.find(f => f.filePath === embResult.filePath);
+                if (fileDiffData) {
+                    // Associate with all hunks in the file for embeddings, or refine if query source is known
+                    embHunkIdentifiers = fileDiffData.hunks.map(hunk => hunk.hunkId).filter(id => !!id) as string[];
+                }
+
+                allContextSnippets.push({
+                    id: `emb-${embResult.fileId}-${embResult.chunkId || this.quickHash(embResult.content)}`,
+                    type: 'embedding',
+                    content: formattedContent,
+                    relevanceScore: embResult.score, // Relevance based on embedding similarity score
+                    filePath: embResult.filePath,
+                    startLine: embResult.startOffset,
+                    associatedHunkIdentifiers: embHunkIdentifiers.length > 0 ? embHunkIdentifiers : undefined
+                });
+            });
+
+
+            if (allContextSnippets.length === 0) {
+                console.log('No relevant context found from LSP or embeddings. Attempting fallback.');
+                const fallbackSnippets = await this.getFallbackContextSnippets(diff, token);
+                allContextSnippets.push(...fallbackSnippets);
+                if (allContextSnippets.length === 0) {
+                    console.log('Fallback also yielded no context.');
+                    allContextSnippets.push({
+                        id: 'no-context-found',
+                        type: 'embedding',
+                        content: 'No relevant context could be found in the codebase. Analysis will be based solely on the changes in the PR.',
+                        relevanceScore: 0 // Lowest priority for no-context placeholder
+                    });
+                }
             }
 
-            if (allResults.length === 0) {
-                console.log('No relevant context found');
-                return await this.getFallbackContext(diff, token);
-            }
+            console.log(`Returning ${allContextSnippets.length} context snippets and parsed diff to AnalysisProvider.`);
+            return { snippets: allContextSnippets, parsedDiff: parsedDiffFileHunks };
 
-            // Rank and filter results based on relevance and analysis mode
-            const rankedResults = this.rankAndFilterResults(allResults, analysisMode);
-
-            console.log(`Found ${rankedResults.length} relevant code snippets after ranking`);
-
-            // Format the results first to get the initial context
-            const initialFormattedContext = this.formatContextResults(rankedResults);
-
-            // Check for cancellation
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
-            }
-
-            // Use the TokenManagerService to optimize context size taking all components into account
-            // If systemPrompt is not provided, get it from the mode
-            if (!systemPrompt) {
-                // Get the system prompt for the current analysis mode from the token manager
-                systemPrompt = await this.tokenManager.getSystemPromptForMode(analysisMode);
-            }
-
-            // Calculate token allocation for all components
-            const tokenComponents = {
-                systemPrompt,
-                diffText: diff,
-                context: initialFormattedContext
-            };
-
-            const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, analysisMode);
-
-            // Log token distribution
-            console.log(`Token allocation: ${JSON.stringify({
-                systemPrompt: allocation.systemPromptTokens,
-                diff: allocation.diffTextTokens,
-                context: allocation.contextTokens,
-                available: allocation.totalAvailableTokens,
-                total: allocation.totalRequiredTokens,
-                contextAllocation: allocation.contextAllocationTokens,
-                fits: allocation.fitsWithinLimit
-            })}`);
-
-            // Check for cancellation
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
-            }
-
-            // If everything fits, we can use the full context
-            if (allocation.fitsWithinLimit) {
-                console.log('All components fit within token limit, using full context');
-                return initialFormattedContext;
-            }
-
-            // If we need to optimize, use the token manager to do it
-            console.log(`Total tokens (${allocation.totalRequiredTokens}) exceed limit (${allocation.totalAvailableTokens})`);
-            console.log(`Context can use up to ${allocation.contextAllocationTokens} tokens`);
-
-            // Optimize the context to fit within the available token allocation
-            const optimizedContext = await this.tokenManager.optimizeContext(
-                initialFormattedContext,
-                allocation.contextAllocationTokens
-            );
-
-            // Assess the quality of the context
-            const qualityScore = this.assessContextQuality(rankedResults);
-            console.log(`Context quality score: ${qualityScore.toFixed(2)}`);
-
-            return optimizedContext;
         } catch (error) {
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
-            }
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled');
             console.error('Error getting context for diff:', error);
-            return 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error));
+            return {
+                snippets: [{
+                    id: 'error-context',
+                    type: 'embedding',
+                    content: 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error)),
+                    relevanceScore: 0 // Lowest priority for error context
+                }],
+                parsedDiff: parsedDiffFileHunks // Return parsed diff even on error
+            };
         }
     }
 
     /**
-     * Get custom search options based on the analysis mode
-     */
+    * Get custom search options based on the analysis mode
+    */
     private getSearchOptionsForMode(
         mode: AnalysisMode,
         baseOptions?: SimilaritySearchOptions
@@ -522,177 +576,6 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
-     * Optimize the context to stay within token limits based on the current model being used
-     */
-    private async optimizeForTokenLimit(
-        results: SimilaritySearchResult[],
-        mode: AnalysisMode
-    ): Promise<SimilaritySearchResult[]> {
-        try {
-            // Get information about the current model to determine token calculation strategy
-            const currentModel = await this.modelManager.getCurrentModel();
-            const modelFamily = currentModel.family || 'unknown';
-
-            // Use the actual model token limit, with a safety margin of 20%
-            // This leaves room for the model prompt and other content
-            const tokenLimit = currentModel ? Math.floor(currentModel.maxInputTokens * 0.8) : 8000;
-
-            console.log(`Using token limit of ${tokenLimit} for model ${currentModel.name || 'unknown'}`);
-
-            // Calculate total tokens based on the model family
-            const calculateTotalTokens = (results: SimilaritySearchResult[]): number => {
-                let totalTokens = 0;
-
-                for (const result of results) {
-                    // Calculate tokens for both the file path and content
-                    const pathTokens = TokenEstimator.estimateTokensByModelFamily(
-                        result.filePath,
-                        modelFamily,
-                        currentModel.name
-                    );
-                    const contentTokens = TokenEstimator.estimateTokensByModelFamily(
-                        result.content,
-                        modelFamily,
-                        currentModel.name
-                    );
-
-                    // Add tokens for markdown formatting (approximately 10 tokens per result)
-                    totalTokens += pathTokens + contentTokens + 10;
-                }
-
-                return totalTokens;
-            };
-
-            // Calculate total tokens
-            const estimatedTokens = calculateTotalTokens(results);
-
-            // Check if we're within limits
-            if (estimatedTokens <= tokenLimit) {
-                return results; // Already within limits
-            }
-
-            console.log(`Context exceeds estimated token limit for ${modelFamily} model (${estimatedTokens} > ${tokenLimit}), optimizing...`);
-
-            // Calculate how much we need to reduce content
-            const scaleFactor = tokenLimit / estimatedTokens;
-            const maxResultsToKeep = Math.max(5, Math.floor(results.length * scaleFactor));
-
-            // Sort by relevance (highest score first) and take the top results
-            const optimizedResults = [...results]
-                .sort((a, b) => b.score - a.score)
-                .slice(0, maxResultsToKeep);
-
-            // Check if we still need to truncate content
-            const optimizedTokens = calculateTotalTokens(optimizedResults);
-            if (optimizedTokens > tokenLimit) {
-                // Further truncation needed
-                const contentScaleFactor = tokenLimit / optimizedTokens;
-
-                return optimizedResults.map(result => {
-                    // Calculate max allowed tokens for this result's content
-                    const currentContentTokens = TokenEstimator.estimateTokensByModelFamily(
-                        result.content,
-                        modelFamily,
-                        currentModel?.name
-                    );
-                    const allowedContentTokens = Math.floor(currentContentTokens * contentScaleFactor);
-
-                    // Estimate number of characters per token for this model family
-                    let charsPerToken = 4; // Default estimate
-                    if (modelFamily.toLowerCase().includes('claude')) {
-                        charsPerToken = 5;
-                    } else if (modelFamily.toLowerCase().includes('gemini')) {
-                        charsPerToken = 4.5;
-                    }
-
-                    // Calculate max character length
-                    const maxContentLength = Math.max(100, allowedContentTokens * charsPerToken);
-
-                    // Truncate if needed
-                    if (result.content.length > maxContentLength) {
-                        const truncatedContent = result.content.substring(0, maxContentLength);
-                        return {
-                            ...result,
-                            content: truncatedContent + '\n// ... [content truncated to fit token limit] ...'
-                        };
-                    }
-                    return result;
-                });
-            }
-
-            return optimizedResults;
-        } catch (error) {
-            console.error('Error optimizing for token limit:', error);
-
-            // Fallback: return top 5 results with truncated content if error occurs
-            const topResults = [...results].sort((a, b) => b.score - a.score).slice(0, 5);
-
-            return topResults.map(result => {
-                if (result.content.length > 500) {
-                    return {
-                        ...result,
-                        content: result.content.substring(0, 500) + '\n// ... [content truncated] ...'
-                    };
-                }
-                return result;
-            });
-        }
-    }
-
-    /**
-     * Get relevant code context for a list of file paths
-     * This is useful when you already know which files have changed
-     * @param files Array of file paths
-     * @param analysisMode Analysis mode for context retrieval strategy
-     * @returns Formatted context
-     */
-    async getContextForFiles(
-        files: string[],
-        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
-    ): Promise<string> {
-        try {
-            // Extract file extensions to determine languages
-            const fileExtensions = files
-                .map(file => {
-                    const match = file.match(/\.([^./\\]+)$/);
-                    return match ? match[1] : null;
-                })
-                .filter(ext => ext !== null) as string[];
-
-            // Map extensions to languages using the shared definition
-            const languageSet = new Set<string>();
-
-            for (const ext of fileExtensions) {
-                const language = SUPPORTED_LANGUAGES[ext];
-                if (language) {
-                    languageSet.add(language.language);
-                }
-            }
-
-            const languages = Array.from(languageSet);
-
-            // If we have languages, use them as a filter
-            let options: SimilaritySearchOptions | undefined;
-            if (languages.length > 0) {
-                options = {
-                    languageFilter: languages
-                };
-            }
-
-            // Customize options based on analysis mode
-            options = this.getSearchOptionsForMode(analysisMode, options);
-
-            // Join file paths to create a search query
-            const searchQuery = files.join('\n');
-
-            return await this.getContextForDiff(searchQuery, options, analysisMode);
-        } catch (error) {
-            console.error('Error getting context for files:', error);
-            return 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error));
-        }
-    }
-
-    /**
      * Assess the quality of the retrieved context
      * @returns A score between 0-1 indicating context quality
      */
@@ -720,11 +603,12 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
-     * Get fallback context when no relevant context is found
+     * Get fallback context snippets when no relevant context is found
      */
-    private async getFallbackContext(diff: string, token?: vscode.CancellationToken): Promise<string> {
+    private async getFallbackContextSnippets(diff: string, token?: vscode.CancellationToken): Promise<ContextSnippet[]> {
+        const fallbackSnippets: ContextSnippet[] = [];
         try {
-            console.log('Using fallback strategies to find context');
+            console.log('Using fallback strategies to find context snippets');
 
             // Strategy 1: Extract file paths from diff and use them to find related files
             const filePathRegex = /^diff --git a\/(.+) b\/(.+)$/gm;
@@ -763,16 +647,41 @@ export class ContextProvider implements vscode.Disposable {
 
                 if (allResults.length > 0) {
                     console.log(`Found ${allResults.length} fallback context items`);
-                    return this.formatContextResults(allResults);
+                    allResults.forEach(embResult => {
+                        const scoreDisplay = (embResult.score * 100).toFixed(1);
+                        const fileHeader = `### File: \`${embResult.filePath}\` (Fallback Relevance: ${scoreDisplay}%)`;
+                        const formattedContent = `${fileHeader}\n\`\`\`\n${embResult.content}\n\`\`\``;
+                        fallbackSnippets.push({
+                            id: `fallback-emb-${embResult.fileId}-${embResult.chunkId || this.quickHash(embResult.content)}`,
+                            type: 'embedding',
+                            content: formattedContent,
+                            relevanceScore: embResult.score * 0.5, // Lower priority for fallback embeddings, scaled by original score
+                            filePath: embResult.filePath,
+                            startLine: embResult.startOffset
+                        });
+                    });
+                    return fallbackSnippets;
                 }
             }
 
-            // Strategy 2: If still nothing, return a message about no context
-            return 'No directly relevant context could be found in the codebase. Analysis will be based solely on the changes in the PR.';
+            // Strategy 2: If still nothing, return a placeholder snippet
+            fallbackSnippets.push({
+                id: 'no-fallback-context',
+                type: 'embedding',
+                content: 'No directly relevant context could be found in the codebase via primary or fallback methods. Analysis will be based solely on the changes in the PR.',
+                relevanceScore: 0 // Lowest priority for no-fallback placeholder
+            });
+            return fallbackSnippets;
 
         } catch (error) {
-            console.error('Error getting fallback context:', error);
-            return 'Error retrieving fallback context: ' + (error instanceof Error ? error.message : String(error));
+            console.error('Error getting fallback context snippets:', error);
+            fallbackSnippets.push({
+                id: 'error-fallback-context',
+                type: 'embedding',
+                content: 'Error retrieving fallback context: ' + (error instanceof Error ? error.message : String(error)),
+                relevanceScore: 0 // Lowest priority for error in fallback
+            });
+            return fallbackSnippets;
         }
     }
 
@@ -916,6 +825,7 @@ export class ContextProvider implements vscode.Disposable {
 
             // Format with markdown for better readability
             formattedFiles.push([
+
                 `${fileHeader}${contentDescription}`,
                 '```',
                 combinedContent,
@@ -960,80 +870,181 @@ export class ContextProvider implements vscode.Disposable {
     }
 
     /**
-     * Get summary context for PR analysis
-     * @param prDescription PR description
-     * @param diff PR diff
-     * @param changedFiles List of changed file paths
-     * @param analysisMode Analysis mode to determine context retrieval strategy
-     * @returns Complete context for analysis
+     * Find the definition(s) of a symbol at a given position in a file using LSP.
+     * @param filePath The absolute path to the file.
+     * @param position The position of the symbol in the file.
+     * @param token Optional cancellation token.
+     * @returns A promise that resolves to an array of locations, or undefined if not found or cancelled.
      */
-    async getPRContext(
-        prDescription: string,
-        diff: string,
-        changedFiles: string[],
-        analysisMode: AnalysisMode = AnalysisMode.Comprehensive
-    ): Promise<string> {
-        console.log(`Getting PR context for analysis mode: ${analysisMode}`);
-
-        // First, get context based on the diff itself
-        const diffContext = await this.getContextForDiff(diff, undefined, analysisMode);
-
-        // Get additional context based on changed files
-        const filesContext = await this.getContextForFiles(changedFiles, analysisMode);
-
-        // Combine contexts, removing duplicates
-        // We'll include diff and PR description in all cases
-        const sections = [
-            '## PR Description',
-            prDescription || 'No description provided.',
-            '',
-            '## PR Changes',
-            `This PR changes ${changedFiles.length} files.`,
-            '',
-        ];
-
-        // For different modes, format content differently
-        switch (analysisMode) {
-            case 'critical':
-                // For critical issues, focus on the most relevant context only
-                sections.push(diffContext);
-                break;
-
-            case 'comprehensive':
-                // For comprehensive analysis, include both diff and file contexts
-                sections.push(diffContext);
-                sections.push('');
-                sections.push('## Additional Context');
-                sections.push(filesContext);
-                break;
-
-            case 'security':
-                // For security analysis, prioritize code context
-                sections.push(diffContext);
-                sections.push('');
-                sections.push('## Security-Related Context');
-                sections.push(filesContext);
-                break;
-
-            case 'performance':
-                // For performance analysis, focus on related algorithms and patterns
-                sections.push(diffContext);
-                sections.push('');
-                sections.push('## Performance-Related Context');
-                sections.push(filesContext);
-                break;
+    public async findSymbolDefinition(
+        filePath: string,
+        position: vscode.Position,
+        token?: vscode.CancellationToken
+    ): Promise<vscode.Location[] | undefined> {
+        // Early exit if cancellation is already requested
+        if (token?.isCancellationRequested) {
+            console.log('Symbol definition lookup cancelled before execution.');
+            return undefined;
         }
 
-        const combined = sections.join('\n');
+        try {
+            const uri = vscode.Uri.file(filePath);
+            console.log(`Finding definition for symbol at ${filePath}:${position.line}:${position.character}`);
 
-        // Check if the context is too large and might exceed token limits
-        if (combined.length > this.MAX_CONTENT_LENGTH) {
-            console.log('Context is very large, truncating to fit token limits');
-            return combined.substring(0, this.MAX_CONTENT_LENGTH) +
-                '\n\n[Note: Context was truncated due to length limits]';
+            // Use a CancellationTokenSource to manage cancellation for the command execution
+            const cts = new vscode.CancellationTokenSource();
+            if (token) {
+                token.onCancellationRequested(() => cts.cancel());
+            }
+
+            const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeDefinitionProvider',
+                uri,
+                position,
+                cts.token // Pass the token from the new source
+            );
+
+            if (token?.isCancellationRequested) {
+                console.log('Symbol definition lookup cancelled.');
+                return undefined;
+            }
+
+            if (locations && locations.length > 0) {
+                console.log(`Found ${locations.length} definition(s)`);
+                return locations;
+            } else {
+                console.log('No definition found.');
+                return undefined;
+            }
+        } catch (error) {
+            console.error(`Error finding symbol definition for ${filePath}:${position.line}:${position.character}:`, error);
+            // Don't throw, just return undefined if LSP fails
+            return undefined;
+        }
+    }
+
+    /**
+     * Find references to a symbol at a given position in a file using LSP.
+     * @param filePath The absolute path to the file.
+     * @param position The position of the symbol in the file.
+     * @param includeDeclaration Whether to include the declaration in the results.
+     * @param token Optional cancellation token.
+     * @returns A promise that resolves to an array of locations, or undefined if not found or cancelled.
+     */
+    public async findSymbolReferences(
+        filePath: string,
+        position: vscode.Position,
+        includeDeclaration: boolean = false,
+        token?: vscode.CancellationToken
+    ): Promise<vscode.Location[] | undefined> {
+        // Early exit if cancellation is already requested
+        if (token?.isCancellationRequested) {
+            console.log('Symbol reference lookup cancelled before execution.');
+            return undefined;
         }
 
-        return combined;
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const context: vscode.ReferenceContext = { includeDeclaration };
+            console.log(`Finding references for symbol at ${filePath}:${position.line}:${position.character} (includeDeclaration: ${includeDeclaration})`);
+
+            // Use a CancellationTokenSource to manage cancellation for the command execution
+            const cts = new vscode.CancellationTokenSource();
+            if (token) {
+                token.onCancellationRequested(() => cts.cancel());
+            }
+
+            const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+                'vscode.executeReferenceProvider',
+                uri,
+                position,
+                context,
+                cts.token // Pass the token from the new source
+            );
+
+            if (token?.isCancellationRequested) {
+                console.log('Symbol reference lookup cancelled.');
+                return undefined;
+            }
+
+            if (locations && locations.length > 0) {
+                console.log(`Found ${locations.length} reference(s)`);
+                return locations;
+            } else {
+                console.log('No references found.');
+                return undefined;
+            }
+        } catch (error) {
+            console.error(`Error finding symbol references for ${filePath}:${position.line}:${position.character}:`, error);
+            // Don't throw, just return undefined if LSP fails
+            return undefined;
+        }
+    }
+
+    /**
+     * Retrieve code snippets for a list of LSP locations.
+     * @param locations Array of vscode.Location objects.
+     * @param contextLines Number of lines to include before and after the target range.
+     * @param token Optional cancellation token.
+     * @returns A promise that resolves to an array of formatted markdown snippets.
+     */
+    public async getSnippetsForLocations(
+        locations: vscode.Location[],
+        contextLines: number,
+        token?: vscode.CancellationToken,
+        defaultTitleType: "Definition" | "Reference" | "Context" = "Context"
+    ): Promise<string[]> {
+        if (!locations || locations.length === 0) {
+            return [];
+        }
+
+        const snippets: string[] = [];
+        const snippetCache = new Map<string, string>();
+
+        for (const location of locations) {
+            if (token?.isCancellationRequested) {
+                console.log('Snippet retrieval cancelled.');
+                break;
+            }
+
+            const cacheKey = `${location.uri.toString()}:${location.range.start.line}:${location.range.start.character}-${location.range.end.line}:${location.range.end.character}-${defaultTitleType}`;
+            if (snippetCache.has(cacheKey)) {
+                const cachedSnippet = snippetCache.get(cacheKey);
+                if (cachedSnippet) {
+                    snippets.push(cachedSnippet);
+                }
+                continue;
+            }
+
+            try {
+                const document = await vscode.workspace.openTextDocument(location.uri);
+                const startLine = Math.max(0, location.range.start.line - contextLines);
+                const endLine = Math.min(document.lineCount - 1, location.range.end.line + contextLines);
+
+                let snippetContent = '';
+                for (let i = startLine; i <= endLine; i++) {
+                    if (token?.isCancellationRequested) break;
+                    const lineText = document.lineAt(i).text;
+                    snippetContent += `${String(i + 1).padStart(4, ' ')}: ${lineText}\n`;
+                }
+
+                if (token?.isCancellationRequested) {
+                    console.log('Snippet retrieval cancelled during line reading.');
+                    break;
+                }
+
+                const relativePath = vscode.workspace.asRelativePath(location.uri, false);
+                const languageId = getLanguageForExtension(path.extname(relativePath))?.language || document.languageId || 'plaintext';
+
+                const formattedSnippet = `**${defaultTitleType} in \`${relativePath}\` (L${location.range.start.line + 1}):**\n\`\`\`${languageId}\n${snippetContent.trimEnd()}\n\`\`\``;
+                snippets.push(formattedSnippet);
+                snippetCache.set(cacheKey, formattedSnippet);
+
+            } catch (error) {
+                console.error(`Error reading snippet for ${location.uri.fsPath}:`, error);
+            }
+        }
+        return snippets;
     }
 
     /**

@@ -61,6 +61,14 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         // Initialize the vector database service
         this.vectorDatabaseService = VectorDatabaseService.getInstance(context);
 
+        // Set initial model dimension for VectorDatabaseService
+        const initialModelInfo = this.modelSelectionService.selectOptimalModel().modelInfo;
+        if (initialModelInfo && initialModelInfo.dimensions) {
+            this.vectorDatabaseService.setCurrentModelDimension(initialModelInfo.dimensions);
+        } else {
+            console.warn('PRAnalysisCoordinator: Could not determine initial model dimension for VectorDatabaseService.');
+        }
+
         this.indexingManager = new IndexingManager(
             context,
             this.workspaceSettingsService,
@@ -179,6 +187,14 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
                 return;
             }
 
+            const repository = this.gitOperationsManager.getRepository();
+            if (!repository) {
+                vscode.window.showErrorMessage('No active Git repository could be determined.');
+                this.uiManager.updateStatusBar(StatusBarState.Ready);
+                return;
+            }
+            const gitRootPath = repository.rootUri.fsPath;
+
             // Offer options for analysis type
             const selectedOption = await this.uiManager.showAnalysisTypeOptions();
 
@@ -227,6 +243,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
                     // We allocate most of the progress to the actual analysis
                     const { analysis, context } = await this.analysisProvider.analyzePullRequest(
                         diffText,
+                        gitRootPath, // Pass gitRootPath here
                         analysisMode,
                         (message, increment) => {
                             // Only update the message if no increment is specified
@@ -294,56 +311,96 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      * Show options for selecting embedding model
      */
     private async showModelSelectionOptions(): Promise<void> {
-        // Show model info first
-        // this.modelSelectionService.showModelsInfo();
+        const previousModel = this.indexingManager.getSelectedModel();
 
         // Show options and get selection
-        const selected = await this.uiManager.showModelSelectionOptions();
+        const selectedOption = await this.uiManager.showModelSelectionOptions();
 
-        if (!selected) {
+        if (!selectedOption) {
             return;
         }
 
-        let modelChanged = false;
+        let newSelectedModelEnumValue: EmbeddingModel | undefined;
 
         // Update settings based on selection
-        switch (selected) {
+        switch (selectedOption) {
             case 'Use optimal model (automatic selection)':
-                const currentModel = this.workspaceSettingsService.getSelectedEmbeddingModel();
-                modelChanged = currentModel !== undefined;
+                newSelectedModelEnumValue = undefined; // Let the service pick
                 this.workspaceSettingsService.setSelectedEmbeddingModel(undefined);
                 break;
-
             case 'Force high-memory model (Jina Embeddings)':
-                const hiMemModel = EmbeddingModel.JinaEmbeddings;
-                modelChanged = this.indexingManager.getSelectedModel() !== hiMemModel;
-                this.workspaceSettingsService.setSelectedEmbeddingModel(hiMemModel);
+                newSelectedModelEnumValue = EmbeddingModel.JinaEmbeddings;
+                this.workspaceSettingsService.setSelectedEmbeddingModel(newSelectedModelEnumValue);
                 break;
-
             case 'Force low-memory model (MiniLM)':
-                const lowMemModel = EmbeddingModel.MiniLM;
-                modelChanged = this.indexingManager.getSelectedModel() !== lowMemModel;
-                this.workspaceSettingsService.setSelectedEmbeddingModel(lowMemModel);
+                newSelectedModelEnumValue = EmbeddingModel.MiniLM;
+                this.workspaceSettingsService.setSelectedEmbeddingModel(newSelectedModelEnumValue);
                 break;
+            default:
+                return; // Should not happen
         }
 
-        // Reinitialize indexing service if model changed
+        // Determine the actual model that will be used after selection
+        // This considers the case where 'undefined' means optimal selection
+        // selectOptimalModel will use the value just set in workspaceSettingsService
+        const actualNewModelInfo = this.modelSelectionService.selectOptimalModel();
+        const actualNewModelName = actualNewModelInfo.modelInfo.name;
+
+        // Check if the model has actually changed
+        const modelChanged = previousModel !== actualNewModelName;
+
         if (modelChanged) {
-            vscode.window.showInformationMessage('Reinitializing with new model selection...');
+            vscode.window.showInformationMessage(
+                `Embedding model changed from "${previousModel || 'auto'}" to "${actualNewModelName}". The existing embedding database is incompatible and must be rebuilt.`
+            );
 
-            const { modelInfo } = this.modelSelectionService.selectOptimalModel();
+            // Set the new model dimension in VectorDatabaseService BEFORE re-initializing IndexingManager
+            // or performing a full reindex, as deleteAllEmbeddingsAndChunks might be called.
+            const newDimension = actualNewModelInfo.modelInfo.dimensions;
+            if (newDimension) {
+                this.vectorDatabaseService.setCurrentModelDimension(newDimension);
+            } else {
+                console.warn('PRAnalysisCoordinator: Could not determine new model dimension for VectorDatabaseService during model change.');
+            }
 
-            this.indexingManager.initializeIndexingService(modelInfo);
+            // Reinitialize IndexingManager and dependent services with the new model
+            this.indexingManager.initializeIndexingService(actualNewModelInfo.modelInfo);
+
+            // Update the EmbeddingDatabaseAdapter with the new IndexingService instance
+            this.embeddingDatabaseAdapter = EmbeddingDatabaseAdapter.getInstance(
+                this.context,
+                this.vectorDatabaseService,
+                this.workspaceSettingsService,
+                this.indexingManager.getIndexingService()!
+            );
+            this.indexingManager.setEmbeddingDatabaseAdapter(this.embeddingDatabaseAdapter);
 
             // Ask if user wants to rebuild database with new model
-            const rebuild = await vscode.window.showQuickPick(['Yes', 'No'], {
-                placeHolder: 'Rebuild embedding database with new model?'
+            const rebuildChoice = await vscode.window.showQuickPick(['Yes, rebuild now', 'No, I will do it later'], {
+                placeHolder: `Rebuild embedding database for the new model "${actualNewModelName}"? This is required for context retrieval to work correctly.`,
+                ignoreFocusOut: true
             });
 
-            if (rebuild === 'Yes') {
-                // Delete existing embeddings for old model and rebuild
+            if (rebuildChoice === 'Yes, rebuild now') {
+                this.statusBarService.showTemporaryMessage(
+                    `Rebuilding database for model: ${actualNewModelName}...`,
+                    undefined, // Indefinite until indexing finishes
+                    StatusBarMessageType.Working
+                );
+                // performFullReindexing should now call vectorDb.deleteAllEmbeddingsAndChunks()
                 await this.indexingManager.performFullReindexing();
+                this.statusBarService.showTemporaryMessage(
+                    `Database rebuild for ${actualNewModelName} complete.`,
+                    5000,
+                    StatusBarMessageType.Info
+                );
+            } else {
+                vscode.window.showWarningMessage(
+                    `Database not rebuilt. Context retrieval may not work correctly until the database is rebuilt for model "${actualNewModelName}".`
+                );
             }
+        } else {
+            vscode.window.showInformationMessage(`Embedding model selection confirmed: "${actualNewModelName}". No change detected.`);
         }
     }
 

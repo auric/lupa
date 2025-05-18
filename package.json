@@ -75,18 +75,17 @@
         "test:coverage": "vitest run --coverage"
     },
     "dependencies": {
-        "@anthropic-ai/tokenizer": "^0.0.4",
         "@huggingface/transformers": "^3.4.0",
         "@vscode/sqlite3": "^5.1.8-vscode",
         "@vscode/tree-sitter-wasm": "^0.1.4",
         "async-mutex": "^0.5.0",
+        "hnswlib-node": "^3.0.0",
         "ml-distance": "^4.0.1",
         "onnxruntime-node": "^1.21.0",
         "piscina": "^4.8.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
         "sql-template-strings": "^2.2.2",
-        "tiktoken": "^1.0.20",
         "uuid": "^11.1.0",
         "web-tree-sitter": "^0.24.7"
     },
@@ -102,7 +101,6 @@
         "esbuild-native-node-modules-plugin": "^1.0.3",
         "esbuild-plugin-copy": "^2.1.1",
         "rimraf": "^6.0.1",
-        "ts-jest": "^29.2.6",
         "typescript": "^5.8.2",
         "vitest": "^3.0.9"
     },

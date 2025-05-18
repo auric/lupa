@@ -33,6 +33,15 @@ export interface BreakPoint {
 }
 
 /**
+ * Represents symbol information
+ */
+export interface SymbolInfo {
+    symbolName: string;
+    symbolType: string;
+    position: vscode.Position; // Use vscode.Position
+}
+
+/**
  * Manages a pool of TreeStructureAnalyzer instances
  */
 export class TreeStructureAnalyzerPool implements vscode.Disposable {
@@ -447,8 +456,8 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                     node.type.includes('interface') ||
                     node.type.includes('enum');
 
-            return isClassLike;
-        }, variant);
+                return isClassLike;
+            }, variant);
     }
 
     /**
@@ -720,36 +729,73 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * Helper to extract a meaningful name from a Tree-sitter node
      */
     private extractNodeName(node: Parser.SyntaxNode, language: string): string | undefined {
-        // Common field name patterns to try, in order of preference
-        const commonFields = ['name', 'id', 'identifier'];
+        // Specific overrides first
+        if (language === 'csharp' && node.type === 'indexer_declaration') return 'this';
 
-        // First try direct child field access - most common case
+        const identifierTypes = ['identifier', 'property_identifier', 'type_identifier', 'field_identifier', 'namespace_identifier'];
+
+        // 1. Check common named fields (prefer identifier types)
+        const commonFields = ['name', 'id', 'identifier'];
         for (const fieldName of commonFields) {
             const nameNode = node.childForFieldName(fieldName);
-            if (nameNode) return nameNode.text;
+            if (nameNode && identifierTypes.includes(nameNode.type)) return nameNode.text;
+            // If field exists but isn't identifier type, maybe still return? For now, require identifier.
         }
 
-        // Try to find identifier nodes - common in many languages
-        const identifierTypes = ['identifier', 'property_identifier', 'type_identifier', 'field_identifier'];
-        const identifiers = node.descendantsOfType(identifierTypes);
-        if (identifiers.length > 0) {
-            // First identifier is usually the name
-            return identifiers[0].text;
+        // 2. Declarator Logic (look for first identifier child within declarator)
+        const declaratorNode = node.childForFieldName('declarator');
+        if (declaratorNode) {
+            const firstIdentifierChild = declaratorNode.children.find(child => identifierTypes.includes(child.type));
+            if (firstIdentifierChild) return firstIdentifierChild.text;
+            // Fallback: first identifier descendant in declarator if no direct child works
+            const firstDescendant = declaratorNode.descendantsOfType(identifierTypes)[0];
+            if (firstDescendant) return firstDescendant.text;
         }
 
-        // Special handling for function declarations in languages with complex declarators
-        if (node.type.includes('function')) {
-            const declarator = node.childForFieldName('declarator');
-            if (declarator) {
-                // Try to find identifier in the declarator
-                const identifiersInDeclarator = declarator.descendantsOfType(identifierTypes);
-                if (identifiersInDeclarator.length > 0) {
-                    return identifiersInDeclarator[0].text;
+        // 3. Type Sibling Logic (find identifier immediately after type)
+        const typeNode = node.childForFieldName('type');
+        if (typeNode) {
+            let sibling = typeNode.nextSibling;
+            while (sibling) {
+                if (identifierTypes.includes(sibling.type)) return sibling.text;
+                // Handle pointers/references between type and name, e.g., int * name;
+                if (sibling.type === 'pointer_declarator' || sibling.type === 'reference_declarator') {
+                    const nameInside = sibling.descendantsOfType(identifierTypes)[0];
+                    if (nameInside) return nameInside.text;
                 }
+                // Skip over non-identifier nodes like qualifiers, etc.
+                if (sibling.text.trim() === '' || sibling.type === 'comment') { // Skip whitespace/comments
+                    sibling = sibling.nextSibling;
+                    continue;
+                }
+                // If we hit something substantial that isn't the identifier, stop for this logic
+                if (!identifierTypes.includes(sibling.type) && sibling.type !== 'pointer_declarator' && sibling.type !== 'reference_declarator') {
+                    break;
+                }
+                sibling = sibling.nextSibling;
             }
         }
 
-        // For anonymous functions assigned to variables, try to find parent variable declarator
+        // 4. Template Declaration Parameter Name (Heuristic: first type_identifier descendant)
+        if (node.type === 'template_declaration') {
+            const typeIdentifiers = node.descendantsOfType('type_identifier');
+            if (typeIdentifiers.length > 0) return typeIdentifiers[0].text; // Often the template param name
+        }
+
+        // 5. Fallback: Find LAST identifier that is a DIRECT CHILD of the node
+        let lastDirectIdentifierChild: Parser.SyntaxNode | null = null;
+        for (let i = node.childCount - 1; i >= 0; i--) {
+            const child = node.child(i);
+            if (child && identifierTypes.includes(child.type)) {
+                lastDirectIdentifierChild = child;
+                break;
+            }
+        }
+        if (lastDirectIdentifierChild) return lastDirectIdentifierChild.text;
+
+        // --- Keep existing special handling below if needed ---
+
+        // For anonymous functions assigned to variables
         if (node.type.includes('function') || node.type === 'arrow_function') {
             let parent = node.parent;
             while (parent) {
@@ -765,19 +811,6 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         if (node.type === 'rule_set' || node.type.includes('selector')) {
             const selectors = node.childForFieldName('selectors');
             if (selectors) return selectors.text;
-        }
-
-        // For type declarations that might have a generic type parameter
-        if (node.type.includes('class') || node.type.includes('interface') || node.type.includes('type')) {
-            // First try direct field access
-            const nameNode = node.childForFieldName('name');
-            if (nameNode) return nameNode.text;
-
-            // Then try to find a type identifier
-            const typeIds = node.descendantsOfType(['type_identifier']);
-            if (typeIds.length > 0) {
-                return typeIds[0].text;
-            }
         }
 
         return undefined; // Return undefined if no name found
@@ -1133,6 +1166,138 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         } catch (error) {
             console.error(`Error checking if language ${language} is supported:`, error);
             return false;
+        }
+    }
+
+    /**
+     * Find symbols (functions, classes, variables, etc.) within specified line ranges.
+     * @param content Full file content
+     * @param language Language identifier
+     * @param ranges Array of line ranges (0-based, inclusive) corresponding to diff changes
+     * @param variant Optional language variant
+     * @returns Array of identified symbols within the ranges
+     */
+    public async findSymbolsInRanges(
+        content: string,
+        language: string,
+        ranges: { startLine: number; endLine: number }[],
+        variant?: string
+    ): Promise<SymbolInfo[]> {
+        await this.ensureInitialized();
+
+        let tree: Parser.Tree | null = null;
+        const foundSymbols: SymbolInfo[] = [];
+        const processedSymbolKeys = new Set<string>(); // To ensure uniqueness
+
+        try {
+            tree = await this.parseContent(content, language, variant);
+            if (!tree) {
+                // Error logged in parseContent, return empty array as per current design
+                return [];
+            }
+
+            const rootNode = tree.rootNode;
+
+            // Define node types that often represent named symbols/declarations/definitions
+            const symbolNodeTypes = [
+                // C++
+                'function_definition', /* 'function_declarator', */ 'class_specifier', 'struct_specifier',
+                'enum_specifier', 'namespace_definition', 'field_declaration',
+                'template_declaration',
+                'declaration', // Keep for variables like localVar, globalVar (at declaration site)
+                // C#
+                'class_declaration', 'struct_declaration', 'interface_declaration', 'enum_declaration',
+                'method_declaration', 'constructor_declaration', 'destructor_declaration', 'operator_declaration',
+                'property_declaration', 'event_declaration', 'field_declaration', 'local_declaration_statement',
+                'delegate_declaration', 'namespace_declaration', 'local_function_statement', 'indexer_declaration',
+                // Common / Other languages (Keep specific ones)
+                'function_declaration', 'variable_declarator', 'lexical_declaration',
+                'method_definition', 'method_signature',
+                'module', 'type_alias_declaration',
+                // Python
+                'function_definition', 'class_definition',
+                // Java
+                'method_declaration', 'constructor_declaration', 'class_declaration', 'interface_declaration', 'enum_declaration',
+                // Go
+                'function_declaration', 'method_declaration', 'type_spec',
+                // Ruby
+                'method', 'singleton_method', 'class', 'module',
+                // Rust
+                'function_item', 'struct_item', 'trait_item', 'impl_item', 'enum_item', 'mod_item',
+            ];
+
+            // --- Single Pass: Find declaration/definition symbols overlapping ranges ---
+
+            const potentialSymbolNodes = rootNode.descendantsOfType(symbolNodeTypes);
+
+            for (const node of potentialSymbolNodes) {
+                const startLine = node.startPosition.row;
+                const endLine = node.endPosition.row;
+
+                // Check if the node's line range overlaps with any input range
+                const overlaps = ranges.some(range =>
+                    Math.max(startLine, range.startLine) <= Math.min(endLine, range.endLine)
+                );
+
+                if (overlaps) {
+                    const symbolName = this.extractNodeName(node, language);
+                    const symbolType = node.type; // Use the tree-sitter node type
+
+                    if (symbolName) {
+                        // --- Find the identifier node for precise positioning ---
+                        let identifierNode: Parser.SyntaxNode | null = null;
+                        // Try common name fields first
+                        identifierNode = node.childForFieldName('name') || node.childForFieldName('id') || node.childForFieldName('identifier');
+                        // If not found, search within declarators
+                        if (!identifierNode) {
+                            const declaratorNode = node.childForFieldName('declarator');
+                            if (declaratorNode) {
+                                identifierNode = declaratorNode.descendantsOfType(['identifier', 'property_identifier', 'type_identifier', 'field_identifier'])[0] || null;
+                            }
+                        }
+                        // Fallback: Search direct children for identifier type
+                        if (!identifierNode) {
+                            identifierNode = node.children.find(child => child.type === 'identifier' && child.text === symbolName) || null;
+                        }
+                        // Fallback: Search all descendants (less precise, use as last resort)
+                        if (!identifierNode) {
+                            identifierNode = node.descendantsOfType(['identifier', 'property_identifier', 'type_identifier', 'field_identifier']).find(n => n.text === symbolName) || null;
+                        }
+
+                        // Use identifier position if found, otherwise fallback to node position
+                        const startPos = identifierNode ? identifierNode.startPosition : node.startPosition;
+                        const position = new vscode.Position(startPos.row, startPos.column);
+                        // --- End of identifier positioning logic ---
+
+                        // Create a unique key based on name and position to avoid duplicates
+                        const symbolKey = `${symbolName}@${position.line}:${position.character}`;
+
+                        if (!processedSymbolKeys.has(symbolKey)) {
+                            foundSymbols.push({ symbolName, symbolType, position });
+                            processedSymbolKeys.add(symbolKey);
+                        }
+                    }
+                }
+            }
+
+            // Sort results by position for consistency
+            foundSymbols.sort((a, b) => {
+                if (a.position.line !== b.position.line) {
+                    return a.position.line - b.position.line;
+                }
+                return a.position.character - b.position.character;
+            });
+
+            return foundSymbols;
+
+        } catch (error) {
+            // Log errors from parsing or processing, return empty array
+            console.error(`Error finding symbols in ranges for ${language}${variant ? ' (' + variant + ')' : ''}:`, error);
+            return []; // Return empty array on error
+        } finally {
+            if (tree) {
+                tree.delete();
+            }
         }
     }
 

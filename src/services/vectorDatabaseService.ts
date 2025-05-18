@@ -5,6 +5,7 @@ import { createHash } from 'crypto';
 import * as sqlite3 from '@vscode/sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 import { similarity } from 'ml-distance';
+import { HierarchicalNSW } from 'hnswlib-node';
 import {
     FileRecord,
     ChunkRecord,
@@ -16,9 +17,13 @@ import {
     ChunkingMetadata
 } from '../types/embeddingTypes';
 
+// INFO: Dynamic resizing of the HNSW index is implemented in storeEmbeddings using HierarchicalNSW.prototype.resizeIndex
+// when the number of elements exceeds the current capacity.
+const ANN_MAX_ELEMENTS_CONFIG = 1000000; // Initial max elements for HNSW index
+
 /**
  * VectorDatabaseService implements a SQLite-based storage system for code embeddings
- * with efficient similarity search capabilities.
+ * with efficient similarity search capabilities using HNSWlib for ANN search.
  */
 export class VectorDatabaseService implements vscode.Disposable {
     private db: sqlite3.Database | null = null;
@@ -27,6 +32,11 @@ export class VectorDatabaseService implements vscode.Disposable {
     private isInitialized = false;
     private initPromise: Promise<void> | null = null;
     private inTransaction = false; // Track if we're already in a transaction
+
+    // ANN Index related members
+    private annIndex: HierarchicalNSW | null = null;
+    private currentModelDimension: number | null = null;
+    private annIndexPath: string = '';
 
     // Default configuration values
     private static readonly DEFAULT_CONFIG: Required<Omit<DatabaseConfig, 'dbPath'>> = {
@@ -84,9 +94,11 @@ export class VectorDatabaseService implements vscode.Disposable {
             ...VectorDatabaseService.DEFAULT_CONFIG,
             ...config
         };
+        this.annIndexPath = path.join(path.dirname(this.config.dbPath), 'embeddings.ann.idx');
 
         // Initialize database
         console.log(`Initializing vector database at ${this.config.dbPath}`);
+        console.log(`ANN index path will be ${this.annIndexPath}`);
         this.initPromise = this.initializeDatabase();
     }
 
@@ -97,21 +109,21 @@ export class VectorDatabaseService implements vscode.Disposable {
         return new Promise<void>((resolve, reject) => {
             // Create the database connection
             this.db = new sqlite3.Database(this.config.dbPath, (err) => {
+                // Arrow function captures `this`
                 if (err) {
+                    this.db = null; // Ensure db is null on error
                     reject(new Error(`Failed to open database: ${err.message}`));
                     return;
                 }
 
                 // Configure pragmas for performance
                 this.runPragmas().then(() => {
-                    // Initialize schema
-                    this.initializeSchema()
-                        .then(() => {
-                            this.isInitialized = true;
-                            resolve();
-                        })
-                        .catch(reject);
-                }).catch(reject);
+                    this.initializeSchema().then(() => {
+                        this.isInitialized = true;
+                        resolve();
+                    })
+                        .catch(schemaErr => { this.db = null; reject(schemaErr); });
+                }).catch(pragmaErr => { this.db = null; reject(pragmaErr); });
             });
         });
     }
@@ -186,21 +198,19 @@ export class VectorDatabaseService implements vscode.Disposable {
         await this.run('CREATE INDEX IF NOT EXISTS idx_chunks_file_id ON chunks(file_id)', []);
         await this.run('CREATE INDEX IF NOT EXISTS idx_chunks_parent_structure ON chunks(parent_structure_id)', []);
 
-        // Embeddings table - stores vector embeddings of chunks
+        // Embeddings table - stores metadata for vector embeddings (vectors stored in ANN index)
         await this.run(`
             CREATE TABLE IF NOT EXISTS embeddings (
                 id TEXT PRIMARY KEY,
-                chunk_id TEXT NOT NULL,
-                vector BLOB NOT NULL,
-                model TEXT NOT NULL,
-                dimension INTEGER NOT NULL,
+                chunk_id TEXT NOT NULL UNIQUE,
+                label INTEGER UNIQUE NOT NULL,
                 created_at INTEGER NOT NULL,
                 FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
             )
         `, []);
 
         await this.run('CREATE INDEX IF NOT EXISTS idx_embeddings_chunk_id ON embeddings(chunk_id)', []);
-        await this.run('CREATE INDEX IF NOT EXISTS idx_embeddings_model ON embeddings(model)', []);
+        await this.run('CREATE INDEX IF NOT EXISTS idx_embeddings_label ON embeddings(label)', []);
 
         // Metadata table - stores database metadata
         await this.run(`
@@ -223,6 +233,9 @@ export class VectorDatabaseService implements vscode.Disposable {
                 return;
             }
 
+            // The callback for this.db.run is a standard function,
+            // its `this` is bound by sqlite3 to RunResult.
+            // We don't need to access VectorDatabaseService's `this` inside it.
             this.db.run(sql, params, function (err) {
                 if (err) {
                     reject(err);
@@ -444,32 +457,72 @@ export class VectorDatabaseService implements vscode.Disposable {
 
     /**
      * Store embeddings for chunks
-     * @param embeddings Array of embedding records
+     * @param embeddings Array of embedding records (vector is part of the input but not stored in SQLite)
      */
-    async storeEmbeddings(embeddings: Array<Omit<EmbeddingRecord, 'id' | 'createdAt'>>): Promise<void> {
+    async storeEmbeddings(embeddings: Array<{ chunkId: string; vector: Float32Array; }>): Promise<void> {
         await this.ensureInitialized();
 
-        return this.transaction(async () => {
-            for (const embedding of embeddings) {
-                const embeddingId = uuidv4();
-                const now = Date.now();
+        if (!this.annIndex || this.currentModelDimension === null) {
+            throw new Error('ANN index or model dimension is not initialized. Cannot store embeddings.');
+        }
 
-                // Serialize the Float32Array to a Buffer
-                const buffer = Buffer.from(embedding.vector.buffer);
+        let currentAnnMaxElements = this.annIndex.getMaxElements();
+        let nextLabel = this.annIndex.getCurrentCount(); // Labels are 0-indexed
 
-                await this.run(`
-                    INSERT INTO embeddings (id, chunk_id, vector, model, dimension, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                `, [
-                    embeddingId,
-                    embedding.chunkId,
-                    buffer,
-                    embedding.model,
-                    embedding.dimension,
-                    now
-                ]);
+        await this.transaction(async () => {
+            const stmt = await this.db!.prepare('INSERT INTO embeddings (id, chunk_id, label, created_at) VALUES (?, ?, ?, ?)');
+            try {
+                for (const embedding of embeddings) {
+                    if (nextLabel >= currentAnnMaxElements) {
+                        // Handle ANN index full scenario
+                        const newMaxElements = Math.max(currentAnnMaxElements * 2, nextLabel + 1);
+                        console.warn(
+                            `ANN index is full (current: ${this.annIndex!.getCurrentCount()}, max: ${currentAnnMaxElements}). ` +
+                            `Attempting to resize to ${newMaxElements} using resizeIndex.`
+                        );
+                        // NOTE: `resizeIndex` is used to expand the capacity of the HNSW index.
+                        // This operation can be resource-intensive. If `resizeIndex` fails or
+                        // has limitations for extreme sizes, a more complex strategy involving
+                        // re-initialization and re-adding points might be needed as a fallback,
+                        // but `resizeIndex` is the primary mechanism.
+                        try {
+                            this.annIndex!.resizeIndex(newMaxElements);
+                            currentAnnMaxElements = newMaxElements;
+                            console.log(`ANN index resized to ${newMaxElements}.`);
+                        } catch (resizeError) {
+                            console.error(`Failed to resize ANN index. Max elements: ${currentAnnMaxElements}. Current count: ${this.annIndex!.getCurrentCount()}. Error: ${resizeError}`);
+                            throw new Error(`ANN index is full and resize failed. Max elements: ${currentAnnMaxElements}. Please increase ANN_MAX_ELEMENTS_CONFIG and rebuild.`);
+                        }
+                    }
+
+                    const embeddingId = uuidv4();
+                    const now = Date.now();
+                    const numericalLabel = nextLabel;
+
+                    // Convert Float32Array to number[] for HNSWlib
+                    const vectorAsArray = Array.from(embedding.vector);
+                    this.annIndex!.addPoint(vectorAsArray, numericalLabel);
+
+                    await new Promise<void>((resolve, reject) => {
+                        stmt.run(embeddingId, embedding.chunkId, numericalLabel, now, (err: Error | null) => {
+                            if (err) reject(err);
+                            else resolve();
+                        });
+                    });
+                    nextLabel++;
+                }
+            } finally {
+                await new Promise<void>((resolve, reject) => {
+                    stmt.finalize((err: Error | null) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+                });
             }
         });
+
+        // Save ANN index after transaction
+        this.saveAnnIndex();
     }
 
     /**
@@ -490,84 +543,120 @@ export class VectorDatabaseService implements vscode.Disposable {
      */
     async findSimilarCode(
         queryVector: Float32Array,
-        model: string,
         options: SimilaritySearchOptions = {}
     ): Promise<SimilaritySearchResult[]> {
         await this.ensureInitialized();
 
-        // Default options
         const limit = options.limit || 5;
         const minScore = options.minScore || 0.65;
+        // Fetch more neighbors initially to allow for filtering and still meet the limit.
+        // HNSWlib searchKnn is efficient, so over-fetching slightly is generally fine.
+        const numNeighborsToFetch = Math.max(limit * 3, 10);
 
-        // Build the query
-        let sql = `
-            SELECT e.id, e.chunk_id, e.vector, e.dimension, c.content, c.file_id, c.start_offset, c.end_offset, f.path
+
+        if (!this.annIndex) {
+            console.warn('ANN index is not initialized. Cannot perform similarity search.');
+            return [];
+        }
+        if (this.annIndex.getCurrentCount() === 0) {
+            console.log('ANN index is empty. No results to return.');
+            return [];
+        }
+
+        const queryVectorAsArray = Array.from(queryVector);
+        let searchResult;
+        try {
+            searchResult = this.annIndex.searchKnn(queryVectorAsArray, numNeighborsToFetch);
+        } catch (error) {
+            console.error('Error during ANN searchKnn:', error);
+            return [];
+        }
+
+        const { neighbors, distances } = searchResult;
+
+        if (!neighbors || neighbors.length === 0) {
+            return [];
+        }
+
+        const potentialResults: Array<{ label: number; score: number }> = [];
+        for (let i = 0; i < neighbors.length; i++) {
+            const label = neighbors[i];
+            const distance = distances[i];
+            // For cosine space, similarity = 1 - distance.
+            // HNSWlib returns distance, so we convert it.
+            const score = 1 - distance;
+
+            if (score >= minScore) {
+                potentialResults.push({ label, score });
+            }
+        }
+
+        if (potentialResults.length === 0) {
+            return [];
+        }
+
+        // Sort by score descending before fetching metadata to prioritize higher scores if DB query is slow
+        potentialResults.sort((a, b) => b.score - a.score);
+
+        const labelsToFetch = potentialResults.map(r => r.label);
+        const scoresMap = new Map(potentialResults.map(r => [r.label, r.score]));
+
+        // Fetch metadata for these labels from SQLite
+        const placeholders = labelsToFetch.map(() => '?').join(',');
+        const sql = `
+            SELECT e.chunk_id, c.content, c.file_id, c.start_offset, c.end_offset, f.path, f.language, e.label
             FROM embeddings e
             INNER JOIN chunks c ON e.chunk_id = c.id
             INNER JOIN files f ON c.file_id = f.id
-            WHERE e.model = ?
+            WHERE e.label IN (${placeholders})
         `;
 
-        const params: any[] = [model];
-
-        // Add file filter if provided
-        if (options.fileFilter && options.fileFilter.length > 0) {
-            sql += ` AND f.path IN (${options.fileFilter.map(() => '?').join(',')})`;
-            params.push(...options.fileFilter);
-        }
-
-        // Add language filter if provided
-        if (options.languageFilter && options.languageFilter.length > 0) {
-            sql += ` AND f.language IN (${options.languageFilter.map(() => '?').join(',')})`;
-            params.push(...options.languageFilter);
-        }
-
-        // Execute the query
-        type EmbeddingRow = {
-            id: string;
+        type EmbeddingMetadataRow = {
             chunk_id: string;
-            vector: Buffer;
-            dimension: number;
             content: string;
             file_id: string;
             start_offset: number;
             end_offset: number;
             path: string;
+            language: string | null;
+            label: number;
         };
 
-        const embeddings = await this.all<EmbeddingRow>(sql, params);
-
-        // Calculate similarity scores
-        const results: SimilaritySearchResult[] = [];
-
-        for (const embedding of embeddings) {
-            // Convert buffer back to Float32Array
-            const vectorFloat32 = new Float32Array(
-                embedding.vector.buffer.slice(
-                    embedding.vector.byteOffset,
-                    embedding.vector.byteOffset + embedding.vector.byteLength
-                )
-            );
-
-            // Calculate cosine similarity
-            const score = similarity.cosine(Array.from(queryVector), Array.from(vectorFloat32));
-
-            // Add to results if above threshold
-            if (score >= minScore) {
-                results.push({
-                    chunkId: embedding.chunk_id,
-                    fileId: embedding.file_id,
-                    filePath: embedding.path,
-                    content: embedding.content,
-                    startOffset: embedding.start_offset,
-                    endOffset: embedding.end_offset,
-                    score
-                });
-            }
+        let metadataRows: EmbeddingMetadataRow[];
+        try {
+            metadataRows = await this.all<EmbeddingMetadataRow>(sql, labelsToFetch);
+        } catch (error) {
+            console.error('Error fetching metadata for ANN results:', error);
+            return [];
         }
 
-        // Sort by score (highest first) and limit results
-        return results.sort((a, b) => b.score - a.score).slice(0, limit);
+        const finalResults: SimilaritySearchResult[] = [];
+        for (const row of metadataRows) {
+            const score = scoresMap.get(row.label);
+            if (score === undefined) continue; // Should not happen if SQL is correct
+
+            // Apply file and language filters if provided
+            if (options.fileFilter && options.fileFilter.length > 0 && !options.fileFilter.includes(row.path)) {
+                continue;
+            }
+            if (options.languageFilter && options.languageFilter.length > 0 && row.language && !options.languageFilter.includes(row.language)) {
+                continue;
+            }
+
+            finalResults.push({
+                chunkId: row.chunk_id,
+                fileId: row.file_id,
+                filePath: row.path,
+                content: row.content,
+                startOffset: row.start_offset,
+                endOffset: row.end_offset,
+                score: score,
+            });
+        }
+
+        // The results from DB might not be in the same order as `potentialResults`
+        // So, re-sort based on the scores we have and then slice.
+        return finalResults.sort((a, b) => b.score - a.score).slice(0, limit);
     }
 
     /**
@@ -581,37 +670,60 @@ export class VectorDatabaseService implements vscode.Disposable {
         type EmbeddingRow = {
             id: string;
             chunk_id: string;
-            vector: Buffer;
-            model: string;
-            dimension: number;
+            // vector: Buffer; // Vector is no longer stored in SQLite
+            label: number;
             created_at: number;
         };
 
-        const embedding = await this.get<EmbeddingRow>(
-            `SELECT id, chunk_id, vector, model, dimension, created_at
+        const embeddingMeta = await this.get<EmbeddingRow>(
+            `SELECT id, chunk_id, label, created_at
              FROM embeddings
              WHERE chunk_id = ?`,
             [chunkId]
         );
 
-        if (!embedding) return null;
+        if (!embeddingMeta) return null;
 
-        // Convert buffer back to Float32Array
-        const vectorFloat32 = new Float32Array(
-            embedding.vector.buffer.slice(
-                embedding.vector.byteOffset,
-                embedding.vector.byteOffset + embedding.vector.byteLength
-            )
-        );
+        if (!this.annIndex) {
+            console.warn('ANN index not available, cannot retrieve vector for embedding.');
+            return { // Return metadata without vector
+                id: embeddingMeta.id,
+                chunkId: embeddingMeta.chunk_id,
+                label: embeddingMeta.label,
+                vector: new Float32Array(0), // Placeholder for vector
+                createdAt: embeddingMeta.created_at
+            };
+        }
 
-        return {
-            id: embedding.id,
-            chunkId: embedding.chunk_id,
-            vector: vectorFloat32,
-            model: embedding.model,
-            dimension: embedding.dimension,
-            createdAt: embedding.created_at
-        };
+        try {
+            const vector = this.annIndex.getPoint(embeddingMeta.label);
+            if (!vector) {
+                console.warn(`Vector not found in ANN index for label ${embeddingMeta.label}, chunkId ${chunkId}`);
+                return {
+                    id: embeddingMeta.id,
+                    chunkId: embeddingMeta.chunk_id,
+                    label: embeddingMeta.label,
+                    vector: new Float32Array(0), // Placeholder
+                    createdAt: embeddingMeta.created_at
+                };
+            }
+            return {
+                id: embeddingMeta.id,
+                chunkId: embeddingMeta.chunk_id,
+                label: embeddingMeta.label,
+                vector: vector instanceof Float32Array ? vector : new Float32Array(vector), // Ensure it's Float32Array
+                createdAt: embeddingMeta.created_at
+            };
+        } catch (error) {
+            console.error(`Error retrieving vector from ANN index for label ${embeddingMeta.label}, chunkId ${chunkId}:`, error);
+            return { // Return metadata without vector on error
+                id: embeddingMeta.id,
+                chunkId: embeddingMeta.chunk_id,
+                label: embeddingMeta.label,
+                vector: new Float32Array(0), // Placeholder
+                createdAt: embeddingMeta.created_at
+            };
+        }
     }
 
     /**
@@ -828,32 +940,117 @@ export class VectorDatabaseService implements vscode.Disposable {
     async deleteChunksForFile(fileId: string): Promise<void> {
         await this.ensureInitialized();
 
-        // Due to foreign key constraints, deleting chunks will also delete embeddings
+        // Get labels of embeddings associated with chunks of this file
+        const embeddingsToDelete = await this.all<{ label: number }>(
+            `SELECT e.label FROM embeddings e
+             INNER JOIN chunks c ON e.chunk_id = c.id
+             WHERE c.file_id = ?`,
+            [fileId]
+        );
+
+        if (this.annIndex && embeddingsToDelete.length > 0) {
+            let markedCount = 0;
+            for (const emb of embeddingsToDelete) {
+                try {
+                    // Check if label exists before marking for deletion
+                    // Note: HNSWlib doesn't have a direct `exists(label)` check.
+                    // `markDelete` might not error if label doesn't exist, but it's good practice.
+                    // We assume if it's in DB, it should be in ANN.
+                    this.annIndex.markDelete(emb.label);
+                    markedCount++;
+                } catch (error) {
+                    // Log error if marking for deletion fails for a specific label
+                    console.warn(`Failed to mark label ${emb.label} for deletion in ANN index:`, error);
+                }
+            }
+            if (markedCount > 0) {
+                console.log(`Marked ${markedCount} embeddings for deletion in ANN index for fileId ${fileId}.`);
+                this.saveAnnIndex(); // Persist changes to ANN index
+            }
+        }
+
+        // Due to foreign key constraints (ON DELETE CASCADE for embeddings referencing chunks),
+        // deleting chunks will also delete their corresponding entries in the embeddings table.
         await this.run('DELETE FROM chunks WHERE file_id = ?', [fileId]);
+        console.log(`Deleted chunks and associated SQLite embedding metadata for fileId ${fileId}.`);
     }
 
     /**
-     * Delete a file and all associated chunks and embeddings
+     * Delete a file and all associated chunks and embeddings (both in SQLite and ANN index)
      * @param filePath Path of the file
      */
     async deleteFile(filePath: string): Promise<void> {
         await this.ensureInitialized();
 
-        // Due to foreign key constraints, deleting the file will cascade
-        await this.run('DELETE FROM files WHERE path = ?', [filePath]);
+        const fileRecord = await this.getFileByPath(filePath);
+        if (!fileRecord) {
+            console.log(`File ${filePath} not found in database. Nothing to delete.`);
+            return;
+        }
+
+        // First, handle ANN index deletions by getting all relevant labels
+        const embeddingsToDelete = await this.all<{ label: number }>(
+            `SELECT e.label FROM embeddings e
+             INNER JOIN chunks c ON e.chunk_id = c.id
+             WHERE c.file_id = ?`,
+            [fileRecord.id]
+        );
+
+        if (this.annIndex && embeddingsToDelete.length > 0) {
+            let markedCount = 0;
+            for (const emb of embeddingsToDelete) {
+                try {
+                    this.annIndex.markDelete(emb.label);
+                    markedCount++;
+                } catch (error) {
+                    console.warn(`Failed to mark label ${emb.label} for deletion in ANN index for file ${filePath}:`, error);
+                }
+            }
+            if (markedCount > 0) {
+                console.log(`Marked ${markedCount} embeddings for deletion in ANN index for file ${filePath}.`);
+                this.saveAnnIndex(); // Persist changes to ANN index
+            }
+        }
+
+        // Due to foreign key constraints (ON DELETE CASCADE for chunks referencing files,
+        // and embeddings referencing chunks), deleting the file from the 'files' table
+        // will cascade and delete associated chunks and SQLite embedding metadata.
+        await this.run('DELETE FROM files WHERE id = ?', [fileRecord.id]);
+        console.log(`Deleted file ${filePath} and all associated SQLite data (chunks, embeddings).`);
     }
 
     /**
-     * Delete all embeddings generated with a specific model
-     * @param model Model name
+     * Delete all embeddings, chunks, files, metadata, and clear the ANN index.
+     * This is typically used when the embedding model changes or for a full rebuild.
      */
-    async deleteEmbeddingsByModel(model: string): Promise<void> {
+    async deleteAllEmbeddingsAndChunks(): Promise<void> {
         await this.ensureInitialized();
 
-        await this.run('DELETE FROM embeddings WHERE model = ?', [model]);
+        await this.transaction(async () => {
+            await this.run('DELETE FROM embeddings', []);
+            await this.run('DELETE FROM chunks', []);
+            await this.run('DELETE FROM files', []);
+            await this.run('DELETE FROM metadata', []);
+        });
 
-        // Reset indexed status for all files
-        await this.run('UPDATE files SET is_indexed = 0', []);
+        // Clear the ANN index
+        if (this.currentModelDimension && this.annIndex) {
+            console.log('Re-initializing existing ANN index to an empty state.');
+            this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG); // Clears the current instance
+            this.saveAnnIndex(); // Save the now empty index
+        } else {
+            console.log(`No current ANN dimension or index instance. Attempting to delete index file: ${this.annIndexPath}`);
+            if (fs.existsSync(this.annIndexPath)) {
+                try {
+                    fs.unlinkSync(this.annIndexPath);
+                    console.log(`Deleted ANN index file: ${this.annIndexPath}`);
+                } catch (e) {
+                    console.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
+                }
+            }
+            this.annIndex = null; // Ensure it's null
+        }
+        console.log('All embeddings, chunks, files, metadata, and ANN index data have been cleared/reset.');
     }
 
     /**
@@ -989,35 +1186,141 @@ export class VectorDatabaseService implements vscode.Disposable {
     }
 
     /**
-     * Dispose resources
+     * Sets the dimension for the current embedding model and initializes/re-initializes the ANN index.
+     * This should be called by the coordinator when the model is selected or changed.
+     * @param dimension The dimension of the embedding vectors for the current model.
+     */
+    public setCurrentModelDimension(dimension: number): void {
+        // ensureInitialized is not strictly needed here if annIndexPath is set in constructor
+        // and this method is called after VectorDatabaseService constructor has completed.
+
+        if (this.currentModelDimension === dimension && this.annIndex) {
+            // console.log(`ANN index dimension ${dimension} already set and index exists.`);
+            return; // No change needed
+        }
+
+        console.log(`Setting ANN index dimension to ${dimension}. Previous: ${this.currentModelDimension}`);
+        this.currentModelDimension = dimension;
+
+        if (!this.currentModelDimension) {
+            console.warn('Cannot initialize ANN index without a model dimension.');
+            this.annIndex = null;
+            // Attempt to delete existing index file if dimension becomes unknown
+            if (fs.existsSync(this.annIndexPath)) {
+                try {
+                    fs.unlinkSync(this.annIndexPath);
+                    console.log(`Deleted ANN index file ${this.annIndexPath} as model dimension is now unknown.`);
+                } catch (e) {
+                    console.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
+                }
+            }
+            return;
+        }
+
+        // Initialize or re-initialize the ANN index
+        console.log(`Initializing HNSW index with space 'cosine' and dimension ${this.currentModelDimension}`);
+        this.annIndex = new HierarchicalNSW('cosine', this.currentModelDimension);
+
+        if (this.loadAnnIndex()) { // loadAnnIndex is synchronous
+            console.log(`ANN index loaded successfully from ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
+        } else {
+            console.log(`Initializing new ANN index at ${this.annIndexPath}. Max elements: ${ANN_MAX_ELEMENTS_CONFIG}`);
+            this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG);
+            // No need to save here, will be saved on dispose or when data is added.
+        }
+    }
+
+    /**
+     * Loads the ANN index from disk.
+     * @returns True if loading was successful, false otherwise.
+     */
+    private loadAnnIndex(): boolean {
+        if (!this.annIndex || !this.annIndexPath || !this.currentModelDimension) {
+            console.warn('ANN index, path, or dimension not set. Cannot load index.');
+            return false;
+        }
+        try {
+            if (fs.existsSync(this.annIndexPath)) {
+                console.log(`Attempting to load ANN index from ${this.annIndexPath}`);
+                this.annIndex.readIndexSync(this.annIndexPath); // This might throw if dimensions mismatch
+                // It's good practice to check if the loaded index actually has items if it's not empty
+                // For example, if an empty index was saved, getCurrentCount() would be 0.
+                // If readIndexSync doesn't throw on dimension mismatch, we might need another check here,
+                // but typically it should handle it.
+                return true;
+            }
+            console.log(`ANN index file not found at ${this.annIndexPath}. A new index will be used.`);
+            return false;
+        } catch (error) {
+            console.warn(`Failed to load ANN index from ${this.annIndexPath}:`, error);
+            // If loading fails, ensure we have a fresh, empty index for the current dimension
+            console.log(`Re-initializing a fresh ANN index due to load failure for dimension ${this.currentModelDimension}.`);
+            this.annIndex = new HierarchicalNSW('cosine', this.currentModelDimension);
+            // this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG); // Caller will init if loadAnnIndex returns false
+            return false;
+        }
+    }
+
+    /**
+     * Saves the ANN index to disk.
+     */
+    private saveAnnIndex(): void {
+        if (!this.annIndex || !this.annIndexPath) {
+            console.warn('ANN index or path not set. Cannot save index.');
+            return;
+        }
+        try {
+            console.log(`Saving ANN index to ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
+            const dir = path.dirname(this.annIndexPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            this.annIndex.writeIndexSync(this.annIndexPath);
+            console.log(`ANN index saved successfully to ${this.annIndexPath}.`);
+        } catch (error) {
+            console.error(`Failed to save ANN index to ${this.annIndexPath}:`, error);
+        }
+    }
+
+    /**
+     * Provides access to the HNSWLib index instance.
+     * @returns The HierarchicalNSW instance or null if not initialized.
+     */
+    public getAnnIndex(): HierarchicalNSW | null {
+        return this.annIndex;
+    }
+
+    /**
+     * Dispose resources: save ANN index, optimize and close SQLite DB.
      */
     async dispose(): Promise<void> {
+        if (this.annIndex) {
+            this.saveAnnIndex();
+        }
+
         if (this.db) {
-            // Optimize before closing
             try {
                 await this.optimizeDatabase();
             } catch (error) {
                 console.error('Error optimizing database during disposal:', error);
             }
 
-            // Close the database connection
             return new Promise<void>((resolve) => {
-                if (!this.db) {
+                if (!this.db) { // Check again in case it was nulled elsewhere
                     resolve();
                     return;
                 }
-
                 this.db.close((err) => {
                     if (err) {
-                        console.error('Error closing database:', err);
+                        console.error('Error closing SQLite database:', err);
                     }
                     this.db = null;
+                    console.log('SQLite database closed.');
                     resolve();
                 });
             });
         }
 
-        // Clear singleton instance
         if (VectorDatabaseService.instance === this) {
             VectorDatabaseService.instance = null;
         }

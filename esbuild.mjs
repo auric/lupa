@@ -74,7 +74,7 @@ const buildOptions = {
             ],
         }),
     ],
-    external: ['vscode', 'onnxruntime-node', 'piscina'],
+    external: ['vscode', 'onnxruntime-node', 'piscina', 'hnswlib-node'],
 };
 
 if (watch) {

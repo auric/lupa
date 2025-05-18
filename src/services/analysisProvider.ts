@@ -3,11 +3,13 @@ import { ContextProvider } from './contextProvider';
 import { TokenManagerService } from './tokenManagerService';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
+import { ContextSnippet, DiffHunk, HybridContextResult } from '../types/contextTypes'; // Import ContextSnippet
 
 /**
  * AnalysisProvider handles the core analysis logic using language models
  */
 export class AnalysisProvider implements vscode.Disposable {
+    private tokenManager: TokenManagerService;
     /**
      * Create a new AnalysisProvider
      * @param contextProvider Provider for relevant code context
@@ -16,53 +18,44 @@ export class AnalysisProvider implements vscode.Disposable {
     constructor(
         private readonly contextProvider: ContextProvider,
         private readonly modelManager: CopilotModelManager
-    ) { }
+    ) {
+        this.tokenManager = new TokenManagerService(this.modelManager);
+    }
 
     /**
      * Analyze PR using language models
      * @param diffText The diff text to analyze
+     * @param gitRootPath The root path of the Git repository.
      * @param mode The analysis mode
      * @param progressCallback Optional callback for progress updates
      * @param token Optional cancellation token
      */
     public async analyzePullRequest(
-        diffText: string, 
+        diffText: string,
+        gitRootPath: string,
         mode: AnalysisMode,
         progressCallback?: (message: string, increment?: number) => void,
         token?: vscode.CancellationToken
     ): Promise<{
         analysis: string;
-        context: string;
+        context: string; // This will be the final optimized context string
     }> {
         try {
-            // Check for cancellation
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
-            }
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled');
+            progressCallback?.('Retrieving relevant code context...', 5);
 
-            // Report progress: Starting context retrieval - 5%
-            if (progressCallback) {
-                progressCallback('Retrieving relevant code context...', 5);
-            }
-
-            // Find relevant code context for the diff with progress reporting - 50% total
-            const context = await this.contextProvider.getContextForDiff(
+            const hybridContextResult: HybridContextResult = await this.contextProvider.getContextForDiff(
                 diffText,
-                undefined,
+                gitRootPath,
+                undefined, // options
                 mode,
-                undefined,
+                undefined, // systemPrompt (will be fetched by tokenManager if needed)
                 (processed: number, total: number) => {
                     if (progressCallback) {
                         const percentage = Math.round((processed / total) * 100);
-                        // Use a more conservative scaling to ensure progress is accurate
-                        // Only report progress if it's a significant change
                         if (percentage % 10 === 0 || percentage === 100) {
-                            // Scale to ensure progress never exceeds actual completion
-                            // Use a very small increment to avoid jumping ahead
-                            const scaledIncrement = 0.2; // Very small increments
-                            progressCallback(`Generating embeddings: ${processed} of ${total} (${percentage}%)`, scaledIncrement);
+                            progressCallback(`Generating embeddings: ${processed} of ${total} (${percentage}%)`, 0.2);
                         } else {
-                            // Just update the message without incrementing progress
                             progressCallback(`Generating embeddings: ${processed} of ${total} (${percentage}%)`);
                         }
                     }
@@ -70,156 +63,179 @@ export class AnalysisProvider implements vscode.Disposable {
                 token
             );
 
-            // Check for cancellation
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
-            }
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled');
+            progressCallback?.('Context retrieved. Analyzing with language model...', 5);
 
-            // Report progress: Starting analysis - 5%
-            if (progressCallback) {
-                progressCallback('Context retrieved. Analyzing with language model...', 5);
-            }
+            const { analysis, optimizedContext } = await this.analyzeWithLanguageModel(
+                diffText,
+                hybridContextResult.parsedDiff,
+                hybridContextResult.snippets,
+                mode,
+                token
+            );
 
-            // Run analysis using language model - this is a significant part of the process
-            const analysis = await this.analyzeWithLanguageModel(diffText, context, mode);
-
-            // Check for cancellation
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
-            }
-
-            // Report progress: Analysis complete - 20%
-            if (progressCallback) {
-                progressCallback('Analysis complete', 20);
-            }
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled');
+            progressCallback?.('Analysis complete', 20);
 
             return {
                 analysis,
-                context
+                context: optimizedContext // Return the optimized context string
             };
         } catch (error) {
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
-            }
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled');
             throw new Error(`Failed to analyze PR: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
     /**
-     * Analyze PR using language models
+     * Analyze PR using language models, now taking ContextSnippet[]
      */
-    private async analyzeWithLanguageModel(diffText: string, context: string, mode: AnalysisMode): Promise<string> {
+    private async analyzeWithLanguageModel(
+        diffText: string, // Original full diff text, might not be directly used in prompt if interleaved
+        parsedDiff: DiffHunk[],
+        allContextSnippets: ContextSnippet[],
+        mode: AnalysisMode,
+        token?: vscode.CancellationToken
+    ): Promise<{ analysis: string; optimizedContext: string }> {
         try {
-            // Get current model
             const model = await this.modelManager.getCurrentModel();
+            const systemPrompt = this.tokenManager.getSystemPromptForMode(mode);
 
-            // Prepare system prompt
-            const systemPrompt = this.getSystemPromptForMode(mode);
+            // Format all initially retrieved snippets into a preliminary string for token budget calculation
+            const preliminaryContextStringForAllSnippets = this.tokenManager.formatContextSnippetsToString(allContextSnippets, false);
 
-            // Create TokenManagerService for optimizing token usage
-            const tokenManager = new TokenManagerService(this.modelManager);
+            // --- Calculate diffStructureTokens ---
+            // Construct the diff part of the prompt *without* context snippets to get its token cost
+            let diffStructureForTokenCalc = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
+            for (const fileDiff of parsedDiff) {
+                diffStructureForTokenCalc += `File: ${fileDiff.filePath}\n`;
+                for (const hunk of fileDiff.hunks) {
+                    const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
+                    if (hunkHeaderMatch) {
+                        diffStructureForTokenCalc += `${hunkHeaderMatch[0]}\n`;
+                    } else {
+                        diffStructureForTokenCalc += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                    }
+                    diffStructureForTokenCalc += hunk.lines.join('\n') + '\n';
+                    // Add placeholders for context markers to account for their tokens
+                    diffStructureForTokenCalc += "\n--- Relevant Context for this Hunk ---\n";
+                    diffStructureForTokenCalc += "--- End Context for this Hunk ---\n\n";
+                }
+            }
+            const calculatedDiffStructureTokens = await this.tokenManager.calculateTokens(diffStructureForTokenCalc);
+            // --- End Calculate diffStructureTokens ---
 
-            // Calculate token allocation for all components
             const tokenComponents = {
                 systemPrompt,
-                diffText,
-                context
+                diffStructureTokens: calculatedDiffStructureTokens, // Use the calculated tokens for the interleaved diff structure
+                context: preliminaryContextStringForAllSnippets, // Full potential context for optimizeContext to choose from
+                // diffText: diffText, // Original diffText can be omitted if diffStructureTokens is always used
             };
 
-            const allocation = await tokenManager.calculateTokenAllocation(tokenComponents, mode);
+            const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
-            console.log(`Token allocation: ${JSON.stringify({
+            console.log(`Token allocation (pre-optimization): ${JSON.stringify({
                 systemPrompt: allocation.systemPromptTokens,
-                diff: allocation.diffTextTokens,
-                context: allocation.contextTokens,
-                available: allocation.totalAvailableTokens,
-                total: allocation.totalRequiredTokens,
-                contextAllocation: allocation.contextAllocationTokens,
-                fits: allocation.fitsWithinLimit
+                diffStructure: allocation.diffTextTokens, // This now reflects diffStructureTokens
+                contextPotential: allocation.contextTokens, // Based on all potential snippets
+                availableForLLM: allocation.totalAvailableTokens,
+                totalRequiredPotential: allocation.totalRequiredTokens,
+                budgetForContextSnippets: allocation.contextAllocationTokens,
+                fitsPotential: allocation.fitsWithinLimit
             })}`);
 
-            // Check if we need to optimize the context
-            let optimizedContext = context;
-            if (!allocation.fitsWithinLimit) {
-                console.log(`Total tokens (${allocation.totalRequiredTokens}) exceed limit (${allocation.totalAvailableTokens})`);
-                console.log(`Context can use up to ${allocation.contextAllocationTokens} tokens`);
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
 
-                // Optimize the context to fit within the available token allocation
-                optimizedContext = await tokenManager.optimizeContext(context, allocation.contextAllocationTokens);
-                console.log('Context optimized to fit within token limit');
+            // Optimize the context snippets based on the allocated budget
+            const { optimizedSnippets, wasTruncated } = await this.tokenManager.optimizeContext(
+                allContextSnippets,
+                allocation.contextAllocationTokens
+            );
+            console.log(`Context optimized: ${optimizedSnippets.length} snippets selected. Truncated: ${wasTruncated}`);
+
+            // This string is for returning to the UI/caller, representing the context that was considered.
+            const finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsToString(optimizedSnippets, wasTruncated);
+
+            if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
+
+            // Construct the final interleaved prompt using the optimized snippets
+            let finalInterleavedPromptContent = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
+            const MAX_SNIPPETS_PER_HUNK = 3; // Configurable: Max context snippets to show per hunk
+
+            for (const fileDiff of parsedDiff) {
+                finalInterleavedPromptContent += `File: ${fileDiff.filePath}\n`;
+                for (const hunk of fileDiff.hunks) {
+                    // Append hunk header and lines
+                    const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
+                    if (hunkHeaderMatch) {
+                        finalInterleavedPromptContent += `${hunkHeaderMatch[0]}\n`;
+                    } else {
+                        // Fallback if regex fails, though it should ideally match
+                        finalInterleavedPromptContent += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                    }
+                    finalInterleavedPromptContent += hunk.lines.join('\n') + '\n';
+
+                    // Find and append relevant *optimized* context snippets for this hunk
+                    const relevantSnippetsForHunk = optimizedSnippets
+                        .filter(snippet => snippet.associatedHunkIdentifiers?.includes(hunk.hunkId || ''))
+                        .sort((a, b) => b.relevanceScore - a.relevanceScore) // Sort by relevance
+                        .slice(0, MAX_SNIPPETS_PER_HUNK); // Take top N
+
+                    if (relevantSnippetsForHunk.length > 0) {
+                        finalInterleavedPromptContent += "\n--- Relevant Context for this Hunk ---\n";
+                        for (const snippet of relevantSnippetsForHunk) {
+                            finalInterleavedPromptContent += `${snippet.content}\n\n`; // Snippet content is already formatted
+                        }
+                        finalInterleavedPromptContent += "--- End Context for this Hunk ---\n\n";
+                    } else {
+                        // If no snippets for this hunk, ensure the structure is consistent for token calculation
+                        // (though this part was already included in diffStructureForTokenCalc)
+                        // We can optionally add a "No specific context for this hunk." message if desired,
+                        // but it might add unnecessary tokens if not adding value.
+                        // For now, just ensure the structure is consistent with the pre-calculation.
+                        // Adding the markers even if empty ensures the pre-calculated diffStructureTokens is accurate.
+                        finalInterleavedPromptContent += "\n--- Relevant Context for this Hunk ---\n";
+                        finalInterleavedPromptContent += "--- End Context for this Hunk ---\n\n";
+                    }
+                }
             }
 
-            // Prepare user message with optimized context
-            const userMessage = `Analyze the following pull request changes with the provided context:\n\n${diffText}\n\nContext:\n${optimizedContext}`;
-
-            // Create messages for the model using a standard approach (system message in user content)
             const messages = [
-                vscode.LanguageModelChatMessage.User(systemPrompt + '\n' + userMessage)
+                vscode.LanguageModelChatMessage.Assistant(systemPrompt),
+                vscode.LanguageModelChatMessage.User(finalInterleavedPromptContent)
             ];
 
-            // Send request to model
-            const response = await model.sendRequest(
-                messages,
-                {},
-                new vscode.CancellationTokenSource().token
-            );
+            // Final check (optional, for debugging or very strict scenarios)
+            // const finalPromptTokens = await this.tokenManager.calculateTokens(systemPrompt + finalInterleavedPromptContent);
+            // console.log(`Final prompt tokens: ${finalPromptTokens} / ${allocation.totalAvailableTokens}`);
+            // if (finalPromptTokens > allocation.totalAvailableTokens) {
+            //     console.warn("Final prompt exceeded token limit despite pre-calculation. This may indicate an issue in token estimation or structural overhead.");
+            //     // Potentially truncate finalInterleavedPromptContent further, though this should be rare.
+            // }
 
-            // Return the response text
+
+            const requestTokenSource = new vscode.CancellationTokenSource();
+            if (token) {
+                token.onCancellationRequested(() => requestTokenSource.cancel());
+            }
+
+            const response = await model.sendRequest(messages, {}, requestTokenSource.token);
+
             let responseText = '';
             for await (const chunk of response.text) {
+                if (requestTokenSource.token.isCancellationRequested) throw new Error('Operation cancelled during model response streaming');
                 responseText += chunk;
             }
 
-            return responseText;
+            return { analysis: responseText, optimizedContext: finalOptimizedContextStringForReturn };
         } catch (error) {
+            if (error instanceof Error && error.message.includes('Operation cancelled')) throw error;
             throw new Error(`Language model analysis failed: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 
-    /**
-     * Get system prompt for analysis mode
-     */
-    private getSystemPromptForMode(mode: AnalysisMode): string {
-        switch (mode) {
-            case AnalysisMode.Critical:
-                return `You are a code review assistant focused on identifying critical issues in pull requests.
-                        Analyze the code changes for bugs, errors, security vulnerabilities, and performance issues.
-                        Focus only on high-impact problems that could lead to application failures, security breaches, or significant performance degradation.`;
-
-            case AnalysisMode.Comprehensive:
-                return `You are a thorough code review assistant. Analyze the pull request for all types of issues, including:
-                        - Logic errors and bugs
-                        - Security vulnerabilities
-                        - Performance concerns
-                        - Code style and best practices
-                        - Architecture and design issues
-                        - Testing coverage and quality
-                        Provide detailed explanations and suggestions for improvement.`;
-
-            case AnalysisMode.Security:
-                return `You are a security-focused code review assistant. Analyze the pull request specifically for security vulnerabilities and risks, including:
-                        - Injection vulnerabilities (SQL, NoSQL, command, etc.)
-                        - Authentication and authorization issues
-                        - Data exposure risks
-                        - Insecure dependencies
-                        - Cryptographic failures
-                        - Security misconfiguration
-                        Provide detailed explanations of each security risk and recommendations for remediation.`;
-
-            case AnalysisMode.Performance:
-                return `You are a performance optimization specialist. Analyze the pull request for performance issues and inefficiencies, including:
-                        - Algorithmic complexity problems
-                        - Resource leaks
-                        - Unnecessary computations
-                        - I/O bottlenecks
-                        - Memory usage issues
-                        - Database query performance
-                        Provide detailed explanations of each performance concern and suggestions for optimization.`;
-
-            default:
-                return `You are a code review assistant. Analyze the pull request changes and provide insights about potential issues, improvements, and general feedback.`;
-        }
-    }
+    // getSystemPromptForMode is removed as it's now in TokenManagerService.
+    // The actual method that was here has been deleted.
 
     /**
      * Dispose of resources
