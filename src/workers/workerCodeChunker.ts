@@ -494,6 +494,10 @@ export class WorkerCodeChunker implements vscode.Disposable {
         let currentLineOffset = 0;
 
         for (let i = 0; i < lines.length; i++) {
+            if (signal.aborted) {
+                throw new Error('Operation was cancelled');
+            }
+
             const line = lines[i];
             const lineWithNewline = i < lines.length - 1 ? line + '\n' : line;
             const lineLength = lineWithNewline.length;

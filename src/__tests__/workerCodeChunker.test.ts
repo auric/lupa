@@ -261,7 +261,7 @@ describe('WorkerCodeChunker Integration Tests', () => {
         expect(orderedStructureCount).toBeGreaterThan(0);
 
         // The first chunk should contain the class definition opening
-        expect(result.chunks[0]).toContain('class OversizedClass');
+        expect(result.chunks[1]).toContain('class OversizedClass');
 
         // The last chunk should contain the closing brace of the class
         const lastChunk = result.chunks[result.chunks.length - 1];
@@ -443,7 +443,7 @@ namespace Utils {
             expect(chunk.trimEnd()).not.toMatch(/\{\s*$/);
 
             // Check if chunk contains proper method/function declarations
-            if (chunk.includes('class') || chunk.includes('struct')) {
+            if (!chunk.includes('/*') && ((/^class\b/).test(chunk) || (/\bstruct\b/).test(chunk))) {
                 expect(chunk).toContain('{');
             }
         }

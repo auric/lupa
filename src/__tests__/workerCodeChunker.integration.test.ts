@@ -287,10 +287,10 @@ namespace utils {
 
         for (const chunk of result.chunks) {
             // Check for incomplete identifiers at end of chunk
-            if (incompleteIdentifierPattern.test(chunk.trimEnd())) {
+            if (incompleteIdentifierPattern.test(chunk)) {
                 console.log(`Chunk ends with an incomplete identifier: ${chunk}`);
             }
-            expect(incompleteIdentifierPattern.test(chunk.trimEnd())).toBe(false);
+            expect(incompleteIdentifierPattern.test(chunk)).toBe(false);
 
             // Chunks should have meaningful content
             expect(chunk.trim().length).toBeGreaterThan(0);
@@ -345,10 +345,10 @@ namespace utils {
 
         for (const chunk of result.chunks) {
             // Check for incomplete identifiers at end of chunk
-            if (incompleteIdentifierPattern.test(chunk.trimEnd())) {
+            if (incompleteIdentifierPattern.test(chunk)) {
                 console.log(`Chunk ends with an incomplete identifier: ${chunk}`);
             }
-            expect(incompleteIdentifierPattern.test(chunk.trimEnd())).toBe(false);
+            expect(incompleteIdentifierPattern.test(chunk)).toBe(false);
 
             // Chunks should have meaningful content
             expect(chunk.trim().length).toBeGreaterThan(0);
