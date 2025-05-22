@@ -34,11 +34,11 @@ const esbuildProblemMatcherPlugin = {
 /** @type {import('esbuild').BuildOptions} */
 const buildOptions = {
     entryPoints: [
-        join('src', 'extension.ts')
+        join('src', 'extension.ts'),
+        join('src', 'workers', 'asyncIndexingProcessor.ts')
     ],
     outdir: './dist',
     bundle: true,
-    external: ['vscode'],
     platform: 'node',
     sourcemap: !production,
     minify: production,

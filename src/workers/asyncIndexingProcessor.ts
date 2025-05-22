@@ -1,4 +1,5 @@
 import path from 'path';
+import { workerData } from 'worker_threads';
 import {
     pipeline,
     env as transformersEnv,
@@ -34,6 +35,13 @@ export interface ProcessingResult {
     metadata: ChunkingMetadata;
     success: boolean;
     error?: string;
+}
+
+/**
+ * Task data passed to Piscina worker
+ */
+export interface PiscinaTaskData {
+    file: FileToProcess;
 }
 
 /**
@@ -233,4 +241,33 @@ export class AsyncIndexingProcessor {
 
         this.codeChunker = null;
     }
+}
+
+// Global instance for worker reuse
+let processorInstance: AsyncIndexingProcessor | null = null;
+
+/**
+ * Piscina worker function - called by Piscina pool
+ */
+export default async function piscinaWorkerFunction(
+    taskData: PiscinaTaskData,
+    { signal }: { signal: AbortSignal }
+): Promise<ProcessingResult> {
+    // Initialize processor instance once per worker using workerData
+    if (!processorInstance && workerData) {
+        const { modelBasePath, modelName, contextLength, embeddingOptions } = workerData;
+        processorInstance = new AsyncIndexingProcessor(
+            modelBasePath,
+            modelName,
+            contextLength,
+            embeddingOptions
+        );
+    }
+
+    if (!processorInstance) {
+        throw new Error('AsyncIndexingProcessor not initialized in worker');
+    }
+
+    // Process the file using the processor instance
+    return await processorInstance.processFile(taskData.file, signal);
 }

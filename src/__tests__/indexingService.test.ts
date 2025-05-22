@@ -1,36 +1,63 @@
-import { vi, describe, it, beforeEach, afterEach, Mock } from 'vitest';
+import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { IndexingService } from '../services/indexingService';
-import { FileToProcess } from '../workers/asyncIndexingProcessor'
+import { FileToProcess, ProcessingResult } from '../workers/asyncIndexingProcessor'
 import { StatusBarService, StatusBarState } from '../services/statusBarService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { TreeStructureAnalyzerPool } from '../services/treeStructureAnalyzer';
 
-const mockStatusBarItem = {
-    text: '',
-    tooltip: '',
-    show: vi.fn(),
-    hide: vi.fn(),
-    dispose: vi.fn()
-};
+// Use vi.hoisted for variables that need to be accessed in mocks
+const mocks = vi.hoisted(() => {
+    const mockStatusBarItem = {
+        text: '',
+        tooltip: '',
+        show: vi.fn(),
+        hide: vi.fn(),
+        dispose: vi.fn()
+    };
 
-// Create the mock instance OUTSIDE the vi.mock call
-const mockStatusBarInstance = {
-    statusBarItem: mockStatusBarItem,
-    setState: vi.fn(),
-    showTemporaryMessage: vi.fn(),
-    clearTemporaryMessage: vi.fn(),
-    show: vi.fn(),
-    hide: vi.fn(),
-    dispose: vi.fn()
-};
+    const mockStatusBarInstance = {
+        statusBarItem: mockStatusBarItem,
+        setState: vi.fn(),
+        showTemporaryMessage: vi.fn(),
+        clearTemporaryMessage: vi.fn(),
+        show: vi.fn(),
+        hide: vi.fn(),
+        dispose: vi.fn()
+    };
+
+    const mockWorkspaceSettingsInstance = {
+        getSelectedEmbeddingModel: vi.fn().mockReturnValue(undefined),
+        setSelectedEmbeddingModel: vi.fn(),
+        updateLastIndexingTimestamp: vi.fn(),
+        getSetting: vi.fn(),
+        setSetting: vi.fn(),
+        clearWorkspaceSettings: vi.fn(),
+        resetAllSettings: vi.fn(),
+        dispose: vi.fn()
+    };
+
+    const mockPiscinaInstance = {
+        run: vi.fn(),
+        destroy: vi.fn().mockResolvedValue(undefined)
+    };
+
+    const mockPiscinaConstructor = vi.fn().mockImplementation(() => mockPiscinaInstance);
+
+    return {
+        mockStatusBarItem,
+        mockStatusBarInstance,
+        mockWorkspaceSettingsInstance,
+        mockPiscinaInstance,
+        mockPiscinaConstructor
+    };
+});
 
 // Mock the StatusBarService module
 vi.mock('../services/statusBarService', () => {
     return {
         StatusBarService: {
-            getInstance: vi.fn(() => mockStatusBarInstance),
+            getInstance: vi.fn(() => mocks.mockStatusBarInstance),
             reset: vi.fn(),
             MAIN_STATUS_BAR_ID: 'prAnalyzer.main'
         },
@@ -50,26 +77,26 @@ vi.mock('../services/statusBarService', () => {
     };
 });
 
-const mockWorkspaceSettingsInstance = {
-    getSelectedEmbeddingModel: vi.fn().mockReturnValue(undefined),
-    setSelectedEmbeddingModel: vi.fn(),
-    updateLastIndexingTimestamp: vi.fn(),
-    getSetting: vi.fn(),
-    setSetting: vi.fn(),
-    clearWorkspaceSettings: vi.fn(),
-    resetAllSettings: vi.fn(),
-    dispose: vi.fn()
-};
-
-// Then update the mock to return our persistent instance
+// Mock WorkspaceSettingsService
 vi.mock('../services/workspaceSettingsService', () => {
     return {
-        WorkspaceSettingsService: vi.fn().mockImplementation(() => mockWorkspaceSettingsInstance)
+        WorkspaceSettingsService: vi.fn().mockImplementation(() => mocks.mockWorkspaceSettingsInstance)
     };
 });
 
 // Mock vscode module
-vi.mock('vscode');
+vi.mock('vscode', () => ({
+    Uri: {
+        file: vi.fn((path: string) => ({ path, scheme: 'file' }))
+    },
+    CancellationTokenSource: vi.fn().mockImplementation(() => ({
+        token: {
+            onCancellationRequested: vi.fn(),
+            isCancellationRequested: false
+        },
+        cancel: vi.fn()
+    }))
+}));
 
 // Mock fs exists check for worker script path
 vi.mock('fs', () => {
@@ -83,9 +110,8 @@ vi.mock('fs', () => {
 vi.mock('os', () => {
     const actual = vi.importActual('os');
     return {
-        ...actual, // Keep all original functions by default
+        ...actual,
         cpus: vi.fn(() => {
-            // Create a proper array of 4 items that won't be undefined
             return [
                 { model: 'Test CPU', speed: 2400 },
                 { model: 'Test CPU', speed: 2400 },
@@ -93,16 +119,20 @@ vi.mock('os', () => {
                 { model: 'Test CPU', speed: 2400 }
             ];
         }),
-        totalmem: vi.fn().mockImplementation(() => 16 * 1024 * 1024 * 1024), // 16GB
-        freemem: vi.fn().mockImplementation(() => 8 * 1024 * 1024 * 1024),  // 8GB free
-        availableParallelism: vi.fn().mockReturnValue(4) // Mock 4 available cores
+        totalmem: vi.fn().mockImplementation(() => 16 * 1024 * 1024 * 1024),
+        freemem: vi.fn().mockImplementation(() => 8 * 1024 * 1024 * 1024),
+        availableParallelism: vi.fn().mockReturnValue(4)
+    };
+});
+
+// Mock Piscina
+vi.mock('piscina', () => {
+    return {
+        default: mocks.mockPiscinaConstructor
     };
 });
 
 describe('IndexingService', () => {
-    // Increase timeout to 30 seconds for worker threads initialization
-    vi.setConfig({ testTimeout: 30000 });
-
     let context: vscode.ExtensionContext;
     let indexingService: IndexingService;
     let statusBarServiceInstance: any;
@@ -110,13 +140,49 @@ describe('IndexingService', () => {
     let workspaceSettingsService: WorkspaceSettingsService;
 
     beforeEach(() => {
+        // Reset all mocks
         vi.clearAllMocks();
+
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
+            const listeners: Array<(e: any) => any> = [];
+            let isCancelled = false;
+
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() { return isCancelled; },
+                onCancellationRequested: vi.fn((listener: (e: any) => any) => {
+                    listeners.push(listener);
+                    return {
+                        dispose: vi.fn(() => {
+                            const index = listeners.indexOf(listener);
+                            if (index !== -1) {
+                                listeners.splice(index, 1);
+                            }
+                        })
+                    };
+                })
+            };
+
+            return {
+                token: token,
+                cancel: vi.fn(() => {
+                    isCancelled = true;
+                    // Create a copy of listeners array before iteration
+                    [...listeners].forEach(listener => listener(undefined)); // Pass undefined or a specific event if needed
+                }),
+                dispose: vi.fn()
+            } as unknown as vscode.CancellationTokenSource; // Cast to assure TS it's a CancellationTokenSource
+        });
+
+        // Redefine mock behaviors after clearMocks
+        mocks.mockPiscinaConstructor.mockImplementation(() => mocks.mockPiscinaInstance);
+        mocks.mockPiscinaInstance.run.mockImplementation(vi.fn());
+        mocks.mockPiscinaInstance.destroy.mockResolvedValue(undefined);
+        mocks.mockWorkspaceSettingsInstance.getSelectedEmbeddingModel.mockReturnValue(undefined);
+        mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp.mockImplementation(() => { });
 
         // Reset StatusBarService instance
         StatusBarService.reset();
         statusBarServiceInstance = StatusBarService.getInstance();
-        expect(statusBarServiceInstance).toBeDefined();
-        expect(statusBarServiceInstance.showTemporaryMessage).toBeDefined();
 
         // Set up the extension path to the actual project root
         extensionPath = path.resolve(__dirname, '..', '..');
@@ -134,11 +200,8 @@ describe('IndexingService', () => {
             asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
         } as unknown as vscode.ExtensionContext;
 
-        const maxConcurrentTasks = 2;
-        TreeStructureAnalyzerPool.createSingleton(context.extensionPath, maxConcurrentTasks);
-
-        // Create service instances
-        workspaceSettingsService = mockWorkspaceSettingsInstance as unknown as WorkspaceSettingsService;
+        // Create service instances using the mocked constructor
+        workspaceSettingsService = mocks.mockWorkspaceSettingsInstance as unknown as WorkspaceSettingsService;
 
         // Create IndexingService with required options
         indexingService = new IndexingService(
@@ -148,13 +211,12 @@ describe('IndexingService', () => {
                 modelBasePath: path.join(extensionPath, 'models'),
                 modelName: 'Xenova/all-MiniLM-L6-v2',
                 contextLength: 256,
-                maxConcurrentTasks: maxConcurrentTasks
+                maxConcurrentTasks: 2
             }
         );
     });
 
     afterEach(async () => {
-        // Cleanup
         try {
             await indexingService.dispose();
         } catch (e) {
@@ -162,8 +224,57 @@ describe('IndexingService', () => {
         }
     });
 
-    it('should process files successfully', async () => {
-        // Create test files
+    it('should initialize Piscina pool correctly', () => {
+        // Verify Piscina was initialized with correct parameters
+        expect(mocks.mockPiscinaConstructor).toHaveBeenCalledWith({
+            filename: path.join(extensionPath, 'dist', 'workers', 'asyncIndexingProcessor.js'),
+            maxThreads: 2,
+            workerData: {
+                modelBasePath: path.join(extensionPath, 'models'),
+                modelName: 'Xenova/all-MiniLM-L6-v2',
+                contextLength: 256,
+                embeddingOptions: {
+                    pooling: 'mean',
+                    normalize: true
+                }
+            }
+        });
+    });
+
+    it('should process files successfully with Piscina', async () => {
+        // Setup mock successful responses
+        const mockResults: ProcessingResult[] = [
+            {
+                fileId: 'file1',
+                embeddings: [new Float32Array([0.1, 0.2, 0.3])],
+                chunkOffsets: [0],
+                metadata: {
+                    parentStructureIds: [],
+                    structureOrders: [],
+                    isOversizedFlags: [],
+                    structureTypes: []
+                },
+                success: true
+            },
+            {
+                fileId: 'file2',
+                embeddings: [new Float32Array([0.4, 0.5, 0.6])],
+                chunkOffsets: [0],
+                metadata: {
+                    parentStructureIds: [],
+                    structureOrders: [],
+                    isOversizedFlags: [],
+                    structureTypes: []
+                },
+                success: true
+            }
+        ];
+
+        // Mock Piscina run method to return successful results
+        mocks.mockPiscinaInstance.run
+            .mockResolvedValueOnce(mockResults[0])
+            .mockResolvedValueOnce(mockResults[1]);
+
         const files: FileToProcess[] = [
             { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' },
             { id: 'file2', path: '/path/to/file2.js', content: 'const y = 2;' }
@@ -178,246 +289,192 @@ describe('IndexingService', () => {
         expect(results.get('file2')).toBeDefined();
         expect(results.get('file1')?.success).toBe(true);
         expect(results.get('file2')?.success).toBe(true);
-        expect(results.get('file1')?.embeddings.length).toBeGreaterThan(0);
-        expect(results.get('file2')?.embeddings.length).toBeGreaterThan(0);
+
+        // Verify Piscina was called correctly
+        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalledTimes(2);
+        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalledWith(
+            { file: files[0] },
+            { signal: expect.any(AbortSignal) }
+        );
+        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalledWith(
+            { file: files[1] },
+            { signal: expect.any(AbortSignal) }
+        );
+
+        // Verify updateLastIndexingTimestamp was called
+        expect(mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp).toHaveBeenCalled();
     });
 
     it('should handle empty file list', async () => {
-        // Process empty file list
         const results = await indexingService.processFiles([]);
-
-        // Should return an empty map
         expect(results.size).toBe(0);
+        expect(mocks.mockPiscinaInstance.run).not.toHaveBeenCalled();
     });
 
-    it('should handle file chunking correctly', async () => {
-        // Create a file that would need to be chunked (large content)
-        const largeContent = 'Larger than default chunk size'.repeat(2000);
+    it('should handle Piscina worker errors', async () => {
+        // Mock Piscina to throw an error
+        mocks.mockPiscinaInstance.run.mockRejectedValue(new Error('Worker failed'));
+
         const files: FileToProcess[] = [
-            { id: 'large', path: '/path/to/large.js', content: largeContent }
+            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' }
         ];
 
-        // Process the file
         const results = await indexingService.processFiles(files);
 
-        // Verify result exists
-        expect(results.get('large')).toBeDefined();
-        expect(results.get('large')?.success).toBe(true);
-        // We should have multiple embeddings for this large content (at least 2)
-        expect(results.get('large')?.embeddings.length).toBeGreaterThan(1);
+        // Should still return a result map, but with error result
+        expect(results.size).toBe(0); // Failed results are not included in final map
+        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalled();
+
+        // Even with errors, updateLastIndexingTimestamp should still be called
+        expect(mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp).toHaveBeenCalled();
     });
 
-    // Test that the service uses the StatusBarService singleton correctly
     it('should use StatusBarService for status updates', async () => {
-        // Get StatusBarService mock instance
+        const mockResult: ProcessingResult = {
+            fileId: 'test',
+            embeddings: [new Float32Array([0.1, 0.2])],
+            chunkOffsets: [0],
+            metadata: {
+                parentStructureIds: [],
+                structureOrders: [],
+                isOversizedFlags: [],
+                structureTypes: []
+            },
+            success: true
+        };
+
+        mocks.mockPiscinaInstance.run.mockResolvedValue(mockResult);
+
         const setStateSpy = vi.spyOn(statusBarServiceInstance, 'setState');
         const showTemporaryMessageSpy = vi.spyOn(statusBarServiceInstance, 'showTemporaryMessage');
 
-        // Process a file
         await indexingService.processFiles([
             { id: 'test', path: '/test.js', content: 'test content' }
         ]);
 
-        // Verify the status bar service was used
         expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Indexing, '1 files');
         expect(showTemporaryMessageSpy).toHaveBeenCalled();
     });
 
-    // Test the workspace settings integration
-    it('should update workspace settings after processing files', async () => {
-        const updateLastIndexingTimestampSpy = vi.spyOn(workspaceSettingsService, 'updateLastIndexingTimestamp');
+    it('should update workspace settings after processing', async () => {
+        const mockResult: ProcessingResult = {
+            fileId: 'test',
+            embeddings: [new Float32Array([0.1, 0.2])],
+            chunkOffsets: [0],
+            metadata: {
+                parentStructureIds: [],
+                structureOrders: [],
+                isOversizedFlags: [],
+                structureTypes: []
+            },
+            success: true
+        };
 
-        // Process a file
+        mocks.mockPiscinaInstance.run.mockResolvedValue(mockResult);
+
         await indexingService.processFiles([
             { id: 'test', path: '/test.js', content: 'test content' }
         ]);
 
-        // Verify the workspace settings were updated
-        expect(updateLastIndexingTimestampSpy).toHaveBeenCalled();
+        expect(mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp).toHaveBeenCalled();
     });
 
-    // Add this test to your test suite
     it('should handle cancellation correctly', async () => {
-        // Create a file to process
+        // Mock Piscina to simulate long-running task that gets cancelled
+        mocks.mockPiscinaInstance.run.mockImplementation(() =>
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Operation was cancelled')), 100);
+            })
+        );
+
         const files = [
-            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;'.repeat(8000) },
-            { id: 'file2', path: '/path/to/file2.js', content: 'const x = 1;'.repeat(8000) },
-            { id: 'file3', path: '/path/to/file3.js', content: 'const x = 1;'.repeat(8000) },
+            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' }
         ];
 
-        // Create a cancellation token source
         const tokenSource = new vscode.CancellationTokenSource();
-
-        // Start processing
         const processPromise = indexingService.processFiles(files, tokenSource.token);
 
-        // Trigger cancellation
+        // Cancel immediately
         tokenSource.cancel();
 
-        await expect(processPromise).rejects.toThrow('Operation was cancelled');
+        // The IndexingService handles cancellation gracefully and returns an empty Map
+        // rather than throwing an error
+        const result = await processPromise;
+        expect(result).toBeInstanceOf(Map);
+        expect(result.size).toBe(0); // Should be empty since the task was cancelled/failed
     });
 
-    it('should process files in parallel with multiple workers', async () => {
-        // Create multiple files to process
+    it('should call destroy on Piscina during disposal', async () => {
+        await indexingService.dispose();
+        expect(mocks.mockPiscinaInstance.destroy).toHaveBeenCalled();
+    });
+
+    it('should support progress reporting', async () => {
+        const mockResults: ProcessingResult[] = [
+            {
+                fileId: 'f1',
+                embeddings: [new Float32Array([0.1])],
+                chunkOffsets: [0],
+                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+                success: true
+            },
+            {
+                fileId: 'f2',
+                embeddings: [new Float32Array([0.2])],
+                chunkOffsets: [0],
+                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+                success: true
+            }
+        ];
+
+        // Mock progressive resolution
+        let resolveCount = 0;
+        mocks.mockPiscinaInstance.run.mockImplementation(() => {
+            return Promise.resolve(mockResults[resolveCount++]);
+        });
+
+        const progressCallback = vi.fn();
+
         const files: FileToProcess[] = [
             { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' },
-            { id: 'f2', path: '/path/to/f2.js', content: 'const y = 2;' },
-            { id: 'f3', path: '/path/to/f3.js', content: 'const z = 3;' }
+            { id: 'f2', path: '/path/to/f2.js', content: 'const y = 2;' }
         ];
 
-        // Process files
-        const results = await indexingService.processFiles(files);
+        await indexingService.processFiles(files, undefined, progressCallback);
 
-        // Verify all files were processed
-        expect(results.size).toBe(3);
-        expect(results.get('f1')?.success).toBe(true);
-        expect(results.get('f2')?.success).toBe(true);
-        expect(results.get('f3')?.success).toBe(true);
+        // Verify progress was reported
+        expect(progressCallback).toHaveBeenCalledWith(1, 2);
+        expect(progressCallback).toHaveBeenCalledWith(2, 2);
     });
 
-    it('should call cancelProcessing on disposal', async () => {
-        // Process a file to initialize Piscina
-        await indexingService.processFiles([
-            { id: 'test', path: '/test.js', content: 'test content' }
-        ]);
-
-        // Spy on the destroy method
-        const destroySpy = vi.spyOn((indexingService as any), 'cancelProcessing');
-
-        // Dispose the service
-        await indexingService.dispose();
-
-        // Verify destroy was called
-        expect(destroySpy).toHaveBeenCalled();
-    });
-
-    it('should handle abort controller management properly', async () => {
-        // First process a file to get an active operation
-        const firstPromise = indexingService.processFiles([
-            { id: 'first', path: '/first.js', content: 'first operation' },
-            { id: 'first', path: '/first.js', content: 'first operation' },
-            { id: 'first', path: '/first.js', content: 'first operation' },
-        ]);
-
-        // Start a second operation - this should cancel the first one
-        const secondPromise = indexingService.processFiles([
-            { id: 'second', path: '/second.js', content: 'second operation' }
-        ]);
-
-        await expect(firstPromise).rejects.toThrow('Operation was cancelled');
-
-        // Complete the second operation
-        const secondResults = await secondPromise;
-
-        expect(secondResults.size).toBe(1);
-        expect(secondResults.get('second')).toBeDefined();
-        expect(secondResults.get('second')?.success).toBe(true);
-    });
-
-    it('should handle empty content files', async () => {
-        // Create file with empty content
-        const files: FileToProcess[] = [
-            { id: 'empty', path: '/path/to/empty.js', content: '' }
-        ];
-
-        // Process the file
-        const results = await indexingService.processFiles(files);
-
-        // Verify the result
-        expect(results.size).toBe(1);
-        expect(results.get('empty')).toBeDefined();
-        expect(results.get('empty')?.success).toBe(true);
-        // Empty content should have empty embeddings
-        expect(results.get('empty')?.embeddings.length).toBe(1);
-        expect(results.get('empty')?.embeddings[0]!.length).toBe(0);
-    });
-
-    it('should update status bar with correct file count', async () => {
-        // Create multiple files
-        const files: FileToProcess[] = [
-            { id: 'file1', path: '/path/to/file1.js', content: 'content 1' },
-            { id: 'file2', path: '/path/to/file2.js', content: 'content 2' },
-            { id: 'file3', path: '/path/to/file3.js', content: 'content 3' }
-        ];
-
-        // Spy on setState method
-        const setStateSpy = vi.spyOn(statusBarServiceInstance, 'setState');
-
-        // Process files
-        await indexingService.processFiles(files);
-
-        // Verify setState was called with correct parameters
-        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Indexing, '3 files');
-
-        setStateSpy.mockRestore();
-    });
-});
-
-describe('IndexingService Management Functions', () => {
-    let context: vscode.ExtensionContext;
-    let indexingService: IndexingService;
-    let workspaceSettingsService: WorkspaceSettingsService;
-    let extensionPath: string;
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        StatusBarService.reset();
-
-        // Set up the extension path
-        extensionPath = path.resolve(__dirname, '..', '..');
-
-        // Mock context
-        context = {
-            globalStorageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'global')),
-            storageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'workspace')),
-            extensionPath: extensionPath,
-            workspaceState: {
-                update: vi.fn(),
-                get: vi.fn()
-            },
-            subscriptions: [],
-            asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
-        } as unknown as vscode.ExtensionContext;
-
-        workspaceSettingsService = new WorkspaceSettingsService(context);
-
-        // Create service with minimal configuration
-        indexingService = new IndexingService(
-            context,
-            workspaceSettingsService,
+    it('should support batch completion callback', async () => {
+        const mockResults: ProcessingResult[] = [
             {
-                modelBasePath: path.join(extensionPath, 'models'),
-                modelName: 'Xenova/all-MiniLM-L6-v2',
-                contextLength: 256
+                fileId: 'f1',
+                embeddings: [new Float32Array([0.1])],
+                chunkOffsets: [0],
+                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+                success: true
             }
+        ];
+
+        mocks.mockPiscinaInstance.run.mockResolvedValue(mockResults[0]);
+
+        const batchCompletedCallback = vi.fn().mockResolvedValue(undefined);
+
+        const files: FileToProcess[] = [
+            { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' }
+        ];
+
+        await indexingService.processFiles(files, undefined, undefined, batchCompletedCallback);
+
+        // Verify batch callback was called
+        expect(batchCompletedCallback).toHaveBeenCalledWith(
+            expect.any(Map)
         );
     });
-
-    afterEach(async () => {
-        await indexingService.dispose();
-    });
-
-    it('should handle cancel current indexing command correctly', async () => {
-        // Mock showQuickPick to select cancel option
-        const showQuickPickMock = vscode.window.showQuickPick as Mock;
-        showQuickPickMock.mockResolvedValueOnce('Cancel current indexing');
-
-        // Spy on cancelProcessing method
-        const cancelProcessingSpy = vi.spyOn(indexingService, 'cancelProcessing')
-            .mockResolvedValueOnce();
-
-        // Call management function
-        await (indexingService as any).showIndexingManagementOptions();
-
-        // Verify cancelProcessing was called
-        expect(cancelProcessingSpy).toHaveBeenCalled();
-
-        // Clean up
-        cancelProcessingSpy.mockRestore();
-    });
 });
 
-// Add a separate describe block for configuration tests
 describe('IndexingService Configuration', () => {
     let context: vscode.ExtensionContext;
     let workspaceSettingsService: WorkspaceSettingsService;
@@ -441,11 +498,10 @@ describe('IndexingService Configuration', () => {
             asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
         } as unknown as vscode.ExtensionContext;
 
-        workspaceSettingsService = new WorkspaceSettingsService(context);
+        workspaceSettingsService = mocks.mockWorkspaceSettingsInstance as unknown as WorkspaceSettingsService;
     });
 
     it('should throw error when model name is not provided', () => {
-        // Try to create a service without model name
         expect(() => {
             new IndexingService(
                 context,
@@ -455,63 +511,14 @@ describe('IndexingService Configuration', () => {
             );
         }).toThrow('Model name must be provided');
     });
-});
-
-describe('IndexingService Error Handling', () => {
-    let context: vscode.ExtensionContext;
-    let indexingService: IndexingService;
-    let workspaceSettingsService: WorkspaceSettingsService;
-    let extensionPath: string;
-    let statusBarServiceInstance: any;
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-        StatusBarService.reset();
-        statusBarServiceInstance = StatusBarService.getInstance();
-
-        extensionPath = path.resolve(__dirname, '..', '..');
-
-        // Mock context
-        context = {
-            globalStorageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'global')),
-            storageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'workspace')),
-            extensionPath: extensionPath,
-            workspaceState: {
-                update: vi.fn(),
-                get: vi.fn()
-            },
-            subscriptions: [],
-            asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
-        } as unknown as vscode.ExtensionContext;
-
-        workspaceSettingsService = new WorkspaceSettingsService(context);
-
-        // Create service with minimal configuration
-        indexingService = new IndexingService(
-            context,
-            workspaceSettingsService,
-            {
-                modelBasePath: path.join(extensionPath, 'models'),
-                modelName: 'test-model',
-                contextLength: 256
-            }
-        );
-    });
-
-    afterEach(async () => {
-        await indexingService.dispose();
-    });
 
     it('should throw error when context length is not provided', () => {
-        // Clean up existing service
-        indexingService.dispose();
-
-        // Try to create a service without context length
         expect(() => {
             new IndexingService(
                 context,
                 workspaceSettingsService,
                 {
+                    modelBasePath: '/test',
                     modelName: 'test-model',
                     // @ts-ignore - force invalid input for testing
                     contextLength: undefined

@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
+import * as path from 'path';
+import Piscina from 'piscina';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { EmbeddingOptions } from '../types/embeddingTypes';
 import {
-    AsyncIndexingProcessor,
     type FileToProcess,
-    type ProcessingResult
+    type ProcessingResult,
+    type PiscinaTaskData
 } from '../workers/asyncIndexingProcessor';
 
 /**
@@ -32,11 +34,11 @@ interface ProcessingOperation {
 }
 
 /**
- * IndexingService manages embedding generation without using Piscina
+ * IndexingService manages embedding generation using Piscina worker pool
  */
 export class IndexingService implements vscode.Disposable {
     private readonly statusBarService: StatusBarService;
-    private readonly processor: AsyncIndexingProcessor;
+    private piscina: Piscina | null = null;
 
     // Track current processing operation
     private currentOperation: ProcessingOperation | null = null;
@@ -75,14 +77,29 @@ export class IndexingService implements vscode.Disposable {
             ...options
         } as Required<IndexingServiceOptions>;
 
-        this.processor = new AsyncIndexingProcessor(
-            this.options.modelBasePath,
-            this.options.modelName,
-            this.options.contextLength,
-            this.options.embeddingOptions
-        );
+        // Initialize Piscina worker pool
+        this.initializePiscinaPool();
 
         this.statusBarService = StatusBarService.getInstance();
+    }
+
+    /**
+     * Initialize Piscina worker pool
+     */
+    private initializePiscinaPool(): void {
+        // Determine the path to the distributable asyncIndexingProcessor.js
+        const workerFilename = path.join(this.context.extensionPath, 'dist', 'workers', 'asyncIndexingProcessor.js');
+
+        this.piscina = new Piscina({
+            filename: workerFilename,
+            maxThreads: this.options.maxConcurrentTasks,
+            workerData: {
+                modelBasePath: this.options.modelBasePath,
+                modelName: this.options.modelName,
+                contextLength: this.options.contextLength,
+                embeddingOptions: this.options.embeddingOptions
+            }
+        });
     }
 
     /**
@@ -140,23 +157,26 @@ export class IndexingService implements vscode.Disposable {
         const sortedFiles = [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
         try {
-            // Process files concurrently with limited concurrency
-            const maxConcurrentTasks = this.options.maxConcurrentTasks;
+            if (!this.piscina) {
+                throw new Error('Piscina worker pool is not initialized');
+            }
+
             let completedCount = 0;
             const totalFiles = sortedFiles.length;
 
-            // Create a function to process a single file
-            const processFile = async (file: FileToProcess): Promise<ProcessingResult> => {
-                try {
-                    // Check if cancelled
-                    if (abortController.signal.aborted) {
-                        throw new Error('Operation was cancelled');
-                    }
+            // Temporary batch storage for batching results
+            const temporaryBatchResults = new Map<string, ProcessingResult>();
+            const batchSize = Math.min(50, this.options.maxConcurrentTasks * 2); // Configurable batch size
 
-                    const result = await this.processor.processFile(file, abortController.signal);
-
-                    // Update progress
+            // Submit all tasks to Piscina
+            const taskPromises = sortedFiles.map(file =>
+                this.piscina!.run(
+                    { file } as PiscinaTaskData,
+                    { signal: abortController.signal }
+                ).then((result: ProcessingResult) => {
+                    // Update progress as each task completes
                     completedCount++;
+
                     if (progressCallback) {
                         progressCallback(completedCount, totalFiles);
                     }
@@ -170,8 +190,15 @@ export class IndexingService implements vscode.Disposable {
                     );
 
                     return result;
-                } catch (error) {
+                }).catch((error: Error) => {
+                    // Handle individual task errors
                     console.error(`Error processing file ${file.path}:`, error);
+                    completedCount++;
+
+                    if (progressCallback) {
+                        progressCallback(completedCount, totalFiles);
+                    }
+
                     return {
                         fileId: file.id,
                         success: false,
@@ -184,47 +211,47 @@ export class IndexingService implements vscode.Disposable {
                         },
                         embeddings: [],
                         chunkOffsets: []
-                    };
-                }
-            };
+                    } as ProcessingResult;
+                })
+            );
 
-            // Process files in batches to control concurrency
-            for (let i = 0; i < sortedFiles.length; i += maxConcurrentTasks) {
-                // Check if cancelled
-                if (abortController.signal.aborted) {
-                    throw new Error('Operation was cancelled');
-                }
+            // Store all task promises for cancellation
+            this.currentOperation!.promises = taskPromises;
 
-                const batch = sortedFiles.slice(i, i + maxConcurrentTasks);
+            // Process results as they complete and batch them
+            for (const taskPromise of taskPromises) {
+                try {
+                    const result = await taskPromise;
 
-                // Process the batch concurrently
-                const batchPromises = batch.map(file => processFile(file));
-                this.currentOperation!.promises = batchPromises;
+                    // Check if operation was cancelled
+                    if (!this.currentOperation) {
+                        break;
+                    }
 
-                // Wait for the current batch to complete
-                const batchResults = await Promise.all(batchPromises);
-
-                // Create a map for the current batch results
-                const batchResultsMap = new Map<string, ProcessingResult>();
-
-                // Store results only after the entire batch is complete
-                // This avoids race conditions from multiple async operations
-                // writing to the shared results map simultaneously
-                for (const result of batchResults) {
                     if (result.success) {
-                        this.currentOperation!.results.set(result.fileId, result);
-                        batchResultsMap.set(result.fileId, result);
+                        this.currentOperation.results.set(result.fileId, result);
+                        temporaryBatchResults.set(result.fileId, result);
                     }
-                }
 
-                // If a batch completion callback is provided, call it with the batch results
-                // This allows for saving embeddings as batches are processed
-                if (batchCompletedCallback && batchResultsMap.size > 0) {
-                    try {
-                        await batchCompletedCallback(batchResultsMap);
-                    } catch (error) {
-                        console.error('Error in batch completion callback:', error);
+                    // If we've reached the batch size or this is the last result, process the batch
+                    if (temporaryBatchResults.size >= batchSize ||
+                        (this.currentOperation && this.currentOperation.results.size === sortedFiles.filter(f =>
+                            this.currentOperation!.results.has(f.id) || temporaryBatchResults.has(f.id)
+                        ).length)) {
+
+                        if (batchCompletedCallback && temporaryBatchResults.size > 0) {
+                            try {
+                                await batchCompletedCallback(new Map(temporaryBatchResults));
+                            } catch (error) {
+                                console.error('Error in batch completion callback:', error);
+                            }
+                        }
+
+                        // Clear the temporary batch
+                        temporaryBatchResults.clear();
                     }
+                } catch (error) {
+                    console.error('Error waiting for task result:', error);
                 }
             }
 
@@ -234,8 +261,8 @@ export class IndexingService implements vscode.Disposable {
             // Set status back to ready when done
             this.statusBarService.setState(StatusBarState.Ready);
 
-            // Return the results
-            return new Map(this.currentOperation.results);
+            // Return the results (check if operation still exists)
+            return new Map(this.currentOperation?.results || []);
         } catch (error) {
             // Handle errors
             console.error('Error processing files:', error);
@@ -257,7 +284,13 @@ export class IndexingService implements vscode.Disposable {
             // Abort the operation
             this.currentOperation.abortController.abort();
 
-            await Promise.all(this.currentOperation.promises);
+            try {
+                // Wait for all promises to settle
+                await Promise.allSettled(this.currentOperation.promises);
+            } catch (error) {
+                // Ignore errors during cancellation
+                console.warn('Errors during cancellation cleanup:', error);
+            }
 
             this.currentOperation = null;
 
@@ -327,6 +360,11 @@ export class IndexingService implements vscode.Disposable {
     public async dispose(): Promise<void> {
         // Cancel any ongoing operations
         await this.cancelProcessing();
-        this.processor.dispose();
+
+        // Destroy Piscina worker pool
+        if (this.piscina) {
+            await this.piscina.destroy();
+            this.piscina = null;
+        }
     }
 }
