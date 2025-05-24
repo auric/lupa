@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } 
 import * as vscode from 'vscode'; // Import the mocked vscode
 import * as path from 'path';
 import { ContextProvider, DiffSymbolInfo } from '../services/contextProvider';
-import { TreeStructureAnalyzerPool, TreeStructureAnalyzerResource, TreeStructureAnalyzer, SymbolInfo as AnalyzerSymbolInfo } from '../services/treeStructureAnalyzer';
+import { TreeStructureAnalyzer, TreeStructureAnalyzerInitializer, SymbolInfo as AnalyzerSymbolInfo } from '../services/treeStructureAnalyzer';
 import { EmbeddingDatabaseAdapter } from '../services/embeddingDatabaseAdapter';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { TokenManagerService, TokenAllocation } from '../services/tokenManagerService';
@@ -20,10 +20,6 @@ const mockFs = vscode.workspace.fs;
 // Workspace folders are now part of the vscode mock
 
 describe('ContextProvider Symbol Identification', () => {
-    let analyzerPool: TreeStructureAnalyzerPool;
-    let resource: TreeStructureAnalyzerResource;
-    let analyzer: TreeStructureAnalyzer;
-
     let mockEmbeddingDbAdapter: EmbeddingDatabaseAdapter;
     let mockModelManager: CopilotModelManager;
     let mockTokenManager: TokenManagerService;
@@ -32,12 +28,11 @@ describe('ContextProvider Symbol Identification', () => {
     const extensionPath = path.resolve(__dirname, '..', '..');
     const workspaceRoot = 'd:/dev/copilot-review';
 
-    beforeAll(() => {
-        analyzerPool = TreeStructureAnalyzerPool.createSingleton(extensionPath, 1);
+    beforeAll(async () => {
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
     });
 
     afterAll(() => {
-        analyzerPool.dispose();
     });
 
     beforeEach(async () => {

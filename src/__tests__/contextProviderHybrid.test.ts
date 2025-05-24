@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { ContextProvider, DiffSymbolInfo } from '../services/contextProvider';
 import { EmbeddingDatabaseAdapter } from '../services/embeddingDatabaseAdapter';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { TreeStructureAnalyzerResource, SymbolInfo as AnalyzerSymbolInfo } from '../services/treeStructureAnalyzer';
+import { SymbolInfo as AnalyzerSymbolInfo } from '../services/treeStructureAnalyzer';
 import { SimilaritySearchResult } from '../types/embeddingTypes';
 import { AnalysisMode } from '../types/modelTypes';
 import {
@@ -154,7 +154,13 @@ vi.mock('../services/treeStructureAnalyzer', async () => {
 
 
     return {
-        TreeStructureAnalyzerResource: MockTreeStructureAnalyzerResource,
+        TreeStructureAnalyzer: vi.fn(function () {
+            this.findSymbolsInRanges = hoistedMocks.analyzerFindSymbolsInRanges;
+            this.findFunctions = hoistedMocks.analyzerFindFunctions;
+            this.findClasses = hoistedMocks.analyzerFindClasses;
+            this.getFileLanguage = hoistedMocks.analyzerGetFileLanguage;
+            this.dispose = vi.fn();
+        }),
         // SymbolInfo is an interface, so it doesn't need to be explicitly mocked/returned for runtime.
         // If it were a class or value used at runtime, we'd need:
         // SymbolInfo: (await vi.importActual('../services/treeStructureAnalyzer')).SymbolInfo,

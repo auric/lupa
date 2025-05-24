@@ -13,6 +13,7 @@ import { ContextProvider } from './contextProvider';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { IndexingService } from './indexingService';
 import { ResourceDetectionService } from './resourceDetectionService';
+import { TreeStructureAnalyzerInitializer } from './treeStructureAnalyzer';
 
 /**
  * PRAnalysisCoordinator orchestrates the PR analysis workflow
@@ -42,6 +43,8 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
     constructor(
         private readonly context: vscode.ExtensionContext
     ) {
+        TreeStructureAnalyzerInitializer.initialize(this.context.extensionPath);
+
         // Initialize support services
         this.workspaceSettingsService = new WorkspaceSettingsService(context);
         this.resourceDetectionService = new ResourceDetectionService({

@@ -10,7 +10,6 @@ import {
     type ModelInfo
 } from './embeddingModelSelectionService';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
-import { TreeStructureAnalyzerPool } from './treeStructureAnalyzer';
 import { ResourceDetectionService } from './resourceDetectionService';
 
 /**
@@ -52,24 +51,6 @@ export class IndexingManager implements vscode.Disposable {
     }
 
     /**
-     * Initialize the TreeStructureAnalyzerPool
-     * This creates a singleton pool of analyzers that can be shared across components
-     */
-    private initializeTreeStructureAnalyzerPool(isHighMemoryModel: boolean): void {
-        try {
-            const analyzerPoolSize = this.resourceDetectionService.calculateOptimalConcurrentTasks(isHighMemoryModel);
-            TreeStructureAnalyzerPool.createSingleton(
-                this.context.extensionPath,
-                analyzerPoolSize
-            );
-            console.log(`Initialized TreeStructureAnalyzerPool with size: ${analyzerPoolSize}`);
-        } catch (error) {
-            console.warn('Failed to initialize TreeStructureAnalyzerPool:', error);
-            throw error;
-        }
-    }
-
-    /**
      * Set the embedding database adapter (used to break circular dependency)
      * @param embeddingDatabaseAdapter The adapter to set
      */
@@ -82,11 +63,7 @@ export class IndexingManager implements vscode.Disposable {
      * @returns The initialized indexing service
      */
     public initializeIndexingService(modelInfo: ModelInfo): IndexingService {
-
         this.selectedModel = modelInfo.name;
-
-        // Initialize the TreeStructureAnalyzerPool before initializing the indexing service
-        this.initializeTreeStructureAnalyzerPool(modelInfo.isHighMemory);
 
         // Dispose existing service if it exists
         if (this.indexingService) {
@@ -484,9 +461,5 @@ export class IndexingManager implements vscode.Disposable {
         if (this.continuousIndexingCancellationToken) {
             this.continuousIndexingCancellationToken.cancel();
         }
-
-        // We don't dispose the TreeStructureAnalyzerPool here since it's a singleton
-        // and might be used by other components. It will be disposed when the extension
-        // is deactivated.
     }
 }

@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as path from 'path';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
-import { TreeStructureAnalyzerPool } from '../services/treeStructureAnalyzer';
 import { EmbeddingOptions } from '../types/embeddingTypes';
+import { TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
 
 // Shorter test fixtures to ensure tests run faster and more reliably
 const CODE_WITH_LONG_LINE = `
@@ -69,8 +69,7 @@ describe('WorkerCodeChunker Improved Splitting Tests', () => {
         // Set up extension path to project root
         extensionPath = path.resolve(__dirname, '..', '..');
 
-        // Create TreeStructureAnalyzer pool
-        TreeStructureAnalyzerPool.createSingleton(extensionPath, 2);
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
 
         // Initialize token estimator with a small context length to force chunking
         tokenEstimator = new WorkerTokenEstimator(
@@ -664,8 +663,7 @@ ${Array(20).fill('[Citation link](https://example.com/citation)').join('\n')}`;
         // Set up extension path to project root
         extensionPath = path.resolve(__dirname, '..', '..');
 
-        // Create TreeStructureAnalyzer pool
-        TreeStructureAnalyzerPool.createSingleton(extensionPath, 2);
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
 
         // Initialize token estimator with a small context length to force chunking
         tokenEstimator = new WorkerTokenEstimator(

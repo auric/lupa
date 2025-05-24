@@ -1,23 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TreeStructureAnalyzer, TreeStructureAnalyzerPool, TreeStructureAnalyzerResource } from '../services/treeStructureAnalyzer';
+import { TreeStructureAnalyzer, TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
 import * as path from 'path';
 
 describe('TreeStructureAnalyzer Comment Association', () => {
-    let resource: TreeStructureAnalyzerResource;
     let analyzer: TreeStructureAnalyzer;
 
     beforeEach(async () => {
         // Create a real analyzer instance
         const extensionPath = path.resolve(__dirname, '..', '..');
-        const analyzerPool = TreeStructureAnalyzerPool.createSingleton(extensionPath, 2);
-
-        resource = await TreeStructureAnalyzerResource.create();
-        analyzer = resource.instance;
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
+        analyzer = new TreeStructureAnalyzer();
         await analyzer.initialize();
     });
 
     afterEach(() => {
-        resource.dispose();
+        analyzer.dispose();
     });
 
     it('should associate comments before classes in C++', async () => {

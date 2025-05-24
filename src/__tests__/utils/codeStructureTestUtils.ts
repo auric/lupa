@@ -1,11 +1,10 @@
 import Parser from 'web-tree-sitter';
-import { TreeStructureAnalyzer, TreeStructureAnalyzerResource, CodeStructure } from '../../services/treeStructureAnalyzer';
+import { TreeStructureAnalyzer, CodeStructure } from '../../services/treeStructureAnalyzer';
 
 /**
  * Utility class to test code structure detection
  */
 export class CodeStructureTestUtils {
-    private resource: TreeStructureAnalyzerResource | null = null;
     private analyzer: TreeStructureAnalyzer | null = null;
     private initializePromise: Promise<TreeStructureAnalyzer> | null = null;
 
@@ -26,9 +25,7 @@ export class CodeStructureTestUtils {
      */
     private async initializeAnalyzerImpl(): Promise<TreeStructureAnalyzer> {
         if (!this.analyzer) {
-            this.resource = await TreeStructureAnalyzerResource.create();
-            this.analyzer = this.resource.instance;
-            this.initializePromise = null;
+            this.analyzer = new TreeStructureAnalyzer();
         }
         return this.analyzer;
     }

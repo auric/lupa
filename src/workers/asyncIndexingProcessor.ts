@@ -7,13 +7,17 @@ import {
     type Tensor
 } from '@huggingface/transformers';
 import { Mutex } from 'async-mutex';
-import { EmbeddingOptions, ChunkingMetadata } from '../types/embeddingTypes';
+import {
+    type EmbeddingOptions,
+    type ChunkingMetadata
+} from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
 import {
     getLanguageForExtension,
     type SupportedLanguage
 } from '../types/types';
+import { TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
 
 /**
  * Interface representing a file to be processed
@@ -249,13 +253,14 @@ let processorInstance: AsyncIndexingProcessor | null = null;
 /**
  * Piscina worker function - called by Piscina pool
  */
-export default async function piscinaWorkerFunction(
-    taskData: PiscinaTaskData,
-    { signal }: { signal: AbortSignal }
-): Promise<ProcessingResult> {
-    // Initialize processor instance once per worker using workerData
+export default async (
+    taskData: PiscinaTaskData
+): Promise<ProcessingResult> => {
+    const signal = new AbortController().signal;
+    console.log('Piscina worker function called');
     if (!processorInstance && workerData) {
-        const { modelBasePath, modelName, contextLength, embeddingOptions } = workerData;
+        const { modelBasePath, modelName, contextLength, embeddingOptions, extensionPath } = workerData;
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
         processorInstance = new AsyncIndexingProcessor(
             modelBasePath,
             modelName,
