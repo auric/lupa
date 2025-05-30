@@ -54,7 +54,9 @@ export class AsyncIndexingProcessor {
     ) {
         transformersEnv.allowRemoteModels = false;
         transformersEnv.allowLocalModels = true;
+        transformersEnv.localModelPath = this.modelBasePath;
         transformersEnv.cacheDir = this.modelBasePath;
+        transformersEnv.useFS = true;
         try {
             const tokenEstimator = new WorkerTokenEstimator(
                 this.modelName,
@@ -110,7 +112,7 @@ export class AsyncIndexingProcessor {
 
         // Generate embeddings for each chunk
         const embeddings: Float32Array[] = [];
-        let pipe: FeatureExtractionPipeline | null = null;
+        let pipe: any = null;
         let output: Tensor | null = null;
         for (const chunk of result.chunks) {
             // Check for cancellation before processing each chunk
@@ -135,7 +137,7 @@ export class AsyncIndexingProcessor {
                 output = await pipe(chunk, {
                     pooling: poolingStrategy,
                     normalize: shouldNormalize
-                });
+                }) as Tensor;
 
                 // Extract the embedding
                 const embedding = output.data;
