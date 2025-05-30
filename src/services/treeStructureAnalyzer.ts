@@ -1,5 +1,12 @@
 import * as vscode from 'vscode';
-import Parser from 'web-tree-sitter';
+import {
+    type Point,
+    Parser,
+    Language,
+    Node,
+    Tree,
+    Query
+} from 'web-tree-sitter';
 import { SUPPORTED_LANGUAGES, getLanguageForExtension } from '../types/types';
 import {
     TREE_SITTER_LANGUAGE_CONFIGS
@@ -10,8 +17,8 @@ import * as path from 'path';
  * Represents a code range in a file
  */
 export interface CodeRange {
-    startPosition: Parser.Point;
-    endPosition: Parser.Point;
+    startPosition: Point;
+    endPosition: Point;
 }
 
 /**
@@ -182,7 +189,7 @@ export class TreeStructureAnalyzerPool implements vscode.Disposable {
  */
 export class TreeStructureAnalyzer implements vscode.Disposable {
     private parser: Parser | null = null;
-    private languageParsers: Map<string, Parser.Language> = new Map();
+    private languageParsers: Map<string, Language> = new Map();
     private isInitialized = false;
     // Promise for initialization
     private pool: TreeStructureAnalyzerPool | null = null;
@@ -269,7 +276,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param variant Optional variant (e.g. 'tsx')
      * @returns Tree-sitter Language instance
      */
-    private async loadLanguageParser(languageId: string, variant?: string): Promise<Parser.Language> {
+    private async loadLanguageParser(languageId: string, variant?: string): Promise<Language> {
         // Create a cache key that includes variant information
         const cacheKey = variant ? `${languageId}-${variant}` : languageId;
 
@@ -291,7 +298,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const wasmPath = this.getWasmGrammarPath(supportedLanguage.treeSitterGrammar, supportedLanguage.variant);
 
             // Load the language from the WASM file
-            const language = await Parser.Language.load(wasmPath);
+            const language = await Language.load(wasmPath);
 
             // Store the language in cache
             this.languageParsers.set(cacheKey, language);
@@ -333,10 +340,10 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         content: string,
         language: string,
         variant?: string
-    ): Promise<Parser.Tree | null> {
+    ): Promise<Tree | null> {
         await this.ensureInitialized();
 
-        let tree: Parser.Tree | null = null;
+        let tree: Tree | null = null;
         try {
             const lang = await this.loadLanguageParser(language, variant);
             this.parser!.setLanguage(lang);
@@ -381,7 +388,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     }
 
     public async findFunctionsImpl(
-        tree: Parser.Tree,
+        tree: Tree,
         content: string,
         language: string,
         variant?: string
@@ -437,7 +444,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     }
 
     public async findClassesImpl(
-        tree: Parser.Tree,
+        tree: Tree,
         content: string,
         language: string,
         variant?: string
@@ -471,12 +478,12 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @returns Array of code structures
      */
     private async findStructures(
-        tree: Parser.Tree,
+        tree: Tree,
         content: string,
         language: string,
         queryType: 'functionQueries' | 'classQueries',
         contextNodesTypes: string[],
-        contextNodeCheck: (node: Parser.SyntaxNode) => boolean,
+        contextNodeCheck: (node: Node) => boolean,
         variant?: string
     ): Promise<CodeStructure[]> {
         await this.ensureInitialized();
@@ -497,11 +504,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const rootNode = tree.rootNode;
 
             // Find context nodes (classes, namespaces, etc.) to establish parent relationships
-            const contextNodes: Parser.SyntaxNode[] = [];
+            const contextNodes: Node[] = [];
             this.findNodesOfType(rootNode, contextNodesTypes, contextNodes);
 
             // Map of node IDs to their parent context
-            const nodeContextMap = new Map<number, { node: Parser.SyntaxNode, name?: string, type: string }>();
+            const nodeContextMap = new Map<number, { node: Node, name?: string, type: string }>();
 
             // Build a map of parent contexts for faster lookup
             for (const contextNode of contextNodes) {
@@ -525,7 +532,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             for (const queryString of config[queryType]) {
                 try {
                     const currentLang = await this.loadLanguageParser(language, variant);
-                    const query = currentLang.query(queryString);
+                    const query = new Query(currentLang, queryString);
 
                     try {
                         const matches = query.matches(rootNode);
@@ -533,10 +540,10 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                         // Process each match
                         for (const match of matches) {
                             // Group captures by name
-                            const captureMap = new Map<string, Parser.SyntaxNode>();
-                            const comments: Parser.SyntaxNode[] = [];
-                            const trailingComments: Parser.SyntaxNode[] = [];
-                            let captureNode: Parser.SyntaxNode | undefined = undefined;
+                            const captureMap = new Map<string, Node>();
+                            const comments: Node[] = [];
+                            const trailingComments: Node[] = [];
+                            let captureNode: Node | undefined = undefined;
 
                             // Process all captures in the match
                             for (const capture of match.captures) {
@@ -553,7 +560,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                             }
 
                             // Determine the main structure node
-                            let mainNode: Parser.SyntaxNode | undefined;
+                            let mainNode: Node | undefined;
 
                             // First check for template declaration since it's a special case
                             if (captureMap.has('template_declaration')) {
@@ -679,7 +686,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     /**
      * Helper method to find all nodes of specific types
      */
-    private findNodesOfType(node: Parser.SyntaxNode, types: string[], result: Parser.SyntaxNode[]): void {
+    private findNodesOfType(node: Node, types: string[], result: Node[]): void {
         if (types.includes(node.type)) {
             result.push(node);
         }
@@ -697,7 +704,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param node The parent node to search within
      * @param predicate A function that returns true if the node should be included
      */
-    private findChildNodesWithinRange(node: Parser.SyntaxNode, predicate: (node: Parser.SyntaxNode) => boolean): void {
+    private findChildNodesWithinRange(node: Node, predicate: (node: Node) => boolean): void {
         // Check if this node matches the predicate
         const shouldInclude = predicate(node);
 
@@ -718,7 +725,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     /**
      * Helper to convert a Tree-sitter node to a CodeRange
     */
-    private nodeToCodeRange(node: Parser.SyntaxNode): CodeRange {
+    private nodeToCodeRange(node: Node): CodeRange {
         return {
             startPosition: node.startPosition,
             endPosition: node.endPosition,
@@ -728,7 +735,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     /**
      * Helper to extract a meaningful name from a Tree-sitter node
      */
-    private extractNodeName(node: Parser.SyntaxNode, language: string): string | undefined {
+    private extractNodeName(node: Node, language: string): string | undefined {
         // Specific overrides first
         if (language === 'csharp' && node.type === 'indexer_declaration') return 'this';
 
@@ -745,7 +752,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         // 2. Declarator Logic (look for first identifier child within declarator)
         const declaratorNode = node.childForFieldName('declarator');
         if (declaratorNode) {
-            const firstIdentifierChild = declaratorNode.children.find(child => identifierTypes.includes(child.type));
+            const firstIdentifierChild = declaratorNode.children.find(child => child && identifierTypes.includes(child.type));
             if (firstIdentifierChild) return firstIdentifierChild.text;
             // Fallback: first identifier descendant in declarator if no direct child works
             const firstDescendant = declaratorNode.descendantsOfType(identifierTypes)[0];
@@ -779,11 +786,13 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
         // 4. Template Declaration Parameter Name (Heuristic: first type_identifier descendant)
         if (node.type === 'template_declaration') {
             const typeIdentifiers = node.descendantsOfType('type_identifier');
-            if (typeIdentifiers.length > 0) return typeIdentifiers[0].text; // Often the template param name
+            if (typeIdentifiers.length > 0) {
+                return typeIdentifiers[0]!.text; // Often the template param name
+            }
         }
 
         // 5. Fallback: Find LAST identifier that is a DIRECT CHILD of the node
-        let lastDirectIdentifierChild: Parser.SyntaxNode | null = null;
+        let lastDirectIdentifierChild: Node | null = null;
         for (let i = node.childCount - 1; i >= 0; i--) {
             const child = node.child(i);
             if (child && identifierTypes.includes(child.type)) {
@@ -822,7 +831,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param content File content
      * @returns Character offset or null if invalid
      */
-    public positionToOffset(position: Parser.Point, content: string): number | null {
+    public positionToOffset(position: Point, content: string): number | null {
         const lines = content.split('\n');
 
         if (position.row >= lines.length) {
@@ -880,7 +889,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
             // Create a query to find all comments
             const currentLang = await this.loadLanguageParser(language, variant);
-            query = currentLang.query('(comment) @comment');
+            query = new Query(currentLang, '(comment) @comment');
 
             // Get all comment nodes
             const matches = query.matches(rootNode);
@@ -1067,7 +1076,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     public async isPositionInsideFunction(
         content: string,
         language: string,
-        position: Parser.Point,
+        position: Point,
         variant?: string
     ): Promise<CodeStructure | null> {
         try {
@@ -1093,7 +1102,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
      * @param range Range to check against
      * @returns True if position is inside the range
      */
-    private isPositionInsideRange(position: Parser.Point, range: CodeRange): boolean {
+    private isPositionInsideRange(position: Point, range: CodeRange): boolean {
         // Check if position is after or at the start position
         if (position.row > range.startPosition.row ||
             (position.row === range.startPosition.row && position.column >= range.startPosition.column)) {
@@ -1119,7 +1128,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     public async getStructureHierarchyAtPosition(
         content: string,
         language: string,
-        position: Parser.Point,
+        position: Point,
         variant?: string
     ): Promise<CodeStructure[]> {
         try {
@@ -1185,7 +1194,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
     ): Promise<SymbolInfo[]> {
         await this.ensureInitialized();
 
-        let tree: Parser.Tree | null = null;
+        let tree: Tree | null = null;
         const foundSymbols: SymbolInfo[] = [];
         const processedSymbolKeys = new Set<string>(); // To ensure uniqueness
 
@@ -1231,6 +1240,9 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
             const potentialSymbolNodes = rootNode.descendantsOfType(symbolNodeTypes);
 
             for (const node of potentialSymbolNodes) {
+                if (!node) {
+                    continue;
+                }
                 const startLine = node.startPosition.row;
                 const endLine = node.endPosition.row;
 
@@ -1245,7 +1257,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
                     if (symbolName) {
                         // --- Find the identifier node for precise positioning ---
-                        let identifierNode: Parser.SyntaxNode | null = null;
+                        let identifierNode: Node | null = null;
                         // Try common name fields first
                         identifierNode = node.childForFieldName('name') || node.childForFieldName('id') || node.childForFieldName('identifier');
                         // If not found, search within declarators
@@ -1257,11 +1269,11 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
                         }
                         // Fallback: Search direct children for identifier type
                         if (!identifierNode) {
-                            identifierNode = node.children.find(child => child.type === 'identifier' && child.text === symbolName) || null;
+                            identifierNode = node.children.find(child => child && child.type === 'identifier' && child.text === symbolName) || null;
                         }
                         // Fallback: Search all descendants (less precise, use as last resort)
                         if (!identifierNode) {
-                            identifierNode = node.descendantsOfType(['identifier', 'property_identifier', 'type_identifier', 'field_identifier']).find(n => n.text === symbolName) || null;
+                            identifierNode = node.descendantsOfType(['identifier', 'property_identifier', 'type_identifier', 'field_identifier']).find(n => n && n.text === symbolName) || null;
                         }
 
                         // Use identifier position if found, otherwise fallback to node position
