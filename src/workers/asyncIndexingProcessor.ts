@@ -112,7 +112,7 @@ export class AsyncIndexingProcessor {
 
         // Generate embeddings for each chunk
         const embeddings: Float32Array[] = [];
-        let pipe: any = null;
+        let pipe: any = null; // FeatureExtractionPipeline
         let output: Tensor | null = null;
         for (const chunk of result.chunks) {
             // Check for cancellation before processing each chunk

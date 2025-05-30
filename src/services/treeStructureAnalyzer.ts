@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import {
     type Point,
     Parser,
@@ -39,19 +38,24 @@ export interface BreakPoint {
     quality: number;
 }
 
+export interface Position {
+    line: number;
+    character: number;
+}
+
 /**
  * Represents symbol information
  */
 export interface SymbolInfo {
     symbolName: string;
     symbolType: string;
-    position: vscode.Position; // Use vscode.Position
+    position: Position;
 }
 
 /**
  * Manages a pool of TreeStructureAnalyzer instances
  */
-export class TreeStructureAnalyzerPool implements vscode.Disposable {
+export class TreeStructureAnalyzerPool {
     private static instance: TreeStructureAnalyzerPool | null = null;
     private readonly analyzers: TreeStructureAnalyzer[] = [];
     private readonly availableAnalyzers: TreeStructureAnalyzer[] = [];
@@ -187,7 +191,7 @@ export class TreeStructureAnalyzerPool implements vscode.Disposable {
 /**
  * Service to analyze code structure using Tree-sitter
  */
-export class TreeStructureAnalyzer implements vscode.Disposable {
+export class TreeStructureAnalyzer {
     private parser: Parser | null = null;
     private languageParsers: Map<string, Language> = new Map();
     private isInitialized = false;
@@ -1278,7 +1282,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
 
                         // Use identifier position if found, otherwise fallback to node position
                         const startPos = identifierNode ? identifierNode.startPosition : node.startPosition;
-                        const position = new vscode.Position(startPos.row, startPos.column);
+                        const position: Position = { line: startPos.row, character: startPos.column };
                         // --- End of identifier positioning logic ---
 
                         // Create a unique key based on name and position to avoid duplicates
@@ -1365,7 +1369,7 @@ export class TreeStructureAnalyzer implements vscode.Disposable {
  *   }
  * }
  */
-export class TreeStructureAnalyzerResource implements vscode.Disposable {
+export class TreeStructureAnalyzerResource {
     private constructor(
         public readonly instance: TreeStructureAnalyzer
     ) { }

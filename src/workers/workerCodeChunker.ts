@@ -1,4 +1,3 @@
-import * as vscode from 'vscode';
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
 import { EmbeddingOptions, ChunkingResult, DetailedChunkingResult } from '../types/embeddingTypes'; // Import DetailedChunkingResult
 import { WorkerTokenEstimator } from './workerTokenEstimator';
@@ -8,7 +7,7 @@ import { TreeStructureAnalyzer, TreeStructureAnalyzerResource } from '../service
  * WorkerCodeChunker provides intelligent code chunking capabilities within worker threads.
  * It respects natural code boundaries while ensuring chunks fit within token limits.
  */
-export class WorkerCodeChunker implements vscode.Disposable {
+export class WorkerCodeChunker {
     private readonly tokenEstimator: WorkerTokenEstimator;
     private readonly defaultOverlapSize = 100;
     private resource: TreeStructureAnalyzerResource | null = null;

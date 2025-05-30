@@ -347,8 +347,9 @@ export class ContextProvider implements vscode.Disposable {
                         }
                     }
 
+                    const position = new vscode.Position(symbol.position.line, symbol.position.character);
                     lspContextPromises.push(
-                        this.findSymbolDefinition(absoluteSymbolPath, symbol.position, token)
+                        this.findSymbolDefinition(absoluteSymbolPath, position, token)
                             .then(async (defLocations) => {
                                 if (token?.isCancellationRequested || !defLocations) return;
                                 const snippets = await this.getSnippetsForLocations(defLocations, 3, token, "Definition");
@@ -361,7 +362,7 @@ export class ContextProvider implements vscode.Disposable {
                             }).catch(err => console.warn(`Error finding definition for ${symbol.symbolName} in ${symbol.filePath}:`, err))
                     );
                     lspContextPromises.push(
-                        this.findSymbolReferences(absoluteSymbolPath, symbol.position, false, token)
+                        this.findSymbolReferences(absoluteSymbolPath, position, false, token)
                             .then(async (refLocations) => {
                                 if (token?.isCancellationRequested || !refLocations) return;
                                 const snippets = await this.getSnippetsForLocations(refLocations, 2, token, "Reference");
