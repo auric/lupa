@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { IndexingService, IndexingServiceOptions } from './indexingService';
-import { FileToProcess } from '../workers/asyncIndexingProcessor';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { StatusBarService, StatusBarState } from './statusBarService';
@@ -9,6 +8,7 @@ import {
     EmbeddingModelSelectionService,
     type ModelInfo
 } from './embeddingModelSelectionService';
+import type { FileToProcess } from '../types/indexingTypes';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
 import { ResourceDetectionService } from './resourceDetectionService';
 
@@ -62,7 +62,7 @@ export class IndexingManager implements vscode.Disposable {
      * Initialize or reinitialize the indexing service with the appropriate model
      * @returns The initialized indexing service
      */
-    public initializeIndexingService(modelInfo: ModelInfo): IndexingService {
+    public async initializeIndexingService(modelInfo: ModelInfo): Promise<IndexingService> {
         this.selectedModel = modelInfo.name;
 
         // Dispose existing service if it exists
@@ -77,8 +77,13 @@ export class IndexingManager implements vscode.Disposable {
         const options: IndexingServiceOptions = {
             modelBasePath: this.modelSelectionService.getBasePath(),
             modelName: this.selectedModel,
-            maxConcurrentTasks: concurrentTasks,
-            contextLength: modelInfo.contextLength
+            maxConcurrentEmbeddingTasks: concurrentTasks,
+            contextLength: modelInfo.contextLength,
+            extensionPath: this.context.extensionPath,
+            embeddingOptions: {
+                pooling: 'mean',
+                normalize: true
+            }
         };
 
         // Create the indexing service
@@ -90,6 +95,7 @@ export class IndexingManager implements vscode.Disposable {
 
         console.log(`Initialized IndexingService with model: ${this.selectedModel}, concurrentTasks: ${concurrentTasks}, context length: ${modelInfo?.contextLength || 'unknown'}`);
 
+        await this.indexingService.initialize();
         return this.indexingService;
     }
 
@@ -338,72 +344,95 @@ export class IndexingManager implements vscode.Disposable {
 
         try {
             // Track progress statistics
-            let totalProcessed = 0;
+            let totalProcessedForNotification = 0; // Tracks files fully processed for the vscode.Progress notification
             let totalStored = 0;
             const totalToProcess = filesToProcess.length; // This is the actual number of files that need processing
-            let lastProcessedPercent = 0;
+            let lastReportedPercentForNotification = 0;
 
             // Process the files with the IndexingService, saving results as batches complete
             const results = await this.indexingService!.processFiles(
                 filesToProcess,
                 token,
-                (processed, total) => {
-                    // Update progress message showing overall indexing progress
-                    totalProcessed = processed;
+                (processedItems, totalItems, phase, phaseProcessedFiles, phaseTotalFiles) => {
+                    // processedItems, totalItems: items within the current phase (files for chunking, chunks for embedding)
+                    // phaseProcessedFiles, phaseTotalFiles: files completed/total in current phase by IndexingService
 
-                    // Calculate percentage based on the actual number of files to process
-                    // not the total files checked
-                    const processedPercent = Math.round((processed / totalToProcess) * 100);
+                    let currentProgressMessage = '';
+                    let currentCompletionRatio = 0; // Represents overall progress from 0.0 to 1.0
 
-                    // Calculate the increment for the progress bar
-                    // We allocate 100% of the progress bar to the processing phase
-                    if (processed > 0) {
-                        // Calculate the increment based on the progress since last update
-                        // Use a percentage of the total files to process as the progress indicator
-                        const currentProcessedPercent = (processed / totalToProcess) * 100;
-                        const incrementValue = Math.max(0, currentProcessedPercent - lastProcessedPercent);
-                        lastProcessedPercent = currentProcessedPercent;
-
-                        if (incrementValue > 0) {
-                            progress.report({
-                                message: `Indexing ${processed} of ${totalToProcess} files (${processedPercent}%)...`,
-                                increment: incrementValue
-                            });
+                    if (phase === 'chunking') {
+                        // phaseProcessedFiles is filesChunkingAttemptedCount out of initialFiles.length (from IndexingService's perspective)
+                        if (phaseProcessedFiles !== undefined && phaseTotalFiles !== undefined && phaseTotalFiles > 0) {
+                            currentProgressMessage = `Analyzing content: ${phaseProcessedFiles}/${phaseTotalFiles} files checked.`;
+                            // Chunking is a preliminary step. We can assign a small portion of the overall progress to it.
+                            // For example, if chunking completes for all initial files, it's 10% of the way for `totalToProcess`.
+                            // This is an approximation as `totalToProcess` might be different from `phaseTotalFiles`.
+                            const chunkingProgress = phaseProcessedFiles / phaseTotalFiles;
+                            currentCompletionRatio = chunkingProgress * 0.1; // Chunking contributes up to 10%
                         } else {
-                            // Just update the message without incrementing
-                            progress.report({
-                                message: `Indexing ${processed} of ${totalToProcess} files (${processedPercent}%)...`
-                            });
+                            currentProgressMessage = `Analyzing file content...`;
                         }
+                    } else if (phase === 'embedding') {
+                        // phaseProcessedFiles is filesEmbeddingsCompletedCount
+                        // phaseTotalFiles is op.pendingFileEmbeddings.length (files that had actual chunks)
+                        totalProcessedForNotification = phaseProcessedFiles ?? 0;
+                        const targetForEmbeddingPhase = phaseTotalFiles ?? 0;
+
+                        if (targetForEmbeddingPhase > 0) {
+                            currentProgressMessage = `Embedding: ${totalProcessedForNotification}/${targetForEmbeddingPhase} files completed.`;
+                            // Embedding is the main work. It contributes the remaining 90%.
+                            // Progress within embedding phase: totalProcessedForNotification / targetForEmbeddingPhase
+                            // This needs to be scaled to the overall totalToProcess.
+
+                            let filesWithoutChunks = Math.max(0, totalToProcess - targetForEmbeddingPhase);
+                            // Effective processed count: files that had no chunks + files that completed embedding
+                            const overallEffectivelyProcessed = filesWithoutChunks + totalProcessedForNotification;
+                            currentCompletionRatio = totalToProcess > 0 ? (overallEffectivelyProcessed / totalToProcess) : 0;
+
+                        } else if (totalToProcess > 0 && phaseTotalFiles === 0) {
+                            // All files were chunked (or attempted), but none yielded chunks for embedding.
+                            currentProgressMessage = `All ${totalToProcess} files analyzed, no new content to embed.`;
+                            currentCompletionRatio = 1.0; // 100% done from IndexingManager's perspective
+                        } else {
+                            currentProgressMessage = `Embedding content...`;
+                        }
+                    } else {
+                        currentProgressMessage = `Indexing...`; // Fallback
+                    }
+
+                    const overallPercentForNotification = Math.round(currentCompletionRatio * 100);
+                    const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
+
+                    progress.report({
+                        message: currentProgressMessage,
+                        increment: increment
+                    });
+
+                    if (overallPercentForNotification > lastReportedPercentForNotification) {
+                        lastReportedPercentForNotification = overallPercentForNotification;
                     }
                 },
                 // Batch completion callback - store embeddings as each batch completes
                 async (batchResults) => {
                     try {
-                        // Store this batch of embeddings immediately
-                        const batchFiles = filesToProcess.filter(file =>
+                        const successfulBatchFiles = filesToProcess.filter(file =>
                             batchResults.has(file.id) && batchResults.get(file.id)!.success
                         );
 
-                        if (batchFiles.length > 0) {
+                        if (successfulBatchFiles.length > 0) {
                             await this.embeddingDatabaseAdapter!.storeEmbeddingResults(
-                                batchFiles,
+                                successfulBatchFiles,
                                 batchResults,
-                                (processed, total) => {
-                                    // Only update the message, not the progress bar
-                                    // The progress bar is only updated based on file processing
-                                    const newStored = totalStored + processed;
-                                    progress.report({
-                                        message: `Processed: ${totalProcessed}/${totalToProcess}, Stored: ${newStored}/${totalToProcess}`
-                                    });
+                                (processedInStorage, totalInStorageBatch) => {
+                                    // This callback is for storage progress within a batch, usually quick.
+                                    // The main progress message for storage is updated after the batch.
                                 }
                             );
-
-                            // Update the total stored count after the batch is complete
-                            totalStored += batchFiles.length;
-
-                            // Log batch completion
-                            console.log(`Saved batch of ${batchFiles.length} files. Total stored: ${totalStored}/${totalToProcess}`);
+                            totalStored += successfulBatchFiles.length;
+                            console.log(`Saved batch of ${successfulBatchFiles.length} files. Total stored: ${totalStored}/${totalToProcess}`);
+                            progress.report({
+                                message: `Storing embeddings: ${totalStored}/${totalToProcess} files saved.`
+                            });
                         }
                     } catch (error) {
                         console.error('Error storing batch results:', error);
@@ -416,16 +445,12 @@ export class IndexingManager implements vscode.Disposable {
                 const message = `Indexing completed. ` +
                     `Checked ${totalFilesChecked} files. ` +
                     `Indexed and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
-
-                // Just update the message without incrementing
                 progress.report({ message });
                 console.log(message);
             } else {
-                // If cancelled, show how many files were successfully processed and stored
                 const message = `Indexing cancelled. ` +
                     `Checked ${totalFilesChecked} files. ` +
-                    `Processed ${totalProcessed} and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
-
+                    `Processed ${totalProcessedForNotification} (embedding phase) and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
                 progress.report({ message });
                 console.log(message);
             }

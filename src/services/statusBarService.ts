@@ -18,7 +18,8 @@ export enum StatusBarState {
     Indexing = 'indexing',
     Analyzing = 'analyzing',
     Error = 'error',
-    Inactive = 'inactive'
+    Inactive = 'inactive',
+    Disabled = 'disabled' // Added for when services are fully disposed
 }
 
 /**
@@ -70,6 +71,39 @@ export class StatusBarService {
     public setState(state: StatusBarState, detail?: string): void {
         this.currentState = state;
         this.updateStatusBar(detail);
+    }
+
+    /**
+     * Get the current state of the PR Analyzer
+     * @returns The current state
+     */
+    public getCurrentState(): StatusBarState {
+        return this.currentState;
+    }
+
+    /**
+     * Get the text representation of the current state.
+     * @returns A string describing the current state, suitable for logging or display.
+     */
+    public getCurrentStateText(): string {
+        switch (this.currentState) {
+            case StatusBarState.Ready:
+                return 'Ready';
+            case StatusBarState.Indexing:
+                return 'Indexing';
+            case StatusBarState.Analyzing:
+                return 'Analyzing';
+            case StatusBarState.Error:
+                return 'Error';
+            case StatusBarState.Inactive:
+                return 'Inactive';
+            case StatusBarState.Disabled:
+                return 'Disabled';
+            default:
+                // Exhaustive check, should not happen if all states are covered
+                const _exhaustiveCheck: never = this.currentState;
+                return `Unknown (${_exhaustiveCheck})`;
+        }
     }
 
     /**
@@ -177,6 +211,12 @@ export class StatusBarService {
             case StatusBarState.Inactive:
                 text = 'PR Analyzer';
                 tooltip = 'PR Analyzer is inactive';
+                break;
+
+            case StatusBarState.Disabled:
+                text = 'PR Analyzer - Disabled';
+                tooltip = 'PR Analyzer services are disabled';
+                type = StatusBarMessageType.Warning; // Or a specific icon for disabled
                 break;
         }
 

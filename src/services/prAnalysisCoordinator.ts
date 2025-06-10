@@ -367,7 +367,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             }
 
             // Reinitialize IndexingManager and dependent services with the new model
-            this.indexingManager.initializeIndexingService(actualNewModelInfo.modelInfo);
+            await this.indexingManager.initializeIndexingService(actualNewModelInfo.modelInfo);
 
             // Update the EmbeddingDatabaseAdapter with the new IndexingService instance
             this.embeddingDatabaseAdapter = EmbeddingDatabaseAdapter.getInstance(

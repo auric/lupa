@@ -142,7 +142,7 @@ export class TreeStructureAnalyzer {
                 return;
             }
 
-            // await TreeStructureAnalyzerInitializer.waitForInitialization();
+            await TreeStructureAnalyzerInitializer.waitForInitialization();
 
             this.parser = new Parser();
             this.isInitialized = true;

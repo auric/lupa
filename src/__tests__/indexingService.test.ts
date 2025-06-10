@@ -1,9 +1,9 @@
 import { vi, describe, it, beforeEach, afterEach, expect } from 'vitest';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { IndexingService } from '../services/indexingService';
-import { FileToProcess, ProcessingResult } from '../workers/asyncIndexingProcessor'
-import { StatusBarService, StatusBarState } from '../services/statusBarService';
+import { IndexingService, type IndexingServiceOptions } from '../services/indexingService';
+import type { FileToProcess, ProcessingResult, EmbeddingGenerationOutput } from '../types/indexingTypes';
+import { StatusBarService, StatusBarState, StatusBarMessageType } from '../services/statusBarService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 // Use vi.hoisted for variables that need to be accessed in mocks
@@ -37,21 +37,34 @@ const mocks = vi.hoisted(() => {
         dispose: vi.fn()
     };
 
-    const mockPiscinaInstance = {
-        run: vi.fn(),
-        destroy: vi.fn().mockResolvedValue(undefined)
-    };
+    // Piscina mocks are removed as IndexingService no longer uses it directly,
+    // and EmbeddingGenerationService (which uses Piscina) will be mocked.
 
-    const mockPiscinaConstructor = vi.fn().mockImplementation(() => mockPiscinaInstance);
+    // Mocks for EmbeddingGenerationService
+    const mockGenerateEmbeddingsForChunks = vi.fn();
+    const mockInitializeEmbeddingGeneration = vi.fn().mockResolvedValue(undefined);
+    const mockDisposeEmbeddingGeneration = vi.fn().mockResolvedValue(undefined);
+    const MockEmbeddingGenerationService = vi.fn().mockImplementation(() => ({
+        initialize: mockInitializeEmbeddingGeneration,
+        generateEmbeddingsForChunks: mockGenerateEmbeddingsForChunks,
+        dispose: mockDisposeEmbeddingGeneration,
+    }));
 
     return {
         mockStatusBarItem,
         mockStatusBarInstance,
         mockWorkspaceSettingsInstance,
-        mockPiscinaInstance,
-        mockPiscinaConstructor
+        mockGenerateEmbeddingsForChunks,
+        mockInitializeEmbeddingGeneration,
+        mockDisposeEmbeddingGeneration,
+        MockEmbeddingGenerationService
     };
 });
+
+// Mock EmbeddingGenerationService
+vi.mock('../services/embeddingGenerationService', () => ({
+    EmbeddingGenerationService: mocks.MockEmbeddingGenerationService,
+}));
 
 // Mock the StatusBarService module
 vi.mock('../services/statusBarService', () => {
@@ -87,7 +100,8 @@ vi.mock('../services/workspaceSettingsService', () => {
 // Mock vscode module
 vi.mock('vscode', () => ({
     Uri: {
-        file: vi.fn((path: string) => ({ path, scheme: 'file' }))
+        // Retain fsPath for compatibility if other parts of the codebase expect it (e.g. real CodeChunkingService)
+        file: vi.fn((path: string) => ({ path: path, fsPath: path, scheme: 'file' }))
     },
     CancellationTokenSource: vi.fn().mockImplementation(() => ({
         token: {
@@ -125,12 +139,13 @@ vi.mock('os', () => {
     };
 });
 
-// Mock Piscina
-vi.mock('piscina', () => {
-    return {
-        default: mocks.mockPiscinaConstructor
-    };
-});
+// REMOVE Piscina mock: IndexingService no longer uses Piscina directly.
+// EmbeddingGenerationService (which uses Piscina) is mocked.
+// vi.mock('piscina', () => {
+// return {
+// default: mocks.mockPiscinaConstructor
+// };
+// });
 
 describe('IndexingService', () => {
     let context: vscode.ExtensionContext;
@@ -138,11 +153,13 @@ describe('IndexingService', () => {
     let statusBarServiceInstance: any;
     let extensionPath: string;
     let workspaceSettingsService: WorkspaceSettingsService;
+    let defaultIndexingOptions: IndexingServiceOptions;
 
-    beforeEach(() => {
+    beforeEach(async () => { // Make beforeEach async
         // Reset all mocks
         vi.clearAllMocks();
 
+        // Ensure CancellationTokenSource is re-mocked for fresh state
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
             const listeners: Array<(e: any) => any> = [];
             let isCancelled = false;
@@ -170,24 +187,25 @@ describe('IndexingService', () => {
                     [...listeners].forEach(listener => listener(undefined)); // Pass undefined or a specific event if needed
                 }),
                 dispose: vi.fn()
-            } as unknown as vscode.CancellationTokenSource; // Cast to assure TS it's a CancellationTokenSource
+            } as unknown as vscode.CancellationTokenSource;
         });
 
-        // Redefine mock behaviors after clearMocks
-        mocks.mockPiscinaConstructor.mockImplementation(() => mocks.mockPiscinaInstance);
-        mocks.mockPiscinaInstance.run.mockImplementation(vi.fn());
-        mocks.mockPiscinaInstance.destroy.mockResolvedValue(undefined);
+        // Redefine mock behaviors for services used by IndexingService or its real children
         mocks.mockWorkspaceSettingsInstance.getSelectedEmbeddingModel.mockReturnValue(undefined);
         mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp.mockImplementation(() => { });
 
-        // Reset StatusBarService instance
-        StatusBarService.reset();
+        // Reset EmbeddingGenerationService mocks
+        mocks.MockEmbeddingGenerationService.mockImplementation(() => ({
+            initialize: mocks.mockInitializeEmbeddingGeneration.mockResolvedValue(undefined),
+            generateEmbeddingsForChunks: mocks.mockGenerateEmbeddingsForChunks,
+            dispose: mocks.mockDisposeEmbeddingGeneration.mockResolvedValue(undefined),
+        }));
+
+        StatusBarService.reset(); // Ensure StatusBarService is reset
         statusBarServiceInstance = StatusBarService.getInstance();
 
-        // Set up the extension path to the actual project root
         extensionPath = path.resolve(__dirname, '..', '..');
 
-        // Mock context
         context = {
             globalStorageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'global')),
             storageUri: vscode.Uri.file(path.join(extensionPath, 'tmp', 'workspace')),
@@ -200,105 +218,106 @@ describe('IndexingService', () => {
             asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath)
         } as unknown as vscode.ExtensionContext;
 
-        // Create service instances using the mocked constructor
+        // workspaceSettingsService is already mocked globally, so we can use the mock directly
+        // or instantiate if needed, but here we'll use the global mock instance.
         workspaceSettingsService = mocks.mockWorkspaceSettingsInstance as unknown as WorkspaceSettingsService;
 
-        // Create IndexingService with required options
+        defaultIndexingOptions = {
+            modelBasePath: path.join(extensionPath, 'models'), // For EGS (mocked)
+            modelName: 'Xenova/all-MiniLM-L6-v2', // For CCS (real) & EGS (mocked)
+            contextLength: 256, // For CCS (real)
+            extensionPath, // For CCS (real) & EGS (mocked)
+            embeddingOptions: {
+                pooling: 'mean',
+                normalize: true
+            },
+            maxConcurrentEmbeddingTasks: 2, // For EGS (mocked)
+        };
+
         indexingService = new IndexingService(
             context,
             workspaceSettingsService,
-            {
-                modelBasePath: path.join(extensionPath, 'models'),
-                modelName: 'Xenova/all-MiniLM-L6-v2',
-                contextLength: 256,
-                maxConcurrentTasks: 2
-            }
+            defaultIndexingOptions
         );
+        // Initialize the service, which will initialize real CodeChunkingService and mocked EmbeddingGenerationService
+        await indexingService.initialize();
     });
 
     afterEach(async () => {
-        try {
+        if (indexingService) {
             await indexingService.dispose();
-        } catch (e) {
-            console.error('Error during cleanup:', e);
         }
     });
 
-    it('should initialize Piscina pool correctly', () => {
-        // Verify Piscina was initialized with correct parameters
-        expect(mocks.mockPiscinaConstructor).toHaveBeenCalledWith({
-            filename: path.join(extensionPath, 'dist', 'workers', 'asyncIndexingProcessor.js'),
-            maxThreads: 2,
-            workerData: {
-                modelBasePath: path.join(extensionPath, 'models'),
-                modelName: 'Xenova/all-MiniLM-L6-v2',
-                contextLength: 256,
-                embeddingOptions: {
-                    pooling: 'mean',
-                    normalize: true
-                }
-            }
-        });
+    // This test needs to be adapted as IndexingService no longer directly initializes a Piscina pool.
+    // It initializes CodeChunkingService (real) and EmbeddingGenerationService (mocked).
+    it('should initialize its dependent services (real CodeChunkingService and mocked EmbeddingGenerationService)', () => {
+        // Check that EmbeddingGenerationService's initialize (mocked) was called by IndexingService.initialize()
+        expect(mocks.mockInitializeEmbeddingGeneration).toHaveBeenCalledTimes(1);
+
+        // CodeChunkingService is real. Its initialize method should have been called.
+        // We can't easily check a call on a real method without making CodeChunkingService itself a spy
+        // or checking a side effect of its initialization.
+        // For now, successful operation in other tests will imply its initialization worked.
+        // The constructor of IndexingService creates CodeChunkingService.
+        // IndexingService.initialize calls codeChunkingService.initialize().
+        // We expect no errors from this process.
     });
 
-    it('should process files successfully with Piscina', async () => {
-        // Setup mock successful responses
-        const mockResults: ProcessingResult[] = [
-            {
-                fileId: 'file1',
-                embeddings: [new Float32Array([0.1, 0.2, 0.3])],
-                chunkOffsets: [0],
-                metadata: {
-                    parentStructureIds: [],
-                    structureOrders: [],
-                    isOversizedFlags: [],
-                    structureTypes: []
-                },
-                success: true
-            },
-            {
-                fileId: 'file2',
-                embeddings: [new Float32Array([0.4, 0.5, 0.6])],
-                chunkOffsets: [0],
-                metadata: {
-                    parentStructureIds: [],
-                    structureOrders: [],
-                    isOversizedFlags: [],
-                    structureTypes: []
-                },
-                success: true
-            }
-        ];
+    // This test needs to be adapted.
+    // "Piscina" is an internal detail of the old IndexingService or the (now mocked) EmbeddingGenerationService.
+    // We test that IndexingService uses CodeChunkingService (real) and EmbeddingGenerationService (mocked).
+    it('should process files using real CodeChunkingService and mocked EmbeddingGenerationService', async () => {
+        // File data for CodeChunkingService (real)
+        const file1: FileToProcess = { id: 'file1', path: 'testFile.js', content: 'console.log("hello");' };
+        const file2: FileToProcess = { id: 'file2', path: 'anotherTest.ts', content: 'let greeting: string = "world";' };
+        const filesToProcess: FileToProcess[] = [file1, file2];
 
-        // Mock Piscina run method to return successful results
-        mocks.mockPiscinaInstance.run
-            .mockResolvedValueOnce(mockResults[0])
-            .mockResolvedValueOnce(mockResults[1]);
+        // Mocked output from EmbeddingGenerationService.generateEmbeddingsForChunks
+        const mockEmbeddingOutput1: EmbeddingGenerationOutput[] = [{
+            originalChunkInfo: { fileId: 'file1', filePath: file1.path, chunkIndexInFile: 0, text: 'console.log("hello");', offsetInFile: 0 },
+            embedding: new Float32Array([0.1, 0.2, 0.3]),
+        }];
+        const mockEmbeddingOutput2: EmbeddingGenerationOutput[] = [{
+            originalChunkInfo: { fileId: 'file2', filePath: file2.path, chunkIndexInFile: 0, text: 'let greeting: string = "world";', offsetInFile: 0 },
+            embedding: new Float32Array([0.4, 0.5, 0.6]),
+        }];
 
-        const files: FileToProcess[] = [
-            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' },
-            { id: 'file2', path: '/path/to/file2.js', content: 'const y = 2;' }
-        ];
+        mocks.mockGenerateEmbeddingsForChunks
+            .mockResolvedValueOnce(mockEmbeddingOutput1) // For file1's chunks
+            .mockResolvedValueOnce(mockEmbeddingOutput2); // For file2's chunks
 
         // Process files
-        const results = await indexingService.processFiles(files);
+        const results = await indexingService.processFiles(filesToProcess);
 
         // Verify results
         expect(results.size).toBe(2);
-        expect(results.get('file1')).toBeDefined();
-        expect(results.get('file2')).toBeDefined();
-        expect(results.get('file1')?.success).toBe(true);
-        expect(results.get('file2')?.success).toBe(true);
+        const resultFile1 = results.get('file1');
+        const resultFile2 = results.get('file2');
 
-        // Verify Piscina was called correctly
-        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalledTimes(2);
-        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalledWith(
-            { file: files[0] },
-            { signal: expect.any(AbortSignal) }
+        expect(resultFile1).toBeDefined();
+        expect(resultFile1?.success).toBe(true);
+        expect(resultFile1?.embeddings[0]).toEqual(new Float32Array([0.1, 0.2, 0.3]));
+
+        expect(resultFile2).toBeDefined();
+        expect(resultFile2?.success).toBe(true);
+        expect(resultFile2?.embeddings[0]).toEqual(new Float32Array([0.4, 0.5, 0.6]));
+
+        // Verify EmbeddingGenerationService was called correctly
+        expect(mocks.mockGenerateEmbeddingsForChunks).toHaveBeenCalledTimes(2);
+        expect(mocks.mockGenerateEmbeddingsForChunks).toHaveBeenNthCalledWith(
+            1,
+            expect.arrayContaining([
+                expect.objectContaining({ fileId: 'file1', filePath: file1.path, text: expect.any(String) })
+            ]),
+            expect.any(AbortSignal)
         );
-        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalledWith(
-            { file: files[1] },
-            { signal: expect.any(AbortSignal) }
+        expect(mocks.mockGenerateEmbeddingsForChunks).toHaveBeenNthCalledWith(
+            2,
+            expect.arrayContaining([
+                expect.objectContaining({ fileId: 'file2', filePath: file2.path, text: expect.any(String) })
+            ]),
+            expect.any(AbortSignal)
         );
 
         // Verify updateLastIndexingTimestamp was called
@@ -308,170 +327,168 @@ describe('IndexingService', () => {
     it('should handle empty file list', async () => {
         const results = await indexingService.processFiles([]);
         expect(results.size).toBe(0);
-        expect(mocks.mockPiscinaInstance.run).not.toHaveBeenCalled();
+        expect(mocks.mockGenerateEmbeddingsForChunks).not.toHaveBeenCalled();
     });
 
-    it('should handle Piscina worker errors', async () => {
-        // Mock Piscina to throw an error
-        mocks.mockPiscinaInstance.run.mockRejectedValue(new Error('Worker failed'));
+    it('should handle EmbeddingGenerationService errors', async () => {
+        const fileWithError: FileToProcess = { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' };
+        const mockEmbeddingErrorOutput: EmbeddingGenerationOutput[] = [{
+            originalChunkInfo: { fileId: 'file1', filePath: fileWithError.path, chunkIndexInFile: 0, text: 'const x = 1;', offsetInFile: 0 },
+            embedding: null,
+            error: 'Embedding generation failed for this chunk'
+        }];
+        mocks.mockGenerateEmbeddingsForChunks.mockResolvedValueOnce(mockEmbeddingErrorOutput);
 
-        const files: FileToProcess[] = [
-            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' }
-        ];
+        const results = await indexingService.processFiles([fileWithError]);
 
-        const results = await indexingService.processFiles(files);
-
-        // Should still return a result map, but with error result
-        expect(results.size).toBe(0); // Failed results are not included in final map
-        expect(mocks.mockPiscinaInstance.run).toHaveBeenCalled();
-
-        // Even with errors, updateLastIndexingTimestamp should still be called
-        expect(mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp).toHaveBeenCalled();
+        expect(results.size).toBe(1);
+        const resultFile1 = results.get('file1');
+        expect(resultFile1).toBeDefined();
+        expect(resultFile1?.success).toBe(false);
+        expect(resultFile1?.error).toContain('Embedding generation failed for this chunk');
+        expect(mocks.mockGenerateEmbeddingsForChunks).toHaveBeenCalledTimes(1);
+        expect(mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp).not.toHaveBeenCalled();
     });
 
     it('should use StatusBarService for status updates', async () => {
-        const mockResult: ProcessingResult = {
-            fileId: 'test',
-            embeddings: [new Float32Array([0.1, 0.2])],
-            chunkOffsets: [0],
-            metadata: {
-                parentStructureIds: [],
-                structureOrders: [],
-                isOversizedFlags: [],
-                structureTypes: []
-            },
-            success: true
-        };
-
-        mocks.mockPiscinaInstance.run.mockResolvedValue(mockResult);
+        const fileForStatus: FileToProcess = { id: 'test', path: '/test.js', content: 'test content' };
+        const mockEmbeddingOutputStatus: EmbeddingGenerationOutput[] = [{
+            originalChunkInfo: { fileId: 'test', filePath: fileForStatus.path, chunkIndexInFile: 0, text: 'test content', offsetInFile: 0 },
+            embedding: new Float32Array([0.1, 0.2]),
+        }];
+        mocks.mockGenerateEmbeddingsForChunks.mockResolvedValue(mockEmbeddingOutputStatus);
 
         const setStateSpy = vi.spyOn(statusBarServiceInstance, 'setState');
         const showTemporaryMessageSpy = vi.spyOn(statusBarServiceInstance, 'showTemporaryMessage');
 
-        await indexingService.processFiles([
-            { id: 'test', path: '/test.js', content: 'test content' }
-        ]);
+        await indexingService.processFiles([fileForStatus]);
 
-        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Indexing, '1 files');
-        expect(showTemporaryMessageSpy).toHaveBeenCalled();
+        expect(showTemporaryMessageSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Preparing files 1/1'),
+            expect.any(Number),
+            StatusBarMessageType.Working
+        );
+        expect(showTemporaryMessageSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Embeddings 1/1 files'),
+            expect.any(Number),
+            StatusBarMessageType.Working
+        );
+        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Ready, 'Indexing complete');
     });
 
-    it('should update workspace settings after processing', async () => {
-        const mockResult: ProcessingResult = {
-            fileId: 'test',
-            embeddings: [new Float32Array([0.1, 0.2])],
-            chunkOffsets: [0],
-            metadata: {
-                parentStructureIds: [],
-                structureOrders: [],
-                isOversizedFlags: [],
-                structureTypes: []
-            },
-            success: true
-        };
+    it('should update workspace settings after successful processing', async () => {
+        const fileForSettingUpdate: FileToProcess = { id: 'test', path: '/test.js', content: 'test content' };
+        const mockEmbeddingOutputSettings: EmbeddingGenerationOutput[] = [{
+            originalChunkInfo: { fileId: 'test', filePath: fileForSettingUpdate.path, chunkIndexInFile: 0, text: 'test content', offsetInFile: 0 },
+            embedding: new Float32Array([0.1, 0.2]),
+        }];
+        mocks.mockGenerateEmbeddingsForChunks.mockResolvedValue(mockEmbeddingOutputSettings);
 
-        mocks.mockPiscinaInstance.run.mockResolvedValue(mockResult);
-
-        await indexingService.processFiles([
-            { id: 'test', path: '/test.js', content: 'test content' }
-        ]);
+        await indexingService.processFiles([fileForSettingUpdate]);
 
         expect(mocks.mockWorkspaceSettingsInstance.updateLastIndexingTimestamp).toHaveBeenCalled();
     });
 
     it('should handle cancellation correctly', async () => {
-        // Mock Piscina to simulate long-running task that gets cancelled
-        mocks.mockPiscinaInstance.run.mockImplementation(() =>
-            new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Operation was cancelled')), 100);
-            })
-        );
-
-        const files = [
-            { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' }
-        ];
+        const fileToCancel: FileToProcess = { id: 'file1', path: '/path/to/file1.js', content: 'const x = 1;' };
+        mocks.mockGenerateEmbeddingsForChunks.mockImplementation(async (_chunks, signal) => {
+            return new Promise((resolve, reject) => {
+                if (signal?.aborted) {
+                    return reject(new Error('Operation aborted by signal in EGS mock'));
+                }
+                signal?.onCancellationRequested(() => reject(new Error('Operation aborted by signal in EGS mock')));
+                setTimeout(() => resolve([{
+                    originalChunkInfo: { fileId: 'file1', filePath: fileToCancel.path, chunkIndexInFile: 0, text: 'const x = 1;', offsetInFile: 0 },
+                    embedding: new Float32Array([0.1])
+                }]), 200);
+            });
+        });
 
         const tokenSource = new vscode.CancellationTokenSource();
-        const processPromise = indexingService.processFiles(files, tokenSource.token);
+        const processPromise = indexingService.processFiles([fileToCancel], tokenSource.token);
 
-        // Cancel immediately
         tokenSource.cancel();
 
-        // The IndexingService handles cancellation gracefully and returns an empty Map
-        // rather than throwing an error
         const result = await processPromise;
         expect(result).toBeInstanceOf(Map);
-        expect(result.size).toBe(0); // Should be empty since the task was cancelled/failed
+        expect(result.size).toBe(1);
+        const resultFile1 = result.get('file1');
+        expect(resultFile1).toBeDefined();
+        expect(resultFile1?.success).toBe(false);
+        expect(resultFile1?.error).toMatch(/Operation cancelled|Operation aborted/i);
+
+        if (mocks.mockGenerateEmbeddingsForChunks.mock.calls.length > 0) {
+            const signalArg = mocks.mockGenerateEmbeddingsForChunks.mock.calls[0][1] as AbortSignal;
+            expect(signalArg.aborted).toBe(true);
+        }
     });
 
-    it('should call destroy on Piscina during disposal', async () => {
+    it('should call dispose on its services during disposal', async () => {
+        const codeChunkingServiceInstance = (indexingService as any).codeChunkingService;
+        const disposeChunkerSpy = vi.spyOn(codeChunkingServiceInstance, 'dispose');
+
         await indexingService.dispose();
-        expect(mocks.mockPiscinaInstance.destroy).toHaveBeenCalled();
+
+        expect(mocks.mockDisposeEmbeddingGeneration).toHaveBeenCalledTimes(1);
+        expect(disposeChunkerSpy).toHaveBeenCalledTimes(1);
     });
 
     it('should support progress reporting', async () => {
-        const mockResults: ProcessingResult[] = [
-            {
-                fileId: 'f1',
-                embeddings: [new Float32Array([0.1])],
-                chunkOffsets: [0],
-                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
-                success: true
-            },
-            {
-                fileId: 'f2',
-                embeddings: [new Float32Array([0.2])],
-                chunkOffsets: [0],
-                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
-                success: true
-            }
-        ];
+        const fileProgress1: FileToProcess = { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' };
+        const fileProgress2: FileToProcess = { id: 'f2', path: '/path/to/f2.js', content: 'const y = 2;' };
+        const filesForProgress: FileToProcess[] = [fileProgress1, fileProgress2];
 
-        // Mock progressive resolution
-        let resolveCount = 0;
-        mocks.mockPiscinaInstance.run.mockImplementation(() => {
-            return Promise.resolve(mockResults[resolveCount++]);
-        });
+        const mockEmbeddingOutputP1: EmbeddingGenerationOutput[] = [{ originalChunkInfo: { fileId: 'f1', filePath: fileProgress1.path, chunkIndexInFile: 0, text: 'const x = 1;', offsetInFile: 0 }, embedding: new Float32Array([0.1]) }];
+        const mockEmbeddingOutputP2: EmbeddingGenerationOutput[] = [{ originalChunkInfo: { fileId: 'f2', filePath: fileProgress2.path, chunkIndexInFile: 0, text: 'const y = 2;', offsetInFile: 0 }, embedding: new Float32Array([0.2]) }];
+
+        mocks.mockGenerateEmbeddingsForChunks
+            .mockResolvedValueOnce(mockEmbeddingOutputP1)
+            .mockResolvedValueOnce(mockEmbeddingOutputP2);
 
         const progressCallback = vi.fn();
+        await indexingService.processFiles(filesForProgress, undefined, progressCallback);
 
-        const files: FileToProcess[] = [
-            { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' },
-            { id: 'f2', path: '/path/to/f2.js', content: 'const y = 2;' }
-        ];
+        // Verify progress for chunking phase
+        expect(progressCallback).toHaveBeenCalledWith(1, 2, 'chunking', 1, 2);
+        expect(progressCallback).toHaveBeenCalledWith(2, 2, 'chunking', 2, 2);
 
-        await indexingService.processFiles(files, undefined, progressCallback);
-
-        // Verify progress was reported
-        expect(progressCallback).toHaveBeenCalledWith(1, 2);
-        expect(progressCallback).toHaveBeenCalledWith(2, 2);
+        // Verify progress for embedding phase
+        // After file1 embeddings (assuming 1 chunk for file1)
+        const progressArgsEmbeddingFile1 = progressCallback.mock.calls.find(call => call[2] === 'embedding' && call[4] === 2 && call[3] === 1); // filesEmbeddingsCompletedCount === 1
+        expect(progressArgsEmbeddingFile1).toEqual([
+            1, // embeddingsProcessedCount for file1
+            expect.any(Number), // totalChunksGeneratedCount (will be at least 1, likely 2 if both chunked)
+            'embedding',
+            1, // filesEmbeddingsCompletedCount
+            2  // pendingFileEmbeddings.length (total files that went to embedding)
+        ]);
+        // After file2 embeddings (assuming 1 chunk for file2, total 2 chunks)
+        const progressArgsEmbeddingFile2 = progressCallback.mock.calls.find(call => call[2] === 'embedding' && call[4] === 2 && call[3] === 2); // filesEmbeddingsCompletedCount === 2
+        expect(progressArgsEmbeddingFile2).toEqual([
+            2, // embeddingsProcessedCount for file1 + file2
+            expect.any(Number), // totalChunksGeneratedCount (will be 2)
+            'embedding',
+            2, // filesEmbeddingsCompletedCount
+            2  // pendingFileEmbeddings.length
+        ]);
     });
 
     it('should support batch completion callback', async () => {
-        const mockResults: ProcessingResult[] = [
-            {
-                fileId: 'f1',
-                embeddings: [new Float32Array([0.1])],
-                chunkOffsets: [0],
-                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
-                success: true
-            }
-        ];
-
-        mocks.mockPiscinaInstance.run.mockResolvedValue(mockResults[0]);
+        const fileForBatch: FileToProcess = { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' };
+        const mockEmbeddingOutputBatch: EmbeddingGenerationOutput[] = [{
+            originalChunkInfo: { fileId: 'f1', filePath: fileForBatch.path, chunkIndexInFile: 0, text: 'const x = 1;', offsetInFile: 0 },
+            embedding: new Float32Array([0.1])
+        }];
+        mocks.mockGenerateEmbeddingsForChunks.mockResolvedValue(mockEmbeddingOutputBatch);
 
         const batchCompletedCallback = vi.fn().mockResolvedValue(undefined);
+        await indexingService.processFiles([fileForBatch], undefined, undefined, batchCompletedCallback);
 
-        const files: FileToProcess[] = [
-            { id: 'f1', path: '/path/to/f1.js', content: 'const x = 1;' }
-        ];
-
-        await indexingService.processFiles(files, undefined, undefined, batchCompletedCallback);
-
-        // Verify batch callback was called
         expect(batchCompletedCallback).toHaveBeenCalledWith(
             expect.any(Map)
         );
+        const resultsMap = batchCompletedCallback.mock.calls[0][0] as Map<string, ProcessingResult>;
+        expect(resultsMap.get('f1')?.success).toBe(true);
     });
 });
 

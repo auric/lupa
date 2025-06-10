@@ -20,7 +20,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     const libOptions: LibraryOptions = {
         entry: {
             extension: resolve(__dirname, 'src/extension.ts'),
-            'workers/asyncIndexingProcessor': resolve(__dirname, 'src/workers/asyncIndexingProcessor.ts'),
+            'workers/embeddingGeneratorWorker': resolve(__dirname, 'src/workers/embeddingGeneratorWorker.ts'),
         },
         formats: ['cjs'],
         fileName: (_format, entryName) => `${entryName}.js`,
