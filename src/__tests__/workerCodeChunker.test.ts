@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as path from 'path';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
-import { TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
+import { TreeStructureAnalyzer, TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
 import { EmbeddingOptions } from '../types/embeddingTypes';
 
 // Test fixtures
@@ -132,7 +132,9 @@ describe('WorkerCodeChunker Integration Tests', () => {
         await tokenEstimator.initialize();
 
         // Create the code chunker
-        codeChunker = new WorkerCodeChunker(tokenEstimator);
+        const treeAnalyzer = new TreeStructureAnalyzer();
+        await treeAnalyzer.initialize();
+        codeChunker = new WorkerCodeChunker(tokenEstimator, treeAnalyzer);
 
         // Set up abort controller for tests
         abortController = new AbortController();

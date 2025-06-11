@@ -77,10 +77,14 @@ export class EmbeddingGenerationService {
         }
 
         const workerFilename = path.join(this.options.extensionPath, 'dist', 'workers', 'embeddingGeneratorWorker.js');
+        const workerFileURL = pathToFileURL(workerFilename).toString();
+
+        console.log(`Initializing EmbeddingGenerationService with worker file: ${workerFileURL}`);
 
         try {
             this.piscina = new Tinypool({
-                filename: pathToFileURL(workerFilename).href,
+                filename: workerFileURL,
+                name: 'processEmbeddingTask',
                 runtime: 'child_process',
                 maxThreads: this.options.maxConcurrentTasks,
             });

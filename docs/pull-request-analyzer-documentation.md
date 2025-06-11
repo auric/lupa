@@ -98,9 +98,9 @@ The components interact through these primary mechanisms:
 2. **Model Selection**: Appropriate embedding model is selected based on system resources.
 3. **Main Thread Chunking**: [`IndexingService`](src/services/indexingService.ts:1) uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) (which internally uses [`WorkerCodeChunker`](src/workers/workerCodeChunker.ts:1)) for main-thread chunking of files. This involves parsing with Tree-sitter.
 4. **Worker Initialization**: [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) (used by [`IndexingService`](src/services/indexingService.ts:1)) initializes and manages the `Tinypool` worker pool for [`embeddingGeneratorWorker.ts`](src/workers/embeddingGeneratorWorker.ts:1).
-5. **Embedding Generation (Worker Threads)**: After [`CodeChunkingService`](src/services/codeChunkingService.ts:1) chunks a file, [`IndexingService`](src/services/indexingService.ts:1) passes these chunks to [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1), which then submits individual chunk embedding tasks to its worker pool.
-6. **Database Storage**: Generated embeddings and their metadata are collected from workers and stored in the vector database by `EmbeddingDatabaseAdapter` and `VectorDatabaseService`.
-7. **Status Updates**: Progress is reported through the status bar by [`IndexingService`](src/services/indexingService.ts:1) (reflecting the new two-phase chunking then embedding process).
+5. **Embedding Generation & Yielding**: After [`CodeChunkingService`](src/services/codeChunkingService.ts:1) chunks a file, [`IndexingService`](src/services/indexingService.ts:1) passes these chunks to [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) for embedding generation. Once embeddings for a file are complete, [`IndexingService`](src/services/indexingService.ts:1) constructs a `ProcessingResult` and yields it.
+6. **Result Consumption & Storage**: `IndexingManager` consumes the `ProcessingResult` yielded by [`IndexingService`](src/services/indexingService.ts:1) for each file and is responsible for saving it, typically via `EmbeddingDatabaseAdapter`.
+7. **Status Updates**: Progress is reported through the status bar by [`IndexingService`](src/services/indexingService.ts:1) (reflecting the new two-phase chunking then embedding process, and yielding of results).
 
 #### 1.2.4 Context Retrieval Workflow (Hybrid LSP + Embedding)
 
@@ -210,39 +210,41 @@ The indexing system consists of several components working together to generate 
 
 #### 2.2.1 Indexing Service
 
-The [`IndexingService`](src/services/indexingService.ts:1) (src/services/indexingService.ts) orchestrates the file chunking and embedding generation process by delegating to two new specialized services: [`CodeChunkingService`](src/services/codeChunkingService.ts:1) and [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1).
+The [`IndexingService`](src/services/indexingService.ts:1) (src/services/indexingService.ts) orchestrates the file chunking and embedding generation process. Its primary method, `processFilesGenerator`, is an `async` generator that yields processing results for each file as they become available. It delegates to [`CodeChunkingService`](src/services/codeChunkingService.ts:1) and [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1).
 
-- **Orchestrates Chunking**: Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) to process files. [`CodeChunkingService`](src/services/codeChunkingService.ts:1) internally utilizes [`WorkerCodeChunker`](src/workers/workerCodeChunker.ts:1) (and [`TreeStructureAnalyzer`](src/services/treeStructureAnalyzer.ts:1)) to read files and break them into manageable code chunks. This chunking happens on the main thread, typically one file at a time as orchestrated by [`IndexingService`](src/services/indexingService.ts:1).
+- **Orchestrates Chunking**: Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) to process files. [`CodeChunkingService`](src/services/codeChunkingService.ts:1) internally utilizes [`WorkerCodeChunker`](src/workers/workerCodeChunker.ts:1) (and [`TreeStructureAnalyzer`](src/services/treeStructureAnalyzer.ts:1)) to read files and break them into manageable code chunks. This chunking happens on the main thread, typically one file at a time.
 - **Orchestrates Embedding Generation**: After [`CodeChunkingService`](src/services/codeChunkingService.ts:1) successfully chunks a file, [`IndexingService`](src/services/indexingService.ts:1) passes the resulting `ChunkForEmbedding[]` to [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1). [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) manages a `Tinypool` worker pool (running [`embeddingGeneratorWorker.ts`](src/workers/embeddingGeneratorWorker.ts:1)) and dispatches individual chunk embedding tasks to these workers.
-- **Batch Processing & Prioritization**: Processes files in optimized batches, respecting priority.
-- **Result Aggregation**: [`IndexingService`](src/services/indexingService.ts:1) receives an array of `EmbeddingGenerationOutput` from [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) (for each file's batch of chunks). It then aggregates these results, combining them with the initial chunking details from [`CodeChunkingService`](src/services/codeChunkingService.ts:1), to construct the final `ProcessingResult` for each processed file.
+- **Iterative Processing & Yielding**: The `processFilesGenerator` method (e.g., `async *processFilesGenerator(initialFiles: FileToProcess[], ...): AsyncGenerator<YieldedProcessingOutput>`) iterates through files. For each file, it orchestrates chunking and embedding generation. Upon successful processing of a file, it constructs a `ProcessingResult` and yields it as part of a `YieldedProcessingOutput` object (which includes `filePath` and `result`). It no longer uses a `batchCompletedCallback`.
 - **Cancellation Support**: Supports cancellation of in-progress indexing operations, propagating signals to chunking and embedding tasks.
-- **Status Reporting**: Reports detailed indexing progress and status updates via [`StatusBarService`](src/services/statusBarService.ts:1) (reflecting the two-phase chunking and embedding process).
+- **Status Reporting**: Reports detailed indexing progress and status updates via [`StatusBarService`](src/services/statusBarService.ts:1) (reflecting the two-phase chunking, embedding, and yielding process).
 
 Key interactions:
 
-- Receives file batches to process from `IndexingManager`.
+- Receives files to process from `IndexingManager` as input to `processFilesGenerator`.
 - Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) for structure-aware code chunking of individual files.
 - Uses [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) for parallel embedding generation of chunks from a file.
-- Provides the final aggregated `ProcessingResult` for each file to [`EmbeddingDatabaseAdapter`](src/services/embeddingDatabaseAdapter.ts:1) for storage.
-- Updates indexing status and progress via [`StatusBarService`](src/services/statusBarService.ts:1) (reflecting the distinct chunking and embedding phases).
+- Yields `YieldedProcessingOutput` (containing `filePath` and `ProcessingResult`) for each successfully processed file to its caller (typically `IndexingManager`).
+- Updates indexing status and progress via [`StatusBarService`](src/services/statusBarService.ts:1).
 
 #### 2.2.2 Indexing Manager
 
 The `IndexingManager` (src/services/indexingManager.ts) provides higher-level indexing control:
 
-- **Model Selection**: Selects appropriate embedding model
-- **Continuous Indexing**: Manages background indexing of workspace files
-- **Full Reindexing**: Coordinates full database rebuilds
-- **File Discovery**: Finds relevant files for indexing
-- **Prioritization**: Prioritizes files based on relevance
+- **Model Selection**: Selects appropriate embedding model.
+- **Continuous Indexing**: Manages background indexing of workspace files.
+- **Full Reindexing**: Coordinates full database rebuilds.
+- **File Discovery**: Finds relevant files for indexing.
+- **Consuming Indexing Results**: Calls `indexingService.processFilesGenerator(...)` and uses a `for await...of` loop to consume the `YieldedProcessingOutput` for each file.
+- **Data Persistence**: For each yielded result, it is responsible for saving the `ProcessingResult` via the `EmbeddingDatabaseAdapter`.
 
 Key interactions:
 
-- Uses `EmbeddingModelSelectionService` to select models
-- Creates and manages `IndexingService` instances
-- Coordinates with `VectorDatabaseService` for storage
-- Updates `WorkspaceSettingsService` with indexing status
+- Uses `EmbeddingModelSelectionService` to select models.
+- Creates and manages `IndexingService` instances.
+- Calls `indexingService.processFilesGenerator` and iterates over the yielded results.
+- Uses `EmbeddingDatabaseAdapter` to save each `ProcessingResult`.
+- The `IndexingService` updates the last indexing timestamp in `WorkspaceSettingsService` upon successful completion.
+- `IndexingManager` manages its own `vscode.Progress` display for notifications, while `IndexingService` independently updates the status bar.
 
 #### 2.2.3 Embedding Database Adapter
 
@@ -256,10 +258,10 @@ The `EmbeddingDatabaseAdapter` (src/services/embeddingDatabaseAdapter.ts) bridge
 
 Key interactions:
 
-- Receives results from `IndexingService`
+- Receives results from `IndexingManager` (which obtains them from `IndexingService`)
 - Uses `VectorDatabaseService` for storage operations
 - Provides search capabilities to `ContextProvider`
-- Works with `WorkspaceSettingsService` for configuration
+- Is initialized with `WorkspaceSettingsService`; underlying `VectorDatabaseService` handles more direct settings interactions for database metadata.
 
 ### 2.3 Vector Database System
 
@@ -532,11 +534,11 @@ The embedding generation process follows these steps:
    - Apply appropriate pooling strategy (mean, max, etc.)
    - Normalize vectors if specified
 
-5. **Result Processing**
-   - Collect embedding results from worker threads
-   - Group results by file for storage
-   - Create metadata about embeddings for retrieval
-   - Store results in the vector database
+5. **Result Processing and Yielding**
+   - [`IndexingService`](src/services/indexingService.ts:1) collects chunking details and embedding results for a file.
+   - It constructs the final `ProcessingResult` for that file.
+   - [`IndexingService`](src/services/indexingService.ts:1) then yields this `ProcessingResult` (as part of `YieldedProcessingOutput`).
+   - `IndexingManager` consumes the yielded result and handles its persistence, typically by calling `EmbeddingDatabaseAdapter` to store the data.
 
 ### 3.2 Similarity Search & Context Retrieval Algorithm (Hybrid LSP + Embedding with ANN)
 
@@ -706,7 +708,7 @@ The database system uses SQLite for metadata and HNSWlib for the ANN vector inde
 
 #### 4.1.5 ANN Index (HNSWlib - Separate File, e.g., `embeddings.ann.idx`)
 
-- Stores the actual `Float32Array` embedding vectors.
+- Stores the actual `number[]` embedding vectors.
 - Indexed by numerical labels which correspond to the `label` column in the SQLite `embeddings` table.
 - The dimension of vectors in this index is determined by the currently active embedding model.
 
@@ -721,25 +723,21 @@ The database system uses SQLite for metadata and HNSWlib for the ANN vector inde
 - `parent`: CodeStructure | undefined - Parent structure
 - `text`: string - The text content of the structure
 
-#### 4.2.2 Embedding Processing Result (Output of `IndexingService`)
+#### 4.2.2 Embedding Processing Result (`ProcessingResult` in `indexingTypes.ts`)
 
-This structure (`ProcessingResult`) represents the outcome of processing a single file, orchestrated by [`IndexingService`](src/services/indexingService.ts:1). It combines chunking information (obtained via [`CodeChunkingService`](src/services/codeChunkingService.ts:1)) and embedding vectors (obtained via [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1)). This final `ProcessingResult` for a file is provided to [`EmbeddingDatabaseAdapter`](src/services/embeddingDatabaseAdapter.ts:1) for storage.
+This structure (`ProcessingResult`) represents the outcome of processing a single file for embeddings, orchestrated by `IndexingService`. It's part of the `YieldedProcessingOutput` that `IndexingService.processFilesGenerator` yields. It combines chunking information and the resulting embedding vectors for the file. This `ProcessingResult` is then typically passed to `EmbeddingDatabaseAdapter` for storage.
 
-- `fileId`: string - Identifier of the processed file.
-- `chunkResults`: `ChunkResult[]` - Array of results for each chunk generated from the file. Each `ChunkResult` contains:
-  - `chunkId`: string - Unique identifier for the code chunk (corresponds to `chunks.id`).
-  - `content`: string - The actual text content of the chunk.
-  - `embeddingVector?`: `Float32Array` - The generated embedding for the chunk. Present if embedding was successful.
-  - `startOffset`: number - Start offset of the chunk within the original file.
-  - `endOffset`: number - End offset of the chunk within the original file.
-  - `tokenCount?`: number - Approximate token count of the chunk.
-  - `parentStructureId?`: string - If part of a larger split structure, its original ID.
-  - `structureOrder?`: integer - Order within a split structure.
-  - `isOversized?`: boolean - If the chunk is part of a split oversized structure.
-  - `structureType?`: string - The Tree-sitter type of the primary structure in the chunk.
-  - `embeddingError?`: string - Error message if embedding generation failed for this specific chunk.
-- `fileProcessingSuccess`: boolean - Overall success status for processing this file (e.g., file readable, all chunks attempted).
-- `fileProcessingError?`: string - Error message if a file-level issue occurred (e.g., couldn't read file).
+- `fileId`: string - Unique identifier of the processed file.
+- `filePath`: string - The workspace-relative path to the file.
+- `success`: boolean - Overall success status for generating embeddings for this file. True if all intended chunks were successfully embedded.
+- `embeddings`: `number[][]` - An array of embedding vectors. Each `number[]` corresponds to a successfully embedded chunk from the file. The order matches `chunkOffsets` and the arrays within `metadata`.
+- `chunkOffsets`: `number[]` - An array of numbers, where each number is the starting character offset of a chunk within the original file. The order matches `embeddings` and the arrays within `metadata`.
+- `metadata`: `ChunkMetadata` - An object containing arrays of metadata, where each index corresponds to a chunk:
+  - `parentStructureIds`: `(string | null)[]` - For each chunk, the ID of its parent structure if it was part of a larger structure that was split; otherwise `null`.
+  - `structureOrders`: `(number | null)[]` - For each chunk, its order within a split parent structure; otherwise `null`.
+  - `isOversizedFlags`: `(boolean | null)[]` - For each chunk, true if it's part of an oversized structure that was split; otherwise `null`.
+  - `structureTypes`: `(string | null)[]` - For each chunk, the Tree-sitter type of its primary code structure; otherwise `null`.
+- `error?`: string - An optional string containing an error message if file-level processing failed or to aggregate errors from individual chunk processing.
 
 #### 4.2.3 Similarity Search Result Format (`SimilaritySearchResult` in `embeddingTypes.ts`)
 
@@ -864,11 +862,15 @@ Worker threads, specifically `embeddingGeneratorWorker.ts` managed by `Tinypool`
 
 1.  **Task Definition (Data for `Tinypool.run()`):**
 
-    - Input data for the worker's main function (e.g., `generateEmbeddingsForChunks`) includes:
-      - `chunksToProcess`: An array of `CodeChunk` objects (or simplified versions with `content` and `chunkId`).
-      - `modelName`: Identifier for the Hugging Face model to load.
-      - `modelPath`: Path to the local model files.
-      - `embeddingDimension`: Expected dimension of the output embeddings.
+    - Input data for the worker's main function (e.g., `processEmbeddingTask`) includes:
+      ```typescript
+      export interface EmbeddingTaskData {
+        chunkText: string;
+        modelName: string;
+        modelBasePath: string;
+        embeddingOptions: EmbeddingOptions;
+      }
+      ```
     - Cancellation is primarily managed by Tinypool (e.g., via `AbortSignal` if the pool/task supports it, or by the pool terminating the worker).
 
 2.  **Resource Initialization (within the worker):**
@@ -882,19 +884,18 @@ Worker threads, specifically `embeddingGeneratorWorker.ts` managed by `Tinypool`
 
     - Iterates through `chunksToProcess`.
     - For each chunk's `content`, calls `extractor(chunk.content, { pooling: 'mean', normalize: true })`.
-    - Collects the resulting `Float32Array` embeddings.
+    - Collects the resulting `number[]` embeddings.
     - The worker itself doesn't typically report granular progress _per chunk_ back to the main thread during a single `run` call. Progress is usually inferred by the main thread as tasks complete.
     - Cancellation checks (if manually implemented beyond Tinypool's capabilities) would involve checking an `AbortSignal` if passed.
 
 4.  **Result Formatting (Return value of worker's main function):**
     - Returns a structured result, e.g., an object like:
       ```typescript
-      interface EmbeddingWorkerResult {
-        embeddings: { chunkId: string; vector: Float32Array; error?: string }[];
-        error?: string; // For general worker errors
+      export interface EmbeddingTaskResult {
+        embedding: number[] | null;
+        error?: string;
       }
       ```
-    - Each item in `embeddings` array links a `chunkId` to its `vector` or an error message if embedding failed for that specific chunk.
     - Includes a top-level `error` for issues like model loading failure.
 
 #### 5.1.4 ANN Index Interaction Pattern (HNSWlib)

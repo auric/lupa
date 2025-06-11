@@ -8,7 +8,7 @@ import {
     EmbeddingModelSelectionService,
     type ModelInfo
 } from './embeddingModelSelectionService';
-import type { FileToProcess } from '../types/indexingTypes';
+import type { FileToProcess, ProcessingResult } from '../types/indexingTypes';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
 import { ResourceDetectionService } from './resourceDetectionService';
 
@@ -349,96 +349,90 @@ export class IndexingManager implements vscode.Disposable {
             const totalToProcess = filesToProcess.length; // This is the actual number of files that need processing
             let lastReportedPercentForNotification = 0;
 
-            // Process the files with the IndexingService, saving results as batches complete
-            const results = await this.indexingService!.processFiles(
+            // Process the files with the IndexingService, saving results as they are yielded
+            // IndexingService.processFilesGenerator does not take a progress callback directly.
+            // Progress for the vscode.Progress notification will be updated based on yielded items.
+            const generator = this.indexingService!.processFilesGenerator(
                 filesToProcess,
-                token,
-                (processedItems, totalItems, phase, phaseProcessedFiles, phaseTotalFiles) => {
-                    // processedItems, totalItems: items within the current phase (files for chunking, chunks for embedding)
-                    // phaseProcessedFiles, phaseTotalFiles: files completed/total in current phase by IndexingService
+                token
+            );
 
-                    let currentProgressMessage = '';
-                    let currentCompletionRatio = 0; // Represents overall progress from 0.0 to 1.0
+            let filesProcessedByGenerator = 0;
 
-                    if (phase === 'chunking') {
-                        // phaseProcessedFiles is filesChunkingAttemptedCount out of initialFiles.length (from IndexingService's perspective)
-                        if (phaseProcessedFiles !== undefined && phaseTotalFiles !== undefined && phaseTotalFiles > 0) {
-                            currentProgressMessage = `Analyzing content: ${phaseProcessedFiles}/${phaseTotalFiles} files checked.`;
-                            // Chunking is a preliminary step. We can assign a small portion of the overall progress to it.
-                            // For example, if chunking completes for all initial files, it's 10% of the way for `totalToProcess`.
-                            // This is an approximation as `totalToProcess` might be different from `phaseTotalFiles`.
-                            const chunkingProgress = phaseProcessedFiles / phaseTotalFiles;
-                            currentCompletionRatio = chunkingProgress * 0.1; // Chunking contributes up to 10%
-                        } else {
-                            currentProgressMessage = `Analyzing file content...`;
-                        }
-                    } else if (phase === 'embedding') {
-                        // phaseProcessedFiles is filesEmbeddingsCompletedCount
-                        // phaseTotalFiles is op.pendingFileEmbeddings.length (files that had actual chunks)
-                        totalProcessedForNotification = phaseProcessedFiles ?? 0;
-                        const targetForEmbeddingPhase = phaseTotalFiles ?? 0;
+            for await (const yieldedItem of generator) {
+                if (token.isCancellationRequested) {
+                    console.log('[IndexingManager] Cancellation requested, stopping result processing.');
+                    break;
+                }
 
-                        if (targetForEmbeddingPhase > 0) {
-                            currentProgressMessage = `Embedding: ${totalProcessedForNotification}/${targetForEmbeddingPhase} files completed.`;
-                            // Embedding is the main work. It contributes the remaining 90%.
-                            // Progress within embedding phase: totalProcessedForNotification / targetForEmbeddingPhase
-                            // This needs to be scaled to the overall totalToProcess.
+                filesProcessedByGenerator++;
+                const processingResult = yieldedItem.result;
 
-                            let filesWithoutChunks = Math.max(0, totalToProcess - targetForEmbeddingPhase);
-                            // Effective processed count: files that had no chunks + files that completed embedding
-                            const overallEffectivelyProcessed = filesWithoutChunks + totalProcessedForNotification;
-                            currentCompletionRatio = totalToProcess > 0 ? (overallEffectivelyProcessed / totalToProcess) : 0;
+                if (processingResult.success && processingResult.embeddings && processingResult.embeddings.length > 0) {
+                    const fileToStore = filesToProcess.find(f => f.id === processingResult.fileId);
+                    if (fileToStore) {
+                        const singleFileResultMap = new Map<string, ProcessingResult>();
+                        singleFileResultMap.set(processingResult.fileId, processingResult);
 
-                        } else if (totalToProcess > 0 && phaseTotalFiles === 0) {
-                            // All files were chunked (or attempted), but none yielded chunks for embedding.
-                            currentProgressMessage = `All ${totalToProcess} files analyzed, no new content to embed.`;
-                            currentCompletionRatio = 1.0; // 100% done from IndexingManager's perspective
-                        } else {
-                            currentProgressMessage = `Embedding content...`;
+                        try {
+                            await this.embeddingDatabaseAdapter!.storeEmbeddingResults(
+                                [fileToStore], // Array with a single file
+                                singleFileResultMap,
+                                (processedInStorage, totalInStorageBatch) => {
+                                    // This callback is for storage progress within a batch, usually quick.
+                                }
+                            );
+                            totalStored++;
+                            // Update progress for vscode.Progress notification
+                            const currentProgressMessage = `Indexing: ${totalStored}/${totalToProcess} files processed and stored.`;
+                            const overallPercentForNotification = totalToProcess > 0 ? Math.round((totalStored / totalToProcess) * 100) : 0;
+                            const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
+
+                            progress.report({
+                                message: currentProgressMessage,
+                                increment: increment
+                            });
+                            if (overallPercentForNotification > lastReportedPercentForNotification) {
+                                lastReportedPercentForNotification = overallPercentForNotification;
+                            }
+                            console.log(`[IndexingManager] Stored embeddings for file: ${processingResult.filePath}. Total stored: ${totalStored}/${totalToProcess}`);
+
+                        } catch (error) {
+                            console.error(`[IndexingManager] Error storing embedding result for file ${processingResult.filePath}:`, error);
+                            progress.report({ message: `Error storing ${processingResult.filePath}.` });
                         }
                     } else {
-                        currentProgressMessage = `Indexing...`; // Fallback
+                        console.warn(`[IndexingManager] File with id ${processingResult.fileId} not found in filesToProcess list for storing.`);
                     }
-
-                    const overallPercentForNotification = Math.round(currentCompletionRatio * 100);
+                } else if (processingResult.error) {
+                    console.error(`[IndexingManager] Error processing file ${processingResult.filePath} from generator:`, processingResult.error);
+                    // Update progress for vscode.Progress notification even for errors, to show activity
+                    const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files attempted. Error with ${processingResult.filePath}.`;
+                    const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
                     const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
-
                     progress.report({
                         message: currentProgressMessage,
                         increment: increment
                     });
-
                     if (overallPercentForNotification > lastReportedPercentForNotification) {
                         lastReportedPercentForNotification = overallPercentForNotification;
                     }
-                },
-                // Batch completion callback - store embeddings as each batch completes
-                async (batchResults) => {
-                    try {
-                        const successfulBatchFiles = filesToProcess.filter(file =>
-                            batchResults.has(file.id) && batchResults.get(file.id)!.success
-                        );
-
-                        if (successfulBatchFiles.length > 0) {
-                            await this.embeddingDatabaseAdapter!.storeEmbeddingResults(
-                                successfulBatchFiles,
-                                batchResults,
-                                (processedInStorage, totalInStorageBatch) => {
-                                    // This callback is for storage progress within a batch, usually quick.
-                                    // The main progress message for storage is updated after the batch.
-                                }
-                            );
-                            totalStored += successfulBatchFiles.length;
-                            console.log(`Saved batch of ${successfulBatchFiles.length} files. Total stored: ${totalStored}/${totalToProcess}`);
-                            progress.report({
-                                message: `Storing embeddings: ${totalStored}/${totalToProcess} files saved.`
-                            });
-                        }
-                    } catch (error) {
-                        console.error('Error storing batch results:', error);
+                } else {
+                    // File processed, but no embeddings (e.g. empty file, or no content to embed)
+                    console.log(`[IndexingManager] File ${processingResult.filePath} processed by generator, no new embeddings to store.`);
+                    // Update progress for vscode.Progress notification
+                    const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files analyzed.`;
+                    const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
+                    const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
+                    progress.report({
+                        message: currentProgressMessage,
+                        increment: increment
+                    });
+                    if (overallPercentForNotification > lastReportedPercentForNotification) {
+                        lastReportedPercentForNotification = overallPercentForNotification;
                     }
                 }
-            );
+            }
 
             // Final report
             if (!token.isCancellationRequested) {
@@ -448,9 +442,11 @@ export class IndexingManager implements vscode.Disposable {
                 progress.report({ message });
                 console.log(message);
             } else {
+                // totalProcessedForNotification is no longer updated with the new generator.
+                // filesProcessedByGenerator reflects how many files had their processing completed (success or error) by IndexingService.
                 const message = `Indexing cancelled. ` +
                     `Checked ${totalFilesChecked} files. ` +
-                    `Processed ${totalProcessedForNotification} (embedding phase) and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
+                    `Attempted processing for ${filesProcessedByGenerator} files and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
                 progress.report({ message });
                 console.log(message);
             }

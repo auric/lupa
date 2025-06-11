@@ -11,7 +11,8 @@ import {
     type FileToProcess,
     type ProcessingResult,
     type ChunkForEmbedding,
-    type EmbeddingGenerationOutput
+    type EmbeddingGenerationOutput,
+    type YieldedProcessingOutput
 } from '../types/indexingTypes';
 import { getLanguageForExtension } from '../types/types'; // type SupportedLanguage is not directly used
 import { CodeChunkingService, type CodeChunkingServiceOptions } from './codeChunkingService'; // Added import
@@ -41,26 +42,18 @@ export interface IndexingServiceOptions {
  * This structure is based on section 5 of indexing_refactor_plan.md.
  */
 interface ProcessingOperation {
-    initialFiles: FileToProcess[]; // Renamed from 'files' for clarity as per plan
+    initialFiles: FileToProcess[];
     abortController: AbortController;
-    results: Map<string, ProcessingResult>; // Final or error results per fileId
+    results: Map<string, ProcessingResult>;
 
     // Chunking Phase
     filesChunkingAttemptedCount: number;
-    filesSuccessfullyChunkedCount: number; // Files that yielded chunks
-    totalChunksGeneratedCount: number; // Total individual code chunks from all files
+    filesSuccessfullyChunkedCount: number; // Files that yielded chunks and were sent for embedding
+    totalChunksGeneratedCount: number;
 
     // Embedding Phase
-    embeddingsProcessedCount: number; // Individual chunk embeddings processed (success or failure)
-    filesEmbeddingsCompletedCount: number; // Files with ALL their chunks' embeddings processed
-
-    // Internal tracking for pending embedding operations, needed for implementation
-    pendingFileEmbeddings: Array<{
-        fileId: string,
-        filePath: string, // Added for easier access during result aggregation
-        detailedChunkingResult: DetailedChunkingResult,
-        embeddingPromise: Promise<EmbeddingGenerationOutput[]>
-    }>;
+    embeddingsProcessedCount: number; // Total individual chunk embeddings processed (success or failure from EmbeddingGenerationService)
+    filesEmbeddingsCompletedCount: number; // Files for which embedding generation has completed (successfully or with errors)
 }
 
 /**
@@ -174,30 +167,27 @@ export class IndexingService implements vscode.Disposable {
      * @param token Cancellation token
      * @param progressCallback Optional callback for progress updates
      * @param batchCompletedCallback Optional callback when a batch is completed
-     * @returns Map of file IDs to embeddings
+     * @returns An async generator yielding `YieldedProcessingOutput` objects.
      */
-    public async processFiles(
+    public async *processFilesGenerator(
         files: FileToProcess[],
-        token?: vscode.CancellationToken,
-        progressCallback?: (processedItems: number, totalItems: number, phase?: 'chunking' | 'embedding', processedFiles?: number, totalFiles?: number) => void,
-        batchCompletedCallback?: (batchResults: Map<string, ProcessingResult>) => Promise<void>
-    ): Promise<Map<string, ProcessingResult>> {
+        token?: vscode.CancellationToken
+    ): AsyncGenerator<YieldedProcessingOutput, Map<string, ProcessingResult>, undefined> {
         if (files.length === 0) {
             console.log('[IndexingService] No files provided for processing.');
             return new Map();
         }
 
-        // Ensure services are initialized (assuming constructor/initialize sets them up)
         if (!this.codeChunkingService || !this.embeddingGenerationService) {
-            console.error('[IndexingService] Dependent services (CodeChunkingService or EmbeddingGenerationService) are not initialized.');
+            const errorMsg = 'IndexingService or its dependent services are not properly initialized.';
+            console.error(`[IndexingService] ${errorMsg}`);
             this.statusBarService.setState(StatusBarState.Error, 'Service initialization error before processing.');
-            throw new Error('IndexingService or its dependent services are not properly initialized.');
+            throw new Error(errorMsg);
         }
 
-        // Cancel any existing operation, as per plan
         if (this.currentOperation) {
             console.log('[IndexingService] New processing request received, cancelling previous operation.');
-            await this.cancelProcessing(); // Ensure this properly cleans up
+            await this.cancelProcessing();
         }
 
         const abortController = new AbortController();
@@ -208,9 +198,8 @@ export class IndexingService implements vscode.Disposable {
             }
         });
 
-        // Initialize currentOperation based on the new structure from the plan
         this.currentOperation = {
-            initialFiles: [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0)), // Sort by priority
+            initialFiles: [...files].sort((a, b) => (b.priority || 0) - (a.priority || 0)),
             abortController,
             results: new Map(),
             filesChunkingAttemptedCount: 0,
@@ -218,9 +207,8 @@ export class IndexingService implements vscode.Disposable {
             totalChunksGeneratedCount: 0,
             embeddingsProcessedCount: 0,
             filesEmbeddingsCompletedCount: 0,
-            pendingFileEmbeddings: [],
         };
-        const op = this.currentOperation; // Alias for convenience
+        const op = this.currentOperation;
 
         this.statusBarService.setState(StatusBarState.Indexing, `Preparing ${op.initialFiles.length} files...`);
         console.log(`[IndexingService] Starting processing for ${op.initialFiles.length} files.`);
@@ -229,317 +217,287 @@ export class IndexingService implements vscode.Disposable {
             console.log(`[LIVENESS] IndexingService main thread is alive during processing at ${new Date().toISOString()}`);
         }, 30000);
 
-
         try {
-            // --- Phase 1: Per-File Chunking & Embedding Dispatch ---
-            console.log('[IndexingService] Starting Phase 1: Per-File Chunking & Embedding Dispatch.');
             for (const file of op.initialFiles) {
                 if (op.abortController.signal.aborted) {
-                    console.log(`[IndexingService] Operation aborted during Phase 1 (file: ${file.path}).`);
-                    throw new Error('Operation cancelled during file preparation loop.'); // Propagate to finally block
-                }
-
-                op.filesChunkingAttemptedCount++;
-                this.updateOverallStatus(); // Update status bar for files attempted
-
-                let detailedChunkingResult: DetailedChunkingResult | null = null;
-                try {
-                    // Pass the service-level embeddingOptions, not a per-file one unless the API changes
-                    detailedChunkingResult = await this.codeChunkingService.chunkFile(
-                        file,
-                        this.options.embeddingOptions,
-                        op.abortController.signal
-                    );
-                } catch (chunkError) { // Should be rare if chunkFile handles its errors and returns null
-                    console.error(`[IndexingService] Critical error during codeChunkingService.chunkFile for ${file.path}:`, chunkError);
-                    detailedChunkingResult = null; // Ensure it's null
-                }
-
-                if (op.abortController.signal.aborted) {
-                    console.log(`[IndexingService] Operation aborted after attempting to chunk file ${file.path}.`);
-                    break; // Exit loop, will be handled by finally
-                }
-
-                if (detailedChunkingResult && detailedChunkingResult.chunks.length > 0) {
-                    op.filesSuccessfullyChunkedCount++;
-                    op.totalChunksGeneratedCount += detailedChunkingResult.chunks.length;
-
-                    const chunksForEmbedding: ChunkForEmbedding[] = detailedChunkingResult.chunks.map((chunkText, index) => ({
-                        fileId: file.id,
-                        filePath: file.path, // Store filePath for easier access later
-                        chunkIndexInFile: index,
-                        text: chunkText,
-                        offsetInFile: detailedChunkingResult.offsets[index],
-                    }));
-
-                    // Dispatch embedding generation for these chunks
-                    const embeddingPromise = this.embeddingGenerationService.generateEmbeddingsForChunks(
-                        chunksForEmbedding,
-                        op.abortController.signal
-                    );
-
-                    op.pendingFileEmbeddings.push({
-                        fileId: file.id,
-                        filePath: file.path, // Store filePath here too
-                        detailedChunkingResult,
-                        embeddingPromise,
-                    });
-                    console.log(`[IndexingService] Dispatched ${chunksForEmbedding.length} chunks for embedding for file: ${file.path}`);
-                } else {
-                    const reason = detailedChunkingResult === null ? "chunking failed or was cancelled" : "file yielded no chunks";
-                    console.log(`[IndexingService] File ${file.path} ${reason}.`);
-                    op.results.set(file.id, {
-                        fileId: file.id,
-                        filePath: file.path,
-                        success: false,
-                        error: `File processing error: ${reason}.`,
-                        embeddings: [],
-                        chunkOffsets: detailedChunkingResult?.offsets || [],
-                        metadata: detailedChunkingResult?.metadata || { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
-                    });
-                }
-
-                if (progressCallback) {
-                    progressCallback(
-                        op.filesChunkingAttemptedCount,
-                        op.initialFiles.length,
-                        'chunking',
-                        op.filesChunkingAttemptedCount,
-                        op.initialFiles.length
-                    );
-                }
-            } // End of Phase 1 loop
-
-            console.log(`[IndexingService] Finished Phase 1. Attempted: ${op.filesChunkingAttemptedCount}, Succeeded chunking: ${op.filesSuccessfullyChunkedCount}, Total chunks: ${op.totalChunksGeneratedCount}, Files for embedding: ${op.pendingFileEmbeddings.length}`);
-
-            if (op.abortController.signal.aborted) {
-                console.log('[IndexingService] Operation aborted after Phase 1 completion.');
-                // Fall through to finally block for cleanup and result handling
-            }
-
-            if (op.pendingFileEmbeddings.length === 0 && !op.abortController.signal.aborted) {
-                this.statusBarService.setState(StatusBarState.Ready, 'No content to embed from any file.');
-                if (batchCompletedCallback && op.results.size > 0) { // Call for files that failed chunking
-                    await batchCompletedCallback(new Map(op.results));
-                }
-                // Ensure liveness timer is cleared before returning
-                if (livenessTimer) clearInterval(livenessTimer);
-                tokenRegistration?.dispose();
-                this.currentOperation = null;
-                return new Map(op.results);
-            }
-            // --- Phase 2: Await All Embedding Promises ---
-            if (!op.abortController.signal.aborted && op.pendingFileEmbeddings.length > 0) {
-                console.log(`[IndexingService] Starting Phase 2: Awaiting ${op.pendingFileEmbeddings.length} File Embedding Promises.`);
-                this.updateOverallStatus(); // Update status before awaiting
-
-                const allEmbeddingPromises = op.pendingFileEmbeddings.map(p => p.embeddingPromise);
-                // Use Promise.allSettled to ensure all promises complete, even if some reject,
-                // allowing us to process partial results or errors for each file.
-                const settledEmbeddingOutputsArray = await Promise.allSettled(allEmbeddingPromises);
-                console.log('[IndexingService] Finished Phase 2: All Embedding Promises Settled.');
-
-                if (op.abortController.signal.aborted) {
-                    console.log('[IndexingService] Operation aborted after awaiting embedding promises during Phase 2.');
-                    // Fall through to finally for cleanup
-                }
-
-                // --- Phase 3: Result Aggregation ---
-                console.log('[IndexingService] Starting Phase 3: Result Aggregation.');
-                const temporaryBatchResultsForCallback = new Map<string, ProcessingResult>();
-                // Define a batch size for calling batchCompletedCallback, e.g., 50 files or based on options
-                const batchSizeForCallback = this.options.maxConcurrentEmbeddingTasks ? this.options.maxConcurrentEmbeddingTasks * 2 : 50;
-
-
-                for (let i = 0; i < settledEmbeddingOutputsArray.length; i++) {
-                    if (op.abortController.signal.aborted) {
-                        console.log(`[IndexingService] Aborting Phase 3 result aggregation early.`);
-                        break; // Exit loop if aborted
-                    }
-
-                    const settledResult = settledEmbeddingOutputsArray[i];
-                    // Retrieve corresponding original file data and chunking result
-                    const { fileId, filePath, detailedChunkingResult } = op.pendingFileEmbeddings[i];
-
-                    if (settledResult.status === 'fulfilled') {
-                        const embeddingOutputsForFile = settledResult.value; // This is EmbeddingGenerationOutput[]
-                        const finalEmbeddings: Float32Array[] = [];
-                        const fileSpecificErrors: string[] = [];
-
-                        embeddingOutputsForFile.forEach(output => {
-                            op.embeddingsProcessedCount++;
-                            if (output.embedding) {
-                                finalEmbeddings.push(output.embedding);
-                            } else if (output.error) {
-                                // Log individual chunk errors, but don't let them stop processing for other chunks/files
-                                // Avoid noisy logging for expected abort errors.
-                                if (output.error !== 'Operation aborted by signal' && output.error !== 'Operation aborted' && !op.abortController.signal.aborted) {
-                                    console.warn(`[IndexingService] Error embedding chunk ${output.originalChunkInfo.chunkIndexInFile} for file ${filePath}: ${output.error}`);
-                                }
-                                fileSpecificErrors.push(`Chunk ${output.originalChunkInfo.chunkIndexInFile}: ${output.error}`);
-                            }
-                        });
-
-                        const allChunksSuccessfullyEmbedded = fileSpecificErrors.length === 0 && finalEmbeddings.length === detailedChunkingResult.chunks.length;
-                        if (allChunksSuccessfullyEmbedded) {
-                            op.filesEmbeddingsCompletedCount++;
-                        }
-
-                        const processingResult: ProcessingResult = {
-                            fileId,
-                            filePath, // Include filePath in the final result
-                            success: allChunksSuccessfullyEmbedded,
-                            embeddings: finalEmbeddings,
-                            chunkOffsets: detailedChunkingResult.offsets,
-                            metadata: detailedChunkingResult.metadata,
-                            error: fileSpecificErrors.length > 0 ? fileSpecificErrors.join('; ') : undefined,
-                        };
-                        op.results.set(fileId, processingResult);
-                        temporaryBatchResultsForCallback.set(fileId, processingResult);
-                        console.log(`[IndexingService] Aggregated results for file ${filePath}. Success: ${processingResult.success}`);
-
-                    } else { // settledResult.status === 'rejected'
-                        // This means the entire `generateEmbeddingsForChunks` promise for a file was rejected.
-                        // This should be rare if `generateEmbeddingsForChunks` is robust.
-                        op.embeddingsProcessedCount += detailedChunkingResult.chunks.length; // Assume all chunks for this file "processed" (as failures)
-                        const errorMessage = `Embedding generation critically failed for file ${filePath}: ${settledResult.reason instanceof Error ? settledResult.reason.message : String(settledResult.reason)}`;
-                        console.error(`[IndexingService] ${errorMessage}`);
-                        const errorResult: ProcessingResult = {
-                            fileId,
-                            filePath,
+                    console.log(`[IndexingService] Operation aborted before processing file ${file.path}.`);
+                    if (!op.results.has(file.id)) {
+                        const cancelledResult: ProcessingResult = {
+                            fileId: file.id,
+                            filePath: file.path,
                             success: false,
-                            error: errorMessage,
+                            error: 'Operation cancelled before processing could start for this file.',
                             embeddings: [],
-                            chunkOffsets: detailedChunkingResult.offsets,
-                            metadata: detailedChunkingResult.metadata,
+                            chunkOffsets: [],
+                            metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
                         };
-                        op.results.set(fileId, errorResult);
-                        temporaryBatchResultsForCallback.set(fileId, errorResult);
+                        op.results.set(file.id, cancelledResult);
+                        yield { filePath: file.path, result: cancelledResult };
                     }
+                    continue;
+                }
 
-                    this.updateOverallStatus(); // Update status bar after each file's embeddings are processed
+                this.updateOverallStatus(); // Update status before processing each file
 
-                    if (progressCallback) {
-                        progressCallback(
-                            op.embeddingsProcessedCount, // Processed individual embeddings
-                            op.totalChunksGeneratedCount, // Total chunks that were generated
-                            'embedding',
-                            op.filesEmbeddingsCompletedCount, // Files fully embedded
-                            op.pendingFileEmbeddings.length // Total files that went into embedding phase
-                        );
-                    }
+                // Await the full processing (chunking and embedding) for the single file.
+                // The helper method _processSingleFileSequentially will handle chunking, embedding, and result construction.
+                const processingResult = await this._processSingleFileSequentially(file, op, this.options.embeddingOptions);
 
-                    // Call batchCompletedCallback if batch size is reached or it's the last item
-                    if (batchCompletedCallback &&
-                        (temporaryBatchResultsForCallback.size >= batchSizeForCallback || i === settledEmbeddingOutputsArray.length - 1)) {
-                        if (temporaryBatchResultsForCallback.size > 0) {
-                            console.log(`[IndexingService] Calling batchCompletedCallback with ${temporaryBatchResultsForCallback.size} results.`);
-                            try {
-                                await batchCompletedCallback(new Map(temporaryBatchResultsForCallback));
-                            } catch (cbError) {
-                                console.error('[IndexingService] Error in batchCompletedCallback during Phase 3:', cbError);
-                            }
-                            temporaryBatchResultsForCallback.clear();
-                        }
-                    }
-                } // End of Phase 3 loop
-                console.log('[IndexingService] Finished Phase 3: Result Aggregation.');
-            } else if (op.abortController.signal.aborted) {
-                console.log('[IndexingService] Skipped Phase 2 & 3 due to prior cancellation.');
-            } else {
-                console.log('[IndexingService] No files pending embedding, skipping Phase 2 & 3.');
+                // The helper _processSingleFileSequentially is expected to always return a ProcessingResult,
+                // even in cases of error or cancellation during its execution for that file.
+                op.results.set(file.id, processingResult);
+                yield { filePath: file.path, result: processingResult };
+                console.log(`[IndexingService] Yielded results for file ${file.path}. Success: ${processingResult.success}`);
+
+                this.updateOverallStatus(); // Update status after processing each file
             }
+            console.log('[IndexingService] All files have been processed sequentially.');
 
-            // Final status update before exiting try block
+            // Final status update
             if (!op.abortController.signal.aborted) {
-                if (op.pendingFileEmbeddings.length > 0 && op.filesEmbeddingsCompletedCount === op.pendingFileEmbeddings.length && op.filesSuccessfullyChunkedCount === op.pendingFileEmbeddings.length) {
+                const allFilesAttemptedAndResulted = op.initialFiles.every(f => op.results.has(f.id));
+                const filesThatShouldHaveEmbeddings = op.filesSuccessfullyChunkedCount; // Files that produced chunks
+
+                // Check if all files that were supposed to be embedded were indeed processed for embedding
+                const allEmbeddingAttemptsCompleted = op.filesEmbeddingsCompletedCount === filesThatShouldHaveEmbeddings;
+
+                // Determine if all files that were supposed to be embedded were actually successfully embedded.
+                let allEmbeddingsSuccessful = true;
+                if (filesThatShouldHaveEmbeddings > 0) {
+                    let successfullyEmbeddedFileCount = 0;
+                    // Iterate over all results to find those that were successfully chunked and embedded.
+                    op.results.forEach(result => {
+                        const wasChunked = result.chunkOffsets && result.chunkOffsets.length > 0;
+                        const hasEmbeddings = result.embeddings && result.embeddings.length > 0;
+                        // A file is considered fully successful in this context if it was chunked,
+                        // has embeddings, and its overall processing result was success.
+                        if (result.success && wasChunked && hasEmbeddings) {
+                            successfullyEmbeddedFileCount++;
+                        }
+                    });
+                    allEmbeddingsSuccessful = (successfullyEmbeddedFileCount === filesThatShouldHaveEmbeddings);
+                } else {
+                    // If no files were expected to produce embeddings (e.g., all empty, or all failed chunking),
+                    // then this condition is vacuously true.
+                    allEmbeddingsSuccessful = true;
+                }
+
+
+                if (allFilesAttemptedAndResulted && filesThatShouldHaveEmbeddings === 0 && op.filesChunkingAttemptedCount === op.initialFiles.length) {
+                    this.statusBarService.setState(StatusBarState.Ready, 'No content to embed from files, or all failed before embedding.');
+                    console.log('[IndexingService] All files processed; no content found/generated for embedding or all failed chunking.');
+                } else if (allFilesAttemptedAndResulted && allEmbeddingAttemptsCompleted && allEmbeddingsSuccessful) {
                     this.workspaceSettingsService.updateLastIndexingTimestamp();
                     this.statusBarService.setState(StatusBarState.Ready, 'Indexing complete');
                     console.log('[IndexingService] Indexing completed successfully for all dispatched files.');
-                } else if (op.initialFiles.length > 0 && op.filesChunkingAttemptedCount === op.initialFiles.length && op.pendingFileEmbeddings.length === 0) {
-                    // All files attempted, but none yielded content for embedding
-                    this.statusBarService.setState(StatusBarState.Ready, 'No content to embed from files.');
-                    console.log('[IndexingService] All files processed, but no content was found to embed.');
-                }
-                else if (op.initialFiles.length > 0 && op.filesChunkingAttemptedCount === op.initialFiles.length) { // Partial completion or errors
+                } else if (allFilesAttemptedAndResulted) {
                     this.statusBarService.setState(StatusBarState.Error, 'Indexing finished with some issues.');
                     console.warn('[IndexingService] Indexing finished with some issues or was incomplete.');
+                } else {
+                    this.statusBarService.setState(StatusBarState.Ready, 'Indexing finished.'); // Default if other conditions not met
+                    console.log('[IndexingService] Indexing process finished.');
                 }
             }
-            // Results are returned in the finally block
-
-
-        } catch (error) { // Catch errors from the main try block (e.g., cancellation throws from Phase 1)
+        } catch (error) { // Catch errors from the main try block (e.g., if _processSingleFileSequentially rethrows a critical one)
             if (error instanceof Error && error.name === 'AbortError') {
-                console.log('[IndexingService] Operation was aborted during processing.', error.message);
-                // Status bar update will be handled in finally
+                console.log('[IndexingService] Operation was aborted during processing (generator).', error.message);
             } else {
-                console.error('[IndexingService] Critical error during file processing:', error);
+                console.error('[IndexingService] Critical error during file processing (generator):', error);
                 this.statusBarService.setState(StatusBarState.Error, error instanceof Error ? error.message : 'Unknown critical error during indexing');
             }
-            // Results will be handled in finally
-            // Ensure liveness timer is cleared if an error escapes the loop
-            if (livenessTimer) {
-                clearInterval(livenessTimer);
-                livenessTimer = null;
+            // Yield error for any initial files that don't have a result yet
+            if (op) {
+                for (const file of op.initialFiles) {
+                    if (!op.results.has(file.id)) {
+                        const errorMsg = error instanceof Error ? error.message : String(error);
+                        const criticalErrorResult: ProcessingResult = {
+                            fileId: file.id,
+                            filePath: file.path,
+                            success: false,
+                            error: `Critical processing error: ${errorMsg}`,
+                            embeddings: [], chunkOffsets: [], metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] }
+                        };
+                        op.results.set(file.id, criticalErrorResult);
+                        try { yield { filePath: file.path, result: criticalErrorResult }; } catch (yieldError) { /* ignore if generator closed */ }
+                    }
+                }
             }
-            // Rethrow if it's not an AbortError, or handle as per desired error propagation
-            // For now, we'll let finally handle the results.
-            // If we rethrow, the `finally` block still executes.
             if (!(error instanceof Error && error.name === 'AbortError')) {
-                throw error; // Or transform into a more specific error
+                throw error; // Rethrow to terminate the generator with an error
             }
-            return new Map(this.currentOperation?.results || []); // Should be captured in finally
         } finally {
-            console.log('[IndexingService] Entering finally block of processFiles.');
+            console.log('[IndexingService] Entering finally block of processFilesGenerator.');
             if (livenessTimer) {
                 clearInterval(livenessTimer);
                 console.log('[LIVENESS] IndexingService liveness timer cleared in finally.');
             }
             tokenRegistration?.dispose();
 
-            const finalResults = new Map(this.currentOperation?.results); // Capture results before nullifying
+            const finalResults = new Map(this.currentOperation?.results);
 
             if (this.currentOperation?.abortController.signal.aborted) {
                 this.statusBarService.showTemporaryMessage('Indexing cancelled', 3000, StatusBarMessageType.Warning);
-                // Add error results for any pending files that were not processed due to cancellation
-                this.currentOperation.pendingFileEmbeddings.forEach(pending => {
-                    if (!finalResults.has(pending.fileId)) {
-                        finalResults.set(pending.fileId, {
-                            fileId: pending.fileId,
-                            filePath: pending.filePath, // Added filePath
+                // Ensure all initial files have a result, even if it's a cancellation error
+                this.currentOperation.initialFiles.forEach(file => {
+                    if (!finalResults.has(file.id)) {
+                        const cancelledResult: ProcessingResult = {
+                            fileId: file.id,
+                            filePath: file.path,
                             success: false,
-                            error: 'Operation cancelled before embeddings could be generated/processed.',
+                            error: 'Operation cancelled before completion.',
                             embeddings: [],
-                            chunkOffsets: pending.detailedChunkingResult.offsets,
-                            metadata: pending.detailedChunkingResult.metadata,
-                        });
+                            chunkOffsets: [],
+                            metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+                        };
+                        finalResults.set(file.id, cancelledResult);
+                        // Cannot yield from finally if generator already closed/errored.
+                        // The main loop should have handled yielding for cancellations.
                     }
                 });
             }
-            // Call batchCompletedCallback with all accumulated results if it hasn't been called for them
-            // This might be complex if batching was done incrementally.
-            // For simplicity now, if a batch callback exists and there are results, call it.
-            // This needs refinement if incremental batch callbacks were made.
-            if (batchCompletedCallback && finalResults.size > 0) {
-                try {
-                    // This might send results that were already sent if batching was incremental.
-                    // A more robust solution would track what's been sent.
-                    console.log(`[IndexingService] Calling final batchCompletedCallback with ${finalResults.size} results in finally block.`);
-                    await batchCompletedCallback(finalResults);
-                } catch (cbError) {
-                    console.error('[IndexingService] Error in final batchCompletedCallback in finally block:', cbError);
-                }
-            }
 
-
-            this.currentOperation = null; // Clear current operation
-            this.updateOverallStatus(); // Update status based on (now null) currentOperation
-            console.log('[IndexingService] Exiting processFiles.');
-            return finalResults;
+            this.currentOperation = null;
+            this.updateOverallStatus();
+            console.log('[IndexingService] Exiting processFilesGenerator.');
+            return finalResults; // Return all accumulated results (successes and failures)
         }
     }
 
+    /**
+     * Processes a single file sequentially: chunks it, generates embeddings, and constructs the result.
+     * This method is called by `processFilesGenerator` for each file.
+     * @param file The file to process.
+     * @param op The current processing operation.
+     * @param embeddingOptions Options for embedding.
+     * @returns A ProcessingResult for the file.
+     */
+    private async _processSingleFileSequentially(
+        file: FileToProcess,
+        op: ProcessingOperation,
+        embeddingOptions: EmbeddingOptions
+    ): Promise<ProcessingResult> {
+        op.filesChunkingAttemptedCount++;
+        let detailedChunkingResult: DetailedChunkingResult | null = null;
+
+        try {
+            detailedChunkingResult = await this.codeChunkingService.chunkFile(
+                file,
+                embeddingOptions,
+                op.abortController.signal
+            );
+        } catch (chunkError) {
+            const errorMsg = chunkError instanceof Error ? chunkError.message : String(chunkError);
+            console.error(`[IndexingService] Critical error during codeChunkingService.chunkFile for ${file.path}:`, chunkError);
+            // If chunkFile itself throws, detailedChunkingResult might be null or incomplete.
+            // The error will be caught by the outer try-catch if not handled here.
+            // For now, construct an error result.
+            return {
+                fileId: file.id,
+                filePath: file.path,
+                success: false,
+                error: `Chunking failed: ${errorMsg}`,
+                embeddings: [],
+                chunkOffsets: [],
+                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+            };
+        }
+
+        if (op.abortController.signal.aborted) {
+            console.log(`[IndexingService] Operation aborted after attempting to chunk file ${file.path}.`);
+            return {
+                fileId: file.id,
+                filePath: file.path,
+                success: false,
+                error: 'Operation cancelled during chunking.',
+                embeddings: [],
+                chunkOffsets: detailedChunkingResult?.offsets || [], // Use if available
+                metadata: detailedChunkingResult?.metadata || { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+            };
+        }
+
+        if (!detailedChunkingResult || detailedChunkingResult.chunks.length === 0) {
+            const reason = detailedChunkingResult === null
+                ? "chunking critically failed or was cancelled by signal"
+                : "file yielded no chunks";
+            console.log(`[IndexingService] File ${file.path} ${reason}.`);
+            return {
+                fileId: file.id,
+                filePath: file.path,
+                success: true, // Technically not a failure if file is empty or unchunkable by design
+                error: detailedChunkingResult === null ? `File processing error: ${reason}.` : undefined, // Error only if chunking failed
+                embeddings: [],
+                chunkOffsets: detailedChunkingResult?.offsets || [],
+                metadata: detailedChunkingResult?.metadata || { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+            };
+        }
+
+        // If chunking was successful and produced chunks
+        op.filesSuccessfullyChunkedCount++;
+        op.totalChunksGeneratedCount += detailedChunkingResult.chunks.length;
+
+        const chunksForEmbedding: ChunkForEmbedding[] = detailedChunkingResult.chunks.map((chunkText, index) => ({
+            fileId: file.id,
+            filePath: file.path,
+            chunkIndexInFile: index,
+            text: chunkText,
+            offsetInFile: detailedChunkingResult.offsets[index],
+        }));
+
+        console.log(`[IndexingService] Generating embeddings for ${chunksForEmbedding.length} chunks from file: ${file.path}`);
+        let embeddingOutputs: EmbeddingGenerationOutput[] = [];
+        try {
+            embeddingOutputs = await this.embeddingGenerationService.generateEmbeddingsForChunks(
+                chunksForEmbedding,
+                op.abortController.signal
+            );
+            op.filesEmbeddingsCompletedCount++; // Mark this file's embeddings as processed (attempted)
+
+            const finalEmbeddings: number[][] = [];
+            const fileSpecificErrors: string[] = [];
+
+            embeddingOutputs.forEach(output => {
+                op.embeddingsProcessedCount++; // Count each chunk's embedding attempt
+                if (output.embedding) {
+                    finalEmbeddings.push(output.embedding);
+                } else if (output.error) {
+                    // Don't log "aborted" errors if the global signal is set, as it's expected.
+                    if (output.error !== 'Operation aborted by signal' && output.error !== 'Operation aborted' && !op.abortController.signal.aborted) {
+                        console.warn(`[IndexingService] Error embedding chunk ${output.originalChunkInfo.chunkIndexInFile} for file ${file.path}: ${output.error}`);
+                    }
+                    fileSpecificErrors.push(`Chunk ${output.originalChunkInfo.chunkIndexInFile}: ${output.error}`);
+                }
+            });
+
+            const allChunksSuccessfullyEmbedded = fileSpecificErrors.length === 0 && finalEmbeddings.length === detailedChunkingResult.chunks.length;
+            return {
+                fileId: file.id,
+                filePath: file.path,
+                success: allChunksSuccessfullyEmbedded,
+                embeddings: finalEmbeddings,
+                chunkOffsets: detailedChunkingResult.offsets,
+                metadata: detailedChunkingResult.metadata,
+                error: fileSpecificErrors.length > 0 ? fileSpecificErrors.join('; ') : undefined,
+            };
+
+        } catch (embeddingError) {
+            op.filesEmbeddingsCompletedCount++; // Still mark as processed for embedding attempt
+            const errorMessage = embeddingError instanceof Error ? embeddingError.message : String(embeddingError);
+            let finalError = `Embedding generation failed for file ${file.path}: ${errorMessage}`;
+            if (op.abortController.signal.aborted || errorMessage.toLowerCase().includes('cancel') || errorMessage.toLowerCase().includes('abort')) {
+                finalError = `Operation cancelled during embedding generation for ${file.path}.`;
+            }
+            console.error(`[IndexingService] ${finalError}`);
+            return {
+                fileId: file.id,
+                filePath: file.path,
+                success: false,
+                error: finalError,
+                embeddings: [],
+                chunkOffsets: detailedChunkingResult.offsets, // Keep chunking info if available
+                metadata: detailedChunkingResult.metadata,
+            };
+        }
+    }
 
     /**
      * Updates the overall status bar message based on the current operation state.
@@ -564,31 +522,44 @@ export class IndexingService implements vscode.Disposable {
         }
 
         const totalInitialFiles = op.initialFiles.length;
-        // Files that are successfully chunked and thus dispatched/queued for embedding
-        const filesDispatchedForEmbedding = op.pendingFileEmbeddings.length;
+        // Files that are successfully chunked and thus are candidates for embedding
+        const filesSuccessfullyChunked = op.filesSuccessfullyChunkedCount;
 
+        if (op.abortController.signal.aborted) return; // Status will be handled by cancellation logic
 
-        if (op.filesChunkingAttemptedCount < totalInitialFiles && op.filesChunkingAttemptedCount >= 0) {
-            const chunkingProgressPercent = totalInitialFiles > 0
+        // Progress through files being attempted for chunking (initial phase)
+        if (op.filesChunkingAttemptedCount < totalInitialFiles && op.filesEmbeddingsCompletedCount === 0) {
+            const progressPercent = totalInitialFiles > 0
                 ? Math.round((op.filesChunkingAttemptedCount / totalInitialFiles) * 100)
                 : 0;
             this.statusBarService.showTemporaryMessage(
-                `Indexing: Preparing files ${op.filesChunkingAttemptedCount}/${totalInitialFiles} (${chunkingProgressPercent}%)`,
-                5000, StatusBarMessageType.Working // Increased duration for visibility
+                `Indexing: Processing file ${op.filesChunkingAttemptedCount}/${totalInitialFiles} (${progressPercent}%)`,
+                3000, StatusBarMessageType.Working
             );
-        } else if (filesDispatchedForEmbedding > 0 && op.filesEmbeddingsCompletedCount < filesDispatchedForEmbedding) {
-            const embeddingProgressPercent = filesDispatchedForEmbedding > 0
-                ? Math.round((op.filesEmbeddingsCompletedCount / filesDispatchedForEmbedding) * 100)
+        }
+        // Progress through files having their embeddings generated
+        // op.filesEmbeddingsCompletedCount tracks files for which embedding generation has finished (success or fail)
+        // op.filesSuccessfullyChunkedCount tracks files that *should* have embeddings generated
+        else if (filesSuccessfullyChunked > 0 && op.filesEmbeddingsCompletedCount < filesSuccessfullyChunked) {
+            const embeddingProgressPercent = filesSuccessfullyChunked > 0
+                ? Math.round((op.filesEmbeddingsCompletedCount / filesSuccessfullyChunked) * 100)
                 : 0;
             this.statusBarService.showTemporaryMessage(
-                `Indexing: Embeddings ${op.filesEmbeddingsCompletedCount}/${filesDispatchedForEmbedding} files (${embeddingProgressPercent}%)`,
-                5000, StatusBarMessageType.Working // Increased duration
+                `Indexing: Embeddings ${op.filesEmbeddingsCompletedCount}/${filesSuccessfullyChunked} files (${embeddingProgressPercent}%)`,
+                3000, StatusBarMessageType.Working
             );
-        } else if (op.filesChunkingAttemptedCount === totalInitialFiles && filesDispatchedForEmbedding === 0 && totalInitialFiles > 0) {
-            // All files chunked, none yielded chunks. Final state set by processFiles.
-        } else if (op.filesChunkingAttemptedCount === 0 && totalInitialFiles > 0) {
+        }
+        // All files attempted for chunking, but none yielded chunks (e.g., all empty or unchunkable)
+        else if (op.filesChunkingAttemptedCount === totalInitialFiles && filesSuccessfullyChunked === 0 && totalInitialFiles > 0) {
+            // This state will be finalized by processFilesGenerator's main loop.
+            // No specific temporary message here, as it's a terminal state for this batch.
+        }
+        // Initial state if no files have been processed yet
+        else if (op.filesChunkingAttemptedCount === 0 && totalInitialFiles > 0) {
             this.statusBarService.setState(StatusBarState.Indexing, `Preparing ${totalInitialFiles} files...`);
         }
+        // If all files that were chunked have had their embeddings processed,
+        // the main generator loop will set the final Ready/Error state.
         // Terminal states (Ready, Error) are set by processFiles try/finally or cancelProcessing.
     }
 
@@ -608,25 +579,23 @@ export class IndexingService implements vscode.Disposable {
                 opToCancel.abortController.abort(); // Signal abortion
             }
 
-            // Await settlement of promises that were part of pendingFileEmbeddings.
-            const pendingEmbeddingPromises = opToCancel.pendingFileEmbeddings.map(p => p.embeddingPromise);
-            if (pendingEmbeddingPromises.length > 0) {
-                console.log(`[IndexingService] Waiting for ${pendingEmbeddingPromises.length} pending file embedding operations to settle after cancellation signal.`);
-                try {
-                    await Promise.allSettled(pendingEmbeddingPromises);
-                    console.log('[IndexingService] All pending file embedding operations have settled after cancellation signal.');
-                } catch (settleError) {
-                    console.warn('[IndexingService] Unexpected error while waiting for embedding promises to settle during cancellation:', settleError);
-                }
+            // With sequential processing, there's no list of pending promises to explicitly await here.
+            // The AbortSignal is passed to chunkFile and generateEmbeddingsForChunks.
+            // The main loop in processFilesGenerator will break or handle errors thrown due to abortion.
+            // The `finally` block in processFilesGenerator is responsible for cleanup.
+
+            // Log statistics of the (partially) cancelled operation
+            // Note: filesSuccessfullyChunkedCount now means files that produced chunks.
+            // filesEmbeddingsCompletedCount means files whose embedding stage (success/fail) was reached.
+            console.log(`[IndexingService] Indexing operation cancelled. Stats: Initial Files: ${opToCancel.initialFiles.length}, Chunking Attempted: ${opToCancel.filesChunkingAttemptedCount}, Files Yielding Chunks: ${opToCancel.filesSuccessfullyChunkedCount}, Total Chunks Generated: ${opToCancel.totalChunksGeneratedCount}, Embeddings Processed (Chunks): ${opToCancel.embeddingsProcessedCount}, Files Reaching Embedding Stage: ${opToCancel.filesEmbeddingsCompletedCount}.`);
+
+            // currentOperation will be set to null by the finally block of processFilesGenerator
+            // or if cancelProcessing is called when processFilesGenerator is not active.
+            // For safety, if this cancelProcessing is called outside the generator's flow:
+            if (this.currentOperation === opToCancel) { // Check if it's still the same operation
+                this.currentOperation = null;
             }
-
-            // Important: Nullify currentOperation only *after* all cleanup related to it is done or captured.
-            this.currentOperation = null;
-
-            // Log statistics of the cancelled operation
-            console.log(`[IndexingService] Indexing operation cancelled. Stats: Initial Files: ${opToCancel.initialFiles.length}, Chunking Attempted: ${opToCancel.filesChunkingAttemptedCount}, Chunking Succeeded: ${opToCancel.filesSuccessfullyChunkedCount}, Chunks Generated: ${opToCancel.totalChunksGeneratedCount}, Files for Embedding: ${opToCancel.pendingFileEmbeddings.length}, Embeddings Processed (Chunks): ${opToCancel.embeddingsProcessedCount}, Files Fully Embedded: ${opToCancel.filesEmbeddingsCompletedCount}.`);
-
-            this.statusBarService.showTemporaryMessage('Indexing cancelled', 3000, StatusBarMessageType.Warning);
+            this.statusBarService.showTemporaryMessage('Indexing cancelled', 3000, StatusBarMessageType.Warning); // This might be overwritten by finally block
             this.updateOverallStatus(); // This will now see currentOperation as null and set to Ready (if no other error state).
         } else {
             console.log('[IndexingService] No active indexing operation to cancel.');
@@ -699,10 +668,11 @@ export class IndexingService implements vscode.Disposable {
             const op = this.currentOperation;
             operationStatus = `Active Operation:
     - Initial Files: ${op.initialFiles.length}
-    - Chunking: ${op.filesChunkingAttemptedCount} attempted, ${op.filesSuccessfullyChunkedCount} succeeded, ${op.totalChunksGeneratedCount} chunks generated.
-    - Files Dispatched for Embedding: ${op.pendingFileEmbeddings.length}
-    - Embeddings Processed (Chunks): ${op.embeddingsProcessedCount}
-    - Files Fully Embedded: ${op.filesEmbeddingsCompletedCount}
+    - Chunking Attempted: ${op.filesChunkingAttemptedCount}
+    - Files Yielding Chunks: ${op.filesSuccessfullyChunkedCount}
+    - Total Chunks Generated: ${op.totalChunksGeneratedCount}
+    - Embeddings Processed (Individual Chunks): ${op.embeddingsProcessedCount}
+    - Files Reaching Embedding Stage (Completed/Failed): ${op.filesEmbeddingsCompletedCount}
     - Aborted: ${op.abortController.signal.aborted}`;
         }
 

@@ -1,144 +1,193 @@
-# IndexingService Refactoring Plan
+# IndexingService Refactoring Plan (Revised - Async Generator)
 
 ## 1. Introduction
 
-This document outlines the plan to refactor the `IndexingService` to reduce its complexity, improve modularity, and enhance maintainability. The core idea is to delegate distinct responsibilities of code chunking and embedding generation to new, focused services, with `IndexingService` acting as an orchestrator. This plan preserves the public interface of `IndexingService`.
+This document outlines the revised plan to refactor the `IndexingService`. The primary goals are to:
 
-## 2. New Services
+1.  Ensure embeddings for each file are processed and made available for saving as soon as they are generated.
+2.  Simplify `IndexingService` by making its main processing method an `async` generator, decoupling it from the saving mechanism.
+3.  Simplify and stabilize the `progressCallback` mechanism.
+4.  Maintain the modularity introduced by `CodeChunkingService` and `EmbeddingGenerationService`.
+    This plan will change the public interface of `IndexingService.processFiles` to `processFilesGenerator` and alter how `IndexingManager` consumes its results.
 
-Two new services will be introduced:
+## 2. New Services (Unchanged)
 
-### 2.1. `CodeChunkingService`
+- **`CodeChunkingService`**: As previously defined.
+- **`EmbeddingGenerationService`**: As previously defined.
 
-- **Responsibility**: Handles all aspects of reading files and breaking them down into structured code chunks. It encapsulates the logic currently in `IndexingService` related to `WorkerCodeChunker` (which uses `TreeStructureAnalyzer` and `WorkerTokenEstimator`).
-- **Instantiation**: Instantiated and managed by `IndexingService`.
-- **Key Public Methods**:
-  - `constructor(options: CodeChunkingServiceOptions)`
-  - `async initialize(): Promise<void>`: Sets up internal components.
-  - `async chunkFile(file: FileToProcess, embeddingOptions: EmbeddingOptions, abortSignal: AbortSignal): Promise<DetailedChunkingResult | null>`: Asynchronously processes a single file on the main thread, returning its chunks or null if an error occurs or no chunks are generated.
-  - `dispose(): void`
+## 3. Data Structures (Largely Unchanged)
 
-### 2.2. `EmbeddingGenerationService`
+- **`ChunkForEmbedding`**: As previously defined.
+- **`EmbeddingGenerationOutput`**: As previously defined.
+- **`ProcessingResult` (from `indexingTypes.ts`)**: Remains the key output per file.
+- **`YieldedProcessingOutput`**:
+  ```typescript
+  interface YieldedProcessingOutput {
+    filePath: string;
+    result: ProcessingResult;
+  }
+  ```
 
-- **Responsibility**: Manages the `Tinypool` worker pool for `embeddingGeneratorWorker.ts` and generates embeddings for a given collection of code chunks. Each chunk is processed as an individual task by a worker.
-- **Instantiation**: Instantiated and managed by `IndexingService`.
-- **Key Public Methods**:
-  - `constructor(options: EmbeddingGenerationServiceOptions)`
-  - `async initialize(): Promise<void>`: Initializes the `Tinypool`.
-  - `async generateEmbeddingsForChunks(chunksToEmbed: ChunkForEmbedding[], abortSignal: AbortSignal): Promise<EmbeddingGenerationOutput[]>`: Takes an array of `ChunkForEmbedding` objects and returns an array of results, each linking an embedding (or error) back to the original chunk information.
-  - `dispose(): Promise<void>`
-
-## 3. Data Structures
-
-- **`ChunkForEmbedding`**:
-  - `fileId: string`
-  - `filePath: string`
-  - `chunkIndexInFile: number`
-  - `text: string`
-  - `offsetInFile: number`
-- **`EmbeddingGenerationOutput`**:
-  - `originalChunkInfo: ChunkForEmbedding`
-  - `embedding: Float32Array | null`
-  - `error?: string`
-
-## 4. Refactored `IndexingService` (Orchestrator)
+## 4. Refactored `IndexingService` (Orchestrator) - Async Generator Flow
 
 - **Dependencies**: Instantiates, initializes, and uses `CodeChunkingService` and `EmbeddingGenerationService`.
-- **Initialization**: The `IndexingService` constructor will create and `await initialize()` instances of the new services. `IndexingServiceOptions` will be adapted to provide necessary sub-options to these services.
-- **`processFiles()` Method Flow**:
+- **Initialization**: `IndexingService.initialize()` creates and initializes instances of the new services.
+- **`public async *processFilesGenerator(initialFiles: FileToProcess[], embeddingOptions: EmbeddingOptions, progressCallback: ProgressCallbackType, abortController: AbortController): AsyncGenerator<YieldedProcessingOutput>` Method Flow**:
   1.  **Initial Setup**:
-      - Initialize `currentOperation` (see section 5 for structure).
-      - Create a list `pendingFileEmbeddings` to store objects like `{ fileId: string, detailedChunkingResult: DetailedChunkingResult, embeddingPromise: Promise<EmbeddingGenerationOutput[]> }`.
-  2.  **Phase 1: Per-File Chunking & Embedding Dispatch (Loop through `initialFiles`)**:
-      - For each `file`:
-        - `detailedChunkingResult = await this.codeChunkingService.chunkFile(file, embeddingOptions, abortController.signal)`.
-        - Update `currentOperation` chunking-related statistics.
-        - If `detailedChunkingResult` is valid and contains chunks:
-          - Convert these chunks to `ChunkForEmbedding[]` for the current file.
-          - `embeddingPromise = this.embeddingGenerationService.generateEmbeddingsForChunks(fileChunks, abortController.signal)`.
-          - Add `{ fileId: file.id, detailedChunkingResult, embeddingPromise }` to `pendingFileEmbeddings`.
-        - Else (chunking failed or file yielded no chunks):
-          - Record an error `ProcessingResult` for this `file.id` directly into `currentOperation.results`.
-          - Update progress callbacks and status bar for the chunking phase.
-  3.  **Phase 2: Await All Embedding Promises**:
-      - `const allEmbeddingPromises = pendingFileEmbeddings.map(p => p.embeddingPromise);`
-      - `const resolvedEmbeddingOutputsArray = await Promise.all(allEmbeddingPromises);`
-      - This `resolvedEmbeddingOutputsArray` will be an array where each element is an `EmbeddingGenerationOutput[]` corresponding to a file.
-  4.  **Phase 3: Result Aggregation (Loop through `resolvedEmbeddingOutputsArray`)**:
-      - For each `embeddingOutputsForFile` (an `EmbeddingGenerationOutput[]`) in `resolvedEmbeddingOutputsArray`:
-        - Correlate it back to its original `fileId` and `detailedChunkingResult` using the `pendingFileEmbeddings` list (by index).
-        - Aggregate all embeddings for the current file from `embeddingOutputsForFile`.
-        - Update `currentOperation` embedding-related statistics.
-        - Construct the final `ProcessingResult` for the file (using `detailedChunkingResult` for offsets/metadata and the collected embeddings).
-        - Store this `ProcessingResult` in `currentOperation.results`.
-        - Call `progressCallback` and `batchCompletedCallback` as appropriate.
-  5.  **Return**: Return `currentOperation.results`.
-- **Cancellation**: The `AbortController`'s signal from `IndexingService` is propagated to both new services.
-- **Disposal**: `IndexingService.dispose()` calls `dispose()` on its `CodeChunkingService` and `EmbeddingGenerationService` instances.
+      - Initialize `currentOperation` (see section 6 for revised structure).
+  2.  **Iterative File Processing (Loop through `op.initialFiles`)**:
+      - For each `file` in `op.initialFiles`:
+        a. **Abort Check**: If `op.abortController.signal.aborted`, break the loop. Log cancellation.
+        b. Call a private helper method, e.g., `private async _processSingleFileForYielding(file: FileToProcess, operation: ProcessingOperation, embeddingOptions: EmbeddingOptions, progressCallback: ProgressCallbackType): Promise<ProcessingResult | null>`.
+        i. Update `operation.filesAttemptedCount++`.
+        ii. Report progress: `progressCallback(operation.filesAttemptedCount, operation.initialFiles.length, 'processing_file', { fileName: file.path, filePhase: 'starting' })`.
+        iii. **Chunking**: - `detailedChunkingResult = await this.codeChunkingService.chunkFile(file, embeddingOptions, operation.abortController.signal)`. - If `operation.abortController.signal.aborted` after chunking, return `null` (or a specific error result). - Update `operation` chunking-related statistics. - Report progress: `progressCallback(operation.filesAttemptedCount, operation.initialFiles.length, 'processing_file', { fileName: file.path, filePhase: 'chunking_complete' })`.
+        iv. **Embedding Generation (if chunking successful and produced chunks)**: - If `detailedChunkingResult` is valid and `detailedChunkingResult.chunks.length > 0`: - Convert `detailedChunkingResult.chunks` to `ChunkForEmbedding[]`. - `embeddingOutputs = await this.embeddingGenerationService.generateEmbeddingsForChunks(fileChunks, operation.abortController.signal)`. - If `operation.abortController.signal.aborted` after embedding, handle as cancelled. - Update `operation` embedding-related statistics. - Report progress: `progressCallback(operation.filesAttemptedCount, operation.initialFiles.length, 'processing_file', { fileName: file.path, filePhase: 'embedding_complete' })`. - Construct the final `ProcessingResult` for the file. - Else (chunking failed, was cancelled, or file yielded no chunks): - Construct an error or empty `ProcessingResult`. - Report progress.
+        v. Return the constructed `ProcessingResult`.
+        c. **Yielding Result**: - If the `processingResult` from the helper is not `null` (or indicates success): - `yield { filePath: file.path, result: processingResult };` - Update `operation.filesSuccessfullyYieldedCount++`. - Else (file processing failed or was skipped): - Update `operation.filesFailedProcessingCount++`.
+  3.  **Finalization (after loop)**:
+      - Update final status bar message based on `currentOperation` (e.g., completed, cancelled, errors).
+      - Log final statistics.
+      - The generator implicitly finishes.
+- **Cancellation**: The `AbortController`'s signal is propagated and checked frequently.
+- **Disposal**: `IndexingService.dispose()` calls `dispose()` on its services.
 
-## 5. `currentOperation` Structure in `IndexingService`
+## 5. `IndexingManager` Adaptation
 
-To track multi-stage progress:
+- `IndexingManager` will call `indexingService.processFilesGenerator(...)`.
+- It will use a `for await (const { filePath, result } of generator)` loop to consume the yielded results.
+- Inside the loop, for each `result`:
+  - It will be responsible for saving the `ProcessingResult` (e.g., `await this.embeddingDbAdapter.saveProcessingResult(result)` or a similar method).
+  - It can accumulate results into its own `Map<string, ProcessingResult>` if it needs the full collection at the end.
+  - It handles abortion signals for breaking its own loop.
+
+## 6. `progressCallback` Issues (Largely Unchanged from Previous Revision)
+
+- **`IndexingService`'s `progressCallback` Signature**:
+  `progressCallback(filesProcessedOverall: number, totalFilesToProcess: number, phase: 'processing_file' | 'finalizing', details?: { fileName?: string, filePhase?: 'starting' | 'chunking_complete' | 'embedding_complete' | 'failed_chunking' | 'failed_embedding', message?: string })`
+  _(Note: 'batch_saved' phase is removed as `IndexingService` no longer manages batches for callbacks)._
+- **`IndexingManager`'s `progressCallback` Implementation**: Remains as previously described, using `filesProcessedOverall` and `totalFilesToProcess`.
+
+## 7. `currentOperation` Structure in `IndexingService` (Revised)
 
 ```typescript
 interface ProcessingOperation {
   initialFiles: FileToProcess[];
   abortController: AbortController;
-  results: Map<string, ProcessingResult>; // Final or error results per fileId
 
-  // Chunking Phase
-  filesChunkingAttemptedCount: number;
-  filesSuccessfullyChunkedCount: number; // Files that yielded chunks
-  totalChunksGeneratedCount: number; // Total individual code chunks from all files
+  // Overall Progress Counters
+  filesAttemptedCount: number;
+  filesSuccessfullyChunkedCount: number;
+  filesEmbeddingsCompletedCount: number;
+  filesSuccessfullyYieldedCount: number; // Renamed from filesSuccessfullyProcessedAndBatchedCount
+  filesFailedProcessingCount: number;
 
-  // Embedding Phase
-  embeddingsProcessedCount: number; // Individual chunk embeddings processed (success or failure)
-  filesEmbeddingsCompletedCount: number; // Files with ALL their chunks' embeddings processed
+  // Detailed Chunk/Embedding Level Counters
+  totalChunksGeneratedCount: number;
+  totalEmbeddingsAttemptedForChunks: number;
+  totalEmbeddingsSucceededForChunks: number;
+
+  // Status for current file (optional)
+  currentFileProcessing?: string;
+  currentFileStage?: "chunking" | "embedding" | "completed" | "failed";
 }
 ```
 
-## 6. Workflow Diagram (Per-File Dispatch and Final Aggregation)
+## 8. Workflow Diagram (Async Generator)
 
 ```mermaid
 graph TD
-    A["IndexingService.processFiles(initialFiles)"] --> A1["Initialize currentOperation, pendingFileEmbeddings = []"];
+    A_IM["IndexingManager: Start Indexing"] --> B_IM["IM: Calls IndexingService.processFilesGenerator()"];
 
-    A1 --> B_Loop[For each file in initialFiles];
-    B_Loop -- file --> C_Chunk["codeChunkingService.chunkFile(file)"];
-    C_Chunk -- detailedChunkingResult --> D_HandleChunkRes{Chunking OK & has chunks?};
+    subgraph IndexingService [IndexingService]
+        C_IS["processFilesGenerator(initialFiles)"] --> D_IS["Initialize currentOperation"];
+        D_IS --> E_Loop_IS["For each file in initialFiles"];
 
-    D_HandleChunkRes -- Yes --> E_PrepFileChunks["Convert to ChunkForEmbedding[] for this file"];
-    E_PrepFileChunks --> F_DispatchEmbed["embeddingGenerationService.generateEmbeddingsForChunks(fileChunks)"];
-    F_DispatchEmbed -- embeddingPromise --> G_StorePromise["Add {fileId, detailedChunkingResult, embeddingPromise} to pendingFileEmbeddings"];
-    G_StorePromise --> H_UpdateChunkProg["Update currentOperation (chunking stats)"];
-    H_UpdateChunkProg --> B_Loop;
+        E_Loop_IS -- Not Aborted --> F_IS_Helper["_processSingleFileForYielding(file)"];
+        subgraph _processSingleFileForYielding
+            G_Chunk["codeChunkingService.chunkFile(file)"];
+            G_Chunk -- detailedChunkingResult --> H_HandleChunkRes{"Chunking OK & has chunks?"};
+            H_HandleChunkRes -- Yes --> I_PrepFileChunks["Convert to ChunkForEmbedding[]"];
+            I_PrepFileChunks --> J_DispatchEmbed["embeddingGenerationService.generateEmbeddingsForChunks(fileChunks)"];
+            J_DispatchEmbed -- embeddingOutputs --> K_ConstructOKResult["Construct ProcessingResult (Success/Partial) for file"];
+            K_ConstructOKResult --> L_ReturnResult["Return ProcessingResult"];
+            H_HandleChunkRes -- No --> M_ConstructFailResult["Construct ProcessingResult (Failure/Empty) for file"];
+            M_ConstructFailResult --> L_ReturnResult;
+        end
+        F_IS_Helper -- processingResult --> N_IS_Yield{"Result OK?"};
+        N_IS_Yield -- Yes --> O_IS_Yield["Yield { filePath, result }"];
+        N_IS_Yield -- No --> P_IS_UpdateFail["Update fail counters"];
+        P_IS_UpdateFail --> E_Loop_IS;
+        O_IS_Yield --> E_Loop_IS;
 
-    D_HandleChunkRes -- No --> I_RecordChunkFail[Record error ProcessingResult for file in currentOperation.results];
-    I_RecordChunkFail --> H_UpdateChunkProg;
+        E_Loop_IS -- All files processed or loop broken --> Q_IS_Finalize["Finalize Operation (Log, Status)"];
+        Q_IS_Finalize --> R_IS_EndGen["Generator Finishes"];
+    end
 
-    B_Loop -- All files attempted for chunking --> J_AwaitAllEmbedPromises["Promise.all(pendingFileEmbeddings.map(p => p.embeddingPromise))"];
-    J_AwaitAllEmbedPromises -- "resolvedEmbeddingOutputsArray (Array of EmbeddingGenerationOutput[] per file)" --> K_Loop["For each fileResultGroup in resolvedEmbeddingOutputsArray (correlate with pendingFileEmbeddings item)"];
-    K_Loop -- "fileResultGroup (EmbeddingGenerationOutput[] for one file)" --> L_HandleEmbedRes{Embedding OK for this file?};
-
-    L_HandleEmbedRes -- "Yes (outputs available)" --> M_AggFileEmbed["Aggregate embeddings for file using fileResultGroup and corresponding detailedChunkingResult, update currentOperation (embedding stats)"];
-    M_AggFileEmbed --> N_FinalizeFileRes[Construct final ProcessingResult for file, add to currentOperation.results];
-    N_FinalizeFileRes --> O_ReportProg[Call progressCallback/batchCompletedCallback];
-    O_ReportProg --> K_Loop;
-
-    L_HandleEmbedRes -- "No (error occurred during embedding for this file)" --> P_RecordEmbedFail["Record error ProcessingResult for file in currentOperation.results based on original detailedChunkingResult"];
-    P_RecordEmbedFail --> O_ReportProg;
-
-    K_Loop -- All fileResultGroups processed --> Z_End[Return currentOperation.results];
+    B_IM --> S_IM_Loop["IM: for await (const {filePath, result} of generator)"];
+    O_IS_Yield -.-> S_IM_Loop; subgraph IndexingManager [IndexingManager]
+        S_IM_Loop -- Yielded Item --> T_IM_Save["IM: embeddingDbAdapter.saveProcessingResult(result)"];
+        T_IM_Save --> U_IM_Accumulate["IM: Accumulate result in Map (optional)"];
+        U_IM_Accumulate --> S_IM_Loop;
+        S_IM_Loop -- Generator Done --> V_IM_HandleResults["IM: Handle final accumulated results"];
+    end
 ```
 
-## 7. Requirements Alignment
+## 9. Requirements Alignment (Revised)
 
-This plan meets the specified requirements:
+1.  **Asynchronous Chunking**: `CodeChunkingService.chunkFile()` remains `async`.
+2.  **Chunks to Embedding Mechanism**: Handled.
+3.  **Chunk Dispatch**: Handled per file.
+4.  **Individual Chunk Processing**: Handled by `EmbeddingGenerationService`.
+5.  **Per-File Saving (Improved)**: `IndexingService` yields `ProcessingResult` per file. `IndexingManager` consumes and saves it immediately, achieving per-file persistence.
+6.  **`progressCallback` Stability**: Simplified.
 
-1.  **Asynchronous Chunking**: `CodeChunkingService.chunkFile()` is `async`.
-2.  **Chunks to Embedding Mechanism**: Chunks from `CodeChunkingService` are passed to `EmbeddingGenerationService`.
-3.  **Chunk Dispatch (3b)**: All chunks for a single file are collected, and then these chunks are dispatched together for embedding generation for that file. This is repeated for all files, and `IndexingService` then awaits all these embedding operations.
-4.  **Individual Chunk Processing by Embedding Mechanism**: `EmbeddingGenerationService` submits each chunk as an individual task to `Tinypool`, which manages concurrent execution by workers that process one chunk per task.
-5.  **Per-File Saving**: Embedding results for an entire file are aggregated by `IndexingService` before the final `ProcessingResult` for that file is constructed and made available for saving (e.g., via `batchCompletedCallback` to `EmbeddingDatabaseAdapter`).
+## 10. Test Plan Updates for `src/__tests__/indexingService.test.ts`
 
-This approach simplifies `IndexingService`, enhances modularity, and maintains clear responsibilities.
+- **Adapt Existing Tests**:
+
+  - The primary change will be how `processFilesGenerator` is called and how its results are consumed. Instead of expecting a `Promise<Map<string, ProcessingResult>>` and checking a `batchCompletedCallback` mock, tests will need to iterate over the async generator.
+  - Example:
+
+    ```typescript
+    // Before
+    // const results = await indexingService.processFiles(...);
+    // expect(mockBatchCompletedCallback).toHaveBeenCalledWith(...);
+
+    // After
+    const yieldedResults = [];
+    for await (const item of indexingService.processFilesGenerator(...)) {
+        yieldedResults.push(item);
+    }
+    // Assertions on yieldedResults
+    // expect(yieldedResults[0].result).toEqual(...);
+    ```
+
+- **Mocking Dependencies**:
+  - `CodeChunkingService` and `EmbeddingGenerationService` will be the primary dependencies to mock for unit tests of `IndexingService`'s orchestration logic.
+  - The note that `WorkerCodeChunker` (and by extension, `CodeChunkingService` if it's not mocked for _some_ integration-style tests within `indexingService.test.ts`) is not mocked in _current_ tests should be respected where applicable. If `indexingService.test.ts` has tests that are more integration-focused for the chunking part, those aspects can be maintained. For pure unit tests of `IndexingService`'s new generator logic, mocking `codeChunkingService.chunkFile` and `embeddingGenerationService.generateEmbeddingsForChunks` would be appropriate.
+- **New Test Cases**:
+  - Test successful iteration and yielding of multiple files.
+  - Test behavior when `chunkFile` returns `null` or throws an error for a file (should it skip yielding or yield an error result?). The plan suggests yielding an error result or skipping. This needs to be consistent.
+  - Test behavior when `generateEmbeddingsForChunks` returns errors for some chunks or all chunks of a file.
+  - Test abortion scenarios: how the generator terminates and what `IndexingManager` observes.
+  - Test `progressCallback` invocations at various stages.
+  - Test edge cases: no files to process, empty files, files that produce no chunks.
+- **`IndexingManager` Tests**: Tests for `IndexingManager` will also need to be updated or added to verify it correctly consumes the generator and calls the database adapter.
+
+## 11. Documentation Updates Required
+
+- **Section 1.2.3 (Indexing Workflow)**:
+  - Revise to show `IndexingService` yielding results per file, and `IndexingManager` consuming and saving them.
+- **Section 2.2.1 (Indexing Service - `src/services/indexingService.ts`)**:
+  - Change `processFiles` to `processFilesGenerator`. Describe its new signature and `AsyncGenerator` return type.
+  - Remove `batchCompletedCallback` from its description.
+  - Explain that it yields `ProcessingResult` for each file.
+- **Section 2.2.2 (Indexing Manager - `src/services/indexingManager.ts`)**:
+  - Clarify how `IndexingManager` calls `processFilesGenerator` and uses `for await...of` to consume results.
+  - Detail its responsibility for saving each result via `EmbeddingDatabaseAdapter`.
+  - Update the description of the `progressCallback` it provides.
+- **Section 3.1 (Embedding Generation Algorithm)**:
+  - Step 5 (Result Processing): Emphasize that `IndexingService` yields results, and `IndexingManager` handles persistence.
+
+This revised plan incorporating the async generator pattern should lead to a more robust, decoupled, and maintainable indexing process.

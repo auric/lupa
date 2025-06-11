@@ -5,8 +5,6 @@ import {
     type Tensor
 } from '@huggingface/transformers';
 import { type EmbeddingOptions } from '../types/embeddingTypes';
-import { Mutex } from 'async-mutex';
-import MutexInterface from 'async-mutex/lib/MutexInterface';
 
 /**
  * Task data for the embedding generator worker
@@ -22,7 +20,7 @@ export interface EmbeddingTaskData {
  * Result from the embedding generator worker
  */
 export interface EmbeddingTaskResult {
-    embedding: Float32Array | null;
+    embedding: number[] | null;
     error?: string;
 }
 
@@ -49,14 +47,7 @@ async function getPipeline(
         return pipelineInstance;
     }
 
-    //const release = await pipelineMutex.acquire();
     try {
-        // Double-check after acquiring the lock
-        if (pipelineInstance && currentModelName === modelName) {
-            return pipelineInstance;
-        }
-
-        // If a previous pipeline exists for a different model, dispose it
         if (pipelineInstance) {
             try {
                 await pipelineInstance.dispose();
@@ -88,36 +79,34 @@ async function getPipeline(
     }
 }
 
-
 /**
  * Piscina worker function for generating embeddings for a single text chunk.
  */
-export default async function processEmbeddingTask(
+export async function processEmbeddingTask(
     taskData: EmbeddingTaskData
 ): Promise<EmbeddingTaskResult> {
-    let release: MutexInterface.Releaser | null = null;
-    let pipe: FeatureExtractionPipeline | null = null;
     let outputTensor: Tensor | null = null;
-    console.log('EmbeddingWorker: Processing task for chunk:', taskData.chunkText.substring(0, 100));
     try {
         if (!taskData.chunkText || taskData.chunkText.trim().length === 0) {
-            return { embedding: new Float32Array(0) }; // Handle empty chunks
+            return { embedding: null, error: 'Chunk text is empty or invalid' };
         }
 
-        pipe = await getPipeline(taskData.modelName, taskData.modelBasePath);
-        // release = await pipeMutex.acquire();
+        const pipe = await getPipeline(taskData.modelName, taskData.modelBasePath);
         outputTensor = await pipe(taskData.chunkText, {
             pooling: taskData.embeddingOptions.pooling || 'mean',
-            normalize: taskData.embeddingOptions.normalize !== false, // Default to true
-        }) as Tensor;
-        // release();
-        release = null;
+            normalize: taskData.embeddingOptions.normalize !== false,
+        });
 
         if (!(outputTensor.data instanceof Float32Array)) {
             throw new Error('Embedding output is not a Float32Array');
         }
-        // Return a copy of the data to ensure the tensor can be disposed.
-        return { embedding: new Float32Array(outputTensor.data) };
+
+        if (outputTensor.data.length === 0) {
+            console.warn('EmbeddingWorker: Received empty embedding for chunk:', taskData.chunkText.substring(0, 100));
+            return { embedding: null, error: 'Received empty embedding' };
+        }
+
+        return { embedding: Array.from(outputTensor.data) };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.error('EmbeddingWorker: Error generating embedding for chunk:', errorMessage, taskData.chunkText.substring(0, 100));
@@ -130,10 +119,5 @@ export default async function processEmbeddingTask(
                 console.warn('EmbeddingWorker: Error disposing output tensor:', e);
             }
         }
-        // if (release) {
-        //     release();
-        // }
-        // Note: The pipeline itself is cached and reused, not disposed after each task.
-        // It can be disposed if the model changes or when the worker pool is destroyed.
     }
 };

@@ -32,7 +32,7 @@ export interface FileToProcess {
 export interface ProcessingResult {
     fileId: string;
     filePath: string;
-    embeddings: Float32Array[];
+    embeddings: number[][];
     chunkOffsets: number[];
     metadata: ChunkingMetadata;
     success: boolean;
@@ -49,6 +49,17 @@ export interface ChunkForEmbedding {
 
 export interface EmbeddingGenerationOutput {
     originalChunkInfo: ChunkForEmbedding;
-    embedding: Float32Array | null;
+    embedding: number[] | null;
     error?: string;
+}
+
+/**
+ * Represents the output yielded by the `processFilesGenerator`.
+ * As per indexing_refactor_plan.md (section 3).
+ */
+export interface YieldedProcessingOutput {
+    /** Path to the file. */
+    filePath: string;
+    /** The final processing result for the file. */
+    result: ProcessingResult;
 }
