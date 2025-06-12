@@ -15,7 +15,7 @@ export class WorkerCodeChunker {
     private readonly defaultOverlapSize = 100;
     private readonly MIN_CHUNK_CHARS = 40; // Minimum number of characters a chunk should have
 
-    private readonly logLevel: 'debug' | 'info' | 'warn' | 'error' = 'warn';
+    private readonly logLevel: 'debug' | 'info' | 'warn' | 'error' = 'info';
 
     /**
      * Creates a new worker code chunker
