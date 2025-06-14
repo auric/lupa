@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as path from 'path';
 import * as fs from 'fs';
-import { TreeStructureAnalyzerPool } from '../services/treeStructureAnalyzer';
+import { TreeStructureAnalyzer, TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { EmbeddingOptions } from '../types/embeddingTypes';
@@ -51,14 +51,14 @@ describe('WorkerCodeChunker Integration Tests', () => {
         // Set up the extension path to the actual project root
         extensionPath = path.resolve(__dirname, '..', '..');
 
-        // Initialize TreeStructureAnalyzerPool
-        TreeStructureAnalyzerPool.createSingleton(extensionPath, 2);
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
 
         // Initialize WorkerTokenEstimator with Xenova model
         tokenEstimator = new WorkerTokenEstimator('Xenova/all-MiniLM-L6-v2', 256);
 
-        // Initialize WorkerCodeChunker
-        chunker = new WorkerCodeChunker(tokenEstimator);
+        const treeStructureAnalyzer = new TreeStructureAnalyzer();
+        await treeStructureAnalyzer.initialize();
+        chunker = new WorkerCodeChunker(tokenEstimator, treeStructureAnalyzer);
 
         // Wait for the tokenizer to initialize
         await tokenEstimator.initialize();

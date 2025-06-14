@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as path from 'path';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
-import { TreeStructureAnalyzerPool } from '../services/treeStructureAnalyzer';
+import { TreeStructureAnalyzer, TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
 import { EmbeddingOptions } from '../types/embeddingTypes';
 
 // Test fixtures
@@ -120,8 +120,7 @@ describe('WorkerCodeChunker Integration Tests', () => {
         // Set up extension path to project root
         extensionPath = path.resolve(__dirname, '..', '..');
 
-        // Create TreeStructureAnalyzer pool
-        TreeStructureAnalyzerPool.createSingleton(extensionPath, 2);
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
 
         // Initialize token estimator with a specific model path
         const modelPath = path.join(extensionPath, 'models', 'Xenova', 'all-MiniLM-L6-v2');
@@ -133,7 +132,9 @@ describe('WorkerCodeChunker Integration Tests', () => {
         await tokenEstimator.initialize();
 
         // Create the code chunker
-        codeChunker = new WorkerCodeChunker(tokenEstimator);
+        const treeAnalyzer = new TreeStructureAnalyzer();
+        await treeAnalyzer.initialize();
+        codeChunker = new WorkerCodeChunker(tokenEstimator, treeAnalyzer);
 
         // Set up abort controller for tests
         abortController = new AbortController();

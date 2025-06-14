@@ -475,10 +475,6 @@ vscodeMock.window = {
     show: vi.fn(),
     hide: vi.fn()
   }),
-  createOutputChannel: vi.fn().mockReturnValue({
-    appendLine: vi.fn(),
-    show: vi.fn()
-  }),
   createWebviewPanel: vi.fn().mockReturnValue({
     webview: {
       postMessage: vi.fn(),

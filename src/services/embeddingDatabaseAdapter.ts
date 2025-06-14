@@ -3,7 +3,7 @@ import { hash } from 'crypto';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { IndexingService } from './indexingService';
-import { type ProcessingResult } from '../workers/asyncIndexingProcessor';
+import type { ProcessingResult } from '../types/indexingTypes';
 import { SimilaritySearchOptions, SimilaritySearchResult } from '../types/embeddingTypes';
 
 /**
@@ -311,7 +311,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
         texts: string[],
         progressCallback?: (processed: number, total: number) => void,
         token?: vscode.CancellationToken
-    ): Promise<Map<string, Float32Array>> {
+    ): Promise<Map<string, number[]>> {
         try {
             // Check for cancellation
             if (token?.isCancellationRequested) {
@@ -322,49 +322,65 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                 return new Map();
             }
 
+            const fileIdToOriginalIndex = new Map<string, number>();
             // Create temporary files for each text chunk
             const filesToProcess = texts.map((text, index) => {
-                const tempFileId = `temp-embed-batch-${Date.now()}-${index}`;
+                const tempFileId = `temp-embed-batch-${Date.now()}-${index}-${Math.random().toString(36).substring(7)}`;
+                fileIdToOriginalIndex.set(tempFileId, index);
                 return {
                     id: tempFileId,
-                    path: `memory://temp-${index}.txt`,
+                    path: `memory://temp-${index}.txt`, // Path is mostly for logging/debugging in IndexingService
                     content: text,
-                    priority: 0 // Low priority
+                    priority: 0, // Low priority for ad-hoc embeddings
                 };
             });
 
-            // Process all texts in a single batch to get embeddings
-            const results = await this.indexingService.processFiles(
+            const embeddings = new Map<string, number[]>();
+            let processedCount = 0;
+            const totalToProcess = filesToProcess.length;
+
+            const generator = this.indexingService.processFilesGenerator(
                 filesToProcess,
-                token, // Pass the cancellation token
-                progressCallback // Pass the progress callback
+                token // Pass the cancellation token
             );
 
-            // Check for cancellation again after processing
-            if (token?.isCancellationRequested) {
-                throw new Error('Operation cancelled');
+            for await (const yieldedOutput of generator) {
+                if (token?.isCancellationRequested) {
+                    // Check cancellation inside the loop
+                    throw new Error('Operation cancelled during embedding generation');
+                }
+
+                const { result } = yieldedOutput; // result is ProcessingResult
+                const originalIndex = fileIdToOriginalIndex.get(result.fileId);
+
+                if (originalIndex !== undefined) {
+                    const originalText = texts[originalIndex];
+                    if (result.success && result.embeddings.length > 0) {
+                        // Assuming the first embedding is representative if multiple chunks were made from the text.
+                        // This matches the previous logic.
+                        embeddings.set(originalText, result.embeddings[0]);
+                    } else if (!result.success) {
+                        console.warn(`Failed to generate embedding for text (index ${originalIndex}): ${result.error || 'Unknown error'}`);
+                    }
+                } else {
+                    console.warn(`Received embedding result for unknown fileId: ${result.fileId}`);
+                }
+
+                processedCount++;
+                if (progressCallback) {
+                    progressCallback(processedCount, totalToProcess);
+                }
             }
 
-            // Map the results to their corresponding texts
-            const embeddings = new Map<string, Float32Array>();
-
-            for (let i = 0; i < filesToProcess.length; i++) {
-                // Check for cancellation during mapping
-                if (token?.isCancellationRequested) {
-                    throw new Error('Operation cancelled');
-                }
-
-                const file = filesToProcess[i];
-                const result = results.get(file.id);
-                if (result && result.success && result.embeddings.length > 0) {
-                    embeddings.set(texts[i], result.embeddings[0]);
-                }
+            // Final check for cancellation after loop, in case the generator finished early due to cancellation
+            if (token?.isCancellationRequested) {
+                throw new Error('Operation cancelled');
             }
 
             return embeddings;
         } catch (error) {
             // Explicitly check for cancellation and rethrow
-            if (token?.isCancellationRequested) {
+            if (token?.isCancellationRequested && !(error instanceof Error && error.message.includes('cancel'))) {
                 throw new Error('Operation cancelled');
             }
             console.error('Error generating embeddings via IndexingService:', error);
@@ -531,12 +547,12 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
      * This ensures we only have one instance of the embedding model loaded
      * @param text The text to generate an embedding for
      * @param progressCallback Optional callback for progress updates
-     * @returns A float32 embedding vector or null if generation fails
+     * @returns A number[] embedding vector or null if generation fails
      */
     async generateEmbedding(
         text: string,
         progressCallback?: (processed: number, total: number) => void
-    ): Promise<Float32Array | null> {
+    ): Promise<number[] | null> {
         try {
             // Use the batch method with a single item for consistency
             const embeddingsMap = await this.generateEmbeddings([text], progressCallback);

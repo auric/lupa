@@ -1,31 +1,26 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { TreeStructureAnalyzer, SymbolInfo } from '../services/treeStructureAnalyzer';
-import { TreeStructureAnalyzerPool } from '../services/treeStructureAnalyzer'; // Import the pool
+import { TreeStructureAnalyzer, SymbolInfo, TreeStructureAnalyzerInitializer } from '../services/treeStructureAnalyzer';
 
 // Helper function to create ranges easily
 const createRange = (startLine: number, endLine: number) => ({ startLine, endLine });
 
 describe('TreeStructureAnalyzer - findSymbolsInRanges', () => {
-    let analyzerPool: TreeStructureAnalyzerPool;
     let analyzer: TreeStructureAnalyzer;
     const extensionPath = path.resolve(__dirname, '../..'); // Adjust path as needed
 
     beforeAll(async () => {
         // Initialize the pool once for all tests in this suite
-        analyzerPool = TreeStructureAnalyzerPool.createSingleton(extensionPath);
-        analyzer = await analyzerPool.getAnalyzer(); // Get an analyzer instance from the pool
+        await TreeStructureAnalyzerInitializer.initialize(extensionPath);
+        analyzer = new TreeStructureAnalyzer(); // Get an analyzer instance from the pool
         // Ensure Tree-sitter is initialized (handled by the pool/analyzer initialization)
     });
 
     afterAll(() => {
         // Release the analyzer back to the pool and dispose the pool
         if (analyzer) {
-            analyzerPool.releaseAnalyzer(analyzer);
-        }
-        if (analyzerPool) {
-            analyzerPool.dispose();
+            analyzer.dispose();
         }
     });
 

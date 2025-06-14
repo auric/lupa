@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { IndexingService, IndexingServiceOptions } from './indexingService';
-import { FileToProcess } from '../workers/asyncIndexingProcessor';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { StatusBarService, StatusBarState } from './statusBarService';
@@ -9,8 +8,8 @@ import {
     EmbeddingModelSelectionService,
     type ModelInfo
 } from './embeddingModelSelectionService';
+import type { FileToProcess, ProcessingResult } from '../types/indexingTypes';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
-import { TreeStructureAnalyzerPool } from './treeStructureAnalyzer';
 import { ResourceDetectionService } from './resourceDetectionService';
 
 /**
@@ -52,24 +51,6 @@ export class IndexingManager implements vscode.Disposable {
     }
 
     /**
-     * Initialize the TreeStructureAnalyzerPool
-     * This creates a singleton pool of analyzers that can be shared across components
-     */
-    private initializeTreeStructureAnalyzerPool(isHighMemoryModel: boolean): void {
-        try {
-            const analyzerPoolSize = this.resourceDetectionService.calculateOptimalConcurrentTasks(isHighMemoryModel);
-            TreeStructureAnalyzerPool.createSingleton(
-                this.context.extensionPath,
-                analyzerPoolSize
-            );
-            console.log(`Initialized TreeStructureAnalyzerPool with size: ${analyzerPoolSize}`);
-        } catch (error) {
-            console.warn('Failed to initialize TreeStructureAnalyzerPool:', error);
-            throw error;
-        }
-    }
-
-    /**
      * Set the embedding database adapter (used to break circular dependency)
      * @param embeddingDatabaseAdapter The adapter to set
      */
@@ -81,12 +62,8 @@ export class IndexingManager implements vscode.Disposable {
      * Initialize or reinitialize the indexing service with the appropriate model
      * @returns The initialized indexing service
      */
-    public initializeIndexingService(modelInfo: ModelInfo): IndexingService {
-
+    public async initializeIndexingService(modelInfo: ModelInfo): Promise<IndexingService> {
         this.selectedModel = modelInfo.name;
-
-        // Initialize the TreeStructureAnalyzerPool before initializing the indexing service
-        this.initializeTreeStructureAnalyzerPool(modelInfo.isHighMemory);
 
         // Dispose existing service if it exists
         if (this.indexingService) {
@@ -100,8 +77,13 @@ export class IndexingManager implements vscode.Disposable {
         const options: IndexingServiceOptions = {
             modelBasePath: this.modelSelectionService.getBasePath(),
             modelName: this.selectedModel,
-            maxConcurrentTasks: concurrentTasks,
-            contextLength: modelInfo.contextLength
+            maxConcurrentEmbeddingTasks: concurrentTasks,
+            contextLength: modelInfo.contextLength,
+            extensionPath: this.context.extensionPath,
+            embeddingOptions: {
+                pooling: 'mean',
+                normalize: true
+            }
         };
 
         // Create the indexing service
@@ -113,6 +95,7 @@ export class IndexingManager implements vscode.Disposable {
 
         console.log(`Initialized IndexingService with model: ${this.selectedModel}, concurrentTasks: ${concurrentTasks}, context length: ${modelInfo?.contextLength || 'unknown'}`);
 
+        await this.indexingService.initialize();
         return this.indexingService;
     }
 
@@ -361,94 +344,109 @@ export class IndexingManager implements vscode.Disposable {
 
         try {
             // Track progress statistics
-            let totalProcessed = 0;
+            let totalProcessedForNotification = 0; // Tracks files fully processed for the vscode.Progress notification
             let totalStored = 0;
             const totalToProcess = filesToProcess.length; // This is the actual number of files that need processing
-            let lastProcessedPercent = 0;
+            let lastReportedPercentForNotification = 0;
 
-            // Process the files with the IndexingService, saving results as batches complete
-            const results = await this.indexingService!.processFiles(
+            // Process the files with the IndexingService, saving results as they are yielded
+            // IndexingService.processFilesGenerator does not take a progress callback directly.
+            // Progress for the vscode.Progress notification will be updated based on yielded items.
+            const generator = this.indexingService!.processFilesGenerator(
                 filesToProcess,
-                token,
-                (processed, total) => {
-                    // Update progress message showing overall indexing progress
-                    totalProcessed = processed;
+                token
+            );
 
-                    // Calculate percentage based on the actual number of files to process
-                    // not the total files checked
-                    const processedPercent = Math.round((processed / totalToProcess) * 100);
+            let filesProcessedByGenerator = 0;
 
-                    // Calculate the increment for the progress bar
-                    // We allocate 100% of the progress bar to the processing phase
-                    if (processed > 0) {
-                        // Calculate the increment based on the progress since last update
-                        // Use a percentage of the total files to process as the progress indicator
-                        const currentProcessedPercent = (processed / totalToProcess) * 100;
-                        const incrementValue = Math.max(0, currentProcessedPercent - lastProcessedPercent);
-                        lastProcessedPercent = currentProcessedPercent;
+            for await (const yieldedItem of generator) {
+                if (token.isCancellationRequested) {
+                    console.log('[IndexingManager] Cancellation requested, stopping result processing.');
+                    break;
+                }
 
-                        if (incrementValue > 0) {
-                            progress.report({
-                                message: `Indexing ${processed} of ${totalToProcess} files (${processedPercent}%)...`,
-                                increment: incrementValue
-                            });
-                        } else {
-                            // Just update the message without incrementing
-                            progress.report({
-                                message: `Indexing ${processed} of ${totalToProcess} files (${processedPercent}%)...`
-                            });
-                        }
-                    }
-                },
-                // Batch completion callback - store embeddings as each batch completes
-                async (batchResults) => {
-                    try {
-                        // Store this batch of embeddings immediately
-                        const batchFiles = filesToProcess.filter(file =>
-                            batchResults.has(file.id) && batchResults.get(file.id)!.success
-                        );
+                filesProcessedByGenerator++;
+                const processingResult = yieldedItem.result;
 
-                        if (batchFiles.length > 0) {
+                if (processingResult.success && processingResult.embeddings && processingResult.embeddings.length > 0) {
+                    const fileToStore = filesToProcess.find(f => f.id === processingResult.fileId);
+                    if (fileToStore) {
+                        const singleFileResultMap = new Map<string, ProcessingResult>();
+                        singleFileResultMap.set(processingResult.fileId, processingResult);
+
+                        try {
                             await this.embeddingDatabaseAdapter!.storeEmbeddingResults(
-                                batchFiles,
-                                batchResults,
-                                (processed, total) => {
-                                    // Only update the message, not the progress bar
-                                    // The progress bar is only updated based on file processing
-                                    const newStored = totalStored + processed;
-                                    progress.report({
-                                        message: `Processed: ${totalProcessed}/${totalToProcess}, Stored: ${newStored}/${totalToProcess}`
-                                    });
+                                [fileToStore], // Array with a single file
+                                singleFileResultMap,
+                                (processedInStorage, totalInStorageBatch) => {
+                                    // This callback is for storage progress within a batch, usually quick.
                                 }
                             );
+                            totalStored++;
+                            // Update progress for vscode.Progress notification
+                            const currentProgressMessage = `Indexing: ${totalStored}/${totalToProcess} files processed and stored.`;
+                            const overallPercentForNotification = totalToProcess > 0 ? Math.round((totalStored / totalToProcess) * 100) : 0;
+                            const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
 
-                            // Update the total stored count after the batch is complete
-                            totalStored += batchFiles.length;
+                            progress.report({
+                                message: currentProgressMessage,
+                                increment: increment
+                            });
+                            if (overallPercentForNotification > lastReportedPercentForNotification) {
+                                lastReportedPercentForNotification = overallPercentForNotification;
+                            }
+                            console.log(`[IndexingManager] Stored embeddings for file: ${processingResult.filePath}. Total stored: ${totalStored}/${totalToProcess}`);
 
-                            // Log batch completion
-                            console.log(`Saved batch of ${batchFiles.length} files. Total stored: ${totalStored}/${totalToProcess}`);
+                        } catch (error) {
+                            console.error(`[IndexingManager] Error storing embedding result for file ${processingResult.filePath}:`, error);
+                            progress.report({ message: `Error storing ${processingResult.filePath}.` });
                         }
-                    } catch (error) {
-                        console.error('Error storing batch results:', error);
+                    } else {
+                        console.warn(`[IndexingManager] File with id ${processingResult.fileId} not found in filesToProcess list for storing.`);
+                    }
+                } else if (processingResult.error) {
+                    console.error(`[IndexingManager] Error processing file ${processingResult.filePath} from generator:`, processingResult.error);
+                    // Update progress for vscode.Progress notification even for errors, to show activity
+                    const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files attempted. Error with ${processingResult.filePath}.`;
+                    const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
+                    const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
+                    progress.report({
+                        message: currentProgressMessage,
+                        increment: increment
+                    });
+                    if (overallPercentForNotification > lastReportedPercentForNotification) {
+                        lastReportedPercentForNotification = overallPercentForNotification;
+                    }
+                } else {
+                    // File processed, but no embeddings (e.g. empty file, or no content to embed)
+                    console.log(`[IndexingManager] File ${processingResult.filePath} processed by generator, no new embeddings to store.`);
+                    // Update progress for vscode.Progress notification
+                    const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files analyzed.`;
+                    const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
+                    const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
+                    progress.report({
+                        message: currentProgressMessage,
+                        increment: increment
+                    });
+                    if (overallPercentForNotification > lastReportedPercentForNotification) {
+                        lastReportedPercentForNotification = overallPercentForNotification;
                     }
                 }
-            );
+            }
 
             // Final report
             if (!token.isCancellationRequested) {
                 const message = `Indexing completed. ` +
                     `Checked ${totalFilesChecked} files. ` +
                     `Indexed and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
-
-                // Just update the message without incrementing
                 progress.report({ message });
                 console.log(message);
             } else {
-                // If cancelled, show how many files were successfully processed and stored
+                // totalProcessedForNotification is no longer updated with the new generator.
+                // filesProcessedByGenerator reflects how many files had their processing completed (success or error) by IndexingService.
                 const message = `Indexing cancelled. ` +
                     `Checked ${totalFilesChecked} files. ` +
-                    `Processed ${totalProcessed} and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
-
+                    `Attempted processing for ${filesProcessedByGenerator} files and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
                 progress.report({ message });
                 console.log(message);
             }
@@ -484,9 +482,5 @@ export class IndexingManager implements vscode.Disposable {
         if (this.continuousIndexingCancellationToken) {
             this.continuousIndexingCancellationToken.cancel();
         }
-
-        // We don't dispose the TreeStructureAnalyzerPool here since it's a singleton
-        // and might be used by other components. It will be disposed when the extension
-        // is deactivated.
     }
 }

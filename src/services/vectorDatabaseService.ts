@@ -459,7 +459,7 @@ export class VectorDatabaseService implements vscode.Disposable {
      * Store embeddings for chunks
      * @param embeddings Array of embedding records (vector is part of the input but not stored in SQLite)
      */
-    async storeEmbeddings(embeddings: Array<{ chunkId: string; vector: Float32Array; }>): Promise<void> {
+    async storeEmbeddings(embeddings: Array<{ chunkId: string; vector: number[]; }>): Promise<void> {
         await this.ensureInitialized();
 
         if (!this.annIndex || this.currentModelDimension === null) {
@@ -499,9 +499,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                     const now = Date.now();
                     const numericalLabel = nextLabel;
 
-                    // Convert Float32Array to number[] for HNSWlib
-                    const vectorAsArray = Array.from(embedding.vector);
-                    this.annIndex!.addPoint(vectorAsArray, numericalLabel);
+                    this.annIndex!.addPoint(embedding.vector, numericalLabel);
 
                     await new Promise<void>((resolve, reject) => {
                         stmt.run(embeddingId, embedding.chunkId, numericalLabel, now, (err: Error | null) => {
@@ -542,7 +540,7 @@ export class VectorDatabaseService implements vscode.Disposable {
      * @returns Array of similar code chunks with their similarity scores
      */
     async findSimilarCode(
-        queryVector: Float32Array,
+        queryVector: number[],
         options: SimilaritySearchOptions = {}
     ): Promise<SimilaritySearchResult[]> {
         await this.ensureInitialized();
@@ -690,7 +688,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                 id: embeddingMeta.id,
                 chunkId: embeddingMeta.chunk_id,
                 label: embeddingMeta.label,
-                vector: new Float32Array(0), // Placeholder for vector
+                vector: [],
                 createdAt: embeddingMeta.created_at
             };
         }
@@ -703,7 +701,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                     id: embeddingMeta.id,
                     chunkId: embeddingMeta.chunk_id,
                     label: embeddingMeta.label,
-                    vector: new Float32Array(0), // Placeholder
+                    vector: [],
                     createdAt: embeddingMeta.created_at
                 };
             }
@@ -711,7 +709,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                 id: embeddingMeta.id,
                 chunkId: embeddingMeta.chunk_id,
                 label: embeddingMeta.label,
-                vector: vector instanceof Float32Array ? vector : new Float32Array(vector), // Ensure it's Float32Array
+                vector: vector,
                 createdAt: embeddingMeta.created_at
             };
         } catch (error) {
@@ -720,7 +718,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                 id: embeddingMeta.id,
                 chunkId: embeddingMeta.chunk_id,
                 label: embeddingMeta.label,
-                vector: new Float32Array(0), // Placeholder
+                vector: [],
                 createdAt: embeddingMeta.created_at
             };
         }

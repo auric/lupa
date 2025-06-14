@@ -52,139 +52,67 @@ export interface SymbolInfo {
     position: Position;
 }
 
-/**
- * Manages a pool of TreeStructureAnalyzer instances
- */
-export class TreeStructureAnalyzerPool {
-    private static instance: TreeStructureAnalyzerPool | null = null;
-    private readonly analyzers: TreeStructureAnalyzer[] = [];
-    private readonly availableAnalyzers: TreeStructureAnalyzer[] = [];
-    private isInitialized = false;
-    private initPromise: Promise<void> | null = null;
-    private readonly maxPoolSize: number;
+export class TreeStructureAnalyzerInitializer {
+    private static initializationPromise: Promise<void> | null = null;
+    private static extensionPath: string | null = null;
 
-    // Queue for waiting clients
-    private readonly waiting: Array<(analyzer: TreeStructureAnalyzer) => void> = [];
-
-    public static createSingleton(extensionPath: string, maxPoolSize: number = 5): TreeStructureAnalyzerPool {
-        if (TreeStructureAnalyzerPool.instance) {
-            TreeStructureAnalyzerPool.instance.dispose();
+    /**
+     * Initialize the Tree-sitter parser
+     * @param extensionPath Path to the extension
+     * @returns Promise that resolves when the parser is initialized
+     */
+    public static async initialize(extensionPath: string): Promise<void> {
+        if (!TreeStructureAnalyzerInitializer.initializationPromise) {
+            TreeStructureAnalyzerInitializer.initializationPromise =
+                TreeStructureAnalyzerInitializer.initializeParser(extensionPath);
         }
-        TreeStructureAnalyzerPool.instance = new TreeStructureAnalyzerPool(extensionPath, maxPoolSize);
-        return TreeStructureAnalyzerPool.instance;
+        return TreeStructureAnalyzerInitializer.initializationPromise;
     }
 
     /**
-     * Get singleton instance of the pool
+     * Wait for the Tree-sitter parser to be initialized
+     * @returns Promise that resolves when the parser is initialized
+     * @throws Error if the parser is not initialized
      */
-    public static getInstance(): TreeStructureAnalyzerPool {
-        if (!TreeStructureAnalyzerPool.instance) {
-            throw new Error('TreeStructureAnalyzerPool is not initialized. Call createSingleton first.');
-        }
-        return TreeStructureAnalyzerPool.instance;
-    }
-
-    /**
-     * Private constructor (use getInstance)
-     */
-    private constructor(
-        private readonly extensionPath: string,
-        poolSize: number
-    ) {
-        this.maxPoolSize = poolSize;
-        this.initPromise = this.initialize();
-    }
-
-    /**
-     * Initialize the pool with Tree-sitter
-     */
-    private async initialize(): Promise<void> {
-        try {
-            if (this.isInitialized) return;
-
-            // Initialize web-tree-sitter globally once
-            const moduleOptions = {
-                locateFile: (pathString: string, _prefixString: string) => {
-                    return path.join(this.extensionPath, 'dist', pathString);
-                }
-            };
-
-            await Parser.init(moduleOptions);
-            this.isInitialized = true;
-            console.log('TreeStructureAnalyzerPool initialized successfully');
-        } catch (error) {
-            console.error('Error initializing TreeStructureAnalyzerPool:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Get an analyzer from the pool or create a new one if needed
-     */
-    public async getAnalyzer(): Promise<TreeStructureAnalyzer> {
-        // Wait for initialization if needed
-        if (!this.isInitialized && this.initPromise) {
-            await this.initPromise;
-        }
-
-        // Reuse existing analyzer if available
-        if (this.availableAnalyzers.length > 0) {
-            const analyzer = this.availableAnalyzers.pop()!;
-            return analyzer;
-        }
-
-        // Create new analyzer if we haven't reached the pool limit
-        if (this.analyzers.length < this.maxPoolSize) {
-            const analyzer = new TreeStructureAnalyzer(this.extensionPath);
-            await analyzer.initialize();
-            this.analyzers.push(analyzer);
-            return analyzer;
-        }
-
-        // If we've reached the pool limit, wait for an analyzer to become available
-        return new Promise<TreeStructureAnalyzer>(resolve => {
-            this.waiting.push(resolve);
-        });
-    }
-
-    /**
-     * Return analyzer to the pool when done
-     */
-    public releaseAnalyzer(analyzer: TreeStructureAnalyzer): void {
-        // First check if someone is waiting for an analyzer
-        if (this.waiting.length > 0) {
-            const nextClient = this.waiting.shift()!;
-            nextClient(analyzer);
+    public static async waitForInitialization(): Promise<void> {
+        if (TreeStructureAnalyzerInitializer.initializationPromise) {
+            await TreeStructureAnalyzerInitializer.initializationPromise;
             return;
         }
-
-        // Otherwise, add it back to the available pool
-        if (this.analyzers.includes(analyzer)) {
-            this.availableAnalyzers.push(analyzer);
-        }
+        throw new Error('TreeStructureAnalyzerInitializer: parser is not initialized');
     }
 
     /**
-     * Dispose all resources
-     */
-    public dispose(): void {
-        for (const analyzer of this.analyzers) {
-            analyzer.dispose();
+     * Get the path to a WASM grammar file
+     * @param grammarName Base name of the grammar file
+     * @param variant Optional variant for languages with variants
+     * @returns Path to the WASM grammar file
+    */
+    public static getWasmGrammarPath(grammarName: string, variant?: string): string {
+        if (!TreeStructureAnalyzerInitializer.extensionPath) {
+            throw new Error('TreeStructureAnalyzerInitializer: extension path is not set');
         }
-        this.analyzers.length = 0;
-        this.availableAnalyzers.length = 0;
 
-        // Reject any waiting promises
-        for (const waiting of this.waiting) {
-            // This is not ideal, but there's no way to properly return
-            // an analyzer at this point since we're shutting down
-            const dummyAnalyzer = new TreeStructureAnalyzer(this.extensionPath, true);
-            waiting(dummyAnalyzer);
-            dummyAnalyzer.dispose();
+        // Base path for grammar files
+        const grammarBasePath = path.join(TreeStructureAnalyzerInitializer.extensionPath, 'dist', 'grammars');
+
+        // Use variant if specified
+        if (variant) {
+            return path.join(grammarBasePath, `${grammarName}-${variant}.wasm`);
         }
-        this.waiting.length = 0;
 
-        TreeStructureAnalyzerPool.instance = null;
+        // Default case
+        return path.join(grammarBasePath, `${grammarName}.wasm`);
+    }
+
+    private static async initializeParser(extensionPath: string): Promise<void> {
+        const moduleOptions = {
+            locateFile: (pathString: string, _prefixString: string) => {
+                return path.join(extensionPath, 'dist', pathString);
+            }
+        };
+        TreeStructureAnalyzerInitializer.extensionPath = extensionPath;
+        await Parser.init(moduleOptions);
     }
 }
 
@@ -195,24 +123,14 @@ export class TreeStructureAnalyzer {
     private parser: Parser | null = null;
     private languageParsers: Map<string, Language> = new Map();
     private isInitialized = false;
-    // Promise for initialization
-    private pool: TreeStructureAnalyzerPool | null = null;
     private isDisposed = false;
-
-    // Language configurations are defined directly in TREE_SITTER_LANGUAGE_CONFIGS
 
     /**
      * Constructor - create a new analyzer instance
      * @param extensionPath Path to the extension
-     * @param skipPoolRegistration If true, the analyzer won't be registered with a pool
      */
     constructor(
-        private readonly extensionPath: string,
-        private skipPoolRegistration: boolean = false
     ) {
-        if (!skipPoolRegistration) {
-            this.pool = TreeStructureAnalyzerPool.getInstance();
-        }
     }
 
     /**
@@ -220,11 +138,14 @@ export class TreeStructureAnalyzer {
      */
     public async initialize(): Promise<void> {
         try {
-            if (this.isInitialized || this.isDisposed) return;
+            if (this.isInitialized || this.isDisposed) {
+                return;
+            }
+
+            await TreeStructureAnalyzerInitializer.waitForInitialization();
 
             this.parser = new Parser();
             this.isInitialized = true;
-            console.log('TreeStructureAnalyzer instance initialized');
         } catch (error) {
             console.error('Error initializing TreeStructureAnalyzer instance:', error);
             throw error;
@@ -256,25 +177,6 @@ export class TreeStructureAnalyzer {
     }
 
     /**
-     * Get the path to a WASM grammar file
-     * @param grammarName Base name of the grammar file
-     * @param variant Optional variant for languages with variants
-     * @returns Path to the WASM grammar file
-     */
-    private getWasmGrammarPath(grammarName: string, variant?: string): string {
-        // Base path for grammar files
-        const grammarBasePath = path.join(this.extensionPath, 'dist', 'grammars');
-
-        // Use variant if specified
-        if (variant) {
-            return path.join(grammarBasePath, `${grammarName}-${variant}.wasm`);
-        }
-
-        // Default case
-        return path.join(grammarBasePath, `${grammarName}.wasm`);
-    }
-
-    /**
      * Load a language parser for the given language
      * @param languageId Language identifier (e.g. 'typescript')
      * @param variant Optional variant (e.g. 'tsx')
@@ -299,7 +201,7 @@ export class TreeStructureAnalyzer {
             }
 
             // Get the grammar WASM file path
-            const wasmPath = this.getWasmGrammarPath(supportedLanguage.treeSitterGrammar, supportedLanguage.variant);
+            const wasmPath = TreeStructureAnalyzerInitializer.getWasmGrammarPath(supportedLanguage.treeSitterGrammar, supportedLanguage.variant);
 
             // Load the language from the WASM file
             const language = await Language.load(wasmPath);
@@ -1318,22 +1220,6 @@ export class TreeStructureAnalyzer {
     }
 
     /**
-     * Return analyzer to the pool when done
-     * Use with resource pattern:
-     * const analyzer = await pool.getAnalyzer();
-     * try {
-     *   // use analyzer
-     * } finally {
-     *   analyzer.release();
-     * }
-     */
-    public release(): void {
-        if (!this.isDisposed && !this.skipPoolRegistration && this.pool) {
-            this.pool.releaseAnalyzer(this);
-        }
-    }
-
-    /**
      * Dispose resources
      */
     public dispose(): void {
@@ -1352,41 +1238,5 @@ export class TreeStructureAnalyzer {
         this.languageParsers.clear();
         this.isInitialized = false;
         this.isDisposed = true;
-        // Reset initialization state
-    }
-}
-
-/**
- * Resource manager for TreeStructureAnalyzer to ensure proper cleanup
- * Usage:
- * async function example() {
- *   const resource = await TreeStructureAnalyzerResource.create();
- *   try {
- *     const analyzer = resource.instance;
- *     // use analyzer methods
- *   } finally {
- *     resource.dispose();
- *   }
- * }
- */
-export class TreeStructureAnalyzerResource {
-    private constructor(
-        public readonly instance: TreeStructureAnalyzer
-    ) { }
-
-    /**
-     * Create a new analyzer resource
-     */
-    public static async create(): Promise<TreeStructureAnalyzerResource> {
-        const pool = TreeStructureAnalyzerPool.getInstance();
-        const analyzer = await pool.getAnalyzer();
-        return new TreeStructureAnalyzerResource(analyzer);
-    }
-
-    /**
-     * Dispose the analyzer by returning it to the pool
-     */
-    public dispose(): void {
-        this.instance.release();
     }
 }

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { TreeStructureAnalyzerResource, SymbolInfo as AnalyzerSymbolInfo } from './treeStructureAnalyzer'; // Import SymbolInfo as AnalyzerSymbolInfo
+import { TreeStructureAnalyzer, SymbolInfo as AnalyzerSymbolInfo } from './treeStructureAnalyzer'; // Import SymbolInfo as AnalyzerSymbolInfo
 import {
     getLanguageForExtension
 } from '../types/types';
@@ -95,9 +95,7 @@ export class ContextProvider implements vscode.Disposable {
     private async extractMeaningfulChunksAndSymbols(diff: string, parsedDiff: DiffHunk[], gitRepoRoot: string): Promise<{ embeddingQueries: string[]; symbols: DiffSymbolInfo[] }> {
         const embeddingQueriesSet = new Set<string>();
         const identifiedSymbols: DiffSymbolInfo[] = [];
-        const resource = await TreeStructureAnalyzerResource.create();
-        const analyzer = resource.instance;
-
+        const analyzer = new TreeStructureAnalyzer();
         for (const fileDiff of parsedDiff) {
             const filePath = fileDiff.filePath;
             const absoluteFilePath = path.join(gitRepoRoot, filePath);
@@ -230,7 +228,7 @@ export class ContextProvider implements vscode.Disposable {
                 }
             }
         }
-        resource.dispose();
+        analyzer.dispose();
 
         const finalEmbeddingQueries = [...embeddingQueriesSet].filter(q => q.trim().length > 0);
 

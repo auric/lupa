@@ -1,18 +1,18 @@
 import { v4 as uuidv4 } from 'uuid'; // Import uuid
-import { EmbeddingOptions, ChunkingResult, DetailedChunkingResult } from '../types/embeddingTypes'; // Import DetailedChunkingResult
+import {
+    type EmbeddingOptions,
+    type ChunkingResult,
+    type DetailedChunkingResult
+} from '../types/embeddingTypes';
 import { WorkerTokenEstimator } from './workerTokenEstimator';
-import { TreeStructureAnalyzer, TreeStructureAnalyzerResource } from '../services/treeStructureAnalyzer'; // Import CodeStructure
+import { TreeStructureAnalyzer } from '../services/treeStructureAnalyzer';
 
 /**
  * WorkerCodeChunker provides intelligent code chunking capabilities within worker threads.
  * It respects natural code boundaries while ensuring chunks fit within token limits.
  */
 export class WorkerCodeChunker {
-    private readonly tokenEstimator: WorkerTokenEstimator;
     private readonly defaultOverlapSize = 100;
-    private resource: TreeStructureAnalyzerResource | null = null;
-    private analyzer: TreeStructureAnalyzer | null = null;
-    private resourcePromise: Promise<TreeStructureAnalyzerResource> | null = null;
     private readonly MIN_CHUNK_CHARS = 40; // Minimum number of characters a chunk should have
 
     private readonly logLevel: 'debug' | 'info' | 'warn' | 'error' = 'info';
@@ -20,28 +20,12 @@ export class WorkerCodeChunker {
     /**
      * Creates a new worker code chunker
      * @param tokenEstimator The token estimator to use for token counting
+     * @param extensionPath The extension path for initializing TreeStructureAnalyzer
      */
     constructor(
-        tokenEstimator: WorkerTokenEstimator
+        private readonly tokenEstimator: WorkerTokenEstimator,
+        private readonly treeStructureAnalyzer: TreeStructureAnalyzer
     ) {
-        this.tokenEstimator = tokenEstimator;
-    }
-
-    /**
-     * Get a TreeStructureAnalyzer from the pool
-     */
-    private async getTreeStructureAnalyzer(): Promise<TreeStructureAnalyzer> {
-        if (!this.analyzer && this.resourcePromise) {
-            await this.resourcePromise;
-        }
-        if (!this.resource) {
-            this.resourcePromise = TreeStructureAnalyzerResource.create();
-            this.resource = await this.resourcePromise;
-            this.analyzer = this.resource.instance;
-            this.resourcePromise = null;
-            return this.analyzer;
-        }
-        return this.analyzer!;
     }
 
     /**
@@ -96,7 +80,7 @@ export class WorkerCodeChunker {
         try {
             // Use Tree-sitter for structure-aware chunking if language is supported
             if (language) {
-                const analyzer = await this.getTreeStructureAnalyzer();
+                const analyzer = this.treeStructureAnalyzer;
 
                 // Check if the language is supported by Tree-sitter
                 const isLanguageSupported = await analyzer.isLanguageSupported(language);
@@ -1275,8 +1259,6 @@ export class WorkerCodeChunker {
      * Dispose resources
      */
     dispose() {
-        this.resource?.dispose();
-        this.resource = null;
-        this.analyzer = null;
+        this.treeStructureAnalyzer?.dispose();
     }
 }

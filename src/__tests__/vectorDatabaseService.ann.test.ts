@@ -582,9 +582,9 @@ describe('VectorDatabaseService ANN Integration', () => {
         });
 
         it('should store embeddings in ANN index and metadata in SQLite', async () => {
-            const embeddingsToStore: Array<{ chunkId: string; vector: Float32Array; }> = [
-                { chunkId: 'chunk1', vector: new Float32Array([0.1, 0.2, 0.3]) },
-                { chunkId: 'chunk2', vector: new Float32Array([0.4, 0.5, 0.6]) },
+            const embeddingsToStore: Array<{ chunkId: string; vector: number[]; }> = [
+                { chunkId: 'chunk1', vector: Array.from([0.1, 0.2, 0.3]) },
+                { chunkId: 'chunk2', vector: Array.from([0.4, 0.5, 0.6]) },
             ];
 
             await vectorDbService.storeEmbeddings(embeddingsToStore);
@@ -607,7 +607,7 @@ describe('VectorDatabaseService ANN Integration', () => {
         it('should throw error if ANN index or model dimension is not initialized', async () => {
             // @ts-expect-error annIndex is private
             vectorDbService.annIndex = null;
-            const embeddingsToStore = [{ chunkId: 'c1', vector: new Float32Array([1, 2, 3]) }];
+            const embeddingsToStore = [{ chunkId: 'c1', vector: Array.from([1, 2, 3]) }];
             await expect(vectorDbService.storeEmbeddings(embeddingsToStore))
                 .rejects.toThrow('ANN index or model dimension is not initialized. Cannot store embeddings.');
         });
@@ -618,8 +618,8 @@ describe('VectorDatabaseService ANN Integration', () => {
             const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
             const embeddingsToStore = [
-                { chunkId: 'c100', vector: new Float32Array([0.1, 0.1, 0.1]) },
-                { chunkId: 'c101', vector: new Float32Array([0.2, 0.2, 0.2]) },
+                { chunkId: 'c100', vector: Array.from([0.1, 0.1, 0.1]) },
+                { chunkId: 'c101', vector: Array.from([0.2, 0.2, 0.2]) },
             ];
 
             let currentCountForResizeTest = 99;
@@ -655,7 +655,7 @@ describe('VectorDatabaseService ANN Integration', () => {
             });
             const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
-            const embeddingsToStore = [{ chunkId: 'c101', vector: new Float32Array([0.1, 0.1, 0.1]) }];
+            const embeddingsToStore = [{ chunkId: 'c101', vector: Array.from([0.1, 0.1, 0.1]) }];
             await expect(vectorDbService.storeEmbeddings(embeddingsToStore))
                 .rejects.toThrow('ANN index is full and resize failed. Max elements: 100. Please increase ANN_MAX_ELEMENTS_CONFIG and rebuild.');
 
@@ -669,7 +669,7 @@ describe('VectorDatabaseService ANN Integration', () => {
     // --- Tests for findSimilarCode ---
     describe('findSimilarCode', () => {
         const dimension = 3;
-        const queryVector = new Float32Array([0.1, 0.2, 0.3]);
+        const queryVector = Array.from([0.1, 0.2, 0.3]);
         let mockHNSW: ReturnType<typeof getMockHNSWInstanceMethods>;
         let mockDB: ReturnType<typeof getMockSqliteDbMethods>;
 
@@ -765,7 +765,7 @@ describe('VectorDatabaseService ANN Integration', () => {
         const chunkId = 'test-chunk-id';
         const label = 42;
         const vectorArray = [0.7, 0.8, 0.9];
-        const vectorFloat32 = new Float32Array(vectorArray);
+        const vectorFloat32 = Array.from(vectorArray);
         let mockHNSW: ReturnType<typeof getMockHNSWInstanceMethods>;
         let mockDB: ReturnType<typeof getMockSqliteDbMethods>;
 
@@ -790,22 +790,6 @@ describe('VectorDatabaseService ANN Integration', () => {
             expect(result?.vector).toEqual(vectorFloat32);
         });
 
-        it('should handle HNSW returning number[] for getPoint and convert to Float32Array', async () => {
-            vi.mocked(mockDB.get).mockImplementation((sql, params, cb) => cb(null, { id: 'emb-id', chunk_id: chunkId, label: label, created_at: Date.now() }));
-            mockHNSW.getPoint.mockReturnValue(vectorArray); // HNSW returns number[]
-
-            const result = await vectorDbService.getEmbedding(chunkId);
-            expect(result?.vector).toBeInstanceOf(Float32Array);
-
-            const resultArray = Array.from(result!.vector);
-            expect(resultArray.length).toBe(vectorArray.length);
-            for (let i = 0; i < vectorArray.length; i++) {
-                // Default precision for toBeCloseTo is 2, might need more for typical embedding values
-                // Let's use a common precision for float comparisons, e.g., 5-7 decimal places.
-                expect(resultArray[i]).toBeCloseTo(vectorArray[i], 5);
-            }
-        });
-
         it('should return null if embedding metadata not found in SQLite', async () => {
             vi.mocked(mockDB.get).mockImplementation((sql, params, cb) => cb(null, undefined));
 
@@ -821,7 +805,7 @@ describe('VectorDatabaseService ANN Integration', () => {
 
             const result = await vectorDbService.getEmbedding(chunkId);
             expect(result).not.toBeNull();
-            expect(result?.vector).toEqual(new Float32Array(0));
+            expect(result?.vector).toEqual([]);
         });
 
         it('should return metadata with empty vector if point not found in ANN index', async () => {
@@ -830,7 +814,7 @@ describe('VectorDatabaseService ANN Integration', () => {
 
             const result = await vectorDbService.getEmbedding(chunkId);
             expect(result).not.toBeNull();
-            expect(result?.vector).toEqual(new Float32Array(0));
+            expect(result?.vector).toEqual([]);
         });
     });
 
