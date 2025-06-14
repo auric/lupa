@@ -256,46 +256,30 @@ export class IndexingService implements vscode.Disposable {
             // Final status update
             if (!op.abortController.signal.aborted) {
                 const allFilesAttemptedAndResulted = op.initialFiles.every(f => op.results.has(f.id));
-                const filesThatShouldHaveEmbeddings = op.filesSuccessfullyChunkedCount; // Files that produced chunks
-
-                // Check if all files that were supposed to be embedded were indeed processed for embedding
-                const allEmbeddingAttemptsCompleted = op.filesEmbeddingsCompletedCount === filesThatShouldHaveEmbeddings;
-
-                // Determine if all files that were supposed to be embedded were actually successfully embedded.
-                let allEmbeddingsSuccessful = true;
-                if (filesThatShouldHaveEmbeddings > 0) {
-                    let successfullyEmbeddedFileCount = 0;
-                    // Iterate over all results to find those that were successfully chunked and embedded.
+                let overallSuccess = true;
+                if (allFilesAttemptedAndResulted) {
                     op.results.forEach(result => {
-                        const wasChunked = result.chunkOffsets && result.chunkOffsets.length > 0;
-                        const hasEmbeddings = result.embeddings && result.embeddings.length > 0;
-                        // A file is considered fully successful in this context if it was chunked,
-                        // has embeddings, and its overall processing result was success.
-                        if (result.success && wasChunked && hasEmbeddings) {
-                            successfullyEmbeddedFileCount++;
+                        if (!result.success) {
+                            overallSuccess = false;
                         }
                     });
-                    allEmbeddingsSuccessful = (successfullyEmbeddedFileCount === filesThatShouldHaveEmbeddings);
                 } else {
-                    // If no files were expected to produce embeddings (e.g., all empty, or all failed chunking),
-                    // then this condition is vacuously true.
-                    allEmbeddingsSuccessful = true;
+                    overallSuccess = false; // Not all files have results, so not an overall success
                 }
 
-
-                if (allFilesAttemptedAndResulted && filesThatShouldHaveEmbeddings === 0 && op.filesChunkingAttemptedCount === op.initialFiles.length) {
-                    this.statusBarService.setState(StatusBarState.Ready, 'No content to embed from files, or all failed before embedding.');
-                    console.log('[IndexingService] All files processed; no content found/generated for embedding or all failed chunking.');
-                } else if (allFilesAttemptedAndResulted && allEmbeddingAttemptsCompleted && allEmbeddingsSuccessful) {
+                if (overallSuccess) {
                     this.workspaceSettingsService.updateLastIndexingTimestamp();
                     this.statusBarService.setState(StatusBarState.Ready, 'Indexing complete');
                     console.log('[IndexingService] Indexing completed successfully for all dispatched files.');
                 } else if (allFilesAttemptedAndResulted) {
+                    // All files attempted, but some failed
                     this.statusBarService.setState(StatusBarState.Error, 'Indexing finished with some issues.');
                     console.warn('[IndexingService] Indexing finished with some issues or was incomplete.');
                 } else {
-                    this.statusBarService.setState(StatusBarState.Ready, 'Indexing finished.'); // Default if other conditions not met
-                    console.log('[IndexingService] Indexing process finished.');
+                    // Not all files were even attempted or have results (e.g. early critical error before loop completed)
+                    // This case might be less common if the loop tries to add error results for all initial files.
+                    this.statusBarService.setState(StatusBarState.Error, 'Indexing incomplete or critical error.');
+                    console.error('[IndexingService] Indexing was incomplete or a critical error occurred before all files could be processed.');
                 }
             }
         } catch (error) { // Catch errors from the main try block (e.g., if _processSingleFileSequentially rethrows a critical one)
@@ -415,19 +399,31 @@ export class IndexingService implements vscode.Disposable {
             };
         }
 
-        if (!detailedChunkingResult || detailedChunkingResult.chunks.length === 0) {
-            const reason = detailedChunkingResult === null
-                ? "chunking critically failed or was cancelled by signal"
-                : "file yielded no chunks";
+        if (detailedChunkingResult === null) { // Critical failure during chunkFile itself
+            const reason = "chunking critically failed or was cancelled by signal";
             console.log(`[IndexingService] File ${file.path} ${reason}.`);
             return {
                 fileId: file.id,
                 filePath: file.path,
-                success: true, // Technically not a failure if file is empty or unchunkable by design
-                error: detailedChunkingResult === null ? `File processing error: ${reason}.` : undefined, // Error only if chunking failed
+                success: false, // This is a failure of the chunking step
+                error: `File processing error: ${reason}.`,
                 embeddings: [],
-                chunkOffsets: detailedChunkingResult?.offsets || [],
-                metadata: detailedChunkingResult?.metadata || { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+                chunkOffsets: [],
+                metadata: { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
+            };
+        }
+
+        if (detailedChunkingResult.chunks.length === 0) { // Chunking successful, but no chunks (e.g. empty file)
+            const reason = "file yielded no chunks";
+            console.log(`[IndexingService] File ${file.path} ${reason}.`);
+            return {
+                fileId: file.id,
+                filePath: file.path,
+                success: true, // Not an error, just no content to embed
+                error: undefined,
+                embeddings: [],
+                chunkOffsets: detailedChunkingResult.offsets || [],
+                metadata: detailedChunkingResult.metadata || { parentStructureIds: [], structureOrders: [], isOversizedFlags: [], structureTypes: [] },
             };
         }
 
