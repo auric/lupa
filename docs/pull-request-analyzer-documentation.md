@@ -94,13 +94,14 @@ The components interact through these primary mechanisms:
 
 #### 1.2.3 Indexing Workflow
 
-1. **File Selection**: Files to index are identified (new, changed, or requested).
-2. **Model Selection**: Appropriate embedding model is selected based on system resources.
-3. **Main Thread Chunking**: [`IndexingService`](src/services/indexingService.ts:1) uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) (which internally uses [`WorkerCodeChunker`](src/workers/workerCodeChunker.ts:1)) for main-thread chunking of files. This involves parsing with Tree-sitter.
-4. **Worker Initialization**: [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) (used by [`IndexingService`](src/services/indexingService.ts:1)) initializes and manages the `Tinypool` worker pool for [`embeddingGeneratorWorker.ts`](src/workers/embeddingGeneratorWorker.ts:1).
-5. **Embedding Generation & Yielding**: After [`CodeChunkingService`](src/services/codeChunkingService.ts:1) chunks a file, [`IndexingService`](src/services/indexingService.ts:1) passes these chunks to [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) for embedding generation. Once embeddings for a file are complete, [`IndexingService`](src/services/indexingService.ts:1) constructs a `ProcessingResult` and yields it.
-6. **Result Consumption & Storage**: `IndexingManager` consumes the `ProcessingResult` yielded by [`IndexingService`](src/services/indexingService.ts:1) for each file and is responsible for saving it, typically via `EmbeddingDatabaseAdapter`.
-7. **Status Updates**: Progress is reported through the status bar by [`IndexingService`](src/services/indexingService.ts:1) (reflecting the new two-phase chunking then embedding process, and yielding of results).
+1.  **File Discovery & Prioritization**: The `IndexingManager` identifies source files in the workspace. For continuous indexing, it checks which files have changed since the last run. For a full re-index, all supported files are selected.
+2.  **Model Selection**: `EmbeddingModelSelectionService` determines the optimal embedding model (`Jina` or `MiniLM`) based on system resources and user configuration. The `PRAnalysisCoordinator` ensures the `VectorDatabaseService` is configured with the correct embedding dimension for this model.
+3.  **Generator-Based Processing**: The `IndexingManager` invokes `IndexingService.processFilesGenerator`, which returns an `async` generator. This allows the manager to process results for each file as soon as they are ready.
+4.  **Structure-Aware Chunking**: For each file, `IndexingService` uses `CodeChunkingService` (which internally uses `TreeStructureAnalyzer`) to parse the code and break it into structurally coherent chunks on the main extension thread.
+5.  **Parallel Embedding Generation**: The resulting chunks for a file are passed to `EmbeddingGenerationService`, which manages a `Tinypool` worker pool. Each worker (`embeddingGeneratorWorker.ts`) generates an embedding for a single chunk in a separate process, ensuring the main thread remains responsive.
+6.  **Yielding Results**: Once all chunks for a single file have been embedded, `IndexingService` constructs a single `ProcessingResult` object and `yields` it.
+7.  **Real-time Storage**: The `IndexingManager` consumes the yielded `ProcessingResult` in a `for await...of` loop and immediately passes it to the `EmbeddingDatabaseAdapter` to be saved in the `VectorDatabaseService` (both SQLite and the HNSWlib index).
+8.  **Status Updates**: `IndexingManager` manages a `vscode.Progress` notification window for overall progress, while the `StatusBarService` provides real-time status updates in the status bar.
 
 #### 1.2.4 Context Retrieval Workflow (Hybrid LSP + Embedding)
 
@@ -665,41 +666,38 @@ The analysis process follows these steps:
 
 ## 4. Core Data Structures
 
-### 4.1 Database Schema
+#### 4.1 Database Schema
 
-The database system uses SQLite for metadata and HNSWlib for the ANN vector index. The schema is designed for a single active embedding model per workspace.
+The database system uses a hybrid approach: SQLite for structured metadata and HNSWlib for a high-performance Approximate Nearest Neighbor (ANN) vector index. The schema is designed to support a single active embedding model per workspace.
 
-#### 4.1.1 Files Table (SQLite)
+##### 4.1.1 Files Table (SQLite)
 
-- `id`: TEXT PRIMARY KEY - Unique identifier for the file
-- `path`: TEXT NOT NULL UNIQUE - Path to the file in the workspace
-- `hash`: TEXT NOT NULL - Hash of the file content
-- `last_modified`: INTEGER NOT NULL - Timestamp of last modification
-- `language`: TEXT - Language of the file
-- `is_indexed`: BOOLEAN NOT NULL DEFAULT 0 - Whether the file is fully indexed
-- `size`: INTEGER NOT NULL DEFAULT 0 - Size of the file in bytes
+- **id**: `TEXT PRIMARY KEY` - Unique identifier for the file (UUID).
+- **path**: `TEXT NOT NULL UNIQUE` - Workspace-relative path to the file.
+- **hash**: `TEXT NOT NULL` - SHA-256 hash of the file content to detect changes.
+- **last_modified**: `INTEGER NOT NULL` - File modification timestamp.
+- **language**: `TEXT` - Detected language of the file (e.g., 'typescript').
+- **is_indexed**: `BOOLEAN NOT NULL DEFAULT 0` - Flag indicating if the file has been successfully indexed.
+- **size**: `INTEGER NOT NULL DEFAULT 0` - Size of the file in bytes.
 
-#### 4.1.2 Chunks Table (SQLite)
+##### 4.1.2 Chunks Table (SQLite)
 
-- `id`: TEXT PRIMARY KEY - Unique identifier for the chunk
-- `file_id`: TEXT NOT NULL - Reference to the file (`files.id`)
-- `content`: TEXT NOT NULL - Content of the chunk
-- `start_offset`: INTEGER NOT NULL - Start position in the file
-- `end_offset`: INTEGER NOT NULL - End position in the file
-- `token_count`: INTEGER - Number of tokens in the chunk (approximate)
-- `parent_structure_id`: TEXT - ID linking chunks from a split oversized structure
-- `structure_order`: INTEGER - Order of chunk within a split parent structure
-- `is_oversized`: BOOLEAN - True if this chunk is part of an oversized structure that was split
-- `structure_type`: TEXT - Tree-sitter type of the primary structure in this chunk
-- FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+- **id**: `TEXT PRIMARY KEY` - Unique identifier for the code chunk (UUID).
+- **file_id**: `TEXT NOT NULL` - Foreign key referencing `files.id`.
+- **content**: `TEXT NOT NULL` - The raw text content of the code chunk.
+- **start_offset**: `INTEGER NOT NULL` - The chunk's starting character offset in the original file.
+- **end_offset**: `INTEGER NOT NULL` - The chunk's ending character offset in the original file.
+- **parent_structure_id**: `TEXT` - An ID linking chunks that belong to the same oversized parent structure that was split.
+- **structure_order**: `INTEGER` - The order of this chunk within a split parent structure.
+- **is_oversized**: `BOOLEAN` - A flag indicating if this chunk is a result of splitting an oversized structure.
+- **structure_type**: `TEXT` - The Tree-sitter node type of the primary structure in this chunk (e.g., 'function_declaration').
 
-#### 4.1.3 Embeddings Table (SQLite - Metadata for ANN Index)
+##### 4.1.3 Embeddings Table (SQLite - Metadata for ANN Index)
 
-- `id`: TEXT PRIMARY KEY - Unique identifier for this embedding metadata entry
-- `chunk_id`: TEXT NOT NULL UNIQUE - Reference to the chunk (`chunks.id`)
-- `label`: INTEGER UNIQUE NOT NULL - Numerical label/ID used in the HNSWlib ANN index for the vector corresponding to this `chunk_id`.
-- `created_at`: INTEGER NOT NULL - Timestamp of creation
-- FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE
+- **id**: `TEXT PRIMARY KEY` - Unique identifier for the embedding metadata entry (UUID).
+- **chunk_id**: `TEXT NOT NULL UNIQUE` - Foreign key referencing `chunks.id`.
+- **label**: `INTEGER UNIQUE NOT NULL` - The numerical label used as the key for this chunk's vector in the HNSWlib ANN index.
+- **created_at**: `INTEGER NOT NULL` - Timestamp of when the embedding was created.
 
 #### 4.1.4 Metadata Table (SQLite)
 
