@@ -1,0 +1,290 @@
+// src/services/codeAnalysisService.ts
+import { Parser, Language, Node, Tree, Query } from 'web-tree-sitter';
+import * as path from 'path';
+import { LANGUAGE_QUERIES } from '../config/treeSitterQueries';
+import { getLanguageForExtension, SUPPORTED_LANGUAGES } from '../types/types';
+import * as vscode from 'vscode';
+
+export interface Position {
+    line: number;
+    character: number;
+}
+
+export interface SymbolInfo {
+    symbolName: string;
+    symbolType: string;
+    position: Position;
+}
+
+/**
+ * Singleton Initializer for the Tree-sitter parser.
+ * Ensures that the heavy Parser.init() is called only once.
+ */
+export class CodeAnalysisServiceInitializer {
+    private static initializationPromise: Promise<void> | null = null;
+    private static extensionPath: string;
+
+    public static async initialize(extensionPath: string): Promise<void> {
+        if (!this.initializationPromise) {
+            this.extensionPath = extensionPath;
+            const wasmPath = path.join(extensionPath, 'dist', 'tree-sitter.wasm');
+            console.log(`CodeAnalysisService: Initializing Tree-sitter parser with wasm at ${wasmPath}`);
+            this.initializationPromise = Parser.init({
+                locateFile: () => wasmPath,
+            });
+        }
+        return this.initializationPromise;
+    }
+
+    public static getWasmGrammarPath(grammarName: string): string {
+        if (!this.extensionPath) {
+            throw new Error('CodeAnalysisServiceInitializer is not initialized with an extension path.');
+        }
+        return path.join(this.extensionPath, 'dist', 'grammars', `${grammarName}.wasm`);
+    }
+}
+
+/**
+ * Provides code analysis capabilities using Tree-sitter.
+ * This service is responsible for parsing code and extracting structural information,
+ * such as points of interest and comments, which are used for intelligent chunking and symbol analysis.
+ */
+export class CodeAnalysisService implements vscode.Disposable {
+    private parser: Parser;
+    private languageParsers: Map<string, Language> = new Map();
+    private isDisposed = false;
+
+    constructor() {
+        this.parser = new Parser();
+    }
+
+    private async getLanguageParser(language: string, variant?: string): Promise<Language> {
+        const cacheKey = variant ? `${language}-${variant}` : language;
+        if (this.languageParsers.has(cacheKey)) {
+            return this.languageParsers.get(cacheKey)!;
+        }
+
+        const langDetails = Object.values(SUPPORTED_LANGUAGES).find(l => l.language === language && l.variant === variant);
+        if (!langDetails?.treeSitterGrammar) {
+            throw new Error(`Language '${language}' (${variant || 'default'}) is not supported.`);
+        }
+
+        const wasmPath = CodeAnalysisServiceInitializer.getWasmGrammarPath(langDetails.treeSitterGrammar);
+        const loadedLanguage = await Language.load(wasmPath);
+        this.languageParsers.set(cacheKey, loadedLanguage);
+        return loadedLanguage;
+    }
+
+    public async parseCode(code: string, language: string, variant?: string): Promise<Tree | null> {
+        if (this.isDisposed) {
+            console.warn('CodeAnalysisService is disposed. Cannot parse code.');
+            return null;
+        }
+        try {
+            const langParser = await this.getLanguageParser(language, variant);
+            this.parser.setLanguage(langParser);
+            return this.parser.parse(code);
+        } catch (error) {
+            console.error(`Error parsing ${language} code:`, error);
+            return null;
+        }
+    }
+
+    public async findSymbols(code: string, languageId: string, variant?: string): Promise<SymbolInfo[]> {
+        const tree = await this.parseCode(code, languageId, variant);
+        if (!tree) {
+            return [];
+        }
+
+        try {
+            const langParser = await this.getLanguageParser(languageId, variant);
+            // Use pointsOfInterest queries to find potential symbol nodes.
+            // This aligns with how chunking boundaries are found and is more robust than generic symbol queries.
+            const langConfig = LANGUAGE_QUERIES[languageId];
+            if (!langConfig || !langConfig.pointsOfInterest) return [];
+
+            const symbolNodes = this.runQuery(tree.rootNode, langParser, langConfig.pointsOfInterest);
+            const foundSymbols: SymbolInfo[] = [];
+            const processedKeys = new Set<string>();
+
+            for (const node of symbolNodes) {
+                const symbolName = this._extractNodeName(node, languageId);
+                if (symbolName) {
+                    const position = { line: node.startPosition.row, character: node.startPosition.column };
+                    // Ensure unique symbols, especially if queries overlap or capture broader nodes
+                    const symbolKey = `${symbolName}@${position.line}:${position.character}:${node.type}`;
+
+                    if (!processedKeys.has(symbolKey)) {
+                        foundSymbols.push({ symbolName, symbolType: node.type, position });
+                        processedKeys.add(symbolKey);
+                    }
+                }
+            }
+            return foundSymbols.sort((a, b) => {
+                if (a.position.line !== b.position.line) {
+                    return a.position.line - b.position.line;
+                }
+                return a.position.character - b.position.character;
+            });
+        } catch (error) {
+            console.error(`Error finding symbols in ${languageId} code:`, error);
+            return [];
+        } finally {
+            tree.delete();
+        }
+    }
+
+    private _extractNodeName(node: Node, language: string): string | undefined {
+        const identifierTypes = ['identifier', 'property_identifier', 'type_identifier', 'field_identifier'];
+
+        // Priority 1: Check for a 'name' or 'identifier' field directly on the node.
+        // These are often explicitly named captures in tree-sitter grammars for the "main" name of a declaration.
+        let nameNode = node.childForFieldName('name') || node.childForFieldName('identifier');
+        if (nameNode) {
+            return nameNode.text;
+        }
+
+        // Priority 2: Logic for declarators (common in C++, C#, etc.)
+        // A declarator node often wraps the actual identifier.
+        const declaratorNode = node.childForFieldName('declarator');
+        if (declaratorNode) {
+            // Search for the first identifier within the declarator's direct children or descendants.
+            const identifier = declaratorNode.descendantsOfType(identifierTypes)[0];
+            if (identifier) {
+                return identifier.text;
+            }
+        }
+
+        // Priority 3: Find the first identifier child that isn't part of the type definition.
+        // This is a more general heuristic.
+        let potentialNameNode: Node | null = null;
+        for (const child of node.children) {
+            if (!child) {
+                continue;
+            }
+
+            if (identifierTypes.includes(child.type)) {
+                potentialNameNode = child;
+                // Heuristic: if the next sibling is '(', it's likely a function name.
+                // This helps distinguish function names from parameter names in some languages.
+                if (child.nextSibling?.type === 'parameter_list' || child.nextSibling?.type === 'formal_parameters' || child.nextSibling?.type === 'arguments') {
+                    return child.text;
+                }
+            }
+        }
+        // If the heuristic didn't apply, but we found an identifier, use it.
+        if (potentialNameNode) {
+            return potentialNameNode.text;
+        }
+
+        // Priority 4: If the node itself is an identifier type (can happen with some queries)
+        if (identifierTypes.includes(node.type)) {
+            return node.text;
+        }
+
+        return undefined;
+    }
+
+    private runQuery(rootNode: Node, language: Language, queryStrings: string[]): Node[] {
+        const nodes: Node[] = [];
+        const processedNodeIds = new Set<number>();
+
+        for (const queryString of queryStrings) {
+            let query: Query | null = null;
+            try {
+                query = new Query(language, queryString);
+                const matches = query.matches(rootNode);
+                for (const match of matches) {
+                    // Prefer a capture named 'capture' if available, otherwise use the first capture.
+                    const capturedNode = match.captures.find(c => c.name === 'capture')?.node || match.captures[0]?.node;
+                    if (capturedNode && !processedNodeIds.has(capturedNode.id)) {
+                        nodes.push(capturedNode);
+                        processedNodeIds.add(capturedNode.id);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error running query "${queryString}":`, error);
+            } finally {
+                if (query) {
+                    query.delete();
+                }
+            }
+        }
+        return nodes;
+    }
+
+    public extractPointsOfInterest(rootNode: Node, language: Language, langId: string): Node[] {
+        const queries = LANGUAGE_QUERIES[langId]?.pointsOfInterest;
+        if (!queries) {
+            return [];
+        }
+        return this.runQuery(rootNode, language, queries);
+    }
+
+    public extractComments(rootNode: Node, language: Language, langId: string): Node[] {
+        const queries = LANGUAGE_QUERIES[langId]?.comments;
+        if (!queries) {
+            return [];
+        }
+        return this.runQuery(rootNode, language, queries);
+    }
+
+    public async getLinesForPointsOfInterest(code: string, fileExtension: string): Promise<number[]> {
+        const langDetails = getLanguageForExtension(fileExtension);
+        if (!langDetails) {
+            return [];
+        }
+
+        const tree = await this.parseCode(code, langDetails.language, langDetails.variant);
+        if (!tree) {
+            return [];
+        }
+
+        try {
+            const langParser = await this.getLanguageParser(langDetails.language, langDetails.variant);
+            const pointsOfInterest = this.extractPointsOfInterest(tree.rootNode, langParser, langDetails.language);
+            const comments = this.extractComments(tree.rootNode, langParser, langDetails.language);
+
+            const commentLineNumbers = new Set(comments.map(c => c.startPosition.row));
+            const adjustedLines = new Set<number>();
+
+            for (const poi of pointsOfInterest) {
+                let currentLine = poi.startPosition.row; // Start with the POI's line
+                let highestCommentLineForRow = poi.startPosition.row;
+
+                // Traverse upwards from the line *before* the POI to find the earliest line of a contiguous comment block
+                // that might belong to this POI.
+                let lineToTest = poi.startPosition.row - 1;
+                while (lineToTest >= 0 && commentLineNumbers.has(lineToTest)) {
+                    // Check if this comment is "attached" - no blank lines between it and the POI or subsequent comments.
+                    // This is a heuristic. A more robust check might involve checking intervening non-comment nodes.
+                    // For simplicity, we assume comments immediately preceding (or on same line as) POI are relevant.
+                    const lineText = code.split('\n')[lineToTest];
+                    if (lineText && lineText.trim() === '') { // If blank line, stop associating earlier comments
+                        break;
+                    }
+                    highestCommentLineForRow = lineToTest;
+                    lineToTest--;
+                }
+                adjustedLines.add(highestCommentLineForRow + 1); // Convert back to 1-based line number
+            }
+            return Array.from(adjustedLines).sort((a, b) => a - b);
+        } catch (error) {
+            console.error('Error extracting lines for points of interest:', error);
+            return [];
+        } finally {
+            tree.delete();
+        }
+
+    }
+
+    public dispose(): void {
+        if (this.isDisposed) {
+            return;
+        }
+        this.parser.delete();
+        this.languageParsers.clear();
+        this.isDisposed = true;
+        console.log('CodeAnalysisService disposed.');
+    }
+}
