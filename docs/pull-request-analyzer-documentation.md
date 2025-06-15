@@ -97,7 +97,7 @@ The components interact through these primary mechanisms:
 1.  **File Discovery & Prioritization**: The `IndexingManager` identifies source files in the workspace. For continuous indexing, it checks which files have changed since the last run. For a full re-index, all supported files are selected.
 2.  **Model Selection**: `EmbeddingModelSelectionService` determines the optimal embedding model (`Jina` or `MiniLM`) based on system resources and user configuration. The `PRAnalysisCoordinator` ensures the `VectorDatabaseService` is configured with the correct embedding dimension for this model.
 3.  **Generator-Based Processing**: The `IndexingManager` invokes `IndexingService.processFilesGenerator`, which returns an `async` generator. This allows the manager to process results for each file as soon as they are ready.
-4.  **Structure-Aware Chunking**: For each file, `IndexingService` uses `CodeChunkingService` (which internally uses `TreeStructureAnalyzer`) to parse the code and break it into structurally coherent chunks on the main extension thread.
+4.  **Structure-Aware Chunking**: For each file, `IndexingService` uses `CodeChunkingService` (which internally uses `CodeAnalysisService`) to parse the code and break it into structurally coherent chunks on the main extension thread.
 5.  **Parallel Embedding Generation**: The resulting chunks for a file are passed to `EmbeddingGenerationService`, which manages a `Tinypool` worker pool. Each worker (`embeddingGeneratorWorker.ts`) generates an embedding for a single chunk in a separate process, ensuring the main thread remains responsive.
 6.  **Yielding Results**: Once all chunks for a single file have been embedded, `IndexingService` constructs a single `ProcessingResult` object and `yields` it.
 7.  **Real-time Storage**: The `IndexingManager` consumes the yielded `ProcessingResult` in a `for await...of` loop and immediately passes it to the `EmbeddingDatabaseAdapter` to be saved in the `VectorDatabaseService` (both SQLite and the HNSWlib index).
@@ -111,7 +111,7 @@ The context retrieval workflow now employs a hybrid approach, combining precise 
 
     - The input PR diff is parsed into structured `DiffHunk` objects.
     - `extractMeaningfulChunksAndSymbols` is called:
-      - It identifies key symbols (functions, classes, variables) within added/modified lines using `TreeStructureAnalyzer.findSymbolsInRanges` on the full file content corresponding to diff locations. These symbols are tagged with their file path and position.
+      - It identifies key symbols (functions, classes, variables) within added/modified lines using `CodeAnalysisService.findSymbols` on the full file content corresponding to diff locations. These symbols are tagged with their file path and position.
       - It generates a diverse set of `embeddingQueries` from the diff, including the identified symbol names, small code snippets around these symbols, and small, entirely new code blocks.
 
 2.  **LSP-Based Structural Search (`ContextProvider`):**
@@ -213,7 +213,7 @@ The indexing system consists of several components working together to generate 
 
 The [`IndexingService`](src/services/indexingService.ts:1) (src/services/indexingService.ts) orchestrates the file chunking and embedding generation process. Its primary method, `processFilesGenerator`, is an `async` generator that yields processing results for each file as they become available. It delegates to [`CodeChunkingService`](src/services/codeChunkingService.ts:1) and [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1).
 
-- **Orchestrates Chunking**: Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) to process files. [`CodeChunkingService`](src/services/codeChunkingService.ts:1) internally utilizes [`WorkerCodeChunker`](src/workers/workerCodeChunker.ts:1) (and [`TreeStructureAnalyzer`](src/services/treeStructureAnalyzer.ts:1)) to read files and break them into manageable code chunks. This chunking happens on the main thread, typically one file at a time.
+- **Orchestrates Chunking**: Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) to process files. [`CodeChunkingService`](src/services/codeChunkingService.ts:1) internally utilizes [`WorkerCodeChunker`](src/workers/workerCodeChunker.ts:1) (and [`CodeAnalysisService`](src/services/codeAnalysisService.ts:1)) to read files and break them into manageable code chunks. This chunking happens on the main thread, typically one file at a time.
 - **Orchestrates Embedding Generation**: After [`CodeChunkingService`](src/services/codeChunkingService.ts:1) successfully chunks a file, [`IndexingService`](src/services/indexingService.ts:1) passes the resulting `ChunkForEmbedding[]` to [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1). [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) manages a `Tinypool` worker pool (running [`embeddingGeneratorWorker.ts`](src/workers/embeddingGeneratorWorker.ts:1)) and dispatches individual chunk embedding tasks to these workers.
 - **Iterative Processing & Yielding**: The `processFilesGenerator` method (e.g., `async *processFilesGenerator(initialFiles: FileToProcess[], ...): AsyncGenerator<YieldedProcessingOutput>`) iterates through files. For each file, it orchestrates chunking and embedding generation. Upon successful processing of a file, it constructs a `ProcessingResult` and yields it as part of a `YieldedProcessingOutput` object (which includes `filePath` and `result`). It no longer uses a `batchCompletedCallback`.
 - **Cancellation Support**: Supports cancellation of in-progress indexing operations, propagating signals to chunking and embedding tasks.
@@ -300,22 +300,20 @@ Key interactions:
 - Uses `hnswlib-node` for ANN indexing and search.
 - Receives current embedding model dimension via `setCurrentModelDimension` from `PRAnalysisCoordinator` to initialize/re-initialize the ANN index.
 
-#### 2.3.2 Tree Structure Analyzer
+#### 2.3.2 Code Analysis Service
 
-The `TreeStructureAnalyzer` (src/services/treeStructureAnalyzer.ts) analyzes code structure:
+The `CodeAnalysisService` (`src/services/codeAnalysisService.ts`) analyzes code structure using Tree-sitter:
 
-- **Language Parsing**: Parses code using Tree-sitter
-- **Structure Identification**: Identifies functions, classes, methods
-- **Structure Mapping**: Maps structures to their locations
-- **Structure Queries**: Finds structures at specific positions
-- **Break Point Analysis**: Identifies optimal chunk break points
+- **Language Parsing**: Parses code into an Abstract Syntax Tree (AST) using the appropriate Tree-sitter grammar.
+- **Points of Interest Extraction**: Uses language-specific queries from `treeSitterQueries.ts` to find significant nodes (functions, classes, imports) that serve as chunking breakpoints.
+- **Symbol Identification**: Provides a `findSymbols` method to extract named symbols (functions, classes, etc.) from code, which is used by the `ContextProvider` to identify key entities in a diff.
+- **Comment Extraction**: Identifies comments and decorators to associate them with the correct code structures.
 
 Key interactions:
 
-- Used by `WorkerCodeChunker` for structure-aware chunking
-- Used by `ContextProvider` for structure-enhanced context
-- Relies on Tree-sitter for language parsing
-- Works with different language grammars
+- Used by `CodeChunkingService` (via `WorkerCodeChunker`) for structure-aware chunking.
+- Used by `ContextProvider` for identifying symbols within diffs.
+- Relies on Tree-sitter and the queries defined in `src/config/treeSitterQueries.ts`.
 
 ### 2.4 Context System
 
@@ -325,10 +323,10 @@ The context system finds, retrieves, and optimizes relevant code context from th
 
 The `ContextProvider` (`src/services/contextProvider.ts`) orchestrates context retrieval:
 
-- **Diff Parsing & Symbol/Query Extraction**:
+- **Diff Parsing & Symbol/Query Extraction** (`ContextProvider`):
   - Parses the input PR diff into structured `DiffHunk` objects (each with a unique `hunkId`).
   - Calls its internal `extractMeaningfulChunksAndSymbols` method, which:
-    - Uses `TreeStructureAnalyzer.findSymbolsInRanges` to identify key symbols (functions, classes, variables) within added/modified lines of the diff, considering the full file content.
+    - Uses `CodeAnalysisService.findSymbols` to identify key symbols (functions, classes, variables) within added/modified lines of the diff, considering the full file content.
     - Generates a set of `embeddingQueries` from the diff, including identified symbol names, small code snippets around these symbols, and small, entirely new code blocks.
 - **LSP Context Retrieval**:
   - For each identified symbol, it asynchronously calls its `findSymbolDefinition` and `findSymbolReferences` methods (which use `vscode.commands.executeCommand` for LSP calls).
@@ -346,7 +344,7 @@ The `ContextProvider` (`src/services/contextProvider.ts`) orchestrates context r
 
 Key interactions:
 
-- Uses `TreeStructureAnalyzer` for symbol identification within diffs.
+- Uses `CodeAnalysisService` for symbol identification within diffs.
 - Uses VS Code API for LSP queries (`vscode.commands.executeCommand`).
 - Uses `EmbeddingDatabaseAdapter` for semantic similarity search (which in turn uses `VectorDatabaseService` with HNSWlib).
 - Provides `HybridContextResult` to `AnalysisProvider`.
@@ -549,7 +547,7 @@ The context retrieval process combines LSP-based structural search with embeddin
 
     - The input PR diff is parsed into `DiffHunk` objects, each assigned a unique `hunkId`.
     - `extractMeaningfulChunksAndSymbols` analyzes the diff:
-      - It uses `TreeStructureAnalyzer.findSymbolsInRanges` on full file content (mapped from diff locations) to identify symbols in added/modified lines.
+      - It uses `CodeAnalysisService.findSymbols` on full file content (mapped from diff locations) to identify symbols in added/modified lines.
       - It generates `embeddingQueries` (key identifiers, small surrounding code snippets, small new blocks) from the diff.
 
 2.  **LSP-Based Structural Search (`ContextProvider`):**
