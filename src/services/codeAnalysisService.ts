@@ -98,8 +98,6 @@ export class CodeAnalysisService implements vscode.Disposable {
 
         try {
             const langParser = await this.getLanguageParser(languageId, variant);
-            // Use pointsOfInterest queries to find potential symbol nodes.
-            // This aligns with how chunking boundaries are found and is more robust than generic symbol queries.
             const langConfig = LANGUAGE_QUERIES[languageId];
             if (!langConfig || !langConfig.pointsOfInterest) return [];
 
@@ -111,7 +109,6 @@ export class CodeAnalysisService implements vscode.Disposable {
                 const symbolName = this._extractNodeName(node, languageId);
                 if (symbolName) {
                     const position = { line: node.startPosition.row, character: node.startPosition.column };
-                    // Ensure unique symbols, especially if queries overlap or capture broader nodes
                     const symbolKey = `${symbolName}@${position.line}:${position.character}:${node.type}`;
 
                     if (!processedKeys.has(symbolKey)) {
@@ -135,54 +132,133 @@ export class CodeAnalysisService implements vscode.Disposable {
     }
 
     private _extractNodeName(node: Node, language: string): string | undefined {
-        const identifierTypes = ['identifier', 'property_identifier', 'type_identifier', 'field_identifier'];
-
-        // Priority 1: Check for a 'name' or 'identifier' field directly on the node.
-        // These are often explicitly named captures in tree-sitter grammars for the "main" name of a declaration.
-        let nameNode = node.childForFieldName('name') || node.childForFieldName('identifier');
-        if (nameNode) {
-            return nameNode.text;
+        // Language-specific overrides first
+        if (language === 'csharp' && node.type === 'indexer_declaration') {
+            return 'this';
         }
 
-        // Priority 2: Logic for declarators (common in C++, C#, etc.)
+        const identifierTypes = ['identifier', 'property_identifier', 'type_identifier', 'field_identifier', 'namespace_identifier'];
+
+        // Priority 1: Check common named fields (e.g., 'name', 'id', 'identifier')
+        const commonFields = ['name', 'id', 'identifier'];
+        for (const fieldName of commonFields) {
+            const nameNode = node.childForFieldName(fieldName);
+            if (nameNode && identifierTypes.includes(nameNode.type)) {
+                return nameNode.text;
+            }
+        }
+
+        // Priority 2: Declarator Logic (common in C-like languages)
         // A declarator node often wraps the actual identifier.
         const declaratorNode = node.childForFieldName('declarator');
         if (declaratorNode) {
-            // Search for the first identifier within the declarator's direct children or descendants.
-            const identifier = declaratorNode.descendantsOfType(identifierTypes)[0];
+            // Search for the first identifier within the declarator's direct children.
+            let identifier = declaratorNode.children.find(child => child && identifierTypes.includes(child.type));
+            if (identifier) {
+                return identifier.text;
+            }
+            // Fallback: first identifier descendant in declarator if no direct child works.
+            identifier = declaratorNode.descendantsOfType(identifierTypes)[0];
             if (identifier) {
                 return identifier.text;
             }
         }
 
-        // Priority 3: Find the first identifier child that isn't part of the type definition.
-        // This is a more general heuristic.
-        let potentialNameNode: Node | null = null;
-        for (const child of node.children) {
-            if (!child) {
-                continue;
+        // Priority 3: Type Sibling Logic (find identifier immediately after a 'type' field)
+        const typeNode = node.childForFieldName('type');
+        if (typeNode) {
+            let sibling = typeNode.nextSibling;
+            while (sibling) {
+                if (identifierTypes.includes(sibling.type)) {
+                    return sibling.text;
+                }
+                // Handle pointers/references between type and name, e.g., int * name;
+                if (sibling.type === 'pointer_declarator' || sibling.type === 'reference_declarator') {
+                    const nameInside = sibling.descendantsOfType(identifierTypes)[0];
+                    if (nameInside) {
+                        return nameInside.text;
+                    }
+                }
+                // Skip over non-identifier, non-empty nodes like qualifiers, comments, etc.
+                if (sibling.text.trim() === '' || sibling.type === 'comment') {
+                    sibling = sibling.nextSibling;
+                    continue;
+                }
+                // If we hit something substantial that isn't the identifier or a pointer/reference, stop.
+                if (!identifierTypes.includes(sibling.type) &&
+                    sibling.type !== 'pointer_declarator' &&
+                    sibling.type !== 'reference_declarator') {
+                    break;
+                }
+                sibling = sibling.nextSibling;
             }
+        }
 
-            if (identifierTypes.includes(child.type)) {
-                potentialNameNode = child;
-                // Heuristic: if the next sibling is '(', it's likely a function name.
-                // This helps distinguish function names from parameter names in some languages.
-                if (child.nextSibling?.type === 'parameter_list' || child.nextSibling?.type === 'formal_parameters' || child.nextSibling?.type === 'arguments') {
+        // Priority 4: Heuristic for function-like structures (identifier followed by parameters/arguments)
+        // This is a simplified version of a more general child search.
+        for (const child of node.children) {
+            if (child && identifierTypes.includes(child.type)) {
+                if (child.nextSibling?.type === 'parameter_list' ||
+                    child.nextSibling?.type === 'formal_parameters' ||
+                    child.nextSibling?.type === 'arguments') {
                     return child.text;
                 }
             }
         }
-        // If the heuristic didn't apply, but we found an identifier, use it.
-        if (potentialNameNode) {
-            return potentialNameNode.text;
+
+        // Priority 5: Fallback - Find the LAST identifier that is a DIRECT CHILD of the node.
+        // This can be useful for some structures where the name appears late.
+        let lastDirectIdentifierChild: Node | null = null;
+        for (let i = node.childCount - 1; i >= 0; i--) {
+            const child = node.child(i);
+            if (child && identifierTypes.includes(child.type)) {
+                lastDirectIdentifierChild = child;
+                break;
+            }
+        }
+        if (lastDirectIdentifierChild) {
+            return lastDirectIdentifierChild.text;
         }
 
-        // Priority 4: If the node itself is an identifier type (can happen with some queries)
+        // Priority 6: If the node itself is an identifier type (can happen with some queries)
         if (identifierTypes.includes(node.type)) {
             return node.text;
         }
 
-        return undefined;
+        // Priority 7: For anonymous functions assigned to variables (e.g. const myFunc = () => {})
+        // This is a common pattern, especially in JavaScript/TypeScript.
+        if (node.type.includes('function') || node.type === 'arrow_function' || node.type === 'function_expression') {
+            let parent = node.parent;
+            // Traverse up to find common assignment patterns
+            while (parent) {
+                if (parent.type === 'variable_declarator' || parent.type === 'pair' || parent.type === 'assignment_expression') {
+                    // Check 'name' for variable_declarator, 'key' for pair (objects), 'left' for assignment
+                    const nameNode = parent.childForFieldName('name') || parent.childForFieldName('key') || parent.childForFieldName('left');
+                    if (nameNode && identifierTypes.includes(nameNode.type)) {
+                        return nameNode.text;
+                    }
+                    // For assignment_expression, the name might be the whole left side if it's an identifier
+                    if (parent.type === 'assignment_expression' && nameNode && nameNode.type === 'identifier') {
+                        return nameNode.text;
+                    }
+                }
+                // Stop if we hit a statement or declaration that isn't part of the assignment
+                if (parent.type.endsWith('_statement') || parent.type.endsWith('_declaration')) {
+                    break;
+                }
+                parent = parent.parent;
+            }
+        }
+
+        // Priority 8: CSS rule sets (get selectors)
+        if (node.type === 'rule_set' || node.type.includes('selector')) {
+            const selectorsNode = node.childForFieldName('selectors');
+            if (selectorsNode) {
+                return selectorsNode.text;
+            }
+        }
+
+        return undefined; // No name found
     }
 
     private runQuery(rootNode: Node, language: Language, queryStrings: string[]): Node[] {
@@ -249,7 +325,6 @@ export class CodeAnalysisService implements vscode.Disposable {
             const adjustedLines = new Set<number>();
 
             for (const poi of pointsOfInterest) {
-                let currentLine = poi.startPosition.row; // Start with the POI's line
                 let highestCommentLineForRow = poi.startPosition.row;
 
                 // Traverse upwards from the line *before* the POI to find the earliest line of a contiguous comment block
@@ -275,7 +350,6 @@ export class CodeAnalysisService implements vscode.Disposable {
         } finally {
             tree.delete();
         }
-
     }
 
     public dispose(): void {
