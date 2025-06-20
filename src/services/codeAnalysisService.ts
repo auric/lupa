@@ -319,30 +319,44 @@ export class CodeAnalysisService implements vscode.Disposable {
         try {
             const langParser = await this.getLanguageParser(langDetails.language, langDetails.variant);
             const pointsOfInterest = this.extractPointsOfInterest(tree.rootNode, langParser, langDetails.language);
-            const comments = this.extractComments(tree.rootNode, langParser, langDetails.language);
-
-            const commentLineNumbers = new Set(comments.map(c => c.startPosition.row));
+            const codeLines = code.split('\n');
             const adjustedLines = new Set<number>();
 
             for (const poi of pointsOfInterest) {
-                let highestCommentLineForRow = poi.startPosition.row;
+                let currentNode = poi;
+                let associatedCommentStartLine = poi.startPosition.row;
 
-                // Traverse upwards from the line *before* the POI to find the earliest line of a contiguous comment block
-                // that might belong to this POI.
-                let lineToTest = poi.startPosition.row - 1;
-                while (lineToTest >= 0 && commentLineNumbers.has(lineToTest)) {
-                    // Check if this comment is "attached" - no blank lines between it and the POI or subsequent comments.
-                    // This is a heuristic. A more robust check might involve checking intervening non-comment nodes.
-                    // For simplicity, we assume comments immediately preceding (or on same line as) POI are relevant.
-                    const lineText = code.split('\n')[lineToTest];
-                    if (lineText && lineText.trim() === '') { // If blank line, stop associating earlier comments
+                // Traverse backwards from the POI to find the start of its comment block.
+                while (currentNode.previousSibling) {
+                    const previousNode = currentNode.previousSibling;
+
+                    // Stop if there's a blank line between the nodes.
+                    let hasBlankLine = false;
+                    for (let i = previousNode.endPosition.row + 1; i < currentNode.startPosition.row; i++) {
+                        if (i < codeLines.length && codeLines[i].trim() === '') {
+                            hasBlankLine = true;
+                            break;
+                        }
+                    }
+                    if (hasBlankLine) {
                         break;
                     }
-                    highestCommentLineForRow = lineToTest;
-                    lineToTest--;
+
+                    // If the previous sibling is a comment, associate it and continue searching up.
+                    if (previousNode.type === 'comment' || previousNode.type.includes('_comment')) {
+                        associatedCommentStartLine = previousNode.startPosition.row;
+                        currentNode = previousNode;
+                    } else if (previousNode.text.trim() === '' || previousNode.type === 'decorator') {
+                        // Skip whitespace-only nodes and decorators
+                        currentNode = previousNode;
+                    } else {
+                        // It's a non-comment, non-whitespace node, so stop.
+                        break;
+                    }
                 }
-                adjustedLines.add(highestCommentLineForRow + 1); // Convert back to 1-based line number
+                adjustedLines.add(associatedCommentStartLine + 1); // Convert to 1-based line number
             }
+
             return Array.from(adjustedLines).sort((a, b) => a - b);
         } catch (error) {
             console.error('Error extracting lines for points of interest:', error);
