@@ -28,8 +28,8 @@ public:
 };
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
-        // MyClass is the POI, its comment starts on line 2 (1-based).
-        expect(lines).toContain(2);
+        // MyClass is the POI, its comment starts on line 2 (index 1).
+        expect(lines).toContain(1);
     });
 
     it('should identify the line of the associated comment for a C++ function', async () => {
@@ -42,8 +42,8 @@ void foo() {
 }
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
-        // foo() is the POI, its comment starts on line 2 (1-based).
-        expect(lines).toContain(2);
+        // foo() is the POI, its comment starts on line 2 (index 1).
+        expect(lines).toContain(1);
     });
 
     it('should associate comments with methods inside a class', async () => {
@@ -60,10 +60,10 @@ public:
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
         // POIs are MyClass and foo().
-        // MyClass has no preceding comment, so its own line (2) is used.
-        // foo() has a comment starting on line 4.
-        expect(lines).toContain(2); // For MyClass
-        expect(lines).toContain(4); // For foo()
+        // MyClass has no preceding comment, so its own line (index 1) is used.
+        // foo() has a comment starting on line 4 (index 3).
+        expect(lines).toContain(1); // For MyClass
+        expect(lines).toContain(3); // For foo()
     });
 
     it('should associate comments with C++ structs', async () => {
@@ -74,8 +74,8 @@ struct MyStruct {
 };
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
-        // MyStruct is the POI, its comment starts on line 2.
-        expect(lines).toContain(2);
+        // MyStruct is the POI, its comment starts on line 2 (index 1).
+        expect(lines).toContain(1);
     });
 
     it('should associate comments with C++ enums', async () => {
@@ -89,8 +89,8 @@ enum class MyEnum {
 };
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
-        // MyEnum is the POI, its comment starts on line 2.
-        expect(lines).toContain(2);
+        // MyEnum is the POI, its comment starts on line 2 (index 1).
+        expect(lines).toContain(1);
     });
 
     it('should handle namespace comments and nested comments', async () => {
@@ -106,10 +106,10 @@ namespace test {
 } // namespace test
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
-        // namespace test is a POI, comment starts on line 2.
-        // void foo() is a POI, comment starts on line 5.
-        expect(lines).toContain(2);
-        expect(lines).toContain(5);
+        // namespace test is a POI, comment starts on line 2 (index 1).
+        // void foo() is a POI, comment starts on line 5 (index 4).
+        expect(lines).toContain(1);
+        expect(lines).toContain(4);
     });
 
     it('should not associate comments separated by blank lines', async () => {
@@ -123,10 +123,10 @@ class BlankLineCommentClass {
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
         // The blank line breaks the association.
-        // The comment for BlankLineCommentClass starts on line 4.
-        expect(lines).toContain(4);
-        // It should NOT associate the comment from line 2.
-        expect(lines).not.toContain(2);
+        // The comment for BlankLineCommentClass starts on line 4 (index 3).
+        expect(lines).toContain(3);
+        // It should NOT associate the comment from line 2 (index 1).
+        expect(lines).not.toContain(1);
     });
 
     it('should handle multiple comments (block and line) for the same structure', async () => {
@@ -141,10 +141,10 @@ class MultiCommentClass {
 };
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
-        // The comment block for MultiCommentClass starts at line 2.
-        // The method comment starts at line 8.
-        expect(lines).toContain(2);
-        expect(lines).toContain(7);
+        // The comment block for MultiCommentClass starts at line 2 (index 1).
+        // The method comment starts at line 8 (index 7).
+        expect(lines).toContain(1);
+        expect(lines).toContain(6);
     });
 
     it('should handle comments with decorators/attributes (TypeScript)', async () => {
@@ -163,9 +163,9 @@ class DecoratedClass {
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'ts');
         // DecoratedClass POI, comment starts line 2.
-        // method POI, comment starts line 7.
-        expect(lines).toContain(2);
-        expect(lines).toContain(7);
+        // method POI, comment starts line 6.
+        expect(lines).toContain(1);
+        expect(lines).toContain(6);
     });
 
     it('should associate comments across different supported languages', async () => {
@@ -181,10 +181,10 @@ def pyFunction():
     pass
 `;
         const jsLines = await service.getLinesForPointsOfInterest(jsCode, 'js');
-        expect(jsLines).toContain(2);
+        expect(jsLines).toContain(1);
 
         const pyLines = await service.getLinesForPointsOfInterest(pyCode, 'py');
-        expect(pyLines).toContain(2);
+        expect(pyLines).toContain(1);
     });
 
     it('should handle complex hierarchy with nested namespaces and classes', async () => {
@@ -211,10 +211,10 @@ namespace outer {
 } // namespace outer
 `;
         const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
-        // outer namespace, comment line 2
-        // inner namespace, comment line 6
-        // NestedClass, comment line 10
-        // method, comment line 15
-        expect(lines).toEqual([2, 6, 10, 15]);
+        // outer namespace, comment line 2 (index 1)
+        // inner namespace, comment line 6 (index 5)
+        // NestedClass, comment line 10 (index 9)
+        // method, comment line 15 (index 14)
+        expect(lines).toEqual([1, 5, 9, 14]);
     });
 });

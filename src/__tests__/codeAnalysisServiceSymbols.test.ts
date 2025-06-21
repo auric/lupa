@@ -231,4 +231,30 @@ void useVar() { // Line 2
         const symbols = await codeAnalysisService.findSymbols(content, language);
         expect(symbols).toEqual([]);
     });
+
+    it('should use consistent 0-based indexing across methods', async () => {
+        const code = `
+function simpleFunc() { // line 1 (0-indexed)
+    return 1;
+}
+        `;
+        const language = 'javascript';
+
+        // findSymbols returns a 0-indexed position object
+        const symbols = await codeAnalysisService.findSymbols(code, language);
+        const funcSymbol = symbols.find(s => s.symbolName === 'simpleFunc');
+
+        expect(funcSymbol).toBeDefined();
+        // The function declaration `function simpleFunc...` is on line 2 (text editor), which is index 1.
+        expect(funcSymbol!.position.line).toBe(1);
+
+        // getLinesForPointsOfInterest should return the 0-indexed line number of the POI itself when no comment exists.
+        const poiLines = await codeAnalysisService.getLinesForPointsOfInterest(code, 'js');
+
+        expect(poiLines).toHaveLength(1);
+        expect(poiLines[0]).toBe(1);
+
+        // Assert that both methods report the same line number for the same code construct.
+        expect(poiLines[0]).toBe(funcSymbol!.position.line);
+    });
 });

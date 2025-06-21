@@ -354,7 +354,7 @@ export class CodeAnalysisService implements vscode.Disposable {
                         break;
                     }
                 }
-                adjustedLines.add(associatedCommentStartLine + 1); // Convert to 1-based line number
+                adjustedLines.add(associatedCommentStartLine); // Use 0-based line number for consistency
             }
 
             return Array.from(adjustedLines).sort((a, b) => a - b);
