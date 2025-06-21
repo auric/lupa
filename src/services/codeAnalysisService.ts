@@ -354,23 +354,19 @@ export class CodeAnalysisService implements vscode.Disposable {
      * line of the comment block instead of the structure itself. This is useful for creating
      * code chunks that include documentation.
      * @param code The source code to analyze.
-     * @param fileExtension The file extension (e.g., '.ts', '.py') to determine the language.
+     * @param language The language identifier (e.g., 'typescript', 'python').
+     * @param variant An optional language variant (e.g., 'tsx' for typescript).
      * @returns A promise that resolves with a sorted array of unique, **0-based** line numbers.
      */
-    public async getLinesForPointsOfInterest(code: string, fileExtension: string): Promise<number[]> {
-        const langDetails = getLanguageForExtension(fileExtension);
-        if (!langDetails) {
-            return [];
-        }
-
-        const tree = await this.parseCode(code, langDetails.language, langDetails.variant);
+    public async getLinesForPointsOfInterest(code: string, languageId: string, variant?: string): Promise<number[]> {
+        const tree = await this.parseCode(code, languageId, variant);
         if (!tree) {
             return [];
         }
 
         try {
-            const langParser = await this.getLanguageParser(langDetails.language, langDetails.variant);
-            const pointsOfInterest = this.extractPointsOfInterest(tree.rootNode, langParser, langDetails.language);
+            const langParser = await this.getLanguageParser(languageId, variant);
+            const pointsOfInterest = this.extractPointsOfInterest(tree.rootNode, langParser, languageId);
             const codeLines = code.split('\n');
             const adjustedLines = new Set<number>();
 

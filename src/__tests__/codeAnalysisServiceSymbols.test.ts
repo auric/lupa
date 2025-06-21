@@ -249,7 +249,7 @@ function simpleFunc() { // line 1 (0-indexed)
         expect(funcSymbol!.position.line).toBe(1);
 
         // getLinesForPointsOfInterest should return the 0-indexed line number of the POI itself when no comment exists.
-        const poiLines = await codeAnalysisService.getLinesForPointsOfInterest(code, 'js');
+        const poiLines = await codeAnalysisService.getLinesForPointsOfInterest(code, 'javascript');
 
         expect(poiLines).toHaveLength(1);
         expect(poiLines[0]).toBe(1);

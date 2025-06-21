@@ -161,7 +161,7 @@ class DecoratedClass {
     method() {}
 }
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'ts');
+        const lines = await service.getLinesForPointsOfInterest(code, 'typescript');
         // DecoratedClass POI, comment starts line 2.
         // method POI, comment starts line 6.
         expect(lines).toContain(1);
@@ -180,10 +180,10 @@ function jsFunction() {}
 def pyFunction():
     pass
 `;
-        const jsLines = await service.getLinesForPointsOfInterest(jsCode, 'js');
+        const jsLines = await service.getLinesForPointsOfInterest(jsCode, 'javascript');
         expect(jsLines).toContain(1);
 
-        const pyLines = await service.getLinesForPointsOfInterest(pyCode, 'py');
+        const pyLines = await service.getLinesForPointsOfInterest(pyCode, 'python');
         expect(pyLines).toContain(1);
     });
 
