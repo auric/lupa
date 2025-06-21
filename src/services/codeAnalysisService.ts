@@ -24,6 +24,12 @@ export class CodeAnalysisServiceInitializer {
     private static initializationPromise: Promise<void> | null = null;
     private static extensionPath: string;
 
+    /**
+     * Initializes the Tree-sitter parser. This must be called once before using the service.
+     * It configures the parser with the location of the Tree-sitter WASM file.
+     * @param extensionPath The absolute path to the extension's root directory.
+     * @returns A promise that resolves when the parser is successfully initialized.
+     */
     public static async initialize(extensionPath: string): Promise<void> {
         if (!this.initializationPromise) {
             this.extensionPath = extensionPath;
@@ -36,6 +42,12 @@ export class CodeAnalysisServiceInitializer {
         return this.initializationPromise;
     }
 
+    /**
+     * Constructs the full path to a specific Tree-sitter grammar WASM file.
+     * @param grammarName The name of the grammar (e.g., 'tree-sitter-typescript').
+     * @returns The absolute path to the grammar's WASM file.
+     * @throws If the initializer has not been called with an extension path.
+     */
     public static getWasmGrammarPath(grammarName: string): string {
         if (!this.extensionPath) {
             throw new Error('CodeAnalysisServiceInitializer is not initialized with an extension path.');
@@ -75,6 +87,13 @@ export class CodeAnalysisService implements vscode.Disposable {
         return loadedLanguage;
     }
 
+    /**
+     * Parses a string of source code into a Tree-sitter syntax tree.
+     * @param code The source code to parse.
+     * @param language The language identifier (e.g., 'typescript', 'python').
+     * @param variant An optional language variant (e.g., 'tsx' for typescript).
+     * @returns A promise that resolves with the parsed Tree-sitter `Tree`, or `null` if parsing fails.
+     */
     public async parseCode(code: string, language: string, variant?: string): Promise<Tree | null> {
         if (this.isDisposed) {
             console.warn('CodeAnalysisService is disposed. Cannot parse code.');
@@ -90,6 +109,15 @@ export class CodeAnalysisService implements vscode.Disposable {
         }
     }
 
+    /**
+     * Finds all symbol declarations (e.g., classes, functions, methods) in a given code string.
+     * It uses language-specific queries to identify nodes that represent symbols.
+     * @param code The source code to analyze.
+     * @param languageId The language identifier (e.g., 'typescript').
+     * @param variant An optional language variant (e.g., 'tsx').
+     * @returns A promise that resolves with an array of `SymbolInfo` objects.
+     * The position information within each `SymbolInfo` is 0-based.
+     */
     public async findSymbols(code: string, languageId: string, variant?: string): Promise<SymbolInfo[]> {
         const tree = await this.parseCode(code, languageId, variant);
         if (!tree) {
@@ -289,6 +317,14 @@ export class CodeAnalysisService implements vscode.Disposable {
         return nodes;
     }
 
+    /**
+     * Extracts "points of interest" from a syntax tree. Points of interest are nodes
+     * that represent significant code structures, such as function, class, or method declarations.
+     * @param rootNode The root node of the Tree-sitter syntax tree.
+     * @param language The Tree-sitter language object for the parsed code.
+     * @param langId The language identifier.
+     * @returns An array of Tree-sitter `Node` objects identified as points of interest.
+     */
     public extractPointsOfInterest(rootNode: Node, language: Language, langId: string): Node[] {
         const queries = LANGUAGE_QUERIES[langId]?.pointsOfInterest;
         if (!queries) {
@@ -297,6 +333,13 @@ export class CodeAnalysisService implements vscode.Disposable {
         return this.runQuery(rootNode, language, queries);
     }
 
+    /**
+     * Extracts all comment nodes from a syntax tree.
+     * @param rootNode The root node of the Tree-sitter syntax tree.
+     * @param language The Tree-sitter language object for the parsed code.
+     * @param langId The language identifier.
+     * @returns An array of Tree-sitter `Node` objects that are comments.
+     */
     public extractComments(rootNode: Node, language: Language, langId: string): Node[] {
         const queries = LANGUAGE_QUERIES[langId]?.comments;
         if (!queries) {
@@ -305,6 +348,15 @@ export class CodeAnalysisService implements vscode.Disposable {
         return this.runQuery(rootNode, language, queries);
     }
 
+    /**
+     * Identifies the starting line numbers of significant code structures (points of interest).
+     * Crucially, if a structure is preceded by a comment, this method returns the starting
+     * line of the comment block instead of the structure itself. This is useful for creating
+     * code chunks that include documentation.
+     * @param code The source code to analyze.
+     * @param fileExtension The file extension (e.g., '.ts', '.py') to determine the language.
+     * @returns A promise that resolves with a sorted array of unique, **0-based** line numbers.
+     */
     public async getLinesForPointsOfInterest(code: string, fileExtension: string): Promise<number[]> {
         const langDetails = getLanguageForExtension(fileExtension);
         if (!langDetails) {
@@ -366,6 +418,10 @@ export class CodeAnalysisService implements vscode.Disposable {
         }
     }
 
+    /**
+     * Disposes of the resources used by the service, primarily the Tree-sitter parser.
+     * This should be called when the service is no longer needed to prevent memory leaks.
+     */
     public dispose(): void {
         if (this.isDisposed) {
             return;
