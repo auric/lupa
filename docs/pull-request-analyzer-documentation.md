@@ -307,7 +307,7 @@ The `CodeAnalysisService` (`src/services/codeAnalysisService.ts`) analyzes code 
 - **Language Parsing**: Parses code into an Abstract Syntax Tree (AST) using the appropriate Tree-sitter grammar.
 - **Points of Interest Extraction**: Uses language-specific queries from `treeSitterQueries.ts` to find significant nodes (functions, classes, imports) that serve as chunking breakpoints.
 - **Symbol Identification**: Provides a `findSymbols` method to extract named symbols (functions, classes, etc.) from code, which is used by the `ContextProvider` to identify key entities in a diff.
-- **Comment Extraction**: Identifies comments and decorators to associate them with the correct code structures.
+- **Comment Extraction**: `getLinesForPointsOfInterest(code: string, fileExtension: string)` identifies comments and decorators to associate them with the correct code structures.
 
 Key interactions:
 
