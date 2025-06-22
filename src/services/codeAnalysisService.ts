@@ -132,23 +132,43 @@ export class CodeAnalysisService implements vscode.Disposable {
             const symbolNodes = this.runQuery(tree.rootNode, langParser, langConfig.pointsOfInterest);
             const symbolNodeIds = new Set(symbolNodes.map(n => n.id));
 
-            const filteredNodes = symbolNodes.filter(node => {
-                if (languageId === 'css') {
-                    // For CSS, filter out any node that is a descendant of another captured symbol.
+            // --- Two-pass filtering to resolve symbol conflicts ---
+
+            // 1. First Pass: Resolve direct parent-child conflicts.
+            const nodesToDiscard = new Set<number>();
+            const PARENT_WINS_TYPES = ['template_declaration'];
+
+            for (const node of symbolNodes) {
+                const parent = node.parent;
+                if (parent && symbolNodeIds.has(parent.id)) {
+                    // It's a parent-child symbol pair. Decide which one wins.
+                    if (PARENT_WINS_TYPES.includes(parent.type)) {
+                        // Parent wins, discard the child.
+                        nodesToDiscard.add(node.id);
+                    } else {
+                        // Child wins, discard the parent.
+                        nodesToDiscard.add(parent.id);
+                    }
+                }
+            }
+
+            let filteredNodes = symbolNodes.filter(node => !nodesToDiscard.has(node.id));
+
+            // 2. Second Pass (CSS only): Resolve ancestor-based conflicts for nested rules.
+            if (languageId === 'css') {
+                const currentSymbolIds = new Set(filteredNodes.map(n => n.id));
+                filteredNodes = filteredNodes.filter(node => {
                     let parent = node.parent;
                     while (parent) {
-                        if (symbolNodeIds.has(parent.id)) {
-                            return false;
+                        if (currentSymbolIds.has(parent.id)) {
+                            return false; // This is a nested symbol, so filter it out.
                         }
                         parent = parent.parent;
                     }
-                    return true;
-                } else {
-                    // For other languages, only filter out nodes whose direct parent is also a captured symbol.
-                    // This handles C++ templates and TS exports without removing valid nested symbols like methods.
-                    return !node.parent || !symbolNodeIds.has(node.parent.id);
-                }
-            });
+                    return true; // This is a top-level symbol.
+                });
+            }
+
 
             const foundSymbols: SymbolInfo[] = [];
             const processedKeys = new Set<string>();
@@ -180,7 +200,16 @@ export class CodeAnalysisService implements vscode.Disposable {
     }
 
     private _extractNodeName(node: Node, language: string): string | undefined {
-        // Language-specific overrides first
+        // Handle specific wrapper nodes by recursively calling on the wrapped declaration.
+        if (language === 'cpp' && node.type === 'template_declaration') {
+            const wrappedTypes = ['class_specifier', 'struct_specifier', 'function_definition'];
+            const declaration = node.children.find(c => c && wrappedTypes.includes(c.type));
+            if (declaration) {
+                return this._extractNodeName(declaration, language);
+            }
+        }
+
+        // Language-specific overrides for non-wrapper nodes
         if (language === 'css') {
             if (node.type === 'rule_set') {
                 const selectorsNode = node.descendantsOfType('selectors')[0];
@@ -226,35 +255,25 @@ export class CodeAnalysisService implements vscode.Disposable {
         // Priority 1: Check common named fields (e.g., 'name', 'id', 'identifier')
         const commonFields = ['name', 'id', 'identifier'];
         for (const fieldName of commonFields) {
-            for (const child of node.children) {
-                if (!child) {
-                    continue;
-                }
-                const nameNode = child.childForFieldName(fieldName);
-                if (nameNode && identifierTypes.includes(nameNode.type)) {
-                    return nameNode.text;
-                }
+            const nameNode = node.childForFieldName(fieldName);
+            if (nameNode && identifierTypes.includes(nameNode.type)) {
+                return nameNode.text;
             }
         }
 
         // Priority 2: Declarator Logic (common in C-like languages)
         // A declarator node often wraps the actual identifier.
-        for (const child of node.children) {
-            if (!child) {
-                continue;
+        const declaratorNode = node.childForFieldName('declarator');
+        if (declaratorNode) {
+            // Search for the first identifier within the declarator's direct children.
+            let identifier = declaratorNode.children.find(child => child && identifierTypes.includes(child.type));
+            if (identifier) {
+                return identifier.text;
             }
-            const declaratorNode = child.childForFieldName('declarator');
-            if (declaratorNode) {
-                // Search for the first identifier within the declarator's direct children.
-                let identifier = declaratorNode.children.find(child => child && identifierTypes.includes(child.type));
-                if (identifier) {
-                    return identifier.text;
-                }
-                // Fallback: first identifier descendant in declarator if no direct child works.
-                identifier = declaratorNode.descendantsOfType(identifierTypes)[0];
-                if (identifier) {
-                    return identifier.text;
-                }
+            // Fallback: first identifier descendant in declarator if no direct child works.
+            identifier = declaratorNode.descendantsOfType(identifierTypes)[0];
+            if (identifier) {
+                return identifier.text;
             }
         }
 
