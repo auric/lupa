@@ -16,10 +16,10 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     javascript: {
         pointsOfInterest: [
             '(import_statement) @capture',
-            '(export_statement) @capture',
             '(class_declaration) @capture',
             '(function_declaration) @capture',
             '(variable_declarator value: (arrow_function)) @capture',
+            '(export_statement) @capture',
             '(method_definition) @capture',
         ],
         comments: [
@@ -30,10 +30,10 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     typescript: {
         pointsOfInterest: [
             '(import_statement) @capture',
-            '(export_statement) @capture',
             '(class_declaration) @capture',
             '(function_declaration) @capture',
             '(variable_declarator value: (arrow_function)) @capture',
+            '(export_statement) @capture',
             '(method_definition) @capture',
             '(interface_declaration) @capture',
             '(type_alias_declaration) @capture',
@@ -74,11 +74,11 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
         pointsOfInterest: [
             '(preproc_include) @capture',
             '(namespace_definition) @capture',
+            '(template_declaration) @capture',
             '(class_specifier) @capture',
             '(struct_specifier) @capture',
             '(enum_specifier) @capture',
             '(function_definition) @capture',
-            '(template_declaration) @capture',
         ],
         comments: ['(comment) @capture'],
     },
@@ -152,8 +152,12 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     css: {
         pointsOfInterest: [
+            '(at_rule) @capture',
+            '(import_statement) @capture',
+            '(media_statement) @capture',
+            '(namespace_statement) @capture',
+            '(keyframes_statement) @capture',
             '(rule_set) @capture',
-            '(@at_rule) @capture',
         ],
         comments: ['(comment) @capture'],
     }

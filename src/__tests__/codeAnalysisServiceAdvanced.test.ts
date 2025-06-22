@@ -25,23 +25,25 @@ describe('CodeAnalysisService - Advanced Scenarios', () => {
             const symbols = await service.findSymbols(code, 'typescript');
             expect(symbols).toContainEqual(expect.objectContaining({
                 symbolName: 'myArrowFunction',
-                symbolType: 'arrow_function' // The symbol is the variable that holds the function
+                symbolType: 'variable_declarator' // The symbol is the variable that holds the function
             }));
+            expect(symbols).toHaveLength(1);
         });
 
-        // it('should find symbol for anonymous function in a default export', async () => {
-        //     const code = `export default () => { console.log("hello"); };`;
-        //     const symbols = await service.findSymbols(code, 'typescript');
-        //     // It's reasonable for anonymous default exports to not have a name.
-        //     // The point of interest is the export statement itself.
-        //     const exportSymbol = symbols.find(s => s.symbolType === 'export_statement');
-        //     expect(exportSymbol).toBeDefined();
-        //     // The name extraction might fail, which is acceptable. Let's check it doesn't find a wrong name.
-        //     expect(exportSymbol?.symbolName).toBeUndefined();
-        // });
-
-        it('should correctly identify CSS selectors as symbol names', async () => {
+        it('should correctly identify various top-level CSS rules as symbol names', async () => {
             const code = `
+@import "my-styles.css";
+@layer utilities;
+
+@keyframes slidein {
+  from {
+    transform: translateX(0%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
 .container > .item, #main {
     color: blue;
 }
@@ -55,31 +57,40 @@ describe('CodeAnalysisService - Advanced Scenarios', () => {
             const symbols = await service.findSymbols(code, 'css');
             const symbolNames = symbols.map(s => s.symbolName);
 
+            expect(symbolNames).toContain('@import "my-styles.css"');
+            expect(symbolNames).toContain('@layer utilities');
+            expect(symbolNames).toContain('@keyframes slidein');
             expect(symbolNames).toContain('.container > .item, #main');
-            // The @media rule itself is a POI, but extracting a "name" is tricky.
-            // The current implementation likely finds 'body' inside it.
-            expect(symbolNames).toContain('body');
+            expect(symbolNames).toContain('@media (max-width: 600px)');
+
+            // Nested rules should NOT be included.
+            expect(symbolNames).not.toContain('body');
+            expect(symbolNames).not.toContain('from');
+            expect(symbolNames).not.toContain('to');
         });
 
-        // it('should find function pointer names in C++', async () => {
-        //     const code = `void (*my_func_ptr)(int, char);`;
-        //     const symbols = await service.findSymbols(code, 'cpp');
-        //     expect(symbols).toContainEqual(expect.objectContaining({
-        //         symbolName: 'my_func_ptr',
-        //         symbolType: 'declaration'
-        //     }));
-        // });
+        it('should find nested symbols like methods within a class', async () => {
+            const code = `
+class MyClass {
+    constructor() {}
 
-        //         it('should find names of variables that are pointers or references in C++', async () => {
-        //             const code = `
-        // const int* my_ptr;
-        // std::string& my_ref = some_string;
-        // `;
-        //             const symbols = await service.findSymbols(code, 'cpp');
-        //             const symbolNames = symbols.map(s => s.symbolName);
-        //             expect(symbolNames).toContain('my_ptr');
-        //             expect(symbolNames).toContain('my_ref');
-        //         });
+    myMethod() {
+        return "hello";
+    }
+}
+`;
+            const symbols = await service.findSymbols(code, 'typescript');
+            const symbolNames = symbols.map(s => s.symbolName);
+
+            expect(symbolNames).toContain('MyClass');
+            expect(symbolNames).toContain('myMethod'); // This would fail with the old logic
+
+            const classSymbol = symbols.find(s => s.symbolName === 'MyClass');
+            const methodSymbol = symbols.find(s => s.symbolName === 'myMethod');
+
+            expect(classSymbol?.symbolType).toBe('class_declaration');
+            expect(methodSymbol?.symbolType).toBe('method_definition');
+        });
 
         it('should handle TSX syntax correctly', async () => {
             const code = `
@@ -92,6 +103,7 @@ const MyComponent = ({ name }: { name: string }) => {
             const symbols = await service.findSymbols(code, 'typescript', 'tsx');
             expect(symbols).toContainEqual(expect.objectContaining({
                 symbolName: 'MyComponent',
+                symbolType: 'variable_declarator',
                 position: { line: 3, character: 6 }
             }));
         });

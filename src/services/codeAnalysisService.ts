@@ -130,10 +130,30 @@ export class CodeAnalysisService implements vscode.Disposable {
             if (!langConfig || !langConfig.pointsOfInterest) return [];
 
             const symbolNodes = this.runQuery(tree.rootNode, langParser, langConfig.pointsOfInterest);
+            const symbolNodeIds = new Set(symbolNodes.map(n => n.id));
+
+            const filteredNodes = symbolNodes.filter(node => {
+                if (languageId === 'css') {
+                    // For CSS, filter out any node that is a descendant of another captured symbol.
+                    let parent = node.parent;
+                    while (parent) {
+                        if (symbolNodeIds.has(parent.id)) {
+                            return false;
+                        }
+                        parent = parent.parent;
+                    }
+                    return true;
+                } else {
+                    // For other languages, only filter out nodes whose direct parent is also a captured symbol.
+                    // This handles C++ templates and TS exports without removing valid nested symbols like methods.
+                    return !node.parent || !symbolNodeIds.has(node.parent.id);
+                }
+            });
+
             const foundSymbols: SymbolInfo[] = [];
             const processedKeys = new Set<string>();
 
-            for (const node of symbolNodes) {
+            for (const node of filteredNodes) {
                 const symbolName = this._extractNodeName(node, languageId);
                 if (symbolName) {
                     const position = { line: node.startPosition.row, character: node.startPosition.column };
@@ -163,16 +183,35 @@ export class CodeAnalysisService implements vscode.Disposable {
         // Language-specific overrides first
         if (language === 'css') {
             if (node.type === 'rule_set') {
-                const selectorsNode = node.children.find(c => c && c.type === 'selectors');
+                const selectorsNode = node.descendantsOfType('selectors')[0];
                 if (selectorsNode) {
                     return selectorsNode.text;
                 }
-            } else if (node.type === 'at_rule') {
-                const atKeywordNode = node.children.find(c => c && c.type === 'at_keyword');
-                const preludeNode = node.children.find(c => c && c.type === 'at_prelude');
-                if (atKeywordNode && preludeNode) {
-                    return `${atKeywordNode.text} ${preludeNode.text}`;
+            } else if (node.type === 'media_statement') {
+                const featureQueryNode = node.descendantsOfType('feature_query')[0];
+                if (featureQueryNode) {
+                    return `@media ${featureQueryNode.text}`;
                 }
+            } else if (node.type === 'import_statement') {
+                const stringValueNode = node.descendantsOfType('string_value')[0];
+                if (stringValueNode) {
+                    return `@import ${stringValueNode.text}`;
+                }
+                return node.text; // Fallback
+            } else if (node.type === 'keyframes_statement') {
+                const keyframesNameNode = node.descendantsOfType('keyframes_name')[0];
+                if (keyframesNameNode) {
+                    return `@keyframes ${keyframesNameNode.text}`;
+                }
+                return node.text; // Fallback
+            } else if (node.type === 'at_rule') {
+                // For other at-rules like @layer
+                const atKeywordNode = node.descendantsOfType('at_keyword')[0];
+                const keywordQueryNode = node.descendantsOfType('keyword_query')[0];
+                if (atKeywordNode && keywordQueryNode) {
+                    return `${atKeywordNode.text} ${keywordQueryNode.text}`;
+                }
+                // Fallback for at-rules without an identifier, though less common as POIs
                 if (atKeywordNode) {
                     return atKeywordNode.text;
                 }
@@ -187,25 +226,35 @@ export class CodeAnalysisService implements vscode.Disposable {
         // Priority 1: Check common named fields (e.g., 'name', 'id', 'identifier')
         const commonFields = ['name', 'id', 'identifier'];
         for (const fieldName of commonFields) {
-            const nameNode = node.childForFieldName(fieldName);
-            if (nameNode && identifierTypes.includes(nameNode.type)) {
-                return nameNode.text;
+            for (const child of node.children) {
+                if (!child) {
+                    continue;
+                }
+                const nameNode = child.childForFieldName(fieldName);
+                if (nameNode && identifierTypes.includes(nameNode.type)) {
+                    return nameNode.text;
+                }
             }
         }
 
         // Priority 2: Declarator Logic (common in C-like languages)
         // A declarator node often wraps the actual identifier.
-        const declaratorNode = node.childForFieldName('declarator');
-        if (declaratorNode) {
-            // Search for the first identifier within the declarator's direct children.
-            let identifier = declaratorNode.children.find(child => child && identifierTypes.includes(child.type));
-            if (identifier) {
-                return identifier.text;
+        for (const child of node.children) {
+            if (!child) {
+                continue;
             }
-            // Fallback: first identifier descendant in declarator if no direct child works.
-            identifier = declaratorNode.descendantsOfType(identifierTypes)[0];
-            if (identifier) {
-                return identifier.text;
+            const declaratorNode = child.childForFieldName('declarator');
+            if (declaratorNode) {
+                // Search for the first identifier within the declarator's direct children.
+                let identifier = declaratorNode.children.find(child => child && identifierTypes.includes(child.type));
+                if (identifier) {
+                    return identifier.text;
+                }
+                // Fallback: first identifier descendant in declarator if no direct child works.
+                identifier = declaratorNode.descendantsOfType(identifierTypes)[0];
+                if (identifier) {
+                    return identifier.text;
+                }
             }
         }
 
@@ -241,11 +290,10 @@ export class CodeAnalysisService implements vscode.Disposable {
 
         // Priority 4: Heuristic for function-like structures (identifier followed by parameters/arguments)
         // This is a simplified version of a more general child search.
+        const siblingTypes = ['parameter_list', 'formal_parameters', 'arguments', 'field_declaration_list'];
         for (const child of node.children) {
             if (child && identifierTypes.includes(child.type)) {
-                if (child.nextSibling?.type === 'parameter_list' ||
-                    child.nextSibling?.type === 'formal_parameters' ||
-                    child.nextSibling?.type === 'arguments') {
+                if (child.nextSibling?.type && siblingTypes.includes(child.nextSibling.type)) {
                     return child.text;
                 }
             }
