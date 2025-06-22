@@ -161,6 +161,23 @@ export class CodeAnalysisService implements vscode.Disposable {
 
     private _extractNodeName(node: Node, language: string): string | undefined {
         // Language-specific overrides first
+        if (language === 'css') {
+            if (node.type === 'rule_set') {
+                const selectorsNode = node.children.find(c => c && c.type === 'selectors');
+                if (selectorsNode) {
+                    return selectorsNode.text;
+                }
+            } else if (node.type === 'at_rule') {
+                const atKeywordNode = node.children.find(c => c && c.type === 'at_keyword');
+                const preludeNode = node.children.find(c => c && c.type === 'at_prelude');
+                if (atKeywordNode && preludeNode) {
+                    return `${atKeywordNode.text} ${preludeNode.text}`;
+                }
+                if (atKeywordNode) {
+                    return atKeywordNode.text;
+                }
+            }
+        }
         if (language === 'csharp' && node.type === 'indexer_declaration') {
             return 'this';
         }
@@ -278,13 +295,7 @@ export class CodeAnalysisService implements vscode.Disposable {
             }
         }
 
-        // Priority 8: CSS rule sets (get selectors)
-        if (node.type === 'rule_set' || node.type.includes('selector')) {
-            const selectorsNode = node.childForFieldName('selectors');
-            if (selectorsNode) {
-                return selectorsNode.text;
-            }
-        }
+        // Priority 8: CSS rule sets (get selectors) - Handled by the language-specific override at the top
 
         return undefined; // No name found
     }
