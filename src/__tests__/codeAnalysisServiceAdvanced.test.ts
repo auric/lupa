@@ -28,6 +28,11 @@ describe('CodeAnalysisService - Advanced Scenarios', () => {
                 symbolType: 'variable_declarator' // The symbol is the variable that holds the function
             }));
             expect(symbols).toHaveLength(1);
+
+            // Ensure no duplicates
+            const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+            const uniqueSymbolKeys = new Set(symbolKeys);
+            expect(uniqueSymbolKeys.size).toBe(symbols.length);
         });
 
         it('should correctly identify various top-level CSS rules as symbol names', async () => {
@@ -67,6 +72,11 @@ describe('CodeAnalysisService - Advanced Scenarios', () => {
             expect(symbolNames).not.toContain('body');
             expect(symbolNames).not.toContain('from');
             expect(symbolNames).not.toContain('to');
+
+            // Ensure no duplicates
+            const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+            const uniqueSymbolKeys = new Set(symbolKeys);
+            expect(uniqueSymbolKeys.size).toBe(symbols.length);
         });
 
         it('should find nested symbols like methods within a class', async () => {
@@ -90,6 +100,11 @@ class MyClass {
 
             expect(classSymbol?.symbolType).toBe('class_declaration');
             expect(methodSymbol?.symbolType).toBe('method_definition');
+
+            // Ensure no duplicates
+            const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+            const uniqueSymbolKeys = new Set(symbolKeys);
+            expect(uniqueSymbolKeys.size).toBe(symbols.length);
         });
 
         it('should handle TSX syntax correctly', async () => {
@@ -106,6 +121,11 @@ const MyComponent = ({ name }: { name: string }) => {
                 symbolType: 'variable_declarator',
                 position: { line: 3, character: 6 }
             }));
+
+            // Ensure no duplicates
+            const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+            const uniqueSymbolKeys = new Set(symbolKeys);
+            expect(uniqueSymbolKeys.size).toBe(symbols.length);
         });
     });
 

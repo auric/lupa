@@ -47,6 +47,7 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     python: {
         pointsOfInterest: [
+            '(decorated_definition) @capture',
             '(import_statement) @capture',
             '(class_definition) @capture',
             '(function_definition) @capture',

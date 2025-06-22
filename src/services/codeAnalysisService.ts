@@ -136,7 +136,7 @@ export class CodeAnalysisService implements vscode.Disposable {
 
             // 1. First Pass: Resolve direct parent-child conflicts.
             const nodesToDiscard = new Set<number>();
-            const PARENT_WINS_TYPES = ['template_declaration'];
+            const PARENT_WINS_TYPES = ['template_declaration', 'decorated_definition'];
 
             for (const node of symbolNodes) {
                 const parent = node.parent;
@@ -206,6 +206,13 @@ export class CodeAnalysisService implements vscode.Disposable {
             const declaration = node.children.find(c => c && wrappedTypes.includes(c.type));
             if (declaration) {
                 return this._extractNodeName(declaration, language);
+            }
+        }
+
+        if (language === 'python' && node.type === 'decorated_definition') {
+            const definitionNode = node.childForFieldName('definition');
+            if (definitionNode) {
+                return this._extractNodeName(definitionNode, language);
             }
         }
 

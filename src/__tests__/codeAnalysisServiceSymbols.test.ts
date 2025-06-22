@@ -88,6 +88,11 @@ void templateFunc(T val) { // Line 33
 
         // The exact count can be fragile, but we expect a significant number of symbols.
         expect(symbols.length).toBeGreaterThanOrEqual(9);
+
+        // Ensure no duplicates
+        const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+        const uniqueSymbolKeys = new Set(symbolKeys);
+        expect(uniqueSymbolKeys.size).toBe(symbols.length);
     });
 
     it('should find C++ symbols declared across multiple lines', async () => {
@@ -113,6 +118,11 @@ namespace MultiLineNS { // Line 1
         // The name is 'multiLineMethod', the type is 'field_declaration' because it's a pure virtual function declaration inside a class.
         // expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'multiLineMethod', symbolType: 'field_declaration', position: { line: 6, character: 8 } }));
         expect(symbols.length).toBeGreaterThanOrEqual(2);
+
+        // Ensure no duplicates
+        const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+        const uniqueSymbolKeys = new Set(symbolKeys);
+        expect(uniqueSymbolKeys.size).toBe(symbols.length);
     });
 
 
@@ -184,6 +194,46 @@ namespace MyNamespace // Line 3
         // expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'this', symbolType: 'indexer_declaration', position: { line: 24, character: 16 } }));
 
         expect(symbols.length).toBeGreaterThanOrEqual(9);
+
+        // Ensure no duplicates
+        const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+        const uniqueSymbolKeys = new Set(symbolKeys);
+        expect(uniqueSymbolKeys.size).toBe(symbols.length);
+    });
+
+    it('should find all Python symbols in a complex file', async () => {
+        const pythonContent = `
+import os
+
+class MyPyClass:
+    def __init__(self, name):
+        self.name = name
+
+    def my_method(self):
+        return f"Hello {self.name}"
+
+@my_decorator
+def decorated_func():
+    pass
+
+def standalone_func(a, b):
+    return a + b
+`;
+        const language = 'python';
+        const symbols = await codeAnalysisService.findSymbols(pythonContent, language);
+
+        expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'MyPyClass', symbolType: 'class_definition', position: { line: 3, character: 0 } }));
+        expect(symbols).toContainEqual(expect.objectContaining({ symbolName: '__init__', symbolType: 'function_definition', position: { line: 4, character: 4 } }));
+        expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'my_method', symbolType: 'function_definition', position: { line: 7, character: 4 } }));
+        expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'decorated_func', symbolType: 'decorated_definition', position: { line: 10, character: 0 } }));
+        expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'standalone_func', symbolType: 'function_definition', position: { line: 14, character: 0 } }));
+
+        expect(symbols.length).toBe(5);
+
+        // Ensure no duplicates
+        const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+        const uniqueSymbolKeys = new Set(symbolKeys);
+        expect(uniqueSymbolKeys.size).toBe(symbols.length);
     });
 
     // --- General Tests ---
@@ -222,6 +272,11 @@ void useVar() { // Line 2
         // expect(globalVarSymbols[0].position.line).toBe(1); // Ensure it's the declaration
 
         expect(symbols.length).toBe(1);
+
+        // Ensure no duplicates
+        const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+        const uniqueSymbolKeys = new Set(symbolKeys);
+        expect(uniqueSymbolKeys.size).toBe(symbols.length);
     });
 
     it('should handle empty content', async () => {
@@ -245,7 +300,7 @@ function simpleFunc() { // line 1 (0-indexed)
         const funcSymbol = symbols.find(s => s.symbolName === 'simpleFunc');
 
         expect(funcSymbol).toBeDefined();
-        // The function declaration `function simpleFunc...` is on line 2 (text editor), which is index 1.
+        // The function declaration \`function simpleFunc...\` is on line 2 (text editor), which is index 1.
         expect(funcSymbol!.position.line).toBe(1);
 
         // getLinesForPointsOfInterest should return the 0-indexed line number of the POI itself when no comment exists.
@@ -256,5 +311,10 @@ function simpleFunc() { // line 1 (0-indexed)
 
         // Assert that both methods report the same line number for the same code construct.
         expect(poiLines[0]).toBe(funcSymbol!.position.line);
+
+        // Ensure no duplicates
+        const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+        const uniqueSymbolKeys = new Set(symbolKeys);
+        expect(uniqueSymbolKeys.size).toBe(symbols.length);
     });
 });
