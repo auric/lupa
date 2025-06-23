@@ -70,7 +70,7 @@ export class CodeAnalysisService implements vscode.Disposable {
         this.parser = new Parser();
     }
 
-    private async getLanguageParser(language: string, variant?: string): Promise<Language> {
+    private async getLanguageParser(language: string, variant: string | undefined): Promise<Language> {
         const cacheKey = variant ? `${language}-${variant}` : language;
         if (this.languageParsers.has(cacheKey)) {
             return this.languageParsers.get(cacheKey)!;
@@ -94,7 +94,7 @@ export class CodeAnalysisService implements vscode.Disposable {
      * @param variant An optional language variant (e.g., 'tsx' for typescript).
      * @returns A promise that resolves with the parsed Tree-sitter `Tree`, or `null` if parsing fails.
      */
-    public async parseCode(code: string, language: string, variant?: string): Promise<Tree | null> {
+    public async parseCode(code: string, language: string, variant: string | undefined): Promise<Tree | null> {
         if (this.isDisposed) {
             console.warn('CodeAnalysisService is disposed. Cannot parse code.');
             return null;
@@ -118,7 +118,7 @@ export class CodeAnalysisService implements vscode.Disposable {
      * @returns A promise that resolves with an array of `SymbolInfo` objects.
      * The position information within each `SymbolInfo` is 0-based.
      */
-    public async findSymbols(code: string, languageId: string, variant?: string): Promise<SymbolInfo[]> {
+    public async findSymbols(code: string, languageId: string, variant: string | undefined): Promise<SymbolInfo[]> {
         const tree = await this.parseCode(code, languageId, variant);
         if (!tree) {
             return [];
@@ -443,7 +443,7 @@ export class CodeAnalysisService implements vscode.Disposable {
      * @param variant An optional language variant (e.g., 'tsx' for typescript).
      * @returns A promise that resolves with a sorted array of unique, **0-based** line numbers.
      */
-    public async getLinesForPointsOfInterest(code: string, languageId: string, variant?: string): Promise<number[]> {
+    public async getLinesForPointsOfInterest(code: string, languageId: string, variant: string | undefined): Promise<number[]> {
         const tree = await this.parseCode(code, languageId, variant);
         if (!tree) {
             return [];
