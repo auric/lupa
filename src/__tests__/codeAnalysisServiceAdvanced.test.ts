@@ -127,6 +127,60 @@ const MyComponent = ({ name }: { name: string }) => {
             const uniqueSymbolKeys = new Set(symbolKeys);
             expect(uniqueSymbolKeys.size).toBe(symbols.length);
         });
+
+        it('should correctly handle decorated classes and methods in TypeScript', async () => {
+            const code = `
+function classDecorator(constructor: any) {
+    return class extends constructor {
+        newProperty = "new property";
+        hello = "override";
+    }
+}
+
+@classDecorator
+export class MyDecoratedClass {
+    @methodDecorator
+    myMethod() {}
+}
+`;
+            const symbols = await service.findSymbols(code, 'typescript');
+            const symbolNames = symbols.map(s => s.symbolName);
+
+            expect(symbolNames).toContain('classDecorator');
+            expect(symbolNames).toContain('MyDecoratedClass');
+            expect(symbolNames).toContain('myMethod');
+
+            // Check positions to ensure accuracy
+            expect(symbols).toContainEqual(expect.objectContaining({
+                symbolName: 'classDecorator',
+                symbolType: 'function_declaration',
+                position: { line: 1, character: 0 }
+            }));
+            expect(symbols).toContainEqual(expect.objectContaining({
+                symbolName: 'MyDecoratedClass',
+                symbolType: 'class_declaration',
+                position: { line: 9, character: 7 }
+            }));
+            expect(symbols).toContainEqual(expect.objectContaining({
+                symbolName: 'myMethod',
+                symbolType: 'method_definition',
+                position: { line: 11, character: 4 }
+            }));
+
+
+            // The decorator itself is not a symbol, but the class it decorates is.
+            const classSymbol = symbols.find(s => s.symbolName === 'MyDecoratedClass');
+            expect(classSymbol).toBeDefined();
+            expect(classSymbol?.symbolType).toBe('class_declaration');
+
+            // The export statement should be filtered out in favor of the class declaration
+            expect(symbols.find(s => s.symbolType === 'export_statement')).toBeUndefined();
+
+            // Ensure no duplicates
+            const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
+            const uniqueSymbolKeys = new Set(symbolKeys);
+            expect(uniqueSymbolKeys.size).toBe(symbols.length);
+        });
     });
 
     describe('Breakpoint Lines (`getLinesForPointsOfInterest`)', () => {
