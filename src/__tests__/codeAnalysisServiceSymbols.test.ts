@@ -60,7 +60,7 @@ void templateFunc(T val) { // Line 33
         `;
         const language = 'cpp';
 
-        const symbols = await codeAnalysisService.findSymbols(cppContent, language);
+        const symbols = await codeAnalysisService.findSymbols(cppContent, language, undefined);
 
         // Check for specific symbols. Note that line/character are 0-based.
         const symbolNames = symbols.map(s => s.symbolName);
@@ -111,7 +111,7 @@ namespace MultiLineNS { // Line 1
 }
         `;
         const language = 'cpp';
-        const symbols = await codeAnalysisService.findSymbols(cppContent, language);
+        const symbols = await codeAnalysisService.findSymbols(cppContent, language, undefined);
 
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'MultiLineNS', symbolType: 'namespace_definition', position: { line: 1, character: 0 } }));
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'MultiLineClass', symbolType: 'class_specifier', position: { line: 2, character: 4 } }));
@@ -171,7 +171,7 @@ namespace MyNamespace // Line 3
         `;
         const language = 'csharp';
 
-        const symbols = await codeAnalysisService.findSymbols(csharpContent, language);
+        const symbols = await codeAnalysisService.findSymbols(csharpContent, language, undefined);
 
         // Check for specific symbols
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'MyNamespace', symbolType: 'namespace_declaration' }));
@@ -220,7 +220,7 @@ def standalone_func(a, b):
     return a + b
 `;
         const language = 'python';
-        const symbols = await codeAnalysisService.findSymbols(pythonContent, language);
+        const symbols = await codeAnalysisService.findSymbols(pythonContent, language, undefined);
 
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'MyPyClass', symbolType: 'class_definition', position: { line: 3, character: 0 } }));
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: '__init__', symbolType: 'function_definition', position: { line: 4, character: 4 } }));
@@ -243,7 +243,7 @@ def standalone_func(a, b):
         const language = 'plaintext';
 
         // Expectation: Function should handle the error and return empty array
-        await expect(codeAnalysisService.findSymbols(content, language))
+        await expect(codeAnalysisService.findSymbols(content, language, undefined))
             .resolves.toEqual([]);
     });
 
@@ -256,7 +256,7 @@ void useVar() { // Line 2
         `;
         const language = 'cpp';
 
-        const symbols = await codeAnalysisService.findSymbols(cppContent, language);
+        const symbols = await codeAnalysisService.findSymbols(cppContent, language, undefined);
 
         const symbolNames = symbols.map(s => s.symbolName);
 
@@ -283,7 +283,7 @@ void useVar() { // Line 2
         const content = '';
         const language = 'cpp';
 
-        const symbols = await codeAnalysisService.findSymbols(content, language);
+        const symbols = await codeAnalysisService.findSymbols(content, language, undefined);
         expect(symbols).toEqual([]);
     });
 
@@ -296,7 +296,7 @@ function simpleFunc() { // line 1 (0-indexed)
         const language = 'javascript';
 
         // findSymbols returns a 0-indexed position object
-        const symbols = await codeAnalysisService.findSymbols(code, language);
+        const symbols = await codeAnalysisService.findSymbols(code, language, undefined);
         const funcSymbol = symbols.find(s => s.symbolName === 'simpleFunc');
 
         expect(funcSymbol).toBeDefined();
@@ -304,7 +304,7 @@ function simpleFunc() { // line 1 (0-indexed)
         expect(funcSymbol!.position.line).toBe(1);
 
         // getLinesForPointsOfInterest should return the 0-indexed line number of the POI itself when no comment exists.
-        const poiLines = await codeAnalysisService.getLinesForPointsOfInterest(code, 'javascript');
+        const poiLines = await codeAnalysisService.getLinesForPointsOfInterest(code, 'javascript', undefined);
 
         expect(poiLines).toHaveLength(1);
         expect(poiLines[0]).toBe(1);
@@ -316,5 +316,98 @@ function simpleFunc() { // line 1 (0-indexed)
         const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
         const uniqueSymbolKeys = new Set(symbolKeys);
         expect(uniqueSymbolKeys.size).toBe(symbols.length);
+    });
+});
+
+describe('CodeAnalysisService - findEnclosingSymbol', () => {
+    let codeAnalysisService: CodeAnalysisService;
+    const extensionPath = path.resolve(__dirname, '../..');
+
+    beforeAll(async () => {
+        await CodeAnalysisServiceInitializer.initialize(extensionPath);
+        codeAnalysisService = new CodeAnalysisService();
+    });
+
+    afterAll(() => {
+        if (codeAnalysisService) {
+            codeAnalysisService.dispose();
+        }
+    });
+
+    it('should find the enclosing function for a position inside it', async () => {
+        const tsContent = `
+            function outerFunction() { // Line 1
+                console.log("outer");
+                function innerFunction() { // Line 3
+                    console.log("inner"); // Line 4
+                }
+            }
+        `;
+        const language = 'typescript';
+        const position = { line: 4, character: 25 }; // Inside innerFunction
+
+        const symbol = await codeAnalysisService.findEnclosingSymbol(tsContent, language, undefined, position);
+
+        expect(symbol).not.toBeNull();
+        expect(symbol?.symbolName).toBe('innerFunction');
+        expect(symbol?.symbolType).toBe('function_declaration');
+        expect(symbol?.position.line).toBe(3);
+    });
+
+    it('should find the smallest enclosing symbol in nested structures', async () => {
+        const tsContent = `
+            class MyClass { // Line 1
+                public myMethod() { // Line 2
+                    const myVar = 1; // Line 3
+                }
+            }
+        `;
+        const language = 'typescript';
+        const position = { line: 3, character: 25 }; // Inside myMethod
+
+        const symbol = await codeAnalysisService.findEnclosingSymbol(tsContent, language, undefined, position);
+
+        expect(symbol).not.toBeNull();
+        expect(symbol?.symbolName).toBe('myMethod');
+        expect(symbol?.symbolType).toBe('method_definition');
+    });
+
+    it('should return null if position is not inside any symbol', async () => {
+        const tsContent = `
+            const a = 1;
+
+            function myFunction() {
+                const b = 2;
+            }
+
+            const c = 3; // Line 7
+        `;
+        const language = 'typescript';
+        const position = { line: 7, character: 0 }; // Outside any function/class
+
+        const symbol = await codeAnalysisService.findEnclosingSymbol(tsContent, language, undefined, position);
+
+        expect(symbol).toBeNull();
+    });
+
+    it('should find the correct enclosing symbol in C++ code', async () => {
+        const cppContent = `
+            namespace MyNamespace { // Line 1
+                class MyClass { // Line 2
+                public:
+                    void memberFunc() { // Line 4
+                        int x = 0; // Line 5
+                    }
+                };
+            }
+        `;
+        const language = 'cpp';
+        const position = { line: 5, character: 25 }; // Inside memberFunc
+
+        const symbol = await codeAnalysisService.findEnclosingSymbol(cppContent, language, undefined, position);
+
+        expect(symbol).not.toBeNull();
+        expect(symbol?.symbolName).toBe('memberFunc');
+        expect(symbol?.symbolType).toBe('function_definition');
     });
 });

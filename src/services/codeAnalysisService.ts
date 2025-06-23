@@ -199,6 +199,68 @@ export class CodeAnalysisService implements vscode.Disposable {
         }
     }
 
+    /**
+     * Finds the symbol that encloses a given position in the code.
+     * @param code The source code to analyze.
+     * @param languageId The language identifier.
+     * @param variant An optional language variant.
+     * @param position The position (line and character) to find the enclosing symbol for.
+     * @returns A promise that resolves with the `SymbolInfo` of the enclosing symbol, or `null` if not found.
+     */
+    public async findEnclosingSymbol(code: string, languageId: string, variant: string | undefined, position: Position): Promise<SymbolInfo | null> {
+        const tree = await this.parseCode(code, languageId, variant);
+        if (!tree) {
+            return null;
+        }
+
+        try {
+            const langParser = await this.getLanguageParser(languageId, variant);
+            const langConfig = LANGUAGE_QUERIES[languageId];
+            if (!langConfig || !langConfig.pointsOfInterest) {
+                return null;
+            }
+
+            const symbolNodes = this.runQuery(tree.rootNode, langParser, langConfig.pointsOfInterest);
+            let enclosingNode: Node | null = null;
+            let smallestRange = Infinity;
+
+            for (const node of symbolNodes) {
+                const start = node.startPosition;
+                const end = node.endPosition;
+
+                // Check if the position is within the node's range.
+                if (
+                    (position.line > start.row || (position.line === start.row && position.character >= start.column)) &&
+                    (position.line < end.row || (position.line === end.row && position.character <= end.column))
+                ) {
+                    const range = node.endIndex - node.startIndex;
+                    if (range < smallestRange) {
+                        enclosingNode = node;
+                        smallestRange = range;
+                    }
+                }
+            }
+
+            if (enclosingNode) {
+                const symbolName = this._extractNodeName(enclosingNode, languageId);
+                if (symbolName) {
+                    return {
+                        symbolName,
+                        symbolType: enclosingNode.type,
+                        position: { line: enclosingNode.startPosition.row, character: enclosingNode.startPosition.column }
+                    };
+                }
+            }
+
+            return null;
+        } catch (error) {
+            console.error(`Error finding enclosing symbol in ${languageId} code:`, error);
+            return null;
+        } finally {
+            tree.delete();
+        }
+    }
+
     private _extractNodeName(node: Node, language: string): string | undefined {
         // Handle specific wrapper nodes by recursively calling on the wrapped declaration.
         if (language === 'cpp' && node.type === 'template_declaration') {
