@@ -126,10 +126,14 @@ export function standaloneFunction(test: string): boolean {
         expect(result.chunks.length).toBeGreaterThan(0);
 
         // Check for proper chunking - no chunks should end with split words/symbols
+        console.log('Integration Test: TypeScript chunking test. Chunks:', result.chunks);
         for (const chunk of result.chunks) {
             // A word/symbol split would typically end with an incomplete identifier.
             // This is less likely with structure-aware chunking but still a good check.
             const endsWithIncompleteWord = /[a-zA-Z0-9_]$/.test(chunk.trim());
+            if (endsWithIncompleteWord) {
+                console.log('Chunk ends with incomplete word:', chunk);
+            }
             expect(endsWithIncompleteWord).toBe(false);
         }
 
@@ -182,6 +186,7 @@ export function standaloneFunction(test: string): boolean {
         ];
 
         for (const chunk of result.chunks) {
+            console.log('Integration Test: Oversized structure chunk:', chunk);
             // Check for unbalanced quotes
             if (hasUnbalancedQuotes(chunk)) {
                 console.log(`Chunk ends with an unclosed string literal: ${chunk}`);
@@ -261,6 +266,7 @@ namespace utils {
         const incompleteIdentifierPattern = /[a-zA-Z0-9_]$/;
 
         for (const chunk of result.chunks) {
+            console.log('Integration Test: Template chunk:', chunk);
             // Check for incomplete identifiers at end of chunk
             if (incompleteIdentifierPattern.test(chunk.trim())) {
                 console.log(`Chunk ends with an incomplete identifier: ${chunk}`);
@@ -317,6 +323,7 @@ namespace utils {
         const incompleteIdentifierPattern = /[a-zA-Z0-9_]$/;
 
         for (const chunk of result.chunks) {
+            console.log('Integration Test: Template chunk:', chunk);
             // Check for incomplete identifiers at end of chunk
             if (incompleteIdentifierPattern.test(chunk.trim())) {
                 console.log(`Chunk ends with an incomplete identifier: ${chunk}`);

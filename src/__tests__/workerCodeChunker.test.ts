@@ -233,6 +233,7 @@ describe('WorkerCodeChunker Tests', () => {
 
     // The last chunk should contain the closing brace of the class
     const lastChunk = result.chunks[result.chunks.length - 1];
+    console.log('Test: Oversized structure last chunk:', lastChunk);
     expect(lastChunk.trim()).toBe('}');
   });
 
@@ -333,6 +334,7 @@ namespace Utils {
 
     // Check that we don't have chunks ending with obvious incomplete structures
     for (const chunk of result.chunks) {
+      console.log('Test: Real-world code chunk:', chunk);
       const trimmedChunk = chunk.trimEnd();
       // A chunk shouldn't end with a lone opening brace, as our structural chunking
       // aims to capture entire blocks or split them cleanly by line.
