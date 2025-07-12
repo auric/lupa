@@ -27,7 +27,7 @@ public:
     void foo() {}
 };
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // MyClass is the POI, its comment starts on line 2 (index 1).
         expect(lines).toContain(1);
     });
@@ -41,7 +41,7 @@ void foo() {
     // Implementation
 }
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // foo() is the POI, its comment starts on line 2 (index 1).
         expect(lines).toContain(1);
     });
@@ -58,12 +58,13 @@ public:
     }
 };
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // POIs are MyClass and foo().
         // MyClass has no preceding comment, so its own line (index 1) is used.
         // foo() has a comment starting on line 4 (index 3).
-        expect(lines).toContain(1); // For MyClass
-        expect(lines).toContain(3); // For foo()
+        // With the new logic, the method is a child of the class POI, so it's filtered out.
+        // We only get the top-level class breakpoint.
+        expect(lines).toEqual([1]);
     });
 
     it('should associate comments with C++ structs', async () => {
@@ -73,7 +74,7 @@ struct MyStruct {
     int data;
 };
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // MyStruct is the POI, its comment starts on line 2 (index 1).
         expect(lines).toContain(1);
     });
@@ -88,7 +89,7 @@ enum class MyEnum {
     VALUE2
 };
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // MyEnum is the POI, its comment starts on line 2 (index 1).
         expect(lines).toContain(1);
     });
@@ -105,11 +106,11 @@ namespace test {
 
 } // namespace test
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // namespace test is a POI, comment starts on line 2 (index 1).
         // void foo() is a POI, comment starts on line 5 (index 4).
-        expect(lines).toContain(1);
-        expect(lines).toContain(4);
+        // The function `foo` is a child of the namespace, so it's filtered out.
+        expect(lines).toEqual([1]);
     });
 
     it('should not associate comments separated by blank lines', async () => {
@@ -121,7 +122,7 @@ class BlankLineCommentClass {
     void method() {}
 };
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // The blank line breaks the association.
         // The comment for BlankLineCommentClass starts on line 4 (index 3).
         expect(lines).toContain(3);
@@ -140,11 +141,11 @@ class MultiCommentClass {
     void method() {}
 };
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // The comment block for MultiCommentClass starts at line 2 (index 1).
         // The method comment starts at line 8 (index 7).
-        expect(lines).toContain(1);
-        expect(lines).toContain(6);
+        // The method is a child of the class, so it's filtered out.
+        expect(lines).toEqual([1]);
     });
 
     it('should handle comments with decorators/attributes (TypeScript)', async () => {
@@ -161,11 +162,11 @@ class DecoratedClass {
     method() {}
 }
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'typescript');
+        const lines = await service.getLinesForPointsOfInterest(code, 'typescript', undefined);
         // DecoratedClass POI, comment starts line 2.
         // method POI, comment starts line 6.
-        expect(lines).toContain(1);
-        expect(lines).toContain(6);
+        // The method is a child of the class, so it's filtered out.
+        expect(lines).toEqual([1]);
     });
 
     it('should associate comments across different supported languages', async () => {
@@ -180,10 +181,10 @@ function jsFunction() {}
 def pyFunction():
     pass
 `;
-        const jsLines = await service.getLinesForPointsOfInterest(jsCode, 'javascript');
+        const jsLines = await service.getLinesForPointsOfInterest(jsCode, 'javascript', undefined);
         expect(jsLines).toContain(1);
 
-        const pyLines = await service.getLinesForPointsOfInterest(pyCode, 'python');
+        const pyLines = await service.getLinesForPointsOfInterest(pyCode, 'python', undefined);
         expect(pyLines).toContain(1);
     });
 
@@ -210,11 +211,12 @@ namespace outer {
     } // namespace inner
 } // namespace outer
 `;
-        const lines = await service.getLinesForPointsOfInterest(code, 'cpp');
+        const lines = await service.getLinesForPointsOfInterest(code, 'cpp', undefined);
         // outer namespace, comment line 2 (index 1)
         // inner namespace, comment line 6 (index 5)
         // NestedClass, comment line 10 (index 9)
         // method, comment line 15 (index 14)
-        expect(lines).toEqual([1, 5, 9, 14]);
+        // The new logic correctly identifies only the top-level POIs.
+        expect(lines).toEqual([1]);
     });
 });

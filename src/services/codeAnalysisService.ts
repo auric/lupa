@@ -451,15 +451,32 @@ export class CodeAnalysisService implements vscode.Disposable {
 
         try {
             const langParser = await this.getLanguageParser(languageId, variant);
-            const pointsOfInterest = this.extractPointsOfInterest(tree.rootNode, langParser, languageId);
+            const allPois = this.extractPointsOfInterest(tree.rootNode, langParser, languageId);
+            const poiIds = new Set(allPois.map(p => p.id));
+
+            // --- Conflict Resolution ---
+            // Filter out POIs whose parent is also a POI. This ensures we chunk at the highest logical level.
+            // For example, we prefer the 'class' chunk over the 'method' chunk inside it.
+            const topLevelPois = allPois.filter(poi => {
+                let parent = poi.parent;
+                while (parent) {
+                    if (poiIds.has(parent.id)) {
+                        return false; // This is a nested POI, so discard it.
+                    }
+                    parent = parent.parent;
+                }
+                return true; // This is a top-level POI.
+            });
+
             const codeLines = code.split('\n');
             const adjustedLines = new Set<number>();
 
-            for (const poi of pointsOfInterest) {
+            for (const poi of topLevelPois) {
                 let currentNode = poi;
                 let associatedCommentStartLine = poi.startPosition.row;
 
-                // Traverse backwards from the POI to find the start of its comment block.
+                // Traverse backwards from the POI to find the start of its comment block or attributes.
+                // This logic is crucial for including documentation with the code it describes.
                 while (currentNode.previousSibling) {
                     const previousNode = currentNode.previousSibling;
 
@@ -475,19 +492,23 @@ export class CodeAnalysisService implements vscode.Disposable {
                         break;
                     }
 
-                    // If the previous sibling is a comment, associate it and continue searching up.
-                    if (previousNode.type === 'comment' || previousNode.type.includes('_comment')) {
+                    // If the previous sibling is a comment or attribute, associate it and continue searching up.
+                    const isRelevantMetadata = previousNode.type.includes('comment') ||
+                        previousNode.type.includes('attribute') ||
+                        previousNode.type.includes('annotation');
+
+                    if (isRelevantMetadata) {
                         associatedCommentStartLine = previousNode.startPosition.row;
                         currentNode = previousNode;
-                    } else if (previousNode.text.trim() === '' || previousNode.type === 'decorator') {
-                        // Skip whitespace-only nodes and decorators
+                    } else if (previousNode.text.trim() === '') {
+                        // Skip over whitespace-only nodes.
                         currentNode = previousNode;
                     } else {
                         // It's a non-comment, non-whitespace node, so stop.
                         break;
                     }
                 }
-                adjustedLines.add(associatedCommentStartLine); // Use 0-based line number for consistency
+                adjustedLines.add(associatedCommentStartLine); // Use 0-based line number
             }
 
             return Array.from(adjustedLines).sort((a, b) => a - b);

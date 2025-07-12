@@ -4,7 +4,7 @@ import type { DetailedChunkingResult, EmbeddingOptions } from '../types/embeddin
 import { LANGUAGE_QUERIES } from '../config/treeSitterQueries';
 
 export class WorkerCodeChunker {
-    private static readonly MIN_CHUNK_CHARS = 1;
+    private static readonly MIN_CHUNK_CHARS = 0;
 
     constructor(
         private readonly codeAnalysisService: CodeAnalysisService,
@@ -40,7 +40,14 @@ export class WorkerCodeChunker {
 
     private async createStructureAwareChunks(text: string, language: string, variant: string | undefined, maxTokens: number, signal: AbortSignal): Promise<DetailedChunkingResult> {
         const breakpointLines = await this.codeAnalysisService.getLinesForPointsOfInterest(text, language, variant);
-        const breakpoints = breakpointLines.map(line => this.getOffsetForLine(text, line + 1));
+
+        // Optimization: pre-calculate line offsets to avoid repeated text.split()
+        const lines = text.split('\n');
+        const lineOffsets: number[] = [0];
+        for (let i = 0; i < lines.length; i++) {
+            lineOffsets.push(lineOffsets[i] + lines[i].length + 1);
+        }
+        const breakpoints = breakpointLines.map(line => lineOffsets[line] ?? text.length);
 
         if (breakpoints.length === 0) {
             return this.createBasicChunks(text, maxTokens);
@@ -114,59 +121,75 @@ export class WorkerCodeChunker {
         let chunkStartOffset = 0;
         let currentCharsOffset = 0;
 
-        for (const line of lines) {
-            const lineWithNewline = line + '\n';
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            // Re-add the newline for accurate token counting, except for the last line.
+            const lineWithNewline = i === lines.length - 1 ? line : line + '\n';
             const lineTokenCount = await this.tokenEstimator.countTokens(lineWithNewline);
 
             if (lineTokenCount > maxTokens) {
+                // If the current chunk has content, push it.
                 if (currentChunkLines.length > 0) {
-                    chunks.push(currentChunkLines.join(''));
+                    chunks.push(currentChunkLines.join('\n'));
                     offsets.push(chunkStartOffset);
                 }
-                chunks.push(lineWithNewline);
+                // Push the oversized line as its own chunk.
+                chunks.push(line);
                 offsets.push(currentCharsOffset);
+                // Reset the current chunk.
                 currentChunkLines = [];
                 currentChunkTokenCount = 0;
             } else if (currentChunkTokenCount + lineTokenCount > maxTokens) {
+                // Push the completed chunk.
                 if (currentChunkLines.length > 0) {
-                    chunks.push(currentChunkLines.join(''));
+                    chunks.push(currentChunkLines.join('\n'));
                     offsets.push(chunkStartOffset);
                 }
-                currentChunkLines = [lineWithNewline];
+                // Start a new chunk with the current line.
+                currentChunkLines = [line];
                 currentChunkTokenCount = lineTokenCount;
                 chunkStartOffset = currentCharsOffset;
             } else {
+                // Add the line to the current chunk.
                 if (currentChunkLines.length === 0) {
                     chunkStartOffset = currentCharsOffset;
                 }
-                currentChunkLines.push(lineWithNewline);
+                currentChunkLines.push(line);
                 currentChunkTokenCount += lineTokenCount;
             }
             currentCharsOffset += lineWithNewline.length;
         }
 
+        // Push any remaining content in the last chunk.
         if (currentChunkLines.length > 0) {
-            chunks.push(currentChunkLines.join(''));
+            chunks.push(currentChunkLines.join('\n'));
             offsets.push(chunkStartOffset);
-        }
-
-        if (chunks.length > 0) {
-            const lastChunkIndex = chunks.length - 1;
-            if (chunks[lastChunkIndex].endsWith('\n')) {
-                chunks[lastChunkIndex] = chunks[lastChunkIndex].slice(0, -1);
-            }
         }
 
         return this.finalizeChunks(chunks, offsets);
     }
 
-    private getOffsetForLine(text: string, lineNum: number): number {
-        const lines = text.split('\n');
-        let offset = 0;
-        for (let i = 0; i < lineNum - 1 && i < lines.length; i++) {
-            offset += lines[i].length + 1;
+
+    private trimCommonLeadingWhitespace(lines: string[]): string[] {
+        if (lines.length === 0) {
+            return [];
         }
-        return offset;
+
+        let commonPrefix = lines[0].match(/^\s*/)?.[0] ?? '';
+        for (let i = 1; i < lines.length; i++) {
+            if (lines[i].trim() === '') continue; // Ignore empty lines for prefix calculation
+            const linePrefix = lines[i].match(/^\s*/)?.[0] ?? '';
+            while (!linePrefix.startsWith(commonPrefix)) {
+                commonPrefix = commonPrefix.slice(0, -1);
+            }
+            if (commonPrefix === '') break;
+        }
+
+        if (commonPrefix.length > 0) {
+            return lines.map(line => line.startsWith(commonPrefix) ? line.substring(commonPrefix.length) : line);
+        }
+
+        return lines;
     }
 
     private finalizeChunks(chunks: string[], offsets: number[]): DetailedChunkingResult {
@@ -175,23 +198,37 @@ export class WorkerCodeChunker {
 
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
-            if (chunk.trim().length >= WorkerCodeChunker.MIN_CHUNK_CHARS) {
-                finalChunks.push(chunk);
-                finalOffsets.push(offsets[i]);
-            }
-        }
+            const chunkOffset = offsets[i];
 
-        if (finalChunks.length === 0 && chunks.length > 0) {
-            let largestChunk = '';
-            let largestChunkOffset = 0;
-            for (let i = 0; i < chunks.length; i++) {
-                if (chunks[i].length > largestChunk.length) {
-                    largestChunk = chunks[i];
-                    largestChunkOffset = offsets[i];
-                }
+            const lines = chunk.split('\n');
+            let firstLineIdx = 0;
+            while (firstLineIdx < lines.length && lines[firstLineIdx].trim() === '') {
+                firstLineIdx++;
             }
-            finalChunks.push(largestChunk);
-            finalOffsets.push(largestChunkOffset);
+
+            let lastLineIdx = lines.length - 1;
+            while (lastLineIdx >= firstLineIdx && lines[lastLineIdx].trim() === '') {
+                lastLineIdx--;
+            }
+
+            if (firstLineIdx > lastLineIdx) {
+                continue; // Skip chunks that are only whitespace
+            }
+
+            const contentLines = lines.slice(firstLineIdx, lastLineIdx + 1);
+            const dedentedLines = this.trimCommonLeadingWhitespace(contentLines);
+            const finalChunkText = dedentedLines.join('\n');
+
+            if (finalChunkText.length > WorkerCodeChunker.MIN_CHUNK_CHARS) {
+                // Recalculate the offset to account for the trimmed leading empty lines.
+                let newOffset = chunkOffset;
+                for (let j = 0; j < firstLineIdx; j++) {
+                    newOffset += lines[j].length + 1; // +1 for the newline
+                }
+
+                finalChunks.push(finalChunkText);
+                finalOffsets.push(newOffset);
+            }
         }
 
         if (finalChunks.length === 0) {

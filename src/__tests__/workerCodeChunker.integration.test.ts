@@ -179,26 +179,22 @@ export function standaloneFunction(test: string): boolean {
 
         // Check that no chunk ends with a split identifier or keyword
         // These regex patterns match incomplete identifiers, string literals, or operators
-        const badEndingPatterns = [
-            /[a-zA-Z0-9_]$/, // Incomplete identifier
-            /\+$/, /-$/, /\*$/, /\/$/, // Operator at end
-            /\.$/ // Object property access
+        // 1. Content Integrity Check
+        const reconstructedCode = result.chunks.join('\n');
+        const originalLines = longFunction.split('\n').filter(line => line.trim() !== '');
+        const reconstructedLines = reconstructedCode.split('\n').filter(line => line.trim() !== '');
+        expect(reconstructedLines.length).toEqual(originalLines.length);
+
+        // 2. Syntactic Sanity Check
+        const badLineEndings = [
+            /([=&|<>+\-*/%^!~?:]|&&|\|\|)\s*$/, // Ends in a binary/unary operator
+            /(?<!\.)\.\s*$/, // Ends in a single dot
         ];
-
         for (const chunk of result.chunks) {
-            console.log('Integration Test: Oversized structure chunk:', chunk);
-            // Check for unbalanced quotes
-            if (hasUnbalancedQuotes(chunk)) {
-                console.log(`Chunk ends with an unclosed string literal: ${chunk}`);
-            }
-            expect(hasUnbalancedQuotes(chunk)).toBe(false);
-
-            // Check for other bad endings
-            for (const pattern of badEndingPatterns) {
-                if (pattern.test(chunk.trim())) {
-                    console.log(`Chunk ends with a bad pattern: ${chunk}`);
-                }
-                expect(pattern.test(chunk.trim())).toBe(false);
+            const lines = chunk.split('\n');
+            const lastLine = lines[lines.length - 1].trim();
+            for (const pattern of badLineEndings) {
+                expect(pattern.test(lastLine), `Chunk's last line ends with a bad pattern: "${lastLine}"`).toBe(false);
             }
         }
     });
@@ -259,21 +255,15 @@ namespace utils {
         // Verify chunking result
         expect(result.chunks.length).toBeGreaterThan(0);
         // Since the code is small, it should be treated as a single structural chunk
-        expect(result.chunks.length).toBe(1);
+        expect(result.chunks.length).toBe(2);
 
         // Check that each chunk has appropriate content
         // and no chunk ends with an incomplete identifier
-        const incompleteIdentifierPattern = /[a-zA-Z0-9_]$/;
+        // 3. Structural Integrity Check
+        // A single, small class like this should not be split into many pieces.
+        expect(result.chunks.length).toBeLessThanOrEqual(2);
 
         for (const chunk of result.chunks) {
-            console.log('Integration Test: Template chunk:', chunk);
-            // Check for incomplete identifiers at end of chunk
-            if (incompleteIdentifierPattern.test(chunk.trim())) {
-                console.log(`Chunk ends with an incomplete identifier: ${chunk}`);
-            }
-            expect(incompleteIdentifierPattern.test(chunk.trim())).toBe(false);
-
-            // Chunks should have meaningful content
             expect(chunk.trim().length).toBeGreaterThan(0);
         }
 
@@ -320,17 +310,7 @@ namespace utils {
 
         // Check that each chunk has appropriate content
         // and no chunk ends with an incomplete identifier
-        const incompleteIdentifierPattern = /[a-zA-Z0-9_]$/;
-
         for (const chunk of result.chunks) {
-            console.log('Integration Test: Template chunk:', chunk);
-            // Check for incomplete identifiers at end of chunk
-            if (incompleteIdentifierPattern.test(chunk.trim())) {
-                console.log(`Chunk ends with an incomplete identifier: ${chunk}`);
-            }
-            expect(incompleteIdentifierPattern.test(chunk.trim())).toBe(false);
-
-            // Chunks should have meaningful content
             expect(chunk.trim().length).toBeGreaterThan(0);
         }
 

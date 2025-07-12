@@ -75,11 +75,17 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
         pointsOfInterest: [
             '(preproc_include) @capture',
             '(namespace_definition) @capture',
-            '(template_declaration) @capture',
+            // A template declaration is a wrapper, we want the thing inside it
+            '(template_declaration . (class_specifier) @capture)',
+            '(template_declaration . (struct_specifier) @capture)',
+            '(template_declaration . (function_definition) @capture)',
+            // Standalone definitions
             '(class_specifier) @capture',
             '(struct_specifier) @capture',
             '(enum_specifier) @capture',
             '(function_definition) @capture',
+            // Capture out-of-line method definitions
+            '(declaration declarator: (function_declarator)) @capture'
         ],
         comments: ['(comment) @capture'],
     },

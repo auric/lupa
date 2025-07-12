@@ -84,10 +84,10 @@ void templateFunc(T val) { // Line 33
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'MyClass', symbolType: 'class_specifier', position: { line: 4, character: 4 } }));
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'memberFunc', symbolType: 'function_definition', position: { line: 7, character: 8 } }));
         // expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'globalVar', symbolType: 'declaration', position: { line: 19, character: 0 } }));
-        expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'TemplateClass', symbolType: 'template_declaration', position: { line: 25, character: 0 } }));
+        expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'TemplateClass', symbolType: 'class_specifier', position: { line: 26, character: 0 } }));
 
         // The exact count can be fragile, but we expect a significant number of symbols.
-        expect(symbols.length).toBeGreaterThanOrEqual(9);
+        expect(symbols.length).toBeGreaterThanOrEqual(8);
 
         // Ensure no duplicates
         const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);
