@@ -22,7 +22,7 @@ describe('CodeAnalysisService - Advanced Scenarios', () => {
     describe('Symbol Finding (`findSymbols`)', () => {
         it('should find symbol for anonymous function assigned to a const in TypeScript', async () => {
             const code = `export const myArrowFunction = () => { return 1; };`;
-            const symbols = await service.findSymbols(code, 'typescript');
+            const symbols = await service.findSymbols(code, 'typescript', undefined);
             expect(symbols).toContainEqual(expect.objectContaining({
                 symbolName: 'myArrowFunction',
                 symbolType: 'variable_declarator' // The symbol is the variable that holds the function
@@ -59,7 +59,7 @@ describe('CodeAnalysisService - Advanced Scenarios', () => {
     }
 }
 `;
-            const symbols = await service.findSymbols(code, 'css');
+            const symbols = await service.findSymbols(code, 'css', undefined);
             const symbolNames = symbols.map(s => s.symbolName);
 
             expect(symbolNames).not.toContain('@import "my-styles.css"');
@@ -89,7 +89,7 @@ class MyClass {
     }
 }
 `;
-            const symbols = await service.findSymbols(code, 'typescript');
+            const symbols = await service.findSymbols(code, 'typescript', undefined);
             const symbolNames = symbols.map(s => s.symbolName);
 
             expect(symbolNames).toContain('MyClass');
@@ -143,7 +143,7 @@ export class MyDecoratedClass {
     myMethod() {}
 }
 `;
-            const symbols = await service.findSymbols(code, 'typescript');
+            const symbols = await service.findSymbols(code, 'typescript', undefined);
             const symbolNames = symbols.map(s => s.symbolName);
 
             expect(symbolNames).toContain('classDecorator');
@@ -190,7 +190,7 @@ export class MyDecoratedClass {
 const x = 1;
 class MyClass {}
 `;
-            const lines = await service.getLinesForPointsOfInterest(code, 'typescript');
+            const lines = await service.getLinesForPointsOfInterest(code, 'typescript', undefined);
             // The line \`const x = 1;\` breaks the association.
             // So the POI line for MyClass should be its own line (3), not the comment line (1).
             expect(lines).toContain(3);
@@ -199,7 +199,7 @@ class MyClass {}
 
         it('should return the POI line for comments on the same line', async () => {
             const code = `class MyClass {} // This is a class`;
-            const lines = await service.getLinesForPointsOfInterest(code, 'typescript');
+            const lines = await service.getLinesForPointsOfInterest(code, 'typescript', undefined);
             // The POI is the class on line 1 (index 0). The comment doesn't precede it.
             expect(lines).toEqual([0]);
         });
@@ -216,7 +216,7 @@ function FuncB() {} // No preceding comment
  */
 class ClassC {}
 `;
-            const lines = await service.getLinesForPointsOfInterest(code, 'typescript');
+            const lines = await service.getLinesForPointsOfInterest(code, 'typescript', undefined);
             // FuncA -> line 1 (comment)
             // FuncB -> line 4 (itself)
             // ClassC -> line 6 (comment)
@@ -232,13 +232,13 @@ class ClassC {}
             // Spy on console.warn
             const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
-            const symbols = await localService.findSymbols('const a = 1;', 'javascript');
+            const symbols = await localService.findSymbols('const a = 1;', 'javascript', undefined);
             expect(symbols).toEqual([]);
 
-            const lines = await localService.getLinesForPointsOfInterest('const a = 1;', 'javascript');
+            const lines = await localService.getLinesForPointsOfInterest('const a = 1;', 'javascript', undefined);
             expect(lines).toEqual([]);
 
-            const tree = await localService.parseCode('const a = 1;', 'javascript');
+            const tree = await localService.parseCode('const a = 1;', 'javascript', undefined);
             expect(tree).toBeNull();
 
             // Check that warnings were logged
