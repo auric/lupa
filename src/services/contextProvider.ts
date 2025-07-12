@@ -1,29 +1,25 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { AnalysisMode } from '../types/modelTypes';
+import type {
+    SimilaritySearchOptions,
+    SimilaritySearchResult
+} from '../types/embeddingTypes';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { TreeStructureAnalyzer, SymbolInfo as AnalyzerSymbolInfo } from './treeStructureAnalyzer'; // Import SymbolInfo as AnalyzerSymbolInfo
-import {
-    getLanguageForExtension
-} from '../types/types';
-import {
-    AnalysisMode
-} from '../types/modelTypes';
+import { CopilotModelManager } from '../models/copilotModelManager';
+import { CodeAnalysisService, type SymbolInfo } from './codeAnalysisService';
 import {
     type ContextSnippet,
     type DiffHunk,
     type DiffHunkLine,
     type HybridContextResult
 } from '../types/contextTypes';
-import {
-    SimilaritySearchOptions,
-    SimilaritySearchResult
-} from '../types/embeddingTypes';
-import { CopilotModelManager } from '../models/copilotModelManager';
-import * as path from 'path';
+import { getLanguageForExtension, type SupportedLanguage } from '../types/types';
 
 /**
  * Represents symbol information found within a diff, including file path.
  */
-export interface DiffSymbolInfo extends AnalyzerSymbolInfo {
+export interface DiffSymbolInfo extends SymbolInfo {
     filePath: string;
 }
 
@@ -34,9 +30,6 @@ export interface DiffSymbolInfo extends AnalyzerSymbolInfo {
  */
 export class ContextProvider implements vscode.Disposable {
     private static instance: ContextProvider | null = null;
-    private readonly MAX_CONTENT_LENGTH = 800000; // Characters limit to avoid excessive token use
-
-    private readonly modelManager: CopilotModelManager;
 
     /**
      * Get singleton instance of ContextProvider
@@ -54,12 +47,15 @@ export class ContextProvider implements vscode.Disposable {
     public static createSingleton(
         context: vscode.ExtensionContext,
         embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
-        modelManager: CopilotModelManager
+        modelManager: CopilotModelManager,
+        codeAnalysisService: CodeAnalysisService
     ): ContextProvider {
         if (!this.instance ||
             this.instance.embeddingDatabaseAdapter !== embeddingDatabaseAdapter ||
-            this.instance.modelManager !== modelManager) {
-            this.instance = new ContextProvider(context, embeddingDatabaseAdapter, modelManager);
+            this.instance.modelManager !== modelManager ||
+            this.instance.codeAnalysisService !== codeAnalysisService
+        ) {
+            this.instance = new ContextProvider(context, embeddingDatabaseAdapter, modelManager, codeAnalysisService); // Passed to constructor
         }
         return this.instance;
     }
@@ -70,10 +66,9 @@ export class ContextProvider implements vscode.Disposable {
     private constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
-        modelManager: CopilotModelManager
-    ) {
-        this.modelManager = modelManager;
-    }
+        private readonly modelManager: CopilotModelManager,
+        private readonly codeAnalysisService: CodeAnalysisService
+    ) { }
 
     /**
      * Generates a unique string identifier for a diff hunk.
@@ -95,11 +90,15 @@ export class ContextProvider implements vscode.Disposable {
     private async extractMeaningfulChunksAndSymbols(diff: string, parsedDiff: DiffHunk[], gitRepoRoot: string): Promise<{ embeddingQueries: string[]; symbols: DiffSymbolInfo[] }> {
         const embeddingQueriesSet = new Set<string>();
         const identifiedSymbols: DiffSymbolInfo[] = [];
-        const analyzer = new TreeStructureAnalyzer();
+
+
         for (const fileDiff of parsedDiff) {
             const filePath = fileDiff.filePath;
             const absoluteFilePath = path.join(gitRepoRoot, filePath);
-            const langInfo = analyzer.getFileLanguage(filePath);
+
+            // Replaced analyzer.getFileLanguage with getLanguageForExtension
+            const fileExtension = path.extname(filePath).substring(1);
+            const langInfo: SupportedLanguage | undefined = getLanguageForExtension(fileExtension);
 
             let fullFileContent: string | undefined = undefined;
             const addedLinesForSymbolSnippets: { fileLine: number, text: string }[] = [];
@@ -156,12 +155,24 @@ export class ContextProvider implements vscode.Disposable {
             // Identify symbols within the collected added line ranges
             if (langInfo && fullFileContent !== undefined && lineRangesForSymbolExtraction.length > 0) {
                 try {
-                    const symbolsInRanges = await analyzer.findSymbolsInRanges(
-                        fullFileContent, langInfo.language, lineRangesForSymbolExtraction, langInfo.variant
+                    // 1. Get ALL symbols from the file using the new service.
+                    const allSymbolsInFile = await this.codeAnalysisService.findSymbols(
+                        fullFileContent, langInfo.language, langInfo.variant
                     );
+
+                    // 2. Filter these symbols to find only the ones within our diff's line ranges.
+                    const symbolsInRanges = allSymbolsInFile.filter(symbol =>
+                        lineRangesForSymbolExtraction.some(range =>
+                            symbol.position.line >= range.startLine && symbol.position.line <= range.endLine
+                        )
+                    );
+
+                    // 3. Add the filtered symbols to the main list.
                     symbolsInRanges.forEach(symbol => identifiedSymbols.push({ ...symbol, filePath }));
+
                 } catch (error) {
-                    console.error(`Error finding symbols in ranges for ${filePath}:`, error);
+                    // Log the error using the new logging service when available
+                    console.error(`Error finding symbols in ${filePath}:`, error);
                 }
             }
 
@@ -228,7 +239,6 @@ export class ContextProvider implements vscode.Disposable {
                 }
             }
         }
-        analyzer.dispose();
 
         const finalEmbeddingQueries = [...embeddingQueriesSet].filter(q => q.trim().length > 0);
 

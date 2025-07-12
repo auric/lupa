@@ -4,7 +4,7 @@ import { FileToProcess } from '../types/indexingTypes';
 import { EmbeddingOptions, DetailedChunkingResult } from '../types/embeddingTypes';
 import { WorkerCodeChunker } from '../workers/workerCodeChunker';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
-import { TreeStructureAnalyzer } from './treeStructureAnalyzer';
+import { CodeAnalysisService } from './codeAnalysisService';
 import { getLanguageForExtension } from '../types/types';
 
 /**
@@ -40,7 +40,7 @@ export class CodeChunkingService implements vscode.Disposable {
 
     /**
      * Asynchronously sets up the service by initializing its internal components.
-     * This includes the TreeStructureAnalyzer and the WorkerCodeChunker.
+     * This includes the CodeAnalysisService and the WorkerCodeChunker.
      * Must be called successfully before `chunkFile` can be used.
      * @returns A Promise that resolves when initialization is complete, or rejects on error.
      */
@@ -49,15 +49,14 @@ export class CodeChunkingService implements vscode.Disposable {
             return;
         }
 
-        let treeStructureAnalyzer: TreeStructureAnalyzer | null = null;
+        let codeAnalysisService: CodeAnalysisService | null = null;
         try {
             const tokenEstimator = new WorkerTokenEstimator(this.options.modelName, this.options.contextLength);
-            treeStructureAnalyzer = new TreeStructureAnalyzer();
-            await treeStructureAnalyzer.initialize();
-            this.workerCodeChunker = new WorkerCodeChunker(tokenEstimator, treeStructureAnalyzer);
+            codeAnalysisService = new CodeAnalysisService();
+            this.workerCodeChunker = new WorkerCodeChunker(codeAnalysisService, tokenEstimator);
             this.isInitialized = true;
         } catch (error) {
-            treeStructureAnalyzer?.dispose();
+            codeAnalysisService?.dispose();
             console.error('Failed to initialize CodeChunkingService:', error);
             throw error;
         }
@@ -89,10 +88,10 @@ export class CodeChunkingService implements vscode.Disposable {
             }
             const result = await this.workerCodeChunker.chunkCode(
                 file.content,
+                langData?.language || '',
+                langData?.variant,
                 embeddingOptions,
                 abortSignal,
-                langData?.language || '',
-                langData?.variant
             );
             return result;
         } catch (error) {

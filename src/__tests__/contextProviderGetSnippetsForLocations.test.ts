@@ -4,7 +4,8 @@ import { ContextProvider } from '../services/contextProvider';
 import { EmbeddingDatabaseAdapter } from '../services/embeddingDatabaseAdapter';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { TokenManagerService } from '../services/tokenManagerService';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService'; // Added import
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { CodeAnalysisService } from '../services/codeAnalysisService';
 
 // Mock VS Code APIs
 vi.mock('vscode', async () => ({
@@ -57,7 +58,8 @@ vi.mock('vscode', async () => ({
 vi.mock('../services/embeddingDatabaseAdapter');
 vi.mock('../models/copilotModelManager');
 vi.mock('../services/tokenManagerService');
-vi.mock('../services/workspaceSettingsService'); // Added mock for WorkspaceSettingsService
+vi.mock('../services/workspaceSettingsService');
+vi.mock('../services/codeAnalysisService');
 
 
 describe('ContextProvider', () => {
@@ -67,6 +69,7 @@ describe('ContextProvider', () => {
     let mockTokenManagerService: Mocked<TokenManagerService>;
     let mockExtensionContext: vscode.ExtensionContext;
     let mockWorkspaceSettingsService: Mocked<WorkspaceSettingsService>;
+    let mockCodeAnalysisService: Mocked<CodeAnalysisService>;
 
 
     beforeEach(() => {
@@ -86,14 +89,11 @@ describe('ContextProvider', () => {
             environmentVariableCollection: { persistent: false, replace: vi.fn(), append: vi.fn(), prepend: vi.fn(), get: vi.fn(), delete: vi.fn(), clear: vi.fn(), [Symbol.iterator]: vi.fn() }
         } as unknown as vscode.ExtensionContext;
 
-        // For services with private constructors or complex dependencies, mock their module or specific methods
-        // For EmbeddingDatabaseAdapter, since constructor is private, we mock its methods if needed or use its singleton
-        // For this test, direct instantiation is for type hinting, actual calls will be to the singleton
         mockEmbeddingDatabaseAdapter = new (EmbeddingDatabaseAdapter as any)(mockExtensionContext) as Mocked<EmbeddingDatabaseAdapter>;
-
         mockWorkspaceSettingsService = new WorkspaceSettingsService(mockExtensionContext) as Mocked<WorkspaceSettingsService>;
         mockCopilotModelManager = new CopilotModelManager(mockWorkspaceSettingsService) as Mocked<CopilotModelManager>;
         mockTokenManagerService = new TokenManagerService(mockCopilotModelManager) as Mocked<TokenManagerService>;
+        mockCodeAnalysisService = new (CodeAnalysisService as any)() as Mocked<CodeAnalysisService>;
 
 
         // Setup default mocks for CopilotModelManager and TokenManagerService if needed
@@ -124,8 +124,9 @@ describe('ContextProvider', () => {
         // Use the actual createSingleton for ContextProvider
         contextProvider = ContextProvider.createSingleton(
             mockExtensionContext,
-            mockEmbeddingDatabaseAdapter, // This will be the mocked instance from the factory
-            mockCopilotModelManager // This will be the mocked instance
+            mockEmbeddingDatabaseAdapter,
+            mockCopilotModelManager,
+            mockCodeAnalysisService
         );
 
         // Reset vscode mocks

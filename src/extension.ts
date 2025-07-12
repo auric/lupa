@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
-import { registerLanguageStructureCommands } from './__tests__/utils/languageStructureAnalyzer';
 
 // Main extension activation function
 export async function activate(context: vscode.ExtensionContext) {
@@ -12,9 +11,6 @@ export async function activate(context: vscode.ExtensionContext) {
         const prAnalysisCoordinator = new PRAnalysisCoordinator(context);
 
         context.subscriptions.push(prAnalysisCoordinator);
-
-        // Register the test command for the structure analyzer
-        registerLanguageStructureCommands(context);
 
         // Register a simple hello world command as a placeholder
         const disposable = vscode.commands.registerCommand('codelens-pr-analyzer.helloWorld', () => {

@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach, Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, Mock, Mocked } from 'vitest';
 import * as vscode from 'vscode';
 import { ContextProvider, DiffSymbolInfo } from '../services/contextProvider';
 import { EmbeddingDatabaseAdapter } from '../services/embeddingDatabaseAdapter';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { SymbolInfo as AnalyzerSymbolInfo } from '../services/treeStructureAnalyzer';
+import { CodeAnalysisService, type SymbolInfo } from '../services/codeAnalysisService';
 import { SimilaritySearchResult } from '../types/embeddingTypes';
 import { AnalysisMode } from '../types/modelTypes';
 import {
@@ -25,12 +25,6 @@ const hoistedMocks = vi.hoisted(() => {
         getStorageStats: vi.fn(),
         optimizeStorage: vi.fn(),
         embeddingDatabaseAdapterDispose: vi.fn(),
-
-        // For TreeStructureAnalyzer
-        analyzerFindSymbolsInRanges: vi.fn(),
-        analyzerFindFunctions: vi.fn(),
-        analyzerFindClasses: vi.fn(),
-        analyzerGetFileLanguage: vi.fn(),
     };
 });
 
@@ -119,69 +113,18 @@ vi.mock('../services/embeddingDatabaseAdapter', () => {
     };
 });
 
-vi.mock('../services/treeStructureAnalyzer', async () => {
-    console.log('[TEST DEBUG] Mock factory for treeStructureAnalyzer executing');
-
-    const mockAnalyzerInstanceInternal = {
-        findSymbolsInRanges: hoistedMocks.analyzerFindSymbolsInRanges,
-        findFunctions: hoistedMocks.analyzerFindFunctions,
-        findClasses: hoistedMocks.analyzerFindClasses,
-        getFileLanguage: hoistedMocks.analyzerGetFileLanguage,
-    };
-    const mockResourceObject = {
-        instance: mockAnalyzerInstanceInternal,
-        dispose: vi.fn(),
-    };
-
-    const createMockFn = vi.fn(async () => {
-        console.log('[TEST DEBUG] TreeStructureAnalyzerResource.create MOCK CALLED');
-        if (mockResourceObject) {
-            console.log('[TEST DEBUG] mockResourceObject is defined. Instance defined:', !!mockResourceObject.instance);
-        } else {
-            console.log('[TEST DEBUG] mockResourceObject is UNDEFINED');
-        }
-        return mockResourceObject;
-    });
-
-    const MockTreeStructureAnalyzerResource = {
-        create: createMockFn,
-    };
-    console.log('[TEST DEBUG] MockTreeStructureAnalyzerResource.create is a mock:', vi.isMockFunction(MockTreeStructureAnalyzerResource.create));
-    if (vi.isMockFunction(MockTreeStructureAnalyzerResource.create)) {
-        // @ts-ignore
-        console.log('[TEST DEBUG] Mocked create function details:', MockTreeStructureAnalyzerResource.create.getMockImplementation() ? 'has impl' : 'no impl');
-    }
-
-
-    return {
-        TreeStructureAnalyzer: vi.fn(function () {
-            this.findSymbolsInRanges = hoistedMocks.analyzerFindSymbolsInRanges;
-            this.findFunctions = hoistedMocks.analyzerFindFunctions;
-            this.findClasses = hoistedMocks.analyzerFindClasses;
-            this.getFileLanguage = hoistedMocks.analyzerGetFileLanguage;
-            this.dispose = vi.fn();
-        }),
-        // SymbolInfo is an interface, so it doesn't need to be explicitly mocked/returned for runtime.
-        // If it were a class or value used at runtime, we'd need:
-        // SymbolInfo: (await vi.importActual('../services/treeStructureAnalyzer')).SymbolInfo,
-    };
-});
+vi.mock('../services/codeAnalysisService');
 
 
 describe('ContextProvider - Hybrid Context Retrieval (getContextForDiff)', () => {
     let contextProvider: ContextProvider;
     let mockEmbeddingDatabaseAdapterInstance: ReturnType<typeof EmbeddingDatabaseAdapter.getInstance>;
-    let mockModelManager: CopilotModelManager;
+    let mockModelManager: Mocked<CopilotModelManager>;
     let mockExtensionContext: vscode.ExtensionContext;
+    let mockCodeAnalysisService: Mocked<CodeAnalysisService>;
 
 
     beforeEach(async () => {
-        // Reset TreeStructureAnalyzer mocks via hoistedMocks
-        hoistedMocks.analyzerFindSymbolsInRanges.mockReset();
-        hoistedMocks.analyzerFindFunctions.mockReset().mockResolvedValue([]);
-        hoistedMocks.analyzerFindClasses.mockReset().mockResolvedValue([]);
-        hoistedMocks.analyzerGetFileLanguage.mockReset().mockReturnValue({ language: 'typescript', variant: 'tsx' });
-
         // Reset EmbeddingDatabaseAdapter mocks via hoistedMocks
         hoistedMocks.findRelevantCodeContextForChunks.mockReset();
         hoistedMocks.getStorageStats.mockReset();
@@ -211,71 +154,38 @@ describe('ContextProvider - Hybrid Context Retrieval (getContextForDiff)', () =>
             mockExtensionContext, {} as any, {} as any, {} as any
         );
 
-        // mockModelManager is now an instance from the factory mock,
-        // which already has getCurrentModel and listAvailableModels mocked.
-        // The spies below are redundant if the factory provides the correct behavior.
-        // If specific overrides per test are needed, they could be re-added,
-        // but the factory should provide good defaults.
-        mockModelManager = new CopilotModelManager(vi.fn() as any);
+        mockModelManager = new (CopilotModelManager as any)(vi.fn() as any) as Mocked<CopilotModelManager>;
+        mockCodeAnalysisService = new (CodeAnalysisService as any)() as Mocked<CodeAnalysisService>;
 
         // Re-establish mock behaviors that might have been reset by Vitest's global mock reset policies
         mockCurrentModelForManager.countTokens.mockResolvedValue(10);
         mockCurrentModelForManager.sendRequest.mockResolvedValue({ stream: { read: () => null } } as any); // Re-affirm sendRequest mock
 
         mockAvailableModelsForManager.forEach(modelInstance => {
-            // modelInstance is an instance of MockLanguageModelChatInstance
-            // Its countTokens and sendRequest are vi.fn() from the constructor
-            if (modelInstance.id === mockCurrentModelForManager.id) {
-                // Already handled above
-            } else {
-                // For other models in the list, ensure their mocks are also set if they could be used
-                // and their specific behavior matters. For now, let's ensure they also return 10.
+            if (modelInstance.id !== mockCurrentModelForManager.id) {
                 modelInstance.countTokens.mockResolvedValue(8); // Example: different value for other models
                 modelInstance.sendRequest.mockResolvedValue({ stream: { read: () => null } } as any);
             }
         });
 
-        // Ensure the CopilotModelManager's mocks also point to these potentially re-configured instances
-        // or re-affirm their mockResolvedValue if they return these instances.
-        // The factory for CopilotModelManager already returns mockCurrentModelForManager and mockAvailableModelsForManager.
-        // The instances themselves are now being re-configured above.
-
-        // Ensure the factory-provided mocks are used.
-        // These spies are removed as the factory should handle it.
-        // vi.spyOn(mockModelManager, 'getCurrentModel').mockResolvedValue({
-        //     name: 'mock-model',
-        //     family: 'mock-family',
-        //     maxInputTokens: 8000,
-        //     sendRequest: vi.fn(),
-        //     countTokens: vi.fn().mockResolvedValue(10),
-        //     vendor: 'mock-vendor',
-        //     version: '1.0',
-        //     id: 'mock-id', // This ID needs to match one in listAvailableModels
-        // });
-        // vi.spyOn(mockModelManager, 'listAvailableModels').mockResolvedValue([
-        //     {
-        //         name: 'mock-model', family: 'mock-family', maxInputTokens: 8000,
-        //         sendRequest: vi.fn(), countTokens: vi.fn().mockResolvedValue(10),
-        //         vendor: 'mock-vendor', version: '1.0', id: 'mock-id'
-        //     },
-        //     // Add other models if TokenManagerService needs to find different ones
-        // ]);
-
-
         contextProvider = ContextProvider.createSingleton(
             mockExtensionContext,
             mockEmbeddingDatabaseAdapterInstance, // Pass the controlled mock instance
-            mockModelManager
+            mockModelManager,
+            mockCodeAnalysisService
         );
-
-        // mockAnalyzerInstance is now set by the vi.mock factory and is the instance
-        // that ContextProvider will use. No need to call TreeStructureAnalyzerResource.create() here.
-
 
         // Mock vscode.workspace.fs
         vi.spyOn(vscode.workspace.fs, 'readFile').mockImplementation(async (uri: vscode.Uri) => {
             if (uri.fsPath.endsWith('file1.ts')) {
-                return Buffer.from('// Full content of file1.ts\nexport function oldFunction() {}\nexport function changedFunction() {}');
+                // This should represent the NEW content of the file after the diff is applied,
+                // as this is what the symbol analyzer would see in the workspace.
+                const newContent = `// Full content of file1.ts
+export function anotherFunction() {}
+export function changedFunction(param: string): void {
+  console.log(param);
+}`;
+                return Buffer.from(newContent);
             }
             return Buffer.from('');
         });
@@ -344,33 +254,32 @@ describe('ContextProvider - Hybrid Context Retrieval (getContextForDiff)', () =>
             const position = args[1] as vscode.Position;
 
             if (command === 'vscode.executeDefinitionProvider') {
-                if (uri.fsPath.endsWith('file1.ts') && position.line === 2 && position.character > 0) { // Assuming 'changedFunction' is on line 2 (0-indexed)
+                if (uri.fsPath.endsWith('file1.ts') && position.line === 2) { // changedFunction
                     return [
                         {
                             uri: vscode.Uri.file('/mock/repo/src/file1.ts'),
-                            // range: new vscode.Range(new vscode.Position(2, 0), new vscode.Position(2, 20)),
-                            range: { // Use plain object to bypass Range/Position class issues for now
+                            range: {
                                 start: { line: 2, character: 0 },
                                 end: { line: 2, character: 20 }
-                            } as vscode.Range, // Cast to satisfy type, runtime will use the plain object
-                        },
-                    ] as vscode.Location[];
-                }
-            }
-            if (command === 'vscode.executeReferenceProvider') {
-                if (uri.fsPath.endsWith('file1.ts') && position.line === 2) {
-                    return [
-                        {
-                            uri: vscode.Uri.file('/mock/repo/src/dep.ts'),
-                            range: {
-                                start: { line: 0, character: 0 }, // Corrected: dep.ts is 1 line, so line 0
-                                end: { line: 0, character: 10 }  // Assuming 'helper()' is at the start
                             } as vscode.Range,
                         },
                     ] as vscode.Location[];
                 }
             }
-            return undefined;
+            if (command === 'vscode.executeReferenceProvider') {
+                if (uri.fsPath.endsWith('file1.ts') && position.line === 2) { // changedFunction
+                    return [
+                        {
+                            uri: vscode.Uri.file('/mock/repo/src/dep.ts'),
+                            range: {
+                                start: { line: 0, character: 0 },
+                                end: { line: 0, character: 10 }
+                            } as vscode.Range,
+                        },
+                    ] as vscode.Location[];
+                }
+            }
+            return []; // Return empty array for other calls to prevent undefined errors
         });
     });
 
@@ -380,15 +289,14 @@ describe('ContextProvider - Hybrid Context Retrieval (getContextForDiff)', () =>
     });
 
     it('should retrieve and combine LSP and embedding context', async () => {
-        const diff = `
-diff --git a/src/file1.ts b/src/file1.ts
+        const diff = `diff --git a/src/file1.ts b/src/file1.ts
 index 123..456 100644
 --- a/src/file1.ts
 +++ b/src/file1.ts
-@@ -1,3 +1,3 @@
+@@ -1,3 +1,5 @@
  // Full content of file1.ts
- -export function oldFunction() {}
- -export function changedFunction() {}
+-export function oldFunction() {}
+-export function changedFunction() {}
 +export function anotherFunction() {}
 +export function changedFunction(param: string): void {
 +  console.log(param);
@@ -396,20 +304,22 @@ index 123..456 100644
 `;
         const gitRootPath = '/mock/repo';
 
-        // Mock symbol identification from TreeStructureAnalyzer
-        const mockIdentifiedSymbols: DiffSymbolInfo[] = [
+        // Mock symbol identification from CodeAnalysisService
+        // This mock should return all symbols that would be found in the NEW file content.
+        // The ContextProvider will then filter them based on the diff.
+        const allSymbolsInNewFile: SymbolInfo[] = [
+            {
+                symbolName: 'anotherFunction',
+                symbolType: 'function',
+                position: new vscode.Position(1, 17), // Line 2 in file, 0-indexed
+            },
             {
                 symbolName: 'changedFunction',
                 symbolType: 'function',
-                position: new vscode.Position(2, 17), // Line 3 in diff, 0-indexed in file
-                filePath: 'src/file1.ts',
+                position: new vscode.Position(2, 17), // Line 3 in file, 0-indexed
             },
         ];
-        hoistedMocks.analyzerFindSymbolsInRanges.mockResolvedValue(mockIdentifiedSymbols.map(s => ({
-            symbolName: s.symbolName,
-            symbolType: s.symbolType,
-            position: s.position,
-        })));
+        vi.spyOn(mockCodeAnalysisService, 'findSymbols').mockResolvedValue(allSymbolsInNewFile);
 
 
         // Mock embedding search results
@@ -429,11 +339,11 @@ index 123..456 100644
         const result: HybridContextResult = await contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive);
         const { snippets, parsedDiff } = result;
 
-        // Check for LSP definition snippets
+        // Check for LSP definition snippets for `changedFunction`
         expect(snippetsContainText(snippets, '**Definition in `src/file1.ts` (L3):**')).toBe(true);
         expect(snippetsContainText(snippets, 'export function changedFunction(param: string): void {')).toBe(true);
 
-        // Check for LSP reference snippets
+        // Check for LSP reference snippets for `changedFunction`
         expect(snippetsContainText(snippets, '**Reference in `src/dep.ts` (L1):**')).toBe(true);
         expect(snippetsContainText(snippets, 'export function helper(): number { return 1; }')).toBe(true);
 
@@ -452,7 +362,7 @@ index 123..456 100644
         expect(file1Diff).toBeDefined();
         expect(file1Diff?.hunks).toBeInstanceOf(Array);
         expect(file1Diff?.hunks.length).toBeGreaterThan(0);
-        expect(file1Diff?.hunks[0].hunkId).toBe('src/file1.ts:L1'); // Based on @@ -1,3 +1,3 @@
+        expect(file1Diff?.hunks[0].hunkId).toBe('src/file1.ts:L1'); // Based on @@ -1,3 +1,5 @@
 
         // Verify snippet association with hunkId
         const lspDefSnippet = snippets.find(s => s.type === 'lsp-definition' && s.content.includes('changedFunction'));
@@ -461,17 +371,23 @@ index 123..456 100644
 
 
         // Verify mocks
-        expect(hoistedMocks.analyzerFindSymbolsInRanges).toHaveBeenCalled();
+        expect(mockCodeAnalysisService.findSymbols).toHaveBeenCalled();
+        // It should have been called for both symbols in the diff
         expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.executeDefinitionProvider',
-            expect.objectContaining({ scheme: 'file', fsPath: expect.stringContaining('file1.ts') }), // Check for Uri-like shape
-            expect.objectContaining({ line: 2, character: 17 }), // Check for Position-like shape
-            expect.any(Object) // CancellationToken
+            expect.objectContaining({ fsPath: expect.stringContaining('file1.ts') }),
+            expect.objectContaining({ line: 1, character: 17 }), // for anotherFunction
+            expect.any(Object)
+        );
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.executeDefinitionProvider',
+            expect.objectContaining({ fsPath: expect.stringContaining('file1.ts') }),
+            expect.objectContaining({ line: 2, character: 17 }), // for changedFunction
+            expect.any(Object)
         );
         expect(vscode.commands.executeCommand).toHaveBeenCalledWith('vscode.executeReferenceProvider',
-            expect.objectContaining({ scheme: 'file', fsPath: expect.stringContaining('file1.ts') }), // Check for Uri-like shape
-            expect.objectContaining({ line: 2, character: 17 }), // Check for Position-like shape
+            expect.objectContaining({ fsPath: expect.stringContaining('file1.ts') }),
+            expect.objectContaining({ line: 2, character: 17 }), // for changedFunction
             { includeDeclaration: false },
-            expect.any(Object) // CancellationToken
+            expect.any(Object)
         );
         // The first argument (embeddingQueries) is dynamically generated based on the diff.
         // We'll check its type and that it contains expected substrings.
@@ -507,7 +423,7 @@ index 123..456 100644
  +new content without clear symbols
 `;
         const gitRootPath = '/mock/repo';
-        hoistedMocks.analyzerFindSymbolsInRanges.mockResolvedValue([]); // No symbols
+        vi.spyOn(mockCodeAnalysisService, 'findSymbols').mockResolvedValue([]); // No symbols
 
         const mockEmbeddingResults: SimilaritySearchResult[] = [{
             chunkId: 'emb1', fileId: 'f1', filePath: 'src/some_other_file.ts', content: 'embedding context', score: 0.9, startOffset: 0, endOffset: 10
@@ -554,8 +470,8 @@ diff --git a/src/file1.ts b/src/file1.ts
 +export function newFunction() {}
 `;
         const gitRootPath = '/mock/repo';
-        hoistedMocks.analyzerFindSymbolsInRanges.mockResolvedValue([
-            { symbolName: 'newFunction', symbolType: 'function', position: new vscode.Position(0, 17), filePath: 'src/file1.ts' }
+        vi.spyOn(mockCodeAnalysisService, 'findSymbols').mockResolvedValue([
+            { symbolName: 'newFunction', symbolType: 'function', position: new vscode.Position(0, 17) }
         ]);
         vi.spyOn(vscode.commands, 'executeCommand').mockResolvedValue([]); // LSP returns no locations
 
@@ -599,8 +515,8 @@ diff --git a/src/file1.ts b/src/file1.ts
         const gitRootPath = '/mock/repo';
         const cancellationTokenSource = new vscode.CancellationTokenSource();
 
-        hoistedMocks.analyzerFindSymbolsInRanges.mockResolvedValue([
-            { symbolName: 'testFunc', symbolType: 'function', position: new vscode.Position(0, 0), filePath: 'src/file1.ts' }
+        vi.spyOn(mockCodeAnalysisService, 'findSymbols').mockResolvedValue([
+            { symbolName: 'testFunc', symbolType: 'function', position: new vscode.Position(0, 0) }
         ]);
 
         vi.spyOn(vscode.commands, 'executeCommand').mockImplementation(async (command, ...args) => {
@@ -648,7 +564,7 @@ diff --git a/src/file1.ts b/src/file1.ts
         const diff = `diff --git a/src/file1.ts b/src/file1.ts\n--- a/src/file1.ts\n+++ b/src/file1.ts\n@@ -1,1 +1,1 @@\n+content`;
         const gitRootPath = '/mock/repo';
 
-        hoistedMocks.analyzerFindSymbolsInRanges.mockResolvedValue([]); // No symbols
+        vi.spyOn(mockCodeAnalysisService, 'findSymbols').mockResolvedValue([]); // No symbols
         vi.spyOn(vscode.commands, 'executeCommand').mockResolvedValue([]); // No LSP results
         hoistedMocks.findRelevantCodeContextForChunks.mockResolvedValue([]); // No embedding results
 
@@ -676,17 +592,7 @@ diff --git a/src/file1.ts b/src/file1.ts
         // If the initial embedding search (before fallback) uses empty queries, it might not call the adapter.
         // The test setup: hoistedMocks.findRelevantCodeContextForChunks.mockResolvedValue([]);
         // This means the primary embedding search will "succeed" with no results.
-        // Then, getFallbackContextSnippets is called, which itself calls findRelevantCodeContextForChunks.
-
-        // So, we expect at least one call from the fallback mechanism.
-        // If the primary search with empty queries *doesn't* call the adapter, then exactly one call from fallback.
-        // If the primary search *does* call with empty queries, then potentially two calls.
-        // Let's assume the fallback call is the one we care about here.
-        // The `contextProvider.ts` logic for `getContextForDiff` (line 382) checks `embeddingQueries.length > 0`
-        // before calling `this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks`.
-        // In this test, `extractMeaningfulChunksAndSymbols` for `+content` diff will produce `['content']` as query.
-        // So, the primary search *will* run.
-        // However, getFallbackContextSnippets is mocked directly to return fallbackSnippets.
+        // Then, getFallbackContextSnippets is mocked directly to return fallbackSnippets.
         // Its actual implementation (which calls findRelevantCodeContextForChunks) is NOT run.
         // Therefore, findRelevantCodeContextForChunks is only called ONCE by the primary embedding search.
 
@@ -707,4 +613,3 @@ diff --git a/src/file1.ts b/src/file1.ts
         expect(parsedDiff[0].hunks[0].hunkId).toBeDefined();
     });
 });
-
