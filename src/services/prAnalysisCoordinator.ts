@@ -13,7 +13,7 @@ import { ContextProvider } from './contextProvider';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { IndexingService } from './indexingService';
 import { ResourceDetectionService } from './resourceDetectionService';
-import { CodeAnalysisServiceInitializer } from './codeAnalysisService';
+import { CodeAnalysisServiceInitializer, CodeAnalysisService } from './codeAnalysisService';
 
 /**
  * PRAnalysisCoordinator orchestrates the PR analysis workflow
@@ -27,6 +27,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
     private statusBarService: StatusBarService;
 
     // Support services
+    private codeAnalysisService: CodeAnalysisService;
     private vectorDatabaseService: VectorDatabaseService;
     private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter;
     private contextProvider: ContextProvider;
@@ -44,6 +45,8 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         private readonly context: vscode.ExtensionContext
     ) {
         CodeAnalysisServiceInitializer.initialize(this.context.extensionPath);
+
+        this.codeAnalysisService = new CodeAnalysisService();
 
         // Initialize support services
         this.workspaceSettingsService = new WorkspaceSettingsService(context);
@@ -97,7 +100,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
 
         // Initialize the context provider
         this.contextProvider = ContextProvider.createSingleton(
-            this.context, this.embeddingDatabaseAdapter, this.modelManager
+            this.context, this.embeddingDatabaseAdapter, this.modelManager, this.codeAnalysisService
         );
 
         // Initialize the UI manager
