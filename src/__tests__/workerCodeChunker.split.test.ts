@@ -378,4 +378,28 @@ Final thoughts and summary of the document.`;
         expect(allText).toContain('# Main Title');
         expect(allText).toContain('## Section 1');
     });
+
+    it('should keep fenced code blocks together in markdown', async () => {
+        const markdownWithCode = `
+# Markdown Document
+
+Here is a code block:
+
+\`\`\`javascript
+function hello() {
+  console.log("Hello, World!");
+}
+\`\`\`
+
+This should be a separate chunk.
+`;
+        const result = await codeChunker.chunkCode(markdownWithCode, 'markdown', undefined, {}, new AbortController().signal);
+
+        // Expect at least 3 chunks: title, code block, and final paragraph.
+        expect(result.chunks.length).toBeGreaterThanOrEqual(3);
+
+        const codeChunk = result.chunks.find(c => c.includes('function hello()'));
+        expect(codeChunk).toBeDefined();
+        expect(codeChunk).toContain('console.log("Hello, World!");');
+    });
 });

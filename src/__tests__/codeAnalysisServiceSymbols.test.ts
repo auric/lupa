@@ -193,7 +193,8 @@ namespace MyNamespace // Line 3
         expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'MyMethod', symbolType: 'method_declaration', position: { line: 16, character: 8 } }));
         // expect(symbols).toContainEqual(expect.objectContaining({ symbolName: 'this', symbolType: 'indexer_declaration', position: { line: 24, character: 16 } }));
 
-        expect(symbols.length).toBeGreaterThanOrEqual(9);
+        // won't contain include
+        expect(symbols.length).toBeGreaterThanOrEqual(8);
 
         // Ensure no duplicates
         const symbolKeys = symbols.map(s => `${s.symbolName}|${s.symbolType}|${s.position.line}|${s.position.character}`);

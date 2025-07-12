@@ -55,9 +55,11 @@ export class WorkerCodeChunker {
 
         const chunks: string[] = [];
         const offsets: number[] = [];
-        let currentOffset = 0;
+        // Start chunking from the first identified breakpoint.
+        // This correctly ignores any "header" content like imports if they are not points of interest.
+        let currentOffset = breakpoints[0];
 
-        for (const bp of [...breakpoints, text.length]) {
+        for (const bp of [...breakpoints.slice(1), text.length]) {
             if (signal.aborted) throw new Error('Operation cancelled');
             if (bp <= currentOffset) continue;
 

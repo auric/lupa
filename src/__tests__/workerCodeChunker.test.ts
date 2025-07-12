@@ -365,4 +365,37 @@ namespace Utils {
       expect(trimmedChunk.length).toBeGreaterThan(0);
     }
   });
+
+  it('should handle files containing only comments', async () => {
+    const codeWithOnlyComments = `
+// This is a file with only comments.
+// It should be treated as a single chunk.
+
+/**
+ * A block comment.
+ */
+`;
+    const result = await codeChunker.chunkCode(codeWithOnlyComments, 'typescript', undefined, {}, abortController.signal);
+    expect(result.chunks.length).toBe(1);
+    expect(result.chunks[0]).toContain('// This is a file with only comments.');
+  });
+
+  it('should correctly handle mixed tabs and spaces for indentation', async () => {
+    const codeWithMixedWhitespace = `
+class MixedWhitespace {
+	\t// This line is indented with a tab
+\t    // This line has a tab and spaces
+    method() {
+        return 1; // Indented with spaces
+    }
+}`;
+    const result = await codeChunker.chunkCode(codeWithMixedWhitespace, 'typescript', undefined, {}, abortController.signal);
+    expect(result.chunks.length).toBe(1);
+    const chunk = result.chunks[0];
+    // The outer indentation should be trimmed, but the relative indentation should be preserved.
+    expect(chunk).toContain("class MixedWhitespace");
+    expect(chunk).toContain("\t// This line is indented with a tab");
+    expect(chunk).toContain("\t    // This line has a tab and spaces");
+    expect(chunk).toContain("    method()");
+  });
 });

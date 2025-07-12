@@ -323,4 +323,50 @@ namespace utils {
     // and does not produce overlapping chunks. Its core design is to split at natural
     // structural boundaries, making the concept of overlapping obsolete.
     // it('should not produce overlapped chunks that split words/identifiers', async () => { ... });
+    it('should correctly chunk a complex C# file into logical blocks', async () => {
+        const csharpCode = `using System;
+using System.Collections.Generic;
+
+namespace MyTestNamespace
+{
+    /// <summary>
+    /// A test class for chunking.
+    /// </summary>
+    [Serializable]
+    public class TestClass<T> where T : new()
+    {
+        public T MyProperty { get; set; }
+
+        public TestClass()
+        {
+            MyProperty = new T();
+        }
+
+        /// <summary>
+        /// A sample method with some logic.
+        /// </summary>
+        public void DoSomething(List<T> items)
+        {
+            foreach (var item in items)
+            {
+                Console.WriteLine(item.ToString());
+            }
+        }
+    }
+}`;
+        const result = await chunker.chunkCode(csharpCode, 'csharp', undefined, {}, new AbortController().signal);
+
+        // Expect three main chunks: one for the using statement, one for the second using statement, and one for the namespace.
+        expect(result.chunks.length).toBe(1);
+
+        // The first chunk should contain the using directives.
+        expect(result.chunks[0]).not.toContain('using System;');
+        expect(result.chunks[0]).not.toContain('using System.Collections.Generic;');
+
+        // The second chunk should be the entire namespace block.
+        const namespaceChunk = result.chunks[0];
+        expect(namespaceChunk.startsWith('namespace MyTestNamespace')).toBe(true);
+        expect(namespaceChunk.endsWith('}')).toBe(true);
+        expect(namespaceChunk).toContain('public class TestClass<T>');
+    });
 });

@@ -62,7 +62,7 @@ describe('CodeAnalysisService - Advanced Scenarios', () => {
             const symbols = await service.findSymbols(code, 'css');
             const symbolNames = symbols.map(s => s.symbolName);
 
-            expect(symbolNames).toContain('@import "my-styles.css"');
+            expect(symbolNames).not.toContain('@import "my-styles.css"');
             expect(symbolNames).toContain('@layer utilities');
             expect(symbolNames).toContain('@keyframes slidein');
             expect(symbolNames).toContain('.container > .item, #main');

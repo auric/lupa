@@ -15,7 +15,6 @@ export interface LanguageQueryConfig {
 export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     javascript: {
         pointsOfInterest: [
-            '(import_statement) @capture',
             '(class_declaration) @capture',
             '(function_declaration) @capture',
             '(variable_declarator value: (arrow_function)) @capture',
@@ -29,7 +28,7 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     typescript: {
         pointsOfInterest: [
-            '(import_statement) @capture',
+            '(internal_module) @capture',
             '(class_declaration) @capture',
             '(function_declaration) @capture',
             '(variable_declarator value: (arrow_function)) @capture',
@@ -48,7 +47,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     python: {
         pointsOfInterest: [
             '(decorated_definition) @capture',
-            '(import_statement) @capture',
             '(class_definition) @capture',
             '(function_definition) @capture',
         ],
@@ -59,7 +57,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     java: {
         pointsOfInterest: [
-            '(import_declaration) @capture',
             '(class_declaration) @capture',
             '(interface_declaration) @capture',
             '(enum_declaration) @capture',
@@ -73,7 +70,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     cpp: {
         pointsOfInterest: [
-            '(preproc_include) @capture',
             '(namespace_definition) @capture',
             // A template declaration is a wrapper, we want the thing inside it
             '(template_declaration . (class_specifier) @capture)',
@@ -91,7 +87,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     c: {
         pointsOfInterest: [
-            '(preproc_include) @capture',
             '(function_definition) @capture',
             '(declaration declarator: (function_declarator)) @capture',
             '(struct_specifier) @capture',
@@ -101,7 +96,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     csharp: {
         pointsOfInterest: [
-            '(using_directive) @capture',
             '(namespace_declaration) @capture',
             '(class_declaration) @capture',
             '(struct_declaration) @capture',
@@ -122,7 +116,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     go: {
         pointsOfInterest: [
             '(package_clause) @capture',
-            '(import_declaration) @capture',
             '(function_declaration) @capture',
             '(method_declaration) @capture',
             '(type_declaration) @capture',
@@ -133,7 +126,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     ruby: {
         pointsOfInterest: [
-            '(require) @capture',
             '(class) @capture',
             '(module) @capture',
             '(method) @capture',
@@ -143,7 +135,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     },
     rust: {
         pointsOfInterest: [
-            '(use_declaration) @capture',
             '(mod_item) @capture',
             '(struct_item) @capture',
             '(enum_item) @capture',
@@ -160,7 +151,6 @@ export const LANGUAGE_QUERIES: Record<string, LanguageQueryConfig> = {
     css: {
         pointsOfInterest: [
             '(at_rule) @capture',
-            '(import_statement) @capture',
             '(media_statement) @capture',
             '(namespace_statement) @capture',
             '(keyframes_statement) @capture',
