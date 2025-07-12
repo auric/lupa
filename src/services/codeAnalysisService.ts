@@ -42,6 +42,13 @@ export class CodeAnalysisServiceInitializer {
         return this.initializationPromise;
     }
 
+    public static waitForInitialization(): Promise<void> {
+        if (this.initializationPromise) {
+            return this.initializationPromise;
+        }
+        return Promise.reject(new Error('CodeAnalysisServiceInitializer has not been initialized.'));
+    }
+
     /**
      * Constructs the full path to a specific Tree-sitter grammar WASM file.
      * @param grammarName The name of the grammar (e.g., 'tree-sitter-typescript').
@@ -62,15 +69,25 @@ export class CodeAnalysisServiceInitializer {
  * such as points of interest and comments, which are used for intelligent chunking and symbol analysis.
  */
 export class CodeAnalysisService implements vscode.Disposable {
-    private parser: Parser;
+    private parser: Parser | null = null;
     private languageParsers: Map<string, Language> = new Map();
     private isDisposed = false;
 
     constructor() {
-        this.parser = new Parser();
+        this.getParser();
     }
 
-    private async getLanguageParser(language: string, variant: string | undefined): Promise<Language> {
+    private async getParser(): Promise<Parser> {
+        if (this.parser) {
+            return this.parser;
+        }
+
+        await CodeAnalysisServiceInitializer.waitForInitialization();
+        this.parser = new Parser();
+        return this.parser;
+    }
+
+    private async getLanguage(language: string, variant: string | undefined): Promise<Language> {
         const cacheKey = variant ? `${language}-${variant}` : language;
         if (this.languageParsers.has(cacheKey)) {
             return this.languageParsers.get(cacheKey)!;
@@ -100,9 +117,10 @@ export class CodeAnalysisService implements vscode.Disposable {
             return null;
         }
         try {
-            const langParser = await this.getLanguageParser(language, variant);
-            this.parser.setLanguage(langParser);
-            return this.parser.parse(code);
+            const parser = await this.getParser();
+            const langParser = await this.getLanguage(language, variant);
+            parser.setLanguage(langParser);
+            return parser.parse(code);
         } catch (error) {
             console.error(`Error parsing ${language} code:`, error);
             return null;
@@ -125,7 +143,7 @@ export class CodeAnalysisService implements vscode.Disposable {
         }
 
         try {
-            const langParser = await this.getLanguageParser(languageId, variant);
+            const langParser = await this.getLanguage(languageId, variant);
             const langConfig = LANGUAGE_QUERIES[languageId];
             if (!langConfig || !langConfig.pointsOfInterest) return [];
 
@@ -450,7 +468,7 @@ export class CodeAnalysisService implements vscode.Disposable {
         }
 
         try {
-            const langParser = await this.getLanguageParser(languageId, variant);
+            const langParser = await this.getLanguage(languageId, variant);
             const allPois = this.extractPointsOfInterest(tree.rootNode, langParser, languageId);
             const poiIds = new Set(allPois.map(p => p.id));
 
@@ -528,7 +546,9 @@ export class CodeAnalysisService implements vscode.Disposable {
         if (this.isDisposed) {
             return;
         }
-        this.parser.delete();
+        if (this.parser) {
+            this.parser.delete();
+        }
         this.languageParsers.clear();
         this.isDisposed = true;
         console.log('CodeAnalysisService disposed.');
