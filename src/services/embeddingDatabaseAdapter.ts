@@ -6,6 +6,7 @@ import { IndexingService } from './indexingService';
 import type { ProcessingResult } from '../types/indexingTypes';
 import { SimilaritySearchOptions, SimilaritySearchResult } from '../types/embeddingTypes';
 import { Log } from './loggingService';
+import { quickHash } from '../utils/hashUtils';
 
 /**
  * EmbeddingDatabaseAdapter provides high-level operations to integrate
@@ -509,7 +510,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
 
         for (const result of results) {
             // Create a key based on file path and content hash
-            const contentHash = this.quickHash(result.content);
+            const contentHash = quickHash(result.content);
             const key = `${result.filePath}:${contentHash}`;
 
             // Skip if we've already seen this content
@@ -525,23 +526,6 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
         return unique;
     }
 
-    /**
-     * Generate a simple hash for deduplication purposes
-     * @param content Content to hash
-     * @returns Simple hash value
-     */
-    private quickHash(content: string): number {
-        let hash = 0;
-        if (content.length === 0) return hash;
-
-        for (let i = 0; i < content.length; i++) {
-            const char = content.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit integer
-        }
-
-        return hash;
-    }
 
     /**
      * Generate an embedding vector for text content using the indexingService

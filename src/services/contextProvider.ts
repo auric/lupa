@@ -16,6 +16,7 @@ import {
 } from '../types/contextTypes';
 import { getLanguageForExtension, type SupportedLanguage } from '../types/types';
 import { Log } from './loggingService';
+import { quickHash } from '../utils/hashUtils';
 
 /**
  * Represents symbol information found within a diff, including file path.
@@ -363,7 +364,7 @@ export class ContextProvider implements vscode.Disposable {
                                 if (token?.isCancellationRequested || !defLocations) return;
                                 const snippets = await this.getSnippetsForLocations(defLocations, 3, token, "Definition");
                                 snippets.forEach(s => allContextSnippets.push({
-                                    id: `lsp-def-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
+                                    id: `lsp-def-${symbol.filePath}-${symbol.position.line}-${quickHash(s)}`,
                                     type: 'lsp-definition', content: s, relevanceScore: 1.0, // Highest priority for LSP definitions
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
@@ -376,7 +377,7 @@ export class ContextProvider implements vscode.Disposable {
                                 if (token?.isCancellationRequested || !refLocations) return;
                                 const snippets = await this.getSnippetsForLocations(refLocations, 2, token, "Reference");
                                 snippets.forEach(s => allContextSnippets.push({
-                                    id: `lsp-ref-${symbol.filePath}-${symbol.position.line}-${this.quickHash(s)}`,
+                                    id: `lsp-ref-${symbol.filePath}-${symbol.position.line}-${quickHash(s)}`,
                                     type: 'lsp-reference', content: s, relevanceScore: 0.9, // High priority for LSP references
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
@@ -421,7 +422,7 @@ export class ContextProvider implements vscode.Disposable {
                 }
 
                 allContextSnippets.push({
-                    id: `emb-${embResult.fileId}-${embResult.chunkId || this.quickHash(embResult.content)}`,
+                    id: `emb-${embResult.fileId}-${embResult.chunkId || quickHash(embResult.content)}`,
                     type: 'embedding',
                     content: formattedContent,
                     relevanceScore: embResult.score, // Relevance based on embedding similarity score
@@ -662,7 +663,7 @@ export class ContextProvider implements vscode.Disposable {
                         const fileHeader = `### File: \`${embResult.filePath}\` (Fallback Relevance: ${scoreDisplay}%)`;
                         const formattedContent = `${fileHeader}\n\`\`\`\n${embResult.content}\n\`\`\``;
                         fallbackSnippets.push({
-                            id: `fallback-emb-${embResult.fileId}-${embResult.chunkId || this.quickHash(embResult.content)}`,
+                            id: `fallback-emb-${embResult.fileId}-${embResult.chunkId || quickHash(embResult.content)}`,
                             type: 'embedding',
                             content: formattedContent,
                             relevanceScore: embResult.score * 0.5, // Lower priority for fallback embeddings, scaled by original score
@@ -804,7 +805,7 @@ export class ContextProvider implements vscode.Disposable {
 
             for (const result of fileResults) {
                 // Simple content hash to avoid including identical code blocks
-                const contentHash = this.quickHash(result.content);
+                const contentHash = quickHash(result.content);
 
                 if (!seenContentHashCodes.has(contentHash)) {
                     if (combinedContent) {
@@ -861,23 +862,6 @@ export class ContextProvider implements vscode.Disposable {
         ].join('\n\n');
     }
 
-    /**
-     * Generate a simple hash for deduplication purposes
-     * @param content Content to hash
-     * @returns Simple hash value
-     */
-    private quickHash(content: string): number {
-        let hash = 0;
-        if (content.length === 0) return hash;
-
-        for (let i = 0; i < content.length; i++) {
-            const char = content.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
-            hash = hash & hash; // Convert to 32bit integer
-        }
-
-        return hash;
-    }
 
     /**
      * Find the definition(s) of a symbol at a given position in a file using LSP.
