@@ -4,7 +4,7 @@ import { IndexingManager } from './indexingManager';
 import { GitOperationsManager } from './gitOperationsManager';
 import { UIManager } from './uiManager';
 import { AnalysisProvider } from './analysisProvider';
-import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
+import { StatusBarService } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { EmbeddingModelSelectionService, EmbeddingModel } from './embeddingModelSelectionService';
 import { VectorDatabaseService } from './vectorDatabaseService';
@@ -125,8 +125,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         // Get the status bar service
         this.statusBarService = StatusBarService.getInstance();
 
-        // Set the initial status
-        this.uiManager.updateStatusBar(StatusBarState.Ready);
+        // Initial status is handled by individual operations
 
         // Register commands
         this.registerCommands();
@@ -188,22 +187,21 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
      * Analyze a pull request
      */
     public async analyzePR(): Promise<void> {
+        const statusId = 'pr-analysis';
+        
         try {
-            // Set status to analyzing
-            this.uiManager.updateStatusBar(StatusBarState.Analyzing);
+            this.statusBarService.showProgress(statusId, 'Analyzing PR', 'PR analysis in progress');
 
             // Initialize Git service
             const isGitAvailable = await this.gitOperationsManager.initialize();
             if (!isGitAvailable) {
                 vscode.window.showErrorMessage('Git extension not available or no Git repository found in workspace.');
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
                 return;
             }
 
             const repository = this.gitOperationsManager.getRepository();
             if (!repository) {
                 vscode.window.showErrorMessage('No active Git repository could be determined.');
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
                 return;
             }
             const gitRootPath = repository.rootUri.fsPath;
@@ -212,7 +210,6 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             const selectedOption = await this.uiManager.showAnalysisTypeOptions();
 
             if (!selectedOption) {
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
                 return;
             }
 
@@ -220,7 +217,6 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             const diffResult = await this.gitOperationsManager.getDiffFromSelection(selectedOption);
 
             if (!diffResult) {
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
                 return;
             }
 
@@ -228,13 +224,11 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
 
             if (error) {
                 vscode.window.showErrorMessage(error);
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
                 return;
             }
 
             if (!diffText || diffText.trim() === '') {
                 vscode.window.showInformationMessage('No changes found to analyze.');
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
                 return;
             }
 
@@ -242,81 +236,57 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             const analysisMode = await this.uiManager.selectAnalysisMode();
 
             if (!analysisMode) {
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
                 return;
             }
 
             // Perform the analysis with progress reporting
             await this.uiManager.showAnalysisProgress('PR Analyzer', async (progress, token) => {
-                try {
-                    // Initial setup - 5%
-                    progress.report({ message: 'Initializing analysis...', increment: 5 });
+                // Initial setup - 5%
+                progress.report({ message: 'Initializing analysis...', increment: 5 });
 
-                    // Step 1: Run the analysis with detailed progress reporting - 85% total
-                    // We allocate most of the progress to the actual analysis
-                    const { analysis, context } = await this.analysisProvider.analyzePullRequest(
-                        diffText,
-                        gitRootPath, // Pass gitRootPath here
-                        analysisMode,
-                        (message, increment) => {
-                            // Only update the message if no increment is specified
-                            if (increment) {
-                                // Use a very conservative scaling factor to ensure progress
-                                // never gets ahead of actual completion
-                                const scaledIncrement = Math.min(increment * 0.2, 1);
-                                progress.report({ message, increment: scaledIncrement });
-                            } else {
-                                progress.report({ message });
-                            }
-                        },
-                        token
-                    );
+                // Step 1: Run the analysis with detailed progress reporting - 85% total
+                // We allocate most of the progress to the actual analysis
+                const { analysis, context } = await this.analysisProvider.analyzePullRequest(
+                    diffText,
+                    gitRootPath, // Pass gitRootPath here
+                    analysisMode,
+                    (message, increment) => {
+                        // Only update the message if no increment is specified
+                        if (increment) {
+                            // Use a very conservative scaling factor to ensure progress
+                            // never gets ahead of actual completion
+                            const scaledIncrement = Math.min(increment * 0.2, 1);
+                            progress.report({ message, increment: scaledIncrement });
+                        } else {
+                            progress.report({ message });
+                        }
+                    },
+                    token
+                );
 
-                    // Step 2: Display the results - 10% remaining
-                    progress.report({ message: 'Preparing analysis results...', increment: 5 });
+                // Step 2: Display the results - 10% remaining
+                progress.report({ message: 'Preparing analysis results...', increment: 5 });
 
-                    // Create a title based on the reference
-                    const title = `PR Analysis: ${refName}`;
+                // Create a title based on the reference
+                const title = `PR Analysis: ${refName}`;
 
-                    // Display the results in a webview
-                    this.uiManager.displayAnalysisResults(title, diffText, context, analysis);
-                    progress.report({ message: 'Analysis displayed', increment: 5 });
-
-                    // Update status bar
-                    this.uiManager.showTemporaryStatusMessage(
-                        'Analysis complete',
-                        5000,
-                        StatusBarMessageType.Info
-                    );
-                } catch (error) {
-                    if (token.isCancellationRequested) {
-                        throw new Error('Operation cancelled');
-                    }
-                    throw new Error(`Failed to analyze PR: ${error instanceof Error ? error.message : String(error)}`);
-                }
-
-                // Reset status to ready
-                this.uiManager.updateStatusBar(StatusBarState.Ready);
+                // Display the results in a webview
+                this.uiManager.displayAnalysisResults(title, diffText, context, analysis);
+                progress.report({ message: 'Analysis displayed', increment: 5 });
             });
+
+            this.statusBarService.showTemporaryMessage('Analysis complete', 3000, 'check');
         } catch (error) {
             if (error instanceof Error && error.message.includes('cancelled')) {
+                this.statusBarService.showTemporaryMessage('Analysis cancelled', 3000, 'warning');
                 vscode.window.showInformationMessage('Analysis cancelled');
-                this.uiManager.showTemporaryStatusMessage(
-                    'Analysis cancelled',
-                    3000,
-                    StatusBarMessageType.Warning
-                );
             } else {
                 const errorMessage = error instanceof Error ? error.message : String(error);
+                this.statusBarService.showTemporaryMessage('Analysis failed', 3000, 'error');
                 vscode.window.showErrorMessage(`Failed to analyze PR: ${errorMessage}`);
-                this.uiManager.showTemporaryStatusMessage(
-                    'Analysis failed',
-                    5000,
-                    StatusBarMessageType.Error
-                );
-                this.uiManager.updateStatusBar(StatusBarState.Error, errorMessage);
             }
-            this.uiManager.updateStatusBar(StatusBarState.Ready);
+        } finally {
+            this.statusBarService.hideProgress(statusId);
         }
     }
 
@@ -395,18 +365,8 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             });
 
             if (rebuildChoice === 'Yes, rebuild now') {
-                this.statusBarService.showTemporaryMessage(
-                    `Rebuilding database for model: ${actualNewModelName}...`,
-                    undefined, // Indefinite until indexing finishes
-                    StatusBarMessageType.Working
-                );
-                // performFullReindexing should now call vectorDb.deleteAllEmbeddingsAndChunks()
+                // performFullReindexing will show its own progress status
                 await this.indexingManager.performFullReindexing();
-                this.statusBarService.showTemporaryMessage(
-                    `Database rebuild for ${actualNewModelName} complete.`,
-                    5000,
-                    StatusBarMessageType.Info
-                );
             } else {
                 vscode.window.showWarningMessage(
                     `Database not rebuilt. Context retrieval may not work correctly until the database is rebuilt for model "${actualNewModelName}".`

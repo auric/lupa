@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { IndexingService, type IndexingServiceOptions } from '../services/indexingService';
 import type { FileToProcess, ProcessingResult, EmbeddingGenerationOutput, YieldedProcessingOutput } from '../types/indexingTypes';
-import { StatusBarService, StatusBarState, StatusBarMessageType } from '../services/statusBarService';
+import { StatusBarService } from '../services/statusBarService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { DetailedChunkingResult, EmbeddingOptions } from '../types/embeddingTypes';
 
@@ -19,12 +19,9 @@ const mocks = vi.hoisted(() => {
 
     const mockStatusBarInstance = {
         statusBarItem: mockStatusBarItem,
-        setState: vi.fn(),
-        getCurrentState: vi.fn(() => StatusBarState.Ready),
+        showProgress: vi.fn(),
+        hideProgress: vi.fn(),
         showTemporaryMessage: vi.fn(),
-        clearTemporaryMessage: vi.fn(),
-        show: vi.fn(),
-        hide: vi.fn(),
         dispose: vi.fn()
     };
 
@@ -90,21 +87,7 @@ vi.mock('../services/statusBarService', () => {
         StatusBarService: {
             getInstance: vi.fn(() => mocks.mockStatusBarInstance),
             reset: vi.fn(),
-            getCurrentState: vi.fn(() => StatusBarState.Ready),
             MAIN_STATUS_BAR_ID: 'prAnalyzer.main'
-        },
-        StatusBarMessageType: {
-            Info: 'info',
-            Warning: 'warning',
-            Error: 'error',
-            Working: 'working'
-        },
-        StatusBarState: {
-            Ready: 'ready',
-            Indexing: 'indexing',
-            Analyzing: 'analyzing',
-            Error: 'error',
-            Inactive: 'inactive'
         }
     };
 });
@@ -453,34 +436,13 @@ describe('IndexingService', () => {
         }];
         mocks.mockGenerateEmbeddingsForChunks.mockResolvedValue(mockEmbeddingOutputStatus);
 
-        const setStateSpy = vi.spyOn(statusBarServiceInstance, 'setState');
-        const showTemporaryMessageSpy = vi.spyOn(statusBarServiceInstance, 'showTemporaryMessage');
-
         const generator = indexingService.processFilesGenerator([fileForStatus]);
-        await collectAndReturn(generator); // Consume the generator
+        const results = await collectAndReturn(generator); // Consume the generator
 
-        // Verify status updates for sequential processing
-        // Initial "Preparing"
-        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Indexing, 'Preparing 1 files...');
-
-        // During processing of the first (and only) file
-        // This will be called twice for each file (before and after _processSingleFileSequentially)
-        // For a single file, it might show "Processing file 0/1" then "Processing file 1/1"
-        // then "Embeddings 0/1" then "Embeddings 1/1"
-        expect(showTemporaryMessageSpy).toHaveBeenCalledWith(
-            expect.stringMatching(/Indexing: Processing file (0|1)\/1 \(\d+%\)/),
-            expect.any(Number),
-            StatusBarMessageType.Working
-        );
-        // After chunking, before embedding (if chunks > 0)
-        expect(showTemporaryMessageSpy).toHaveBeenCalledWith(
-            expect.stringMatching(/Indexing: Processing file (0|1)\/1 \(\d+%\)/),
-            expect.any(Number),
-            StatusBarMessageType.Working
-        );
-
-        // Final "Ready" state
-        expect(setStateSpy).toHaveBeenCalledWith(StatusBarState.Ready, 'Indexing complete');
+        // Verify that the file was processed successfully (IndexingService now focuses on processing logic only)
+        expect(results.returned.size).toBe(1);
+        expect(results.returned.get('test')).toBeDefined();
+        expect(results.returned.get('test')?.success).toBe(true);
     });
 
     it('should update workspace settings after successful processing with processFilesGenerator', async () => {

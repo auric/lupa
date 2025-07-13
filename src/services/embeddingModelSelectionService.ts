@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
+import { StatusBarService } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { ResourceDetectionService, type SystemResources } from './resourceDetectionService';
 
@@ -225,16 +225,12 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
         } else if (modelsInfo.fallbackExists) {
             modelInfo = 'Using MiniLM';
         } else {
-            this.statusBarService.setState(StatusBarState.Error, 'No embedding models available');
+            this.statusBarService.showTemporaryMessage('No embedding models available', 5000, 'error');
             return;
         }
 
         // Show temporary message about selected model
-        this.statusBarService.showTemporaryMessage(
-            modelInfo,
-            5000,
-            StatusBarMessageType.Info
-        );
+        this.statusBarService.showTemporaryMessage(modelInfo, 5000, 'check');
     }
 
     /**

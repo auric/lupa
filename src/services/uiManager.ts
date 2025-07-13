@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
+import { StatusBarService } from './statusBarService';
 import { AnalysisMode } from '../types/modelTypes';
 
 /**
@@ -309,17 +309,4 @@ export class UIManager {
         }, task);
     }
 
-    /**
-     * Update status bar state
-     */
-    public updateStatusBar(state: StatusBarState, detail?: string): void {
-        this.statusBarService.setState(state, detail);
-    }
-
-    /**
-     * Show temporary status bar message
-     */
-    public showTemporaryStatusMessage(message: string, durationMs: number = 5000, type: StatusBarMessageType = StatusBarMessageType.Info): void {
-        this.statusBarService.showTemporaryMessage(message, durationMs, type);
-    }
 }

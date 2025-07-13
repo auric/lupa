@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
-import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
+import { StatusBarService } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import {
     type EmbeddingOptions,
@@ -132,15 +132,12 @@ export class IndexingService implements vscode.Disposable {
      * It sets the service to a ready state or an error state if initialization fails.
      */
     public async initialize(): Promise<void> {
-        this.statusBarService.setState(StatusBarState.Indexing, 'Initializing indexing services...');
         try {
             await this.codeChunkingService.initialize();
             await this.embeddingGenerationService.initialize();
-            this.statusBarService.setState(StatusBarState.Ready, 'Indexing services initialized');
             Log.info("IndexingService and its components initialized successfully.");
         } catch (error) {
             Log.error("Failed to initialize IndexingService or its components:", error);
-            this.statusBarService.setState(StatusBarState.Error, 'Initialization failed');
             // Rethrow to allow the caller (e.g., IndexingManager) to handle this critical failure.
             throw new Error(`IndexingService initialization failed: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -177,7 +174,6 @@ export class IndexingService implements vscode.Disposable {
         if (!this.codeChunkingService || !this.embeddingGenerationService) {
             const errorMsg = 'IndexingService or its dependent services are not properly initialized.';
             Log.error(`[IndexingService] ${errorMsg}`);
-            this.statusBarService.setState(StatusBarState.Error, 'Service initialization error before processing.');
             throw new Error(errorMsg);
         }
 
@@ -206,7 +202,6 @@ export class IndexingService implements vscode.Disposable {
         };
         const op = this.currentOperation;
 
-        this.statusBarService.setState(StatusBarState.Indexing, `Preparing ${op.initialFiles.length} files...`);
         Log.info(`[IndexingService] Starting processing for ${op.initialFiles.length} files.`);
 
         let livenessTimer: NodeJS.Timeout | null = setInterval(() => {
@@ -233,8 +228,6 @@ export class IndexingService implements vscode.Disposable {
                     continue;
                 }
 
-                this.updateOverallStatus(); // Update status before processing each file
-
                 // Await the full processing (chunking and embedding) for the single file.
                 // The helper method _processSingleFileSequentially will handle chunking, embedding, and result construction.
                 const processingResult = await this._processSingleFileSequentially(file, op, this.options.embeddingOptions);
@@ -244,8 +237,6 @@ export class IndexingService implements vscode.Disposable {
                 op.results.set(file.id, processingResult);
                 yield { filePath: file.path, result: processingResult };
                 Log.info(`[IndexingService] Yielded results for file ${file.path}. Success: ${processingResult.success}`);
-
-                this.updateOverallStatus(); // Update status after processing each file
             }
             Log.info('[IndexingService] All files have been processed sequentially.');
 
@@ -265,16 +256,13 @@ export class IndexingService implements vscode.Disposable {
 
                 if (overallSuccess) {
                     this.workspaceSettingsService.updateLastIndexingTimestamp();
-                    this.statusBarService.setState(StatusBarState.Ready, 'Indexing complete');
                     Log.info('[IndexingService] Indexing completed successfully for all dispatched files.');
                 } else if (allFilesAttemptedAndResulted) {
                     // All files attempted, but some failed
-                    this.statusBarService.setState(StatusBarState.Error, 'Indexing finished with some issues.');
                     Log.warn('[IndexingService] Indexing finished with some issues or was incomplete.');
                 } else {
                     // Not all files were even attempted or have results (e.g. early critical error before loop completed)
                     // This case might be less common if the loop tries to add error results for all initial files.
-                    this.statusBarService.setState(StatusBarState.Error, 'Indexing incomplete or critical error.');
                     Log.error('[IndexingService] Indexing was incomplete or a critical error occurred before all files could be processed.');
                 }
             }
@@ -283,7 +271,6 @@ export class IndexingService implements vscode.Disposable {
                 Log.info('[IndexingService] Operation was aborted during processing (generator).', error.message);
             } else {
                 Log.error('[IndexingService] Critical error during file processing (generator):', error);
-                this.statusBarService.setState(StatusBarState.Error, error instanceof Error ? error.message : 'Unknown critical error during indexing');
             }
             // Yield error for any initial files that don't have a result yet
             if (op) {
@@ -316,7 +303,6 @@ export class IndexingService implements vscode.Disposable {
             const finalResults = new Map(this.currentOperation?.results);
 
             if (this.currentOperation?.abortController.signal.aborted) {
-                this.statusBarService.showTemporaryMessage('Indexing cancelled', 3000, StatusBarMessageType.Warning);
                 // Ensure all initial files have a result, even if it's a cancellation error
                 this.currentOperation.initialFiles.forEach(file => {
                     if (!finalResults.has(file.id)) {
@@ -337,7 +323,6 @@ export class IndexingService implements vscode.Disposable {
             }
 
             this.currentOperation = null;
-            this.updateOverallStatus();
             Log.info('[IndexingService] Exiting processFilesGenerator.');
             return finalResults; // Return all accumulated results (successes and failures)
         }
@@ -491,69 +476,6 @@ export class IndexingService implements vscode.Disposable {
         }
     }
 
-    /**
-     * Updates the overall status bar message based on the current operation state.
-     */
-    private updateOverallStatus(): void {
-        const op = this.currentOperation; // Capture current state
-
-        if (!op) {
-            // If no operation, set to Ready, unless there was a persistent error state we want to show.
-            // For simplicity, just Ready, but only if not already in an error state or disabled.
-            const currentState = this.statusBarService.getCurrentState();
-            if (currentState !== StatusBarState.Error && currentState !== StatusBarState.Disabled) {
-                this.statusBarService.setState(StatusBarState.Ready);
-            }
-            return;
-        }
-
-        if (op.abortController.signal.aborted) {
-            // If aborted, message is handled by cancelProcessing or finally block in processFiles.
-            // The `finally` block in `processFiles` or `cancelProcessing` itself will set the final state.
-            return;
-        }
-
-        const totalInitialFiles = op.initialFiles.length;
-        // Files that are successfully chunked and thus are candidates for embedding
-        const filesSuccessfullyChunked = op.filesSuccessfullyChunkedCount;
-
-        if (op.abortController.signal.aborted) return; // Status will be handled by cancellation logic
-
-        // Progress through files being attempted for chunking (initial phase)
-        if (op.filesChunkingAttemptedCount < totalInitialFiles && op.filesEmbeddingsCompletedCount === 0) {
-            const progressPercent = totalInitialFiles > 0
-                ? Math.round((op.filesChunkingAttemptedCount / totalInitialFiles) * 100)
-                : 0;
-            this.statusBarService.showTemporaryMessage(
-                `Indexing: Processing file ${op.filesChunkingAttemptedCount}/${totalInitialFiles} (${progressPercent}%)`,
-                3000, StatusBarMessageType.Working
-            );
-        }
-        // Progress through files having their embeddings generated
-        // op.filesEmbeddingsCompletedCount tracks files for which embedding generation has finished (success or fail)
-        // op.filesSuccessfullyChunkedCount tracks files that *should* have embeddings generated
-        else if (filesSuccessfullyChunked > 0 && op.filesEmbeddingsCompletedCount < filesSuccessfullyChunked) {
-            const embeddingProgressPercent = filesSuccessfullyChunked > 0
-                ? Math.round((op.filesEmbeddingsCompletedCount / filesSuccessfullyChunked) * 100)
-                : 0;
-            this.statusBarService.showTemporaryMessage(
-                `Indexing: Embeddings ${op.filesEmbeddingsCompletedCount}/${filesSuccessfullyChunked} files (${embeddingProgressPercent}%)`,
-                3000, StatusBarMessageType.Working
-            );
-        }
-        // All files attempted for chunking, but none yielded chunks (e.g., all empty or unchunkable)
-        else if (op.filesChunkingAttemptedCount === totalInitialFiles && filesSuccessfullyChunked === 0 && totalInitialFiles > 0) {
-            // This state will be finalized by processFilesGenerator's main loop.
-            // No specific temporary message here, as it's a terminal state for this batch.
-        }
-        // Initial state if no files have been processed yet
-        else if (op.filesChunkingAttemptedCount === 0 && totalInitialFiles > 0) {
-            this.statusBarService.setState(StatusBarState.Indexing, `Preparing ${totalInitialFiles} files...`);
-        }
-        // If all files that were chunked have had their embeddings processed,
-        // the main generator loop will set the final Ready/Error state.
-        // Terminal states (Ready, Error) are set by processFiles try/finally or cancelProcessing.
-    }
 
 
     /**
@@ -565,7 +487,6 @@ export class IndexingService implements vscode.Disposable {
 
         if (opToCancel) {
             Log.info('[IndexingService] Attempting to cancel current indexing operation.');
-            this.statusBarService.showTemporaryMessage('Cancelling indexing...', 2000, StatusBarMessageType.Working);
 
             if (!opToCancel.abortController.signal.aborted) {
                 opToCancel.abortController.abort(); // Signal abortion
@@ -587,14 +508,8 @@ export class IndexingService implements vscode.Disposable {
             if (this.currentOperation === opToCancel) { // Check if it's still the same operation
                 this.currentOperation = null;
             }
-            this.statusBarService.showTemporaryMessage('Indexing cancelled', 3000, StatusBarMessageType.Warning); // This might be overwritten by finally block
-            this.updateOverallStatus(); // This will now see currentOperation as null and set to Ready (if no other error state).
         } else {
             Log.info('[IndexingService] No active indexing operation to cancel.');
-            // Ensure status is Ready if no operation was active and cancel was called.
-            if (this.statusBarService.getCurrentState() !== StatusBarState.Error && this.statusBarService.getCurrentState() !== StatusBarState.Disabled) {
-                this.statusBarService.setState(StatusBarState.Ready);
-            }
         }
     }
 
@@ -669,7 +584,6 @@ export class IndexingService implements vscode.Disposable {
         }
 
         const statusDetails = [
-            `Current Status: ${this.statusBarService.getCurrentStateText()}`,
             lastIndexedInfo,
             modelInfo,
             contextInfo,
@@ -704,7 +618,6 @@ export class IndexingService implements vscode.Disposable {
         }
         // No Piscina pool to destroy directly in this class anymore
 
-        this.statusBarService.setState(StatusBarState.Disabled, 'Indexing services disposed');
         Log.info('[IndexingService] IndexingService disposed successfully.');
     }
 }

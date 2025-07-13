@@ -101,7 +101,7 @@ The components interact through these primary mechanisms:
 5.  **Parallel Embedding Generation**: The resulting chunks for a file are passed to `EmbeddingGenerationService`, which manages a `Tinypool` worker pool. Each worker (`embeddingGeneratorWorker.ts`) generates an embedding for a single chunk in a separate process, ensuring the main thread remains responsive.
 6.  **Yielding Results**: Once all chunks for a single file have been embedded, `IndexingService` constructs a single `ProcessingResult` object and `yields` it.
 7.  **Real-time Storage**: The `IndexingManager` consumes the yielded `ProcessingResult` in a `for await...of` loop and immediately passes it to the `EmbeddingDatabaseAdapter` to be saved in the `VectorDatabaseService` (both SQLite and the HNSWlib index).
-8.  **Status Updates**: `IndexingManager` manages a `vscode.Progress` notification window for overall progress, while the `StatusBarService` provides real-time status updates in the status bar.
+8.  **Status Updates**: `IndexingManager` manages a `vscode.Progress` notification window for overall progress and contextual status bar indicators using the `StatusBarService` with unique operation IDs and automatic cleanup.
 
 #### 1.2.4 Context Retrieval Workflow (Hybrid LSP + Embedding)
 
@@ -171,6 +171,14 @@ These aspects affect multiple components across the system:
 - Memory usage is monitored and optimized
 - File handles and database connections are properly managed
 
+#### 1.3.4 Status Management Pattern
+
+- **Contextual Progress**: Status indicators appear only during active operations
+- **Unique Operation IDs**: Each operation type uses consistent IDs (e.g., 'indexing', 'pr-analysis')
+- **Try/Finally Cleanup**: Progress indicators are guaranteed to be removed via try/finally blocks
+- **No Global State**: StatusBarService operates as a stateless UI utility
+- **Automatic Lifecycle**: Status items are created on-demand and auto-disposed
+
 ## 2. Core Components
 
 ### 2.1 PR Analysis Coordinator
@@ -217,7 +225,7 @@ The [`IndexingService`](src/services/indexingService.ts:1) (src/services/indexin
 - **Orchestrates Embedding Generation**: After [`CodeChunkingService`](src/services/codeChunkingService.ts:1) successfully chunks a file, [`IndexingService`](src/services/indexingService.ts:1) passes the resulting `ChunkForEmbedding[]` to [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1). [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) manages a `Tinypool` worker pool (running [`embeddingGeneratorWorker.ts`](src/workers/embeddingGeneratorWorker.ts:1)) and dispatches individual chunk embedding tasks to these workers.
 - **Iterative Processing & Yielding**: The `processFilesGenerator` method (e.g., `async *processFilesGenerator(initialFiles: FileToProcess[], ...): AsyncGenerator<YieldedProcessingOutput>`) iterates through files. For each file, it orchestrates chunking and embedding generation. Upon successful processing of a file, it constructs a `ProcessingResult` and yields it as part of a `YieldedProcessingOutput` object (which includes `filePath` and `result`). It no longer uses a `batchCompletedCallback`.
 - **Cancellation Support**: Supports cancellation of in-progress indexing operations, propagating signals to chunking and embedding tasks.
-- **Status Reporting**: Reports detailed indexing progress and status updates via [`StatusBarService`](src/services/statusBarService.ts:1) (reflecting the two-phase chunking, embedding, and yielding process).
+- **Focus on Processing**: Pure processing logic without UI concerns; status updates are handled by `IndexingManager`.
 
 Key interactions:
 
@@ -225,7 +233,7 @@ Key interactions:
 - Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) for structure-aware code chunking of individual files.
 - Uses [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) for parallel embedding generation of chunks from a file.
 - Yields `YieldedProcessingOutput` (containing `filePath` and `ProcessingResult`) for each successfully processed file to its caller (typically `IndexingManager`).
-- Updates indexing status and progress via [`StatusBarService`](src/services/statusBarService.ts:1).
+- Does not handle status updates; focuses purely on processing logic.
 
 #### 2.2.2 Indexing Manager
 
@@ -245,7 +253,7 @@ Key interactions:
 - Calls `indexingService.processFilesGenerator` and iterates over the yielded results.
 - Uses `EmbeddingDatabaseAdapter` to save each `ProcessingResult`.
 - The `IndexingService` updates the last indexing timestamp in `WorkspaceSettingsService` upon successful completion.
-- `IndexingManager` manages its own `vscode.Progress` display for notifications, while `IndexingService` independently updates the status bar.
+- `IndexingManager` manages its own `vscode.Progress` display for notifications and contextual status bar indicators using unique operation IDs.
 
 #### 2.2.3 Embedding Database Adapter
 
@@ -463,20 +471,20 @@ Key interactions:
 
 #### 2.7.2 Status Bar Service
 
-The `StatusBarService` (src/services/statusBarService.ts) manages status display:
+The `StatusBarService` (src/services/statusBarService.ts) manages contextual, on-demand status display:
 
-- **Status Updates**: Updates VS Code status bar
-- **Progress Indication**: Shows progress for operations
-- **Error Display**: Displays error states
-- **Command Integration**: Links status items to commands
-- **Temporary Messages**: Shows temporary status messages
+- **Contextual Progress**: Shows progress indicators only during active operations using unique IDs
+- **Multiple Independent Items**: Manages multiple status items simultaneously without conflicts
+- **Automatic Cleanup**: Ensures progress indicators are always removed via try/finally patterns
+- **Temporary Messages**: Shows success/error feedback with auto-disposal after timeout
+- **No Global State**: Operates as a UI utility without maintaining central state
 
 Key interactions:
 
-- Used by all services for status updates
+- Used by coordinators and managers for operation-specific status updates
 - Interfaces with VS Code's status bar API
-- Provides feedback to users on operations
-- Links status items to appropriate commands
+- Provides contextual feedback during long-running operations
+- Automatically manages lifecycle of status indicators
 
 ### 2.8 Settings Management
 

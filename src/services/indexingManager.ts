@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { IndexingService, IndexingServiceOptions } from './indexingService';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
-import { StatusBarService, StatusBarState } from './statusBarService';
+import { StatusBarService } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import {
     EmbeddingModelSelectionService,
@@ -140,28 +140,36 @@ export class IndexingManager implements vscode.Disposable {
             return;
         }
 
-        await vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title: 'Rebuilding database',
-            cancellable: true
-        }, async (progress, token) => {
-            try {
+        const statusId = 'indexing';
+        
+        try {
+            this.statusBarService.showProgress(statusId, 'Rebuilding database', 'Full reindexing in progress');
+            
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: 'Rebuilding database',
+                cancellable: true
+            }, async (progress, token) => {
                 // Delete all existing embeddings and chunks (database cleanup)
                 progress.report({ message: 'Deleting old embeddings and chunks...' });
                 await this.vectorDatabaseService.deleteAllEmbeddingsAndChunks();
 
                 // Find files and process them using the common indexing method
                 await this.processFilesWithIndexing(progress, token, true);
+            });
 
-                vscode.window.showInformationMessage('Database rebuild completed successfully');
-            } catch (error) {
-                if (token.isCancellationRequested) {
-                    vscode.window.showInformationMessage('Operation cancelled');
-                } else {
-                    vscode.window.showErrorMessage(`Failed to rebuild database: ${error instanceof Error ? error.message : String(error)}`);
-                }
+            this.statusBarService.showTemporaryMessage('Database rebuild completed', 3000, 'check');
+        } catch (error) {
+            if (error instanceof vscode.CancellationError) {
+                this.statusBarService.showTemporaryMessage('Operation cancelled', 3000, 'warning');
+            } else {
+                const errorMessage = `Failed to rebuild database: ${error instanceof Error ? error.message : String(error)}`;
+                this.statusBarService.showTemporaryMessage('Rebuild failed', 3000, 'error');
+                vscode.window.showErrorMessage(errorMessage);
             }
-        });
+        } finally {
+            this.statusBarService.hideProgress(statusId);
+        }
     }
 
     /**
@@ -185,10 +193,11 @@ export class IndexingManager implements vscode.Disposable {
         // Set flag to indicate indexing is in progress
         this.continuousIndexingInProgress = true;
 
-        // Update status bar
-        this.statusBarService.setState(StatusBarState.Indexing, 'continuous');
+        const statusId = 'indexing';
 
         try {
+            this.statusBarService.showProgress(statusId, 'Continuous indexing', 'Indexing workspace files');
+
             // Show progress notification
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
@@ -205,16 +214,18 @@ export class IndexingManager implements vscode.Disposable {
                 // Process files using the common indexing method
                 await this.processFilesWithIndexing(progress, token, false);
             });
+
+            this.statusBarService.showTemporaryMessage('Continuous indexing completed', 3000, 'check');
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
+            this.statusBarService.showTemporaryMessage('Indexing error', 3000, 'error');
             vscode.window.showErrorMessage(`Continuous indexing error: ${errorMessage}`);
         } finally {
             // Reset state
             this.continuousIndexingInProgress = false;
             this.continuousIndexingCancellationToken = null;
 
-            // Update status bar
-            this.statusBarService.setState(StatusBarState.Ready);
+            this.statusBarService.hideProgress(statusId);
         }
     }
 

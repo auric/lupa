@@ -81,7 +81,7 @@ The extension follows a layered, service-oriented architecture with clear separa
 
 ### UI and Status
 - **`UIManager`** (`src/services/uiManager.ts`) - Creates webviews and handles user interactions
-- **`StatusBarService`** (`src/services/statusBarService.ts`) - Manages VS Code status bar updates
+- **`StatusBarService`** (`src/services/statusBarService.ts`) - Manages multiple, contextual VS Code status bar items with on-demand progress indicators
 
 ## Data Flow
 
@@ -144,6 +144,13 @@ The extension follows a layered, service-oriented architecture with clear separa
 - Embedding models are downloaded to `models/` directory
 - Supports both Jina and MiniLM embedding models
 - Model selection affects vector database configuration
+
+### Status Bar Architecture
+- **Contextual Progress**: Status indicators appear only during active operations
+- **Multiple Independent Items**: Uses unique IDs to manage different operation types simultaneously
+- **Automatic Cleanup**: try/finally blocks ensure progress indicators are always removed
+- **Consistent IDs**: Related operations (indexing, embedding generation) use shared IDs to prevent duplicates
+- **Temporary Messages**: Success/error feedback with auto-disposal after timeout
 
 ## Extension Commands
 

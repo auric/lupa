@@ -10,27 +10,14 @@ export enum StatusBarMessageType {
     Working = 'working'
 }
 
-/**
- * Status information for the PR Analyzer
- */
-export enum StatusBarState {
-    Ready = 'ready',
-    Indexing = 'indexing',
-    Analyzing = 'analyzing',
-    Error = 'error',
-    Inactive = 'inactive',
-    Disabled = 'disabled' // Added for when services are fully disposed
-}
 
 /**
- * Service to manage status bar items centrally.
- * Ensures consistent status bar presentation across the extension.
+ * Service to manage multiple, independent status bar items.
+ * Supports contextual, on-demand progress indicators and temporary messages.
  */
 export class StatusBarService {
     private static instance: StatusBarService;
-    private statusBarItem: vscode.StatusBarItem | undefined;
-    private temporaryMessageTimeout: NodeJS.Timeout | undefined;
-    private currentState: StatusBarState = StatusBarState.Ready;
+    private activeStatusItems: Map<string, vscode.StatusBarItem> = new Map();
 
     // Main status bar ID for the extension
     public static readonly MAIN_STATUS_BAR_ID = 'prAnalyzer.main';
@@ -39,8 +26,6 @@ export class StatusBarService {
      * Private constructor to enforce singleton pattern
      */
     private constructor() {
-        this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-        this.updateStatusBar();
     }
 
     /**
@@ -64,198 +49,85 @@ export class StatusBarService {
     }
 
     /**
-     * Set the current state of the PR Analyzer
-     * @param state The current state
-     * @param detail Optional details about the state
-     */
-    public setState(state: StatusBarState, detail?: string): void {
-        this.currentState = state;
-        this.updateStatusBar(detail);
-    }
-
-    /**
-     * Get the current state of the PR Analyzer
-     * @returns The current state
-     */
-    public getCurrentState(): StatusBarState {
-        return this.currentState;
-    }
-
-    /**
-     * Get the text representation of the current state.
-     * @returns A string describing the current state, suitable for logging or display.
-     */
-    public getCurrentStateText(): string {
-        switch (this.currentState) {
-            case StatusBarState.Ready:
-                return 'Ready';
-            case StatusBarState.Indexing:
-                return 'Indexing';
-            case StatusBarState.Analyzing:
-                return 'Analyzing';
-            case StatusBarState.Error:
-                return 'Error';
-            case StatusBarState.Inactive:
-                return 'Inactive';
-            case StatusBarState.Disabled:
-                return 'Disabled';
-            default:
-                // Exhaustive check, should not happen if all states are covered
-                const _exhaustiveCheck: never = this.currentState;
-                return `Unknown (${_exhaustiveCheck})`;
-        }
-    }
-
-    /**
-     * Show a temporary message on the status bar
-     * @param message The message to show
-     * @param timeoutMs How long to show the message (in milliseconds)
-     * @param type The type of message
-     */
-    public showTemporaryMessage(
-        message: string,
-        timeoutMs: number = 3000,
-        type: StatusBarMessageType = StatusBarMessageType.Info
-    ): void {
-        if (!this.statusBarItem) return;
-
-        // Clear any existing temporary message timeout
-        this.clearTemporaryMessage();
-
-        // Remember current state
-        const currentState = this.currentState;
-
-        // Show temporary message
-        this.setStatusBarText(message, message, type);
-
-        // Set timeout to restore original state
-        this.temporaryMessageTimeout = setTimeout(() => {
-            this.currentState = currentState;
-            this.updateStatusBar();
-            this.temporaryMessageTimeout = undefined;
-        }, timeoutMs);
-    }
-
-    /**
-     * Set the text and tooltip of the status bar
-     * @param text Status bar text
+     * Show a progress indicator with a unique ID
+     * @param id Unique identifier for this progress item
+     * @param text Text to display (without icon)
      * @param tooltip Tooltip text
-     * @param type Type of message (affects icon)
+     * @param command Optional command to execute when clicked
      */
-    private setStatusBarText(
-        text: string,
-        tooltip: string = '',
-        type: StatusBarMessageType = StatusBarMessageType.Info
-    ): void {
-        if (!this.statusBarItem) return;
+    public showProgress(id: string, text: string, tooltip: string, command?: string | vscode.Command): void {
+        // Get existing item or create new one
+        let statusItem = this.activeStatusItems.get(id);
+        if (!statusItem) {
+            statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+            this.activeStatusItems.set(id, statusItem);
+        }
 
-        // Add appropriate icon based on type
-        let icon = '$(database)';
-        switch (type) {
-            case StatusBarMessageType.Warning:
-                icon = '$(warning)';
+        // Set text with spinning icon, tooltip, and optional command
+        statusItem.text = `$(sync~spin) ${text}`;
+        statusItem.tooltip = tooltip;
+        if (command) {
+            statusItem.command = command;
+        }
+        statusItem.show();
+    }
+
+    /**
+     * Hide and dispose a progress indicator
+     * @param id Unique identifier for the progress item to hide
+     */
+    public hideProgress(id: string): void {
+        const statusItem = this.activeStatusItems.get(id);
+        if (statusItem) {
+            statusItem.hide();
+            statusItem.dispose();
+            this.activeStatusItems.delete(id);
+        }
+    }
+
+    /**
+     * Show a temporary message that auto-hides after timeout
+     * @param text Text to display (without icon)
+     * @param timeout Duration in milliseconds
+     * @param icon Icon type to display
+     */
+    public showTemporaryMessage(text: string, timeout: number, icon: 'check' | 'warning' | 'error' = 'check'): void {
+        // Create a separate temporary status item (not stored in the map)
+        const tempStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+        
+        // Set appropriate icon
+        let iconString = '$(check)';
+        switch (icon) {
+            case 'warning':
+                iconString = '$(warning)';
                 break;
-            case StatusBarMessageType.Error:
-                icon = '$(error)';
+            case 'error':
+                iconString = '$(error)';
                 break;
-            case StatusBarMessageType.Working:
-                icon = '$(sync~spin)';
-                break;
-            case StatusBarMessageType.Info:
+            case 'check':
             default:
-                icon = '$(database)';
+                iconString = '$(check)';
                 break;
         }
-
-        // Set text and tooltip
-        this.statusBarItem.text = `${icon} ${text}`;
-        this.statusBarItem.tooltip = tooltip || text;
-        this.statusBarItem.show();
+        
+        tempStatusItem.text = `${iconString} ${text}`;
+        tempStatusItem.tooltip = text;
+        tempStatusItem.show();
+        
+        // Auto-dispose after timeout
+        setTimeout(() => {
+            tempStatusItem.dispose();
+        }, timeout);
     }
 
     /**
-     * Update the status bar based on current state
-     * @param detail Optional details to show with the state
-     */
-    private updateStatusBar(detail?: string): void {
-        if (!this.statusBarItem) return;
-
-        let text = 'PR Analyzer';
-        let tooltip = 'PR Analyzer';
-        let type = StatusBarMessageType.Info;
-
-        switch (this.currentState) {
-            case StatusBarState.Ready:
-                text = 'PR Analyzer - Ready';
-                tooltip = 'PR Analyzer is ready';
-                break;
-
-            case StatusBarState.Indexing:
-                text = detail ? `PR Analyzer - Indexing ${detail}` : 'PR Analyzer - Indexing';
-                tooltip = detail ? `Indexing: ${detail}` : 'Indexing workspace';
-                type = StatusBarMessageType.Working;
-                break;
-
-            case StatusBarState.Analyzing:
-                text = 'PR Analyzer - Analyzing';
-                tooltip = 'Analyzing pull request';
-                type = StatusBarMessageType.Working;
-                break;
-
-            case StatusBarState.Error:
-                text = 'PR Analyzer - Error';
-                tooltip = detail || 'An error occurred';
-                type = StatusBarMessageType.Error;
-                break;
-
-            case StatusBarState.Inactive:
-                text = 'PR Analyzer';
-                tooltip = 'PR Analyzer is inactive';
-                break;
-
-            case StatusBarState.Disabled:
-                text = 'PR Analyzer - Disabled';
-                tooltip = 'PR Analyzer services are disabled';
-                type = StatusBarMessageType.Warning; // Or a specific icon for disabled
-                break;
-        }
-
-        this.setStatusBarText(text, tooltip, type);
-    }
-
-    /**
-     * Clear any temporary message
-     */
-    public clearTemporaryMessage(): void {
-        if (this.temporaryMessageTimeout) {
-            clearTimeout(this.temporaryMessageTimeout);
-            this.temporaryMessageTimeout = undefined;
-        }
-
-        // Restore status based on current state
-        this.updateStatusBar();
-    }
-
-    /**
-     * Show the status bar
-     */
-    public show(): void {
-        this.statusBarItem?.show();
-    }
-
-    /**
-     * Hide the status bar
-     */
-    public hide(): void {
-        this.statusBarItem?.hide();
-    }
-
-    /**
-     * Dispose the status bar item
+     * Dispose all status bar items
      */
     public dispose(): void {
-        this.clearTemporaryMessage();
-        this.statusBarItem?.dispose();
-        this.statusBarItem = undefined;
+        // Dispose all active status items
+        for (const [id, statusItem] of this.activeStatusItems) {
+            statusItem.dispose();
+        }
+        this.activeStatusItems.clear();
     }
 }
