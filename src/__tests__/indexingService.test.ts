@@ -117,7 +117,8 @@ vi.mock('../services/workspaceSettingsService', () => {
 });
 
 // Mock vscode module
-vi.mock('vscode', () => ({
+vi.mock('vscode', async () => ({
+    ...await vi.importActual<typeof import('vscode')>('vscode'),
     Uri: {
         // Retain fsPath for compatibility if other parts of the codebase expect it (e.g. real CodeChunkingService)
         file: vi.fn((path: string) => ({ path: path, fsPath: path, scheme: 'file' }))
@@ -140,8 +141,8 @@ vi.mock('fs', () => {
 });
 
 // Mock os module
-vi.mock('os', () => {
-    const actual = vi.importActual('os');
+vi.mock('os', async () => {
+    const actual = await vi.importActual('os');
     return {
         ...actual,
         cpus: vi.fn(() => {

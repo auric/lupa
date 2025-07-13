@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import * as child_process from 'child_process';
 import { API, GitExtension, Repository, RefType } from '../types/vscodeGitExtension';
+import { Log } from './loggingService';
 
 /**
  * Represents a Git commit
@@ -78,24 +79,24 @@ export class GitService {
         try {
             const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
             if (!gitExtension) {
-                console.log('Git extension not available');
+                Log.info('Git extension not available');
                 return false;
             }
 
             if (!gitExtension.enabled) {
-                console.log('Git extension is disabled');
+                Log.info('Git extension is disabled');
                 return false;
             }
 
             this.gitApi = gitExtension.getAPI(1);
             if (!this.gitApi) {
-                console.log('Git API not available');
+                Log.info('Git API not available');
                 return false;
             }
 
             // Check all available repositories
             if (this.gitApi.repositories.length === 0) {
-                console.log('No Git repositories found');
+                Log.info('No Git repositories found');
 
                 // If no repositories are available yet, try to detect Git repositories
                 // in parent folders of the current workspace
@@ -122,7 +123,7 @@ export class GitService {
 
             return true;
         } catch (error) {
-            console.error('Failed to initialize Git service:', error);
+            Log.error('Failed to initialize Git service:', error);
             return false;
         }
     }
@@ -180,12 +181,12 @@ export class GitService {
 
                 // After execution of the command, check again if new repositories are available
                 if (this.gitApi && this.gitApi.repositories.length > 0) {
-                    console.log(`Detected and opened Git repository for workspace folder: ${folderPath}`);
+                    Log.info(`Detected and opened Git repository for workspace folder: ${folderPath}`);
                     break; // Successfully found a repository
                 }
             }
         } catch (error) {
-            console.error('Error detecting Git repository in parent directories:', error);
+            Log.error('Error detecting Git repository in parent directories:', error);
         }
     }
 
@@ -266,7 +267,7 @@ export class GitService {
             // If none found, use current HEAD if it's a branch
             return this.repository.state.HEAD?.name;
         } catch (error) {
-            console.error('Error getting default branch:', error);
+            Log.error('Error getting default branch:', error);
             return undefined;
         }
     }
@@ -300,7 +301,7 @@ export class GitService {
 
             return branches;
         } catch (error) {
-            console.error('Error getting branches:', error);
+            Log.error('Error getting branches:', error);
             return [];
         }
     }
@@ -328,7 +329,7 @@ export class GitService {
                 date: commit.authorDate ? commit.authorDate.getTime() : Date.now()
             }));
         } catch (error) {
-            console.error('Error getting recent commits:', error);
+            Log.error('Error getting recent commits:', error);
             return [];
         }
     }
@@ -353,7 +354,7 @@ export class GitService {
                 date: commit.authorDate ? commit.authorDate.getTime() : Date.now()
             };
         } catch (error) {
-            console.error(`Error getting commit ${hash}:`, error);
+            Log.error(`Error getting commit ${hash}:`, error);
             return undefined;
         }
     }
@@ -395,7 +396,7 @@ export class GitService {
                 refName: compare
             };
         } catch (error) {
-            console.error('Error comparing branches:', error);
+            Log.error('Error comparing branches:', error);
             return {
                 diffText: '',
                 refName: options.compare || 'unknown',
@@ -424,7 +425,7 @@ export class GitService {
                 refName: `commit ${hash.substring(0, 7)}${commit ? ` (${commit.message})` : ''}`
             };
         } catch (error) {
-            console.error(`Error getting diff for commit ${hash}:`, error);
+            Log.error(`Error getting diff for commit ${hash}:`, error);
             return {
                 diffText: '',
                 refName: `commit ${hash.substring(0, 7)}`,
@@ -469,7 +470,7 @@ export class GitService {
                 refName: 'uncommitted changes'
             };
         } catch (error) {
-            console.error('Error getting uncommitted changes:', error);
+            Log.error('Error getting uncommitted changes:', error);
             return {
                 diffText: '',
                 refName: 'uncommitted changes',

@@ -286,8 +286,7 @@ describe('ContextProvider', () => {
             const snippets = await contextProvider.getSnippetsForLocations(locations, 2);
             expect(snippets).toEqual([]); // No snippet if error occurs
             expect(console.error).toHaveBeenCalledWith(
-                expect.stringContaining('Error reading snippet for c:/mock/workspace/errorfile.ts:'),
-                expect.any(Error)
+                expect.stringContaining('Error reading snippet for c:/mock/workspace/errorfile.ts: {}')
             );
         });
 

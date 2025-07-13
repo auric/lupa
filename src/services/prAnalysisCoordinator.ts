@@ -14,6 +14,7 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { IndexingService } from './indexingService';
 import { ResourceDetectionService } from './resourceDetectionService';
 import { CodeAnalysisServiceInitializer, CodeAnalysisService } from './codeAnalysisService';
+import { LoggingService, Log } from './loggingService';
 
 /**
  * PRAnalysisCoordinator orchestrates the PR analysis workflow
@@ -36,6 +37,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
     private modelManager: CopilotModelManager;
     private indexingService: IndexingService;
     private resourceDetectionService: ResourceDetectionService;
+    private logger: LoggingService;
 
     /**
      * Create a new PRAnalysisCoordinator
@@ -53,6 +55,11 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         this.resourceDetectionService = new ResourceDetectionService({
             memoryReserveGB: 4 // 4GB reserve for other processes
         });
+
+        // Initialize logging service
+        this.logger = LoggingService.getInstance();
+        this.logger.initialize(this.workspaceSettingsService);
+        this.logger.setOutputTarget('channel');
 
         // Initialize model selection service
         this.modelSelectionService = new EmbeddingModelSelectionService(
@@ -72,7 +79,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         if (initialModelInfo && initialModelInfo.dimensions) {
             this.vectorDatabaseService.setCurrentModelDimension(initialModelInfo.dimensions);
         } else {
-            console.warn('PRAnalysisCoordinator: Could not determine initial model dimension for VectorDatabaseService.');
+            Log.warn('PRAnalysisCoordinator: Could not determine initial model dimension for VectorDatabaseService.');
         }
 
         this.indexingManager = new IndexingManager(
@@ -366,7 +373,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             if (newDimension) {
                 this.vectorDatabaseService.setCurrentModelDimension(newDimension);
             } else {
-                console.warn('PRAnalysisCoordinator: Could not determine new model dimension for VectorDatabaseService during model change.');
+                Log.warn('PRAnalysisCoordinator: Could not determine new model dimension for VectorDatabaseService during model change.');
             }
 
             // Reinitialize IndexingManager and dependent services with the new model
@@ -525,5 +532,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
         this.workspaceSettingsService.dispose();
         this.modelSelectionService.dispose();
         this.gitOperationsManager.dispose();
+        this.logger.dispose();
+        this.statusBarService.dispose();
     }
 }

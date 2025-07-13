@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { EmbeddingModel } from './embeddingModelSelectionService';
+import { Log } from './loggingService';
 
 /**
  * Workspace settings for PR Analyzer
@@ -90,7 +91,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             try {
                 fs.mkdirSync(vscodeDir, { recursive: true });
             } catch (error) {
-                console.error(`Failed to create .vscode directory: ${error instanceof Error ? error.message : String(error)}`);
+                Log.error(`Failed to create .vscode directory: ${error instanceof Error ? error.message : String(error)}`);
                 return null;
             }
         }
@@ -127,7 +128,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 this.saveSettings();
             }
         } catch (error) {
-            console.error(`Failed to load settings: ${error instanceof Error ? error.message : String(error)}`);
+            Log.error(`Failed to load settings: ${error instanceof Error ? error.message : String(error)}`);
             // Initialize with default settings on error
             this.settings = {};
         }
@@ -155,7 +156,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 'utf-8'
             );
         } catch (error) {
-            console.error(`Failed to save settings: ${error instanceof Error ? error.message : String(error)}`);
+            Log.error(`Failed to save settings: ${error instanceof Error ? error.message : String(error)}`);
         }
     }
 

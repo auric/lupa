@@ -6,6 +6,7 @@ import { WorkerCodeChunker } from '../workers/workerCodeChunker';
 import { WorkerTokenEstimator } from '../workers/workerTokenEstimator';
 import { CodeAnalysisService } from './codeAnalysisService';
 import { getLanguageForExtension } from '../types/types';
+import { Log } from './loggingService';
 
 /**
  * Defines the options required to configure the CodeChunkingService.
@@ -57,7 +58,7 @@ export class CodeChunkingService implements vscode.Disposable {
             this.isInitialized = true;
         } catch (error) {
             codeAnalysisService?.dispose();
-            console.error('Failed to initialize CodeChunkingService:', error);
+            Log.error('Failed to initialize CodeChunkingService:', error);
             throw error;
         }
     }
@@ -76,14 +77,14 @@ export class CodeChunkingService implements vscode.Disposable {
         abortSignal: AbortSignal
     ): Promise<DetailedChunkingResult | null> {
         if (!this.isInitialized || !this.workerCodeChunker) {
-            console.error('CodeChunkingService is not initialized or workerCodeChunker is not available.');
+            Log.error('CodeChunkingService is not initialized or workerCodeChunker is not available.');
             return null;
         }
 
         try {
             const langData = getLanguageForExtension(path.extname(file.path).substring(1));
             if (abortSignal.aborted) {
-                console.log('Code chunking aborted before starting for file:', file.path);
+                Log.info('Code chunking aborted before starting for file:', file.path);
                 return null;
             }
             const result = await this.workerCodeChunker.chunkCode(
@@ -95,9 +96,9 @@ export class CodeChunkingService implements vscode.Disposable {
             return result;
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') {
-                console.log('Code chunking operation was aborted for file:', file.path);
+                Log.info('Code chunking operation was aborted for file:', file.path);
             } else {
-                console.error('Error during code chunking for file:', file.path, error);
+                Log.error('Error during code chunking for file:', file.path, error);
             }
             return null;
         }
@@ -111,6 +112,6 @@ export class CodeChunkingService implements vscode.Disposable {
         this.isInitialized = false;
         this.workerCodeChunker?.dispose();
         this.workerCodeChunker = null;
-        console.log('CodeChunkingService disposed.');
+        Log.info('CodeChunkingService disposed.');
     }
 }

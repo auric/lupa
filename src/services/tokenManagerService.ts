@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
 import { ContextSnippet } from '../types/contextTypes';
+import { Log } from './loggingService';
 
 /**
  * Components of an analysis that consume tokens
@@ -122,7 +123,7 @@ export class TokenManagerService {
     ): Promise<{ optimizedSnippets: ContextSnippet[], wasTruncated: boolean }> {
         await this.updateModelInfo();
         if (!this.currentModel) {
-            console.error("Language model not available for token counting in optimizeContext.");
+            Log.error("Language model not available for token counting in optimizeContext.");
             return { optimizedSnippets: [], wasTruncated: true };
         }
 
@@ -225,7 +226,7 @@ export class TokenManagerService {
                             }
                         }
                     } catch (e) {
-                        console.warn("Error during partial snippet truncation:", e);
+                        Log.warn("Error during partial snippet truncation:", e);
                     }
                 }
                 break; // Stop adding more snippets if the current one (even partially) doesn't fit or wasn't attempted for partial.
@@ -277,12 +278,12 @@ export class TokenManagerService {
                         wasTruncated = true;
                     }
                 }
-                // This console.log and return should be outside the 'if (targetTinyContentTokens > 0)' block
+                // This Log.info and return should be outside the 'if (targetTinyContentTokens > 0)' block
                 // and also outside the 'if (maxTinyChars > 0)' block to ensure the function always returns.
             } // End of 'if (targetTinyContentTokens > 0)'
         } // End of 'if (sortedSnippets.length > 0 && selectedSnippets.length === 0 ...)' for tiny snippet logic
 
-        console.log(`Context optimization: ${selectedSnippets.length} of ${snippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
+        Log.info(`Context optimization: ${selectedSnippets.length} of ${snippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
         return { optimizedSnippets: selectedSnippets, wasTruncated };
     }
 
@@ -373,14 +374,14 @@ export class TokenManagerService {
                     };
                 } else {
                     // Fallback if we can't find details
-                    console.warn(`Could not find model details for ${currentModelId}, using defaults`);
+                    Log.warn(`Could not find model details for ${currentModelId}, using defaults`);
                     this.modelDetails = {
                         family: 'unknown',
                         maxInputTokens: 8000
                     };
                 }
             } catch (error) {
-                console.error('Error getting model info:', error);
+                Log.error('Error getting model info:', error);
                 this.modelDetails = {
                     family: 'unknown',
                     maxInputTokens: 8000

@@ -2,9 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { createHash } from 'crypto';
-import * as sqlite3 from '@vscode/sqlite3';
 import { v4 as uuidv4 } from 'uuid';
-import { similarity } from 'ml-distance';
+import * as sqlite3 from '@vscode/sqlite3';
 import { HierarchicalNSW } from 'hnswlib-node';
 import {
     FileRecord,
@@ -16,6 +15,7 @@ import {
     StorageStats,
     ChunkingMetadata
 } from '../types/embeddingTypes';
+import { Log } from './loggingService';
 
 // INFO: Dynamic resizing of the HNSW index is implemented in storeEmbeddings using HierarchicalNSW.prototype.resizeIndex
 // when the number of elements exceeds the current capacity.
@@ -97,8 +97,8 @@ export class VectorDatabaseService implements vscode.Disposable {
         this.annIndexPath = path.join(path.dirname(this.config.dbPath), 'embeddings.ann.idx');
 
         // Initialize database
-        console.log(`Initializing vector database at ${this.config.dbPath}`);
-        console.log(`ANN index path will be ${this.annIndexPath}`);
+        Log.info(`Initializing vector database at ${this.config.dbPath}`);
+        Log.info(`ANN index path will be ${this.annIndexPath}`);
         this.initPromise = this.initializeDatabase();
     }
 
@@ -220,7 +220,7 @@ export class VectorDatabaseService implements vscode.Disposable {
             )
         `, []);
 
-        console.log('Database schema initialized successfully');
+        Log.info('Database schema initialized successfully');
     }
 
     /**
@@ -316,7 +316,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                 try {
                     await this.run('ROLLBACK', []);
                 } catch (rollbackError) {
-                    console.error('Error during rollback:', rollbackError);
+                    Log.error('Error during rollback:', rollbackError);
                 } finally {
                     this.inTransaction = false;
                 }
@@ -476,7 +476,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                     if (nextLabel >= currentAnnMaxElements) {
                         // Handle ANN index full scenario
                         const newMaxElements = Math.max(currentAnnMaxElements * 2, nextLabel + 1);
-                        console.warn(
+                        Log.warn(
                             `ANN index is full (current: ${this.annIndex!.getCurrentCount()}, max: ${currentAnnMaxElements}). ` +
                             `Attempting to resize to ${newMaxElements} using resizeIndex.`
                         );
@@ -488,9 +488,9 @@ export class VectorDatabaseService implements vscode.Disposable {
                         try {
                             this.annIndex!.resizeIndex(newMaxElements);
                             currentAnnMaxElements = newMaxElements;
-                            console.log(`ANN index resized to ${newMaxElements}.`);
+                            Log.info(`ANN index resized to ${newMaxElements}.`);
                         } catch (resizeError) {
-                            console.error(`Failed to resize ANN index. Max elements: ${currentAnnMaxElements}. Current count: ${this.annIndex!.getCurrentCount()}. Error: ${resizeError}`);
+                            Log.error(`Failed to resize ANN index. Max elements: ${currentAnnMaxElements}. Current count: ${this.annIndex!.getCurrentCount()}. Error: ${resizeError}`);
                             throw new Error(`ANN index is full and resize failed. Max elements: ${currentAnnMaxElements}. Please increase ANN_MAX_ELEMENTS_CONFIG and rebuild.`);
                         }
                     }
@@ -553,11 +553,11 @@ export class VectorDatabaseService implements vscode.Disposable {
 
 
         if (!this.annIndex) {
-            console.warn('ANN index is not initialized. Cannot perform similarity search.');
+            Log.warn('ANN index is not initialized. Cannot perform similarity search.');
             return [];
         }
         if (this.annIndex.getCurrentCount() === 0) {
-            console.log('ANN index is empty. No results to return.');
+            Log.info('ANN index is empty. No results to return.');
             return [];
         }
 
@@ -566,7 +566,7 @@ export class VectorDatabaseService implements vscode.Disposable {
         try {
             searchResult = this.annIndex.searchKnn(queryVectorAsArray, numNeighborsToFetch);
         } catch (error) {
-            console.error('Error during ANN searchKnn:', error);
+            Log.error('Error during ANN searchKnn:', error);
             return [];
         }
 
@@ -624,7 +624,7 @@ export class VectorDatabaseService implements vscode.Disposable {
         try {
             metadataRows = await this.all<EmbeddingMetadataRow>(sql, labelsToFetch);
         } catch (error) {
-            console.error('Error fetching metadata for ANN results:', error);
+            Log.error('Error fetching metadata for ANN results:', error);
             return [];
         }
 
@@ -683,7 +683,7 @@ export class VectorDatabaseService implements vscode.Disposable {
         if (!embeddingMeta) return null;
 
         if (!this.annIndex) {
-            console.warn('ANN index not available, cannot retrieve vector for embedding.');
+            Log.warn('ANN index not available, cannot retrieve vector for embedding.');
             return { // Return metadata without vector
                 id: embeddingMeta.id,
                 chunkId: embeddingMeta.chunk_id,
@@ -696,7 +696,7 @@ export class VectorDatabaseService implements vscode.Disposable {
         try {
             const vector = this.annIndex.getPoint(embeddingMeta.label);
             if (!vector) {
-                console.warn(`Vector not found in ANN index for label ${embeddingMeta.label}, chunkId ${chunkId}`);
+                Log.warn(`Vector not found in ANN index for label ${embeddingMeta.label}, chunkId ${chunkId}`);
                 return {
                     id: embeddingMeta.id,
                     chunkId: embeddingMeta.chunk_id,
@@ -713,7 +713,7 @@ export class VectorDatabaseService implements vscode.Disposable {
                 createdAt: embeddingMeta.created_at
             };
         } catch (error) {
-            console.error(`Error retrieving vector from ANN index for label ${embeddingMeta.label}, chunkId ${chunkId}:`, error);
+            Log.error(`Error retrieving vector from ANN index for label ${embeddingMeta.label}, chunkId ${chunkId}:`, error);
             return { // Return metadata without vector on error
                 id: embeddingMeta.id,
                 chunkId: embeddingMeta.chunk_id,
@@ -958,11 +958,11 @@ export class VectorDatabaseService implements vscode.Disposable {
                     markedCount++;
                 } catch (error) {
                     // Log error if marking for deletion fails for a specific label
-                    console.warn(`Failed to mark label ${emb.label} for deletion in ANN index:`, error);
+                    Log.warn(`Failed to mark label ${emb.label} for deletion in ANN index:`, error);
                 }
             }
             if (markedCount > 0) {
-                console.log(`Marked ${markedCount} embeddings for deletion in ANN index for fileId ${fileId}.`);
+                Log.info(`Marked ${markedCount} embeddings for deletion in ANN index for fileId ${fileId}.`);
                 this.saveAnnIndex(); // Persist changes to ANN index
             }
         }
@@ -970,7 +970,7 @@ export class VectorDatabaseService implements vscode.Disposable {
         // Due to foreign key constraints (ON DELETE CASCADE for embeddings referencing chunks),
         // deleting chunks will also delete their corresponding entries in the embeddings table.
         await this.run('DELETE FROM chunks WHERE file_id = ?', [fileId]);
-        console.log(`Deleted chunks and associated SQLite embedding metadata for fileId ${fileId}.`);
+        Log.info(`Deleted chunks and associated SQLite embedding metadata for fileId ${fileId}.`);
     }
 
     /**
@@ -982,7 +982,7 @@ export class VectorDatabaseService implements vscode.Disposable {
 
         const fileRecord = await this.getFileByPath(filePath);
         if (!fileRecord) {
-            console.log(`File ${filePath} not found in database. Nothing to delete.`);
+            Log.info(`File ${filePath} not found in database. Nothing to delete.`);
             return;
         }
 
@@ -1001,11 +1001,11 @@ export class VectorDatabaseService implements vscode.Disposable {
                     this.annIndex.markDelete(emb.label);
                     markedCount++;
                 } catch (error) {
-                    console.warn(`Failed to mark label ${emb.label} for deletion in ANN index for file ${filePath}:`, error);
+                    Log.warn(`Failed to mark label ${emb.label} for deletion in ANN index for file ${filePath}:`, error);
                 }
             }
             if (markedCount > 0) {
-                console.log(`Marked ${markedCount} embeddings for deletion in ANN index for file ${filePath}.`);
+                Log.info(`Marked ${markedCount} embeddings for deletion in ANN index for file ${filePath}.`);
                 this.saveAnnIndex(); // Persist changes to ANN index
             }
         }
@@ -1014,7 +1014,7 @@ export class VectorDatabaseService implements vscode.Disposable {
         // and embeddings referencing chunks), deleting the file from the 'files' table
         // will cascade and delete associated chunks and SQLite embedding metadata.
         await this.run('DELETE FROM files WHERE id = ?', [fileRecord.id]);
-        console.log(`Deleted file ${filePath} and all associated SQLite data (chunks, embeddings).`);
+        Log.info(`Deleted file ${filePath} and all associated SQLite data (chunks, embeddings).`);
     }
 
     /**
@@ -1033,22 +1033,22 @@ export class VectorDatabaseService implements vscode.Disposable {
 
         // Clear the ANN index
         if (this.currentModelDimension && this.annIndex) {
-            console.log('Re-initializing existing ANN index to an empty state.');
+            Log.info('Re-initializing existing ANN index to an empty state.');
             this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG); // Clears the current instance
             this.saveAnnIndex(); // Save the now empty index
         } else {
-            console.log(`No current ANN dimension or index instance. Attempting to delete index file: ${this.annIndexPath}`);
+            Log.info(`No current ANN dimension or index instance. Attempting to delete index file: ${this.annIndexPath}`);
             if (fs.existsSync(this.annIndexPath)) {
                 try {
                     fs.unlinkSync(this.annIndexPath);
-                    console.log(`Deleted ANN index file: ${this.annIndexPath}`);
+                    Log.info(`Deleted ANN index file: ${this.annIndexPath}`);
                 } catch (e) {
-                    console.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
+                    Log.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
                 }
             }
             this.annIndex = null; // Ensure it's null
         }
-        console.log('All embeddings, chunks, files, metadata, and ANN index data have been cleared/reset.');
+        Log.info('All embeddings, chunks, files, metadata, and ANN index data have been cleared/reset.');
     }
 
     /**
@@ -1133,15 +1133,15 @@ export class VectorDatabaseService implements vscode.Disposable {
     async optimizeDatabase(): Promise<void> {
         await this.ensureInitialized();
 
-        console.log('Optimizing database...');
+        Log.info('Optimizing database...');
 
         try {
             await this.run('PRAGMA optimize', []);
             await this.run('VACUUM', []);
             await this.run('ANALYZE', []);
-            console.log('Database optimization complete');
+            Log.info('Database optimization complete');
         } catch (error) {
-            console.error('Error during database optimization:', error);
+            Log.error('Error during database optimization:', error);
             throw error;
         }
     }
@@ -1193,36 +1193,36 @@ export class VectorDatabaseService implements vscode.Disposable {
         // and this method is called after VectorDatabaseService constructor has completed.
 
         if (this.currentModelDimension === dimension && this.annIndex) {
-            // console.log(`ANN index dimension ${dimension} already set and index exists.`);
+            // Log.info(`ANN index dimension ${dimension} already set and index exists.`);
             return; // No change needed
         }
 
-        console.log(`Setting ANN index dimension to ${dimension}. Previous: ${this.currentModelDimension}`);
+        Log.info(`Setting ANN index dimension to ${dimension}. Previous: ${this.currentModelDimension}`);
         this.currentModelDimension = dimension;
 
         if (!this.currentModelDimension) {
-            console.warn('Cannot initialize ANN index without a model dimension.');
+            Log.warn('Cannot initialize ANN index without a model dimension.');
             this.annIndex = null;
             // Attempt to delete existing index file if dimension becomes unknown
             if (fs.existsSync(this.annIndexPath)) {
                 try {
                     fs.unlinkSync(this.annIndexPath);
-                    console.log(`Deleted ANN index file ${this.annIndexPath} as model dimension is now unknown.`);
+                    Log.info(`Deleted ANN index file ${this.annIndexPath} as model dimension is now unknown.`);
                 } catch (e) {
-                    console.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
+                    Log.error(`Failed to delete ANN index file ${this.annIndexPath}:`, e);
                 }
             }
             return;
         }
 
         // Initialize or re-initialize the ANN index
-        console.log(`Initializing HNSW index with space 'cosine' and dimension ${this.currentModelDimension}`);
+        Log.info(`Initializing HNSW index with space 'cosine' and dimension ${this.currentModelDimension}`);
         this.annIndex = new HierarchicalNSW('cosine', this.currentModelDimension);
 
         if (this.loadAnnIndex()) { // loadAnnIndex is synchronous
-            console.log(`ANN index loaded successfully from ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
+            Log.info(`ANN index loaded successfully from ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
         } else {
-            console.log(`Initializing new ANN index at ${this.annIndexPath}. Max elements: ${ANN_MAX_ELEMENTS_CONFIG}`);
+            Log.info(`Initializing new ANN index at ${this.annIndexPath}. Max elements: ${ANN_MAX_ELEMENTS_CONFIG}`);
             this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG);
             // No need to save here, will be saved on dispose or when data is added.
         }
@@ -1234,12 +1234,12 @@ export class VectorDatabaseService implements vscode.Disposable {
      */
     private loadAnnIndex(): boolean {
         if (!this.annIndex || !this.annIndexPath || !this.currentModelDimension) {
-            console.warn('ANN index, path, or dimension not set. Cannot load index.');
+            Log.warn('ANN index, path, or dimension not set. Cannot load index.');
             return false;
         }
         try {
             if (fs.existsSync(this.annIndexPath)) {
-                console.log(`Attempting to load ANN index from ${this.annIndexPath}`);
+                Log.info(`Attempting to load ANN index from ${this.annIndexPath}`);
                 this.annIndex.readIndexSync(this.annIndexPath); // This might throw if dimensions mismatch
                 // It's good practice to check if the loaded index actually has items if it's not empty
                 // For example, if an empty index was saved, getCurrentCount() would be 0.
@@ -1247,12 +1247,12 @@ export class VectorDatabaseService implements vscode.Disposable {
                 // but typically it should handle it.
                 return true;
             }
-            console.log(`ANN index file not found at ${this.annIndexPath}. A new index will be used.`);
+            Log.info(`ANN index file not found at ${this.annIndexPath}. A new index will be used.`);
             return false;
         } catch (error) {
-            console.warn(`Failed to load ANN index from ${this.annIndexPath}:`, error);
+            Log.warn(`Failed to load ANN index from ${this.annIndexPath}:`, error);
             // If loading fails, ensure we have a fresh, empty index for the current dimension
-            console.log(`Re-initializing a fresh ANN index due to load failure for dimension ${this.currentModelDimension}.`);
+            Log.info(`Re-initializing a fresh ANN index due to load failure for dimension ${this.currentModelDimension}.`);
             this.annIndex = new HierarchicalNSW('cosine', this.currentModelDimension);
             // this.annIndex.initIndex(ANN_MAX_ELEMENTS_CONFIG); // Caller will init if loadAnnIndex returns false
             return false;
@@ -1264,19 +1264,19 @@ export class VectorDatabaseService implements vscode.Disposable {
      */
     private saveAnnIndex(): void {
         if (!this.annIndex || !this.annIndexPath) {
-            console.warn('ANN index or path not set. Cannot save index.');
+            Log.warn('ANN index or path not set. Cannot save index.');
             return;
         }
         try {
-            console.log(`Saving ANN index to ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
+            Log.info(`Saving ANN index to ${this.annIndexPath}. Elements: ${this.annIndex.getCurrentCount()}`);
             const dir = path.dirname(this.annIndexPath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
             }
             this.annIndex.writeIndexSync(this.annIndexPath);
-            console.log(`ANN index saved successfully to ${this.annIndexPath}.`);
+            Log.info(`ANN index saved successfully to ${this.annIndexPath}.`);
         } catch (error) {
-            console.error(`Failed to save ANN index to ${this.annIndexPath}:`, error);
+            Log.error(`Failed to save ANN index to ${this.annIndexPath}:`, error);
         }
     }
 
@@ -1300,7 +1300,7 @@ export class VectorDatabaseService implements vscode.Disposable {
             try {
                 await this.optimizeDatabase();
             } catch (error) {
-                console.error('Error optimizing database during disposal:', error);
+                Log.error('Error optimizing database during disposal:', error);
             }
 
             return new Promise<void>((resolve) => {
@@ -1310,10 +1310,10 @@ export class VectorDatabaseService implements vscode.Disposable {
                 }
                 this.db.close((err) => {
                     if (err) {
-                        console.error('Error closing SQLite database:', err);
+                        Log.error('Error closing SQLite database:', err);
                     }
                     this.db = null;
-                    console.log('SQLite database closed.');
+                    Log.info('SQLite database closed.');
                     resolve();
                 });
             });

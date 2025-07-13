@@ -5,6 +5,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { IndexingService } from './indexingService';
 import type { ProcessingResult } from '../types/indexingTypes';
 import { SimilaritySearchOptions, SimilaritySearchResult } from '../types/embeddingTypes';
+import { Log } from './loggingService';
 
 /**
  * EmbeddingDatabaseAdapter provides high-level operations to integrate
@@ -60,7 +61,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
         if (this.embeddingModel !== newModel) {
             this.embeddingModel = newModel;
             this.vectorDb.setEmbeddingModel(newModel);
-            console.log(`Updated embedding model to ${newModel} from IndexingService`);
+            Log.info(`Updated embedding model to ${newModel} from IndexingService`);
         }
     }
 
@@ -77,7 +78,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
         try {
             // Skip if no valid embeddings
             if (!result || !result.success) {
-                console.log(`Skipping file ${file.path} - no valid embeddings`);
+                Log.info(`Skipping file ${file.path} - no valid embeddings`);
                 return false;
             }
 
@@ -114,7 +115,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                         }))
                     );
                 } else {
-                    console.error(`Mismatch between chunks (${chunkRecords.length}) and embeddings (${result.embeddings.length}) for file ${file.path}`);
+                    Log.error(`Mismatch between chunks (${chunkRecords.length}) and embeddings (${result.embeddings.length}) for file ${file.path}`);
                     return false;
                 }
             }
@@ -124,7 +125,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             return true;
 
         } catch (error) {
-            console.error(`Error storing embeddings for file ${file.path}:`, error);
+            Log.error(`Error storing embeddings for file ${file.path}:`, error);
             return false;
         }
     }
@@ -140,7 +141,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
         results: Map<string, ProcessingResult>,
         progressCallback?: (processed: number, total: number) => void
     ): Promise<void> {
-        console.log(`Storing embeddings for ${files.length} files`);
+        Log.info(`Storing embeddings for ${files.length} files`);
 
         let processedCount = 0;
         const totalFiles = files.length;
@@ -156,7 +157,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             const batchPromises = batch.map(async (file) => {
                 const result = results.get(file.id);
                 if (!result) {
-                    console.log(`No result found for file ${file.path}`);
+                    Log.info(`No result found for file ${file.path}`);
                     processedCount++;
                     if (progressCallback) {
                         progressCallback(processedCount, totalFiles);
@@ -202,7 +203,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             const entries = Array.from(embeddingsMap.entries());
 
             if (entries.length === 0 || !entries[0][1]) {
-                console.error('Failed to generate embedding for diff');
+                Log.error('Failed to generate embedding for diff');
                 return [];
             }
 
@@ -281,7 +282,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                         }
                     }
                 } catch (error) {
-                    console.error(`Error enhancing result for chunk ${result.chunkId}:`, error);
+                    Log.error(`Error enhancing result for chunk ${result.chunkId}:`, error);
                     // Include the original result if enhancement fails
                     enhancedResults.push(result);
                 }
@@ -294,7 +295,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             // Resort by score since we might have adjusted scores during enhancement
             return uniqueResults.sort((a, b) => b.score - a.score);
         } catch (error) {
-            console.error('Error finding relevant code context:', error);
+            Log.error('Error finding relevant code context:', error);
             return [];
         }
     }
@@ -360,10 +361,10 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                         // This matches the previous logic.
                         embeddings.set(originalText, result.embeddings[0]);
                     } else if (!result.success) {
-                        console.warn(`Failed to generate embedding for text (index ${originalIndex}): ${result.error || 'Unknown error'}`);
+                        Log.warn(`Failed to generate embedding for text (index ${originalIndex}): ${result.error || 'Unknown error'}`);
                     }
                 } else {
-                    console.warn(`Received embedding result for unknown fileId: ${result.fileId}`);
+                    Log.warn(`Received embedding result for unknown fileId: ${result.fileId}`);
                 }
 
                 processedCount++;
@@ -383,7 +384,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             if (token?.isCancellationRequested && !(error instanceof Error && error.message.includes('cancel'))) {
                 throw new Error('Operation cancelled');
             }
-            console.error('Error generating embeddings via IndexingService:', error);
+            Log.error('Error generating embeddings via IndexingService:', error);
             throw error; // Rethrow the error instead of returning an empty map
         }
     }
@@ -412,7 +413,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                 throw new Error('Operation cancelled');
             }
 
-            console.log(`Finding relevant code context for ${chunks.length} chunks`);
+            Log.info(`Finding relevant code context for ${chunks.length} chunks`);
 
             // Generate embeddings for all chunks in a single batch
             const embeddingsMap = await this.generateEmbeddings(chunks, progressCallback, token);
@@ -439,7 +440,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
                 const embedding = embeddingsMap.get(chunk);
 
                 if (!embedding) {
-                    console.warn(`No embedding generated for chunk: ${chunk.substring(0, 50)}...`);
+                    Log.warn(`No embedding generated for chunk: ${chunk.substring(0, 50)}...`);
                     continue;
                 }
 
@@ -479,7 +480,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             if (token?.isCancellationRequested) {
                 throw new Error('Operation cancelled');
             }
-            console.error('Error finding relevant code context for chunks:', error);
+            Log.error('Error finding relevant code context for chunks:', error);
             throw error;
         }
     }
@@ -564,7 +565,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
 
             return entries[0][1];
         } catch (error) {
-            console.error('Error generating embedding via IndexingService:', error);
+            Log.error('Error generating embedding via IndexingService:', error);
             return null;
         }
     }
@@ -580,7 +581,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             // Update in database
             this.vectorDb.setEmbeddingModel(modelName);
 
-            console.log(`Set embedding model to ${modelName}`);
+            Log.info(`Set embedding model to ${modelName}`);
         }
     }
 
@@ -610,7 +611,7 @@ export class EmbeddingDatabaseAdapter implements vscode.Disposable {
             return newHash !== fileRecord.hash;
 
         } catch (error) {
-            console.error(`Error checking if file needs reindexing: ${filePath}`, error);
+            Log.error(`Error checking if file needs reindexing: ${filePath}`, error);
             // When in doubt, reindex
             return true;
         }

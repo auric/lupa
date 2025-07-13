@@ -1,9 +1,10 @@
 // src/services/codeAnalysisService.ts
-import { Parser, Language, Node, Tree, Query } from 'web-tree-sitter';
-import * as path from 'path';
-import { LANGUAGE_QUERIES } from '../config/treeSitterQueries';
-import { getLanguageForExtension, SUPPORTED_LANGUAGES } from '../types/types';
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { Parser, Language, Node, Tree, Query } from 'web-tree-sitter';
+import { LANGUAGE_QUERIES } from '../config/treeSitterQueries';
+import { SUPPORTED_LANGUAGES } from '../types/types';
+import { Log } from './loggingService';
 
 export interface Position {
     line: number;
@@ -34,7 +35,7 @@ export class CodeAnalysisServiceInitializer {
         if (!this.initializationPromise) {
             this.extensionPath = extensionPath;
             const wasmPath = path.join(extensionPath, 'dist', 'tree-sitter.wasm');
-            console.log(`CodeAnalysisService: Initializing Tree-sitter parser with wasm at ${wasmPath}`);
+            Log.info(`CodeAnalysisService: Initializing Tree-sitter parser with wasm at ${wasmPath}`);
             this.initializationPromise = Parser.init({
                 locateFile: () => wasmPath,
             });
@@ -113,7 +114,7 @@ export class CodeAnalysisService implements vscode.Disposable {
      */
     public async parseCode(code: string, language: string, variant: string | undefined): Promise<Tree | null> {
         if (this.isDisposed) {
-            console.warn('CodeAnalysisService is disposed. Cannot parse code.');
+            Log.warn('CodeAnalysisService is disposed. Cannot parse code.');
             return null;
         }
         try {
@@ -122,7 +123,7 @@ export class CodeAnalysisService implements vscode.Disposable {
             parser.setLanguage(langParser);
             return parser.parse(code);
         } catch (error) {
-            console.error(`Error parsing ${language} code:`, error);
+            Log.error(`Error parsing ${language} code:`, error);
             return null;
         }
     }
@@ -210,7 +211,7 @@ export class CodeAnalysisService implements vscode.Disposable {
                 return a.position.character - b.position.character;
             });
         } catch (error) {
-            console.error(`Error finding symbols in ${languageId} code:`, error);
+            Log.error(`Error finding symbols in ${languageId} code:`, error);
             return [];
         } finally {
             tree.delete();
@@ -410,7 +411,7 @@ export class CodeAnalysisService implements vscode.Disposable {
                     }
                 }
             } catch (error) {
-                console.error(`Error running query "${queryString}":`, error);
+                Log.error(`Error running query "${queryString}":`, error);
             } finally {
                 if (query) {
                     query.delete();
@@ -531,7 +532,7 @@ export class CodeAnalysisService implements vscode.Disposable {
 
             return Array.from(adjustedLines).sort((a, b) => a - b);
         } catch (error) {
-            console.error('Error extracting lines for points of interest:', error);
+            Log.error('Error extracting lines for points of interest:', error);
             return [];
         } finally {
             tree.delete();
@@ -551,6 +552,6 @@ export class CodeAnalysisService implements vscode.Disposable {
         }
         this.languageParsers.clear();
         this.isDisposed = true;
-        console.log('CodeAnalysisService disposed.');
+        Log.info('CodeAnalysisService disposed.');
     }
 }

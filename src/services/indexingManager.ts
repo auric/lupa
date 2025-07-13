@@ -11,6 +11,7 @@ import {
 import type { FileToProcess, ProcessingResult } from '../types/indexingTypes';
 import { getSupportedFilesGlob, getExcludePattern } from '../types/types';
 import { ResourceDetectionService } from './resourceDetectionService';
+import { Log } from './loggingService';
 
 /**
  * IndexingManager handles all indexing operations with consistent reporting
@@ -93,7 +94,7 @@ export class IndexingManager implements vscode.Disposable {
             options
         );
 
-        console.log(`Initialized IndexingService with model: ${this.selectedModel}, concurrentTasks: ${concurrentTasks}, context length: ${modelInfo?.contextLength || 'unknown'}`);
+        Log.info(`Initialized IndexingService with model: ${this.selectedModel}, concurrentTasks: ${concurrentTasks}, context length: ${modelInfo?.contextLength || 'unknown'}`);
 
         await this.indexingService.initialize();
         return this.indexingService;
@@ -275,7 +276,7 @@ export class IndexingManager implements vscode.Disposable {
                     totalFilesNeededIndexing++;
                 }
             } catch (error) {
-                console.error(`Error checking file ${filePath}:`, error);
+                Log.error(`Error checking file ${filePath}:`, error);
                 totalFilesChecked++; // Still count as checked even if there was an error
             }
         }
@@ -361,7 +362,7 @@ export class IndexingManager implements vscode.Disposable {
 
             for await (const yieldedItem of generator) {
                 if (token.isCancellationRequested) {
-                    console.log('[IndexingManager] Cancellation requested, stopping result processing.');
+                    Log.info('[IndexingManager] Cancellation requested, stopping result processing.');
                     break;
                 }
 
@@ -395,17 +396,17 @@ export class IndexingManager implements vscode.Disposable {
                             if (overallPercentForNotification > lastReportedPercentForNotification) {
                                 lastReportedPercentForNotification = overallPercentForNotification;
                             }
-                            console.log(`[IndexingManager] Stored embeddings for file: ${processingResult.filePath}. Total stored: ${totalStored}/${totalToProcess}`);
+                            Log.info(`[IndexingManager] Stored embeddings for file: ${processingResult.filePath}. Total stored: ${totalStored}/${totalToProcess}`);
 
                         } catch (error) {
-                            console.error(`[IndexingManager] Error storing embedding result for file ${processingResult.filePath}:`, error);
+                            Log.error(`[IndexingManager] Error storing embedding result for file ${processingResult.filePath}:`, error);
                             progress.report({ message: `Error storing ${processingResult.filePath}.` });
                         }
                     } else {
-                        console.warn(`[IndexingManager] File with id ${processingResult.fileId} not found in filesToProcess list for storing.`);
+                        Log.warn(`[IndexingManager] File with id ${processingResult.fileId} not found in filesToProcess list for storing.`);
                     }
                 } else if (processingResult.error) {
-                    console.error(`[IndexingManager] Error processing file ${processingResult.filePath} from generator:`, processingResult.error);
+                    Log.error(`[IndexingManager] Error processing file ${processingResult.filePath} from generator:`, processingResult.error);
                     // Update progress for vscode.Progress notification even for errors, to show activity
                     const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files attempted. Error with ${processingResult.filePath}.`;
                     const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
@@ -419,7 +420,7 @@ export class IndexingManager implements vscode.Disposable {
                     }
                 } else {
                     // File processed, but no embeddings (e.g. empty file, or no content to embed)
-                    console.log(`[IndexingManager] File ${processingResult.filePath} processed by generator, no new embeddings to store.`);
+                    Log.info(`[IndexingManager] File ${processingResult.filePath} processed by generator, no new embeddings to store.`);
                     // Update progress for vscode.Progress notification
                     const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files analyzed.`;
                     const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
@@ -440,7 +441,7 @@ export class IndexingManager implements vscode.Disposable {
                     `Checked ${totalFilesChecked} files. ` +
                     `Indexed and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
                 progress.report({ message });
-                console.log(message);
+                Log.info(message);
             } else {
                 // totalProcessedForNotification is no longer updated with the new generator.
                 // filesProcessedByGenerator reflects how many files had their processing completed (success or error) by IndexingService.
@@ -448,10 +449,10 @@ export class IndexingManager implements vscode.Disposable {
                     `Checked ${totalFilesChecked} files. ` +
                     `Attempted processing for ${filesProcessedByGenerator} files and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
                 progress.report({ message });
-                console.log(message);
+                Log.info(message);
             }
         } catch (error) {
-            console.error('Error during indexing:', error);
+            Log.error('Error during indexing:', error);
             progress.report({
                 message: `Error during indexing: ${error instanceof Error ? error.message : String(error)}`
             });

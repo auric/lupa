@@ -1,10 +1,11 @@
-import { ChunkForEmbedding, EmbeddingGenerationOutput } from '../types/indexingTypes';
-import { EmbeddingOptions } from '../types/embeddingTypes';
-import { Tinypool } from 'tinypool';
-import { EmbeddingTaskData, EmbeddingTaskResult } from '../workers/embeddingGeneratorWorker.js';
+import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
-import os from 'os';
+import { Tinypool } from 'tinypool';
+import { ChunkForEmbedding, EmbeddingGenerationOutput } from '../types/indexingTypes';
+import { EmbeddingOptions } from '../types/embeddingTypes';
+import { EmbeddingTaskData, EmbeddingTaskResult } from '../workers/embeddingGeneratorWorker.js';
+import { Log } from './loggingService';
 
 /**
  * Options for configuring the EmbeddingGenerationService.
@@ -79,7 +80,7 @@ export class EmbeddingGenerationService {
         const workerFilename = path.join(this.options.extensionPath, 'dist', 'workers', 'embeddingGeneratorWorker.js');
         const workerFileURL = pathToFileURL(workerFilename).toString();
 
-        console.log(`Initializing EmbeddingGenerationService with worker file: ${workerFileURL}`);
+        Log.info(`Initializing EmbeddingGenerationService with worker file: ${workerFileURL}`);
 
         try {
             this.piscina = new Tinypool({
@@ -89,9 +90,9 @@ export class EmbeddingGenerationService {
                 maxThreads: this.options.maxConcurrentTasks,
             });
             this.isInitialized = true;
-            console.log('EmbeddingGenerationService initialized successfully.');
+            Log.info('EmbeddingGenerationService initialized successfully.');
         } catch (error) {
-            console.error('Failed to initialize Tinypool for EmbeddingGenerationService:', error);
+            Log.error('Failed to initialize Tinypool for EmbeddingGenerationService:', error);
             throw error;
         }
     }
@@ -110,7 +111,7 @@ export class EmbeddingGenerationService {
         abortSignal: AbortSignal
     ): Promise<EmbeddingGenerationOutput[]> {
         if (!this.isInitialized || !this.piscina) {
-            console.error('EmbeddingGenerationService is not initialized or piscina is not available.');
+            Log.error('EmbeddingGenerationService is not initialized or piscina is not available.');
             return chunksToEmbed.map(chunk => ({
                 originalChunkInfo: chunk,
                 embedding: null,
@@ -153,12 +154,12 @@ export class EmbeddingGenerationService {
             try {
                 await this.piscina.destroy();
             } catch (error) {
-                console.error('Error disposing Tinypool in EmbeddingGenerationService:', error);
+                Log.error('Error disposing Tinypool in EmbeddingGenerationService:', error);
                 // Log error but don't re-throw, as dispose should be idempotent and not fail critically
             }
             this.piscina = null;
         }
         this.isInitialized = false;
-        console.log('EmbeddingGenerationService disposed.');
+        Log.info('EmbeddingGenerationService disposed.');
     }
 }

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { Log } from '../services/loggingService';
 
 /**
  * Model information
@@ -78,7 +79,7 @@ export class CopilotModelManager {
 
             return modelDetails;
         } catch (err) {
-            console.error('Error listing models:', err);
+            Log.error('Error listing models:', err);
             return [];
         }
     }
@@ -117,7 +118,7 @@ export class CopilotModelManager {
             const models = await vscode.lm.selectChatModels(selector);
 
             if (models.length === 0) {
-                console.log(`Model ${options?.family || 'any'} ${options?.version || ''} not available, using fallback`);
+                Log.info(`Model ${options?.family || 'any'} ${options?.version || ''} not available, using fallback`);
                 return this.selectFallbackModel();
             }
 
@@ -134,7 +135,7 @@ export class CopilotModelManager {
 
             return model;
         } catch (err) {
-            console.error(`Failed to select model ${options?.family || 'any'} ${options?.version || ''}:`, err);
+            Log.error(`Failed to select model ${options?.family || 'any'} ${options?.version || ''}:`, err);
             return this.selectFallbackModel();
         }
     }
@@ -167,7 +168,7 @@ export class CopilotModelManager {
             this.currentModel = models[0];
             return models[0];
         } catch (err) {
-            console.error('Failed to select any model:', err);
+            Log.error('Failed to select any model:', err);
             throw new Error('No language models available');
         }
     }

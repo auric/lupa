@@ -3,7 +3,12 @@ import { ContextProvider } from './contextProvider';
 import { TokenManagerService } from './tokenManagerService';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
-import { ContextSnippet, DiffHunk, HybridContextResult } from '../types/contextTypes'; // Import ContextSnippet
+import type {
+    ContextSnippet,
+    DiffHunk,
+    HybridContextResult
+} from '../types/contextTypes';
+import { Log } from './loggingService';
 
 /**
  * AnalysisProvider handles the core analysis logic using language models
@@ -134,7 +139,7 @@ export class AnalysisProvider implements vscode.Disposable {
 
             const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
-            console.log(`Token allocation (pre-optimization): ${JSON.stringify({
+            Log.info(`Token allocation (pre-optimization): ${JSON.stringify({
                 systemPrompt: allocation.systemPromptTokens,
                 diffStructure: allocation.diffTextTokens, // This now reflects diffStructureTokens
                 contextPotential: allocation.contextTokens, // Based on all potential snippets
@@ -151,7 +156,7 @@ export class AnalysisProvider implements vscode.Disposable {
                 allContextSnippets,
                 allocation.contextAllocationTokens
             );
-            console.log(`Context optimized: ${optimizedSnippets.length} snippets selected. Truncated: ${wasTruncated}`);
+            Log.info(`Context optimized: ${optimizedSnippets.length} snippets selected. Truncated: ${wasTruncated}`);
 
             // This string is for returning to the UI/caller, representing the context that was considered.
             const finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsToString(optimizedSnippets, wasTruncated);
@@ -207,9 +212,9 @@ export class AnalysisProvider implements vscode.Disposable {
 
             // Final check (optional, for debugging or very strict scenarios)
             // const finalPromptTokens = await this.tokenManager.calculateTokens(systemPrompt + finalInterleavedPromptContent);
-            // console.log(`Final prompt tokens: ${finalPromptTokens} / ${allocation.totalAvailableTokens}`);
+            // Log.info(`Final prompt tokens: ${finalPromptTokens} / ${allocation.totalAvailableTokens}`);
             // if (finalPromptTokens > allocation.totalAvailableTokens) {
-            //     console.warn("Final prompt exceeded token limit despite pre-calculation. This may indicate an issue in token estimation or structural overhead.");
+            //     Log.warn("Final prompt exceeded token limit despite pre-calculation. This may indicate an issue in token estimation or structural overhead.");
             //     // Potentially truncate finalInterleavedPromptContent further, though this should be rare.
             // }
 

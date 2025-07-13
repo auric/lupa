@@ -242,7 +242,9 @@ class ClassC {}
             expect(tree).toBeNull();
 
             // Check that warnings were logged
-            expect(consoleWarnSpy).toHaveBeenCalledWith('CodeAnalysisService is disposed. Cannot parse code.');
+            expect(consoleWarnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('CodeAnalysisService is disposed. Cannot parse code.')
+            );
 
             // Clean up spy
             consoleWarnSpy.mockRestore();

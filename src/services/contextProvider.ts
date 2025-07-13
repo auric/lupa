@@ -15,6 +15,7 @@ import {
     type HybridContextResult
 } from '../types/contextTypes';
 import { getLanguageForExtension, type SupportedLanguage } from '../types/types';
+import { Log } from './loggingService';
 
 /**
  * Represents symbol information found within a diff, including file path.
@@ -120,7 +121,7 @@ export class ContextProvider implements vscode.Disposable {
                             .map(line => line.substring(1))
                             .join('\n');
                     } else {
-                        console.warn(`Could not read file content for ${filePath}:`, error);
+                        Log.warn(`Could not read file content for ${filePath}:`, error);
                     }
                 }
             }
@@ -172,7 +173,7 @@ export class ContextProvider implements vscode.Disposable {
 
                 } catch (error) {
                     // Log the error using the new logging service when available
-                    console.error(`Error finding symbols in ${filePath}:`, error);
+                    Log.error(`Error finding symbols in ${filePath}:`, error);
                 }
             }
 
@@ -259,7 +260,7 @@ export class ContextProvider implements vscode.Disposable {
             }
         }
 
-        console.log(`Extracted ${finalEmbeddingQueries.length} embedding queries and ${identifiedSymbols.length} symbols from diff.`); // Existing log
+        Log.info(`Extracted ${finalEmbeddingQueries.length} embedding queries and ${identifiedSymbols.length} symbols from diff.`); // Existing log
         return { embeddingQueries: finalEmbeddingQueries, symbols: identifiedSymbols };
     }
 
@@ -321,7 +322,7 @@ export class ContextProvider implements vscode.Disposable {
         progressCallback?: (processed: number, total: number) => void,
         token?: vscode.CancellationToken
     ): Promise<HybridContextResult> {
-        console.log(`Finding relevant context for PR diff (mode: ${analysisMode})`);
+        Log.info(`Finding relevant context for PR diff (mode: ${analysisMode})`);
         const allContextSnippets: ContextSnippet[] = [];
         const parsedDiffFileHunks = this.parseDiff(diff); // Now includes hunkId
 
@@ -338,7 +339,7 @@ export class ContextProvider implements vscode.Disposable {
             // --- LSP Context Retrieval ---
             const lspContextPromises: Promise<void>[] = [];
             if (symbols.length > 0) {
-                console.log(`Attempting LSP lookup for ${symbols.length} symbols.`);
+                Log.info(`Attempting LSP lookup for ${symbols.length} symbols.`);
                 for (const symbol of symbols) {
                     if (token?.isCancellationRequested) break;
                     const absoluteSymbolPath = path.join(gitRootPath, symbol.filePath);
@@ -367,7 +368,7 @@ export class ContextProvider implements vscode.Disposable {
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
-                            }).catch(err => console.warn(`Error finding definition for ${symbol.symbolName} in ${symbol.filePath}:`, err))
+                            }).catch(err => Log.warn(`Error finding definition for ${symbol.symbolName} in ${symbol.filePath}:`, err))
                     );
                     lspContextPromises.push(
                         this.findSymbolReferences(absoluteSymbolPath, position, false, token)
@@ -380,13 +381,13 @@ export class ContextProvider implements vscode.Disposable {
                                     filePath: symbol.filePath, startLine: symbol.position.line,
                                     associatedHunkIdentifiers: symbolHunkIdentifier ? [symbolHunkIdentifier] : undefined
                                 }));
-                            }).catch(err => console.warn(`Error finding references for ${symbol.symbolName} in ${symbol.filePath}:`, err))
+                            }).catch(err => Log.warn(`Error finding references for ${symbol.symbolName} in ${symbol.filePath}:`, err))
                     );
                 }
                 await Promise.allSettled(lspContextPromises);
-                console.log(`LSP: Added ${allContextSnippets.filter(s => s.type.startsWith('lsp-')).length} snippets.`);
+                Log.info(`LSP: Added ${allContextSnippets.filter(s => s.type.startsWith('lsp-')).length} snippets.`);
             } else {
-                console.log('No symbols identified for LSP lookup.');
+                Log.info('No symbols identified for LSP lookup.');
             }
             if (token?.isCancellationRequested) throw new Error('Operation cancelled: After LSP context retrieval');
 
@@ -396,16 +397,16 @@ export class ContextProvider implements vscode.Disposable {
             if (embeddingQueries.length > 0) {
                 embeddingResults = await this.embeddingDatabaseAdapter.findRelevantCodeContextForChunks(
                     embeddingQueries, searchOptions,
-                    progressCallback || ((p, t) => console.log(`Generating embeddings for queries: ${p} of ${t}`)),
+                    progressCallback || ((p, t) => Log.info(`Generating embeddings for queries: ${p} of ${t}`)),
                     token
                 );
             } else {
-                console.log('No embedding queries extracted for embedding search.');
+                Log.info('No embedding queries extracted for embedding search.');
             }
             if (token?.isCancellationRequested) throw new Error('Operation cancelled: After embedding search');
 
             const rankedEmbeddingResults = this.rankAndFilterResults(embeddingResults, analysisMode);
-            console.log(`Found ${rankedEmbeddingResults.length} relevant code snippets via embeddings after ranking.`);
+            Log.info(`Found ${rankedEmbeddingResults.length} relevant code snippets via embeddings after ranking.`);
 
             rankedEmbeddingResults.forEach(embResult => {
                 const scoreDisplay = (embResult.score * 100).toFixed(1);
@@ -432,11 +433,11 @@ export class ContextProvider implements vscode.Disposable {
 
 
             if (allContextSnippets.length === 0) {
-                console.log('No relevant context found from LSP or embeddings. Attempting fallback.');
+                Log.info('No relevant context found from LSP or embeddings. Attempting fallback.');
                 const fallbackSnippets = await this.getFallbackContextSnippets(diff, token);
                 allContextSnippets.push(...fallbackSnippets);
                 if (allContextSnippets.length === 0) {
-                    console.log('Fallback also yielded no context.');
+                    Log.info('Fallback also yielded no context.');
                     allContextSnippets.push({
                         id: 'no-context-found',
                         type: 'embedding',
@@ -446,12 +447,12 @@ export class ContextProvider implements vscode.Disposable {
                 }
             }
 
-            console.log(`Returning ${allContextSnippets.length} context snippets and parsed diff to AnalysisProvider.`);
+            Log.info(`Returning ${allContextSnippets.length} context snippets and parsed diff to AnalysisProvider.`);
             return { snippets: allContextSnippets, parsedDiff: parsedDiffFileHunks };
 
         } catch (error) {
             if (token?.isCancellationRequested) throw new Error('Operation cancelled');
-            console.error('Error getting context for diff:', error);
+            Log.error('Error getting context for diff:', error);
             return {
                 snippets: [{
                     id: 'error-context',
@@ -617,7 +618,7 @@ export class ContextProvider implements vscode.Disposable {
     private async getFallbackContextSnippets(diff: string, token?: vscode.CancellationToken): Promise<ContextSnippet[]> {
         const fallbackSnippets: ContextSnippet[] = [];
         try {
-            console.log('Using fallback strategies to find context snippets');
+            Log.info('Using fallback strategies to find context snippets');
 
             // Strategy 1: Extract file paths from diff and use them to find related files
             const filePathRegex = /^diff --git a\/(.+) b\/(.+)$/gm;
@@ -631,7 +632,7 @@ export class ContextProvider implements vscode.Disposable {
             }
 
             if (filePaths.size > 0) {
-                console.log(`Fallback: Using ${filePaths.size} file paths from diff`);
+                Log.info(`Fallback: Using ${filePaths.size} file paths from diff`);
 
                 // Get parent directories to find related files
                 const parentDirs = new Set<string>();
@@ -649,13 +650,13 @@ export class ContextProvider implements vscode.Disposable {
                     searchQueries,
                     { minScore: 0.5, limit: 5 },
                     (processed, total) => {
-                        console.log(`Generating fallback embeddings: ${processed} of ${total}`);
+                        Log.info(`Generating fallback embeddings: ${processed} of ${total}`);
                     },
                     token
                 );
 
                 if (allResults.length > 0) {
-                    console.log(`Found ${allResults.length} fallback context items`);
+                    Log.info(`Found ${allResults.length} fallback context items`);
                     allResults.forEach(embResult => {
                         const scoreDisplay = (embResult.score * 100).toFixed(1);
                         const fileHeader = `### File: \`${embResult.filePath}\` (Fallback Relevance: ${scoreDisplay}%)`;
@@ -683,7 +684,7 @@ export class ContextProvider implements vscode.Disposable {
             return fallbackSnippets;
 
         } catch (error) {
-            console.error('Error getting fallback context snippets:', error);
+            Log.error('Error getting fallback context snippets:', error);
             fallbackSnippets.push({
                 id: 'error-fallback-context',
                 type: 'embedding',
@@ -700,7 +701,7 @@ export class ContextProvider implements vscode.Disposable {
      */
     async getRepositoryContext(): Promise<string> {
         try {
-            console.log('Getting repository context');
+            Log.info('Getting repository context');
 
             // Look for key files that would give insights into the project structure
             const keyFilePatterns = [
@@ -714,7 +715,7 @@ export class ContextProvider implements vscode.Disposable {
                 keyFilePatterns,
                 { minScore: 0.5, limit: 2 },
                 (processed, total) => {
-                    console.log(`Generating repository context embeddings: ${processed} of ${total}`);
+                    Log.info(`Generating repository context embeddings: ${processed} of ${total}`);
                 }
             );
 
@@ -730,7 +731,7 @@ export class ContextProvider implements vscode.Disposable {
             return this.formatContextResults(uniqueResults);
 
         } catch (error) {
-            console.error('Error getting repository context:', error);
+            Log.error('Error getting repository context:', error);
             return 'Error retrieving repository context: ' +
                 (error instanceof Error ? error.message : String(error));
         }
@@ -892,13 +893,13 @@ export class ContextProvider implements vscode.Disposable {
     ): Promise<vscode.Location[] | undefined> {
         // Early exit if cancellation is already requested
         if (token?.isCancellationRequested) {
-            console.log('Symbol definition lookup cancelled before execution.');
+            Log.info('Symbol definition lookup cancelled before execution.');
             return undefined;
         }
 
         try {
             const uri = vscode.Uri.file(filePath);
-            console.log(`Finding definition for symbol at ${filePath}:${position.line}:${position.character}`);
+            Log.info(`Finding definition for symbol at ${filePath}:${position.line}:${position.character}`);
 
             // Use a CancellationTokenSource to manage cancellation for the command execution
             const cts = new vscode.CancellationTokenSource();
@@ -914,19 +915,19 @@ export class ContextProvider implements vscode.Disposable {
             );
 
             if (token?.isCancellationRequested) {
-                console.log('Symbol definition lookup cancelled.');
+                Log.info('Symbol definition lookup cancelled.');
                 return undefined;
             }
 
             if (locations && locations.length > 0) {
-                console.log(`Found ${locations.length} definition(s)`);
+                Log.info(`Found ${locations.length} definition(s)`);
                 return locations;
             } else {
-                console.log('No definition found.');
+                Log.info('No definition found.');
                 return undefined;
             }
         } catch (error) {
-            console.error(`Error finding symbol definition for ${filePath}:${position.line}:${position.character}:`, error);
+            Log.error(`Error finding symbol definition for ${filePath}:${position.line}:${position.character}:`, error);
             // Don't throw, just return undefined if LSP fails
             return undefined;
         }
@@ -948,14 +949,14 @@ export class ContextProvider implements vscode.Disposable {
     ): Promise<vscode.Location[] | undefined> {
         // Early exit if cancellation is already requested
         if (token?.isCancellationRequested) {
-            console.log('Symbol reference lookup cancelled before execution.');
+            Log.info('Symbol reference lookup cancelled before execution.');
             return undefined;
         }
 
         try {
             const uri = vscode.Uri.file(filePath);
             const context: vscode.ReferenceContext = { includeDeclaration };
-            console.log(`Finding references for symbol at ${filePath}:${position.line}:${position.character} (includeDeclaration: ${includeDeclaration})`);
+            Log.info(`Finding references for symbol at ${filePath}:${position.line}:${position.character} (includeDeclaration: ${includeDeclaration})`);
 
             // Use a CancellationTokenSource to manage cancellation for the command execution
             const cts = new vscode.CancellationTokenSource();
@@ -972,19 +973,19 @@ export class ContextProvider implements vscode.Disposable {
             );
 
             if (token?.isCancellationRequested) {
-                console.log('Symbol reference lookup cancelled.');
+                Log.info('Symbol reference lookup cancelled.');
                 return undefined;
             }
 
             if (locations && locations.length > 0) {
-                console.log(`Found ${locations.length} reference(s)`);
+                Log.info(`Found ${locations.length} reference(s)`);
                 return locations;
             } else {
-                console.log('No references found.');
+                Log.info('No references found.');
                 return undefined;
             }
         } catch (error) {
-            console.error(`Error finding symbol references for ${filePath}:${position.line}:${position.character}:`, error);
+            Log.error(`Error finding symbol references for ${filePath}:${position.line}:${position.character}:`, error);
             // Don't throw, just return undefined if LSP fails
             return undefined;
         }
@@ -1012,7 +1013,7 @@ export class ContextProvider implements vscode.Disposable {
 
         for (const location of locations) {
             if (token?.isCancellationRequested) {
-                console.log('Snippet retrieval cancelled.');
+                Log.info('Snippet retrieval cancelled.');
                 break;
             }
 
@@ -1038,7 +1039,7 @@ export class ContextProvider implements vscode.Disposable {
                 }
 
                 if (token?.isCancellationRequested) {
-                    console.log('Snippet retrieval cancelled during line reading.');
+                    Log.info('Snippet retrieval cancelled during line reading.');
                     break;
                 }
 
@@ -1050,7 +1051,7 @@ export class ContextProvider implements vscode.Disposable {
                 snippetCache.set(cacheKey, formattedSnippet);
 
             } catch (error) {
-                console.error(`Error reading snippet for ${location.uri.fsPath}:`, error);
+                Log.error(`Error reading snippet for ${location.uri.fsPath}:`, error);
             }
         }
         return snippets;

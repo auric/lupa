@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
-import * as path from 'path';
 import { StatusBarService, StatusBarMessageType, StatusBarState } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import {
@@ -14,9 +13,9 @@ import {
     type EmbeddingGenerationOutput,
     type YieldedProcessingOutput
 } from '../types/indexingTypes';
-import { getLanguageForExtension } from '../types/types'; // type SupportedLanguage is not directly used
 import { CodeChunkingService, type CodeChunkingServiceOptions } from './codeChunkingService'; // Added import
 import { EmbeddingGenerationService, type EmbeddingGenerationServiceOptions } from './embeddingGenerationService'; // Added import
+import { Log } from './loggingService';
 
 /**
  * Options for the indexing service
@@ -33,9 +32,6 @@ export interface IndexingServiceOptions {
     // batchCompletedCallback?: BatchCompletedCallback; // This type is not defined here
     // statusAggregator?: StatusAggregator; // This type is not defined here
 }
-
-
-
 
 /**
  * Tracks an active processing operation.
@@ -141,9 +137,9 @@ export class IndexingService implements vscode.Disposable {
             await this.codeChunkingService.initialize();
             await this.embeddingGenerationService.initialize();
             this.statusBarService.setState(StatusBarState.Ready, 'Indexing services initialized');
-            console.log("IndexingService and its components initialized successfully.");
+            Log.info("IndexingService and its components initialized successfully.");
         } catch (error) {
-            console.error("Failed to initialize IndexingService or its components:", error);
+            Log.error("Failed to initialize IndexingService or its components:", error);
             this.statusBarService.setState(StatusBarState.Error, 'Initialization failed');
             // Rethrow to allow the caller (e.g., IndexingManager) to handle this critical failure.
             throw new Error(`IndexingService initialization failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -174,26 +170,26 @@ export class IndexingService implements vscode.Disposable {
         token?: vscode.CancellationToken
     ): AsyncGenerator<YieldedProcessingOutput, Map<string, ProcessingResult>, undefined> {
         if (files.length === 0) {
-            console.log('[IndexingService] No files provided for processing.');
+            Log.info('[IndexingService] No files provided for processing.');
             return new Map();
         }
 
         if (!this.codeChunkingService || !this.embeddingGenerationService) {
             const errorMsg = 'IndexingService or its dependent services are not properly initialized.';
-            console.error(`[IndexingService] ${errorMsg}`);
+            Log.error(`[IndexingService] ${errorMsg}`);
             this.statusBarService.setState(StatusBarState.Error, 'Service initialization error before processing.');
             throw new Error(errorMsg);
         }
 
         if (this.currentOperation) {
-            console.log('[IndexingService] New processing request received, cancelling previous operation.');
+            Log.info('[IndexingService] New processing request received, cancelling previous operation.');
             await this.cancelProcessing();
         }
 
         const abortController = new AbortController();
         const tokenRegistration = token?.onCancellationRequested(() => {
             if (!abortController.signal.aborted) {
-                console.log('[IndexingService] VS Code CancellationToken triggered: Aborting current operation.');
+                Log.info('[IndexingService] VS Code CancellationToken triggered: Aborting current operation.');
                 abortController.abort();
             }
         });
@@ -211,16 +207,16 @@ export class IndexingService implements vscode.Disposable {
         const op = this.currentOperation;
 
         this.statusBarService.setState(StatusBarState.Indexing, `Preparing ${op.initialFiles.length} files...`);
-        console.log(`[IndexingService] Starting processing for ${op.initialFiles.length} files.`);
+        Log.info(`[IndexingService] Starting processing for ${op.initialFiles.length} files.`);
 
         let livenessTimer: NodeJS.Timeout | null = setInterval(() => {
-            console.log(`[LIVENESS] IndexingService main thread is alive during processing at ${new Date().toISOString()}`);
+            Log.info(`[LIVENESS] IndexingService main thread is alive during processing at ${new Date().toISOString()}`);
         }, 30000);
 
         try {
             for (const file of op.initialFiles) {
                 if (op.abortController.signal.aborted) {
-                    console.log(`[IndexingService] Operation aborted before processing file ${file.path}.`);
+                    Log.info(`[IndexingService] Operation aborted before processing file ${file.path}.`);
                     if (!op.results.has(file.id)) {
                         const cancelledResult: ProcessingResult = {
                             fileId: file.id,
@@ -247,11 +243,11 @@ export class IndexingService implements vscode.Disposable {
                 // even in cases of error or cancellation during its execution for that file.
                 op.results.set(file.id, processingResult);
                 yield { filePath: file.path, result: processingResult };
-                console.log(`[IndexingService] Yielded results for file ${file.path}. Success: ${processingResult.success}`);
+                Log.info(`[IndexingService] Yielded results for file ${file.path}. Success: ${processingResult.success}`);
 
                 this.updateOverallStatus(); // Update status after processing each file
             }
-            console.log('[IndexingService] All files have been processed sequentially.');
+            Log.info('[IndexingService] All files have been processed sequentially.');
 
             // Final status update
             if (!op.abortController.signal.aborted) {
@@ -270,23 +266,23 @@ export class IndexingService implements vscode.Disposable {
                 if (overallSuccess) {
                     this.workspaceSettingsService.updateLastIndexingTimestamp();
                     this.statusBarService.setState(StatusBarState.Ready, 'Indexing complete');
-                    console.log('[IndexingService] Indexing completed successfully for all dispatched files.');
+                    Log.info('[IndexingService] Indexing completed successfully for all dispatched files.');
                 } else if (allFilesAttemptedAndResulted) {
                     // All files attempted, but some failed
                     this.statusBarService.setState(StatusBarState.Error, 'Indexing finished with some issues.');
-                    console.warn('[IndexingService] Indexing finished with some issues or was incomplete.');
+                    Log.warn('[IndexingService] Indexing finished with some issues or was incomplete.');
                 } else {
                     // Not all files were even attempted or have results (e.g. early critical error before loop completed)
                     // This case might be less common if the loop tries to add error results for all initial files.
                     this.statusBarService.setState(StatusBarState.Error, 'Indexing incomplete or critical error.');
-                    console.error('[IndexingService] Indexing was incomplete or a critical error occurred before all files could be processed.');
+                    Log.error('[IndexingService] Indexing was incomplete or a critical error occurred before all files could be processed.');
                 }
             }
         } catch (error) { // Catch errors from the main try block (e.g., if _processSingleFileSequentially rethrows a critical one)
             if (error instanceof Error && error.name === 'AbortError') {
-                console.log('[IndexingService] Operation was aborted during processing (generator).', error.message);
+                Log.info('[IndexingService] Operation was aborted during processing (generator).', error.message);
             } else {
-                console.error('[IndexingService] Critical error during file processing (generator):', error);
+                Log.error('[IndexingService] Critical error during file processing (generator):', error);
                 this.statusBarService.setState(StatusBarState.Error, error instanceof Error ? error.message : 'Unknown critical error during indexing');
             }
             // Yield error for any initial files that don't have a result yet
@@ -310,10 +306,10 @@ export class IndexingService implements vscode.Disposable {
                 throw error; // Rethrow to terminate the generator with an error
             }
         } finally {
-            console.log('[IndexingService] Entering finally block of processFilesGenerator.');
+            Log.info('[IndexingService] Entering finally block of processFilesGenerator.');
             if (livenessTimer) {
                 clearInterval(livenessTimer);
-                console.log('[LIVENESS] IndexingService liveness timer cleared in finally.');
+                Log.info('[LIVENESS] IndexingService liveness timer cleared in finally.');
             }
             tokenRegistration?.dispose();
 
@@ -342,7 +338,7 @@ export class IndexingService implements vscode.Disposable {
 
             this.currentOperation = null;
             this.updateOverallStatus();
-            console.log('[IndexingService] Exiting processFilesGenerator.');
+            Log.info('[IndexingService] Exiting processFilesGenerator.');
             return finalResults; // Return all accumulated results (successes and failures)
         }
     }
@@ -371,7 +367,7 @@ export class IndexingService implements vscode.Disposable {
             );
         } catch (chunkError) {
             const errorMsg = chunkError instanceof Error ? chunkError.message : String(chunkError);
-            console.error(`[IndexingService] Critical error during codeChunkingService.chunkFile for ${file.path}:`, chunkError);
+            Log.error(`[IndexingService] Critical error during codeChunkingService.chunkFile for ${file.path}:`, chunkError);
             // If chunkFile itself throws, detailedChunkingResult might be null or incomplete.
             // The error will be caught by the outer try-catch if not handled here.
             // For now, construct an error result.
@@ -387,7 +383,7 @@ export class IndexingService implements vscode.Disposable {
         }
 
         if (op.abortController.signal.aborted) {
-            console.log(`[IndexingService] Operation aborted after attempting to chunk file ${file.path}.`);
+            Log.info(`[IndexingService] Operation aborted after attempting to chunk file ${file.path}.`);
             return {
                 fileId: file.id,
                 filePath: file.path,
@@ -401,7 +397,7 @@ export class IndexingService implements vscode.Disposable {
 
         if (detailedChunkingResult === null) { // Critical failure during chunkFile itself
             const reason = "chunking critically failed or was cancelled by signal";
-            console.log(`[IndexingService] File ${file.path} ${reason}.`);
+            Log.info(`[IndexingService] File ${file.path} ${reason}.`);
             return {
                 fileId: file.id,
                 filePath: file.path,
@@ -415,7 +411,7 @@ export class IndexingService implements vscode.Disposable {
 
         if (detailedChunkingResult.chunks.length === 0) { // Chunking successful, but no chunks (e.g. empty file)
             const reason = "file yielded no chunks";
-            console.log(`[IndexingService] File ${file.path} ${reason}.`);
+            Log.info(`[IndexingService] File ${file.path} ${reason}.`);
             return {
                 fileId: file.id,
                 filePath: file.path,
@@ -439,7 +435,7 @@ export class IndexingService implements vscode.Disposable {
             offsetInFile: detailedChunkingResult.offsets[index],
         }));
 
-        console.log(`[IndexingService] Generating embeddings for ${chunksForEmbedding.length} chunks from file: ${file.path}`);
+        Log.info(`[IndexingService] Generating embeddings for ${chunksForEmbedding.length} chunks from file: ${file.path}`);
         let embeddingOutputs: EmbeddingGenerationOutput[] = [];
         try {
             embeddingOutputs = await this.embeddingGenerationService.generateEmbeddingsForChunks(
@@ -458,7 +454,7 @@ export class IndexingService implements vscode.Disposable {
                 } else if (output.error) {
                     // Don't log "aborted" errors if the global signal is set, as it's expected.
                     if (output.error !== 'Operation aborted by signal' && output.error !== 'Operation aborted' && !op.abortController.signal.aborted) {
-                        console.warn(`[IndexingService] Error embedding chunk ${output.originalChunkInfo.chunkIndexInFile} for file ${file.path}: ${output.error}`);
+                        Log.warn(`[IndexingService] Error embedding chunk ${output.originalChunkInfo.chunkIndexInFile} for file ${file.path}: ${output.error}`);
                     }
                     fileSpecificErrors.push(`Chunk ${output.originalChunkInfo.chunkIndexInFile}: ${output.error}`);
                 }
@@ -482,7 +478,7 @@ export class IndexingService implements vscode.Disposable {
             if (op.abortController.signal.aborted || errorMessage.toLowerCase().includes('cancel') || errorMessage.toLowerCase().includes('abort')) {
                 finalError = `Operation cancelled during embedding generation for ${file.path}.`;
             }
-            console.error(`[IndexingService] ${finalError}`);
+            Log.error(`[IndexingService] ${finalError}`);
             return {
                 fileId: file.id,
                 filePath: file.path,
@@ -568,7 +564,7 @@ export class IndexingService implements vscode.Disposable {
         const opToCancel = this.currentOperation; // Capture current operation at the start
 
         if (opToCancel) {
-            console.log('[IndexingService] Attempting to cancel current indexing operation.');
+            Log.info('[IndexingService] Attempting to cancel current indexing operation.');
             this.statusBarService.showTemporaryMessage('Cancelling indexing...', 2000, StatusBarMessageType.Working);
 
             if (!opToCancel.abortController.signal.aborted) {
@@ -583,7 +579,7 @@ export class IndexingService implements vscode.Disposable {
             // Log statistics of the (partially) cancelled operation
             // Note: filesSuccessfullyChunkedCount now means files that produced chunks.
             // filesEmbeddingsCompletedCount means files whose embedding stage (success/fail) was reached.
-            console.log(`[IndexingService] Indexing operation cancelled. Stats: Initial Files: ${opToCancel.initialFiles.length}, Chunking Attempted: ${opToCancel.filesChunkingAttemptedCount}, Files Yielding Chunks: ${opToCancel.filesSuccessfullyChunkedCount}, Total Chunks Generated: ${opToCancel.totalChunksGeneratedCount}, Embeddings Processed (Chunks): ${opToCancel.embeddingsProcessedCount}, Files Reaching Embedding Stage: ${opToCancel.filesEmbeddingsCompletedCount}.`);
+            Log.info(`[IndexingService] Indexing operation cancelled. Stats: Initial Files: ${opToCancel.initialFiles.length}, Chunking Attempted: ${opToCancel.filesChunkingAttemptedCount}, Files Yielding Chunks: ${opToCancel.filesSuccessfullyChunkedCount}, Total Chunks Generated: ${opToCancel.totalChunksGeneratedCount}, Embeddings Processed (Chunks): ${opToCancel.embeddingsProcessedCount}, Files Reaching Embedding Stage: ${opToCancel.filesEmbeddingsCompletedCount}.`);
 
             // currentOperation will be set to null by the finally block of processFilesGenerator
             // or if cancelProcessing is called when processFilesGenerator is not active.
@@ -594,7 +590,7 @@ export class IndexingService implements vscode.Disposable {
             this.statusBarService.showTemporaryMessage('Indexing cancelled', 3000, StatusBarMessageType.Warning); // This might be overwritten by finally block
             this.updateOverallStatus(); // This will now see currentOperation as null and set to Ready (if no other error state).
         } else {
-            console.log('[IndexingService] No active indexing operation to cancel.');
+            Log.info('[IndexingService] No active indexing operation to cancel.');
             // Ensure status is Ready if no operation was active and cancel was called.
             if (this.statusBarService.getCurrentState() !== StatusBarState.Error && this.statusBarService.getCurrentState() !== StatusBarState.Disabled) {
                 this.statusBarService.setState(StatusBarState.Ready);
@@ -694,21 +690,21 @@ export class IndexingService implements vscode.Disposable {
      * `CodeChunkingService` and `EmbeddingGenerationService`.
      */
     public async dispose(): Promise<void> {
-        console.log('[IndexingService] Disposing...');
+        Log.info('[IndexingService] Disposing...');
         await this.cancelProcessing(); // Ensure any active operation is stopped and cleaned up
 
         // Dispose new services
         if (this.codeChunkingService) {
             this.codeChunkingService.dispose();
-            console.log('[IndexingService] CodeChunkingService disposed.');
+            Log.info('[IndexingService] CodeChunkingService disposed.');
         }
         if (this.embeddingGenerationService) {
             await this.embeddingGenerationService.dispose();
-            console.log('[IndexingService] EmbeddingGenerationService disposed.');
+            Log.info('[IndexingService] EmbeddingGenerationService disposed.');
         }
         // No Piscina pool to destroy directly in this class anymore
 
         this.statusBarService.setState(StatusBarState.Disabled, 'Indexing services disposed');
-        console.log('[IndexingService] IndexingService disposed successfully.');
+        Log.info('[IndexingService] IndexingService disposed successfully.');
     }
 }

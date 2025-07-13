@@ -1,4 +1,5 @@
 import * as os from 'os';
+import { Log } from './loggingService';
 
 /**
  * Resource detection result
@@ -79,7 +80,7 @@ export class ResourceDetectionService {
         // Take the minimum of CPU-based and memory-based worker counts
         workerCount = Math.min(workerCount, maxWorkersForMemory);
 
-        console.log(
+        Log.info(
             `Worker calculation: cpus=${resources.cpuCount}, ` +
             `totalMemoryGB=${resources.totalMemoryGB.toFixed(2)}, ` +
             `availableMemoryGB=${resources.availableMemoryGB.toFixed(2)}, ` +
@@ -112,7 +113,7 @@ export class ResourceDetectionService {
         // Take the minimum of CPU-based and memory-based counts
         const optimalCount = Math.min(cpuBasedCount, memoryBasedCount);
 
-        console.log(
+        Log.info(
             `Concurrent tasks calculation: cpus=${resources.cpuCount}, ` +
             `totalMemoryGB=${resources.totalMemoryGB.toFixed(2)}, ` +
             `availableMemoryGB=${resources.availableMemoryGB.toFixed(2)}, ` +

@@ -889,8 +889,7 @@ describe('VectorDatabaseService ANN Integration', () => {
             await vectorDbService.deleteChunksForFile(fileId);
 
             expect(consoleWarnSpy).toHaveBeenCalledWith(
-                expect.stringContaining('Failed to mark label 0 for deletion in ANN index'),
-                expect.any(Error)
+                expect.stringContaining('Failed to mark label 0 for deletion in ANN index: {}')
             );
             expect(mockHNSW.markDelete).toHaveBeenCalledTimes(embeddingsToDelete.length); // Both attempted
             expect(mockHNSW.markDelete).toHaveBeenCalledWith(0); // Failed one
