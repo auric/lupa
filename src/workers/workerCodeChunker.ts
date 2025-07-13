@@ -15,7 +15,6 @@ export class WorkerCodeChunker {
         text: string,
         language: string,
         variant: string | undefined,
-        options: EmbeddingOptions,
         signal: AbortSignal
     ): Promise<DetailedChunkingResult> {
         if (!text || text.trim().length === 0) {

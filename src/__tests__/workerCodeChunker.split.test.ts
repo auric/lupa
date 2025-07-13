@@ -99,7 +99,6 @@ describe('WorkerCodeChunker Improved Splitting Tests', () => {
             CODE_WITH_LONG_LINE,
             'javascript',
             undefined,
-            options,
             abortController.signal,
         );
 
@@ -115,7 +114,6 @@ describe('WorkerCodeChunker Improved Splitting Tests', () => {
             CODE_WITH_MULTI_CHAR_OPERATORS,
             'javascript',
             undefined,
-            options,
             abortController.signal,
         );
 
@@ -137,7 +135,6 @@ describe('WorkerCodeChunker Improved Splitting Tests', () => {
             CODE_WITH_COMMENTS_AND_STRINGS,
             'javascript',
             undefined,
-            options,
             abortController.signal,
         );
 
@@ -164,7 +161,6 @@ describe('WorkerCodeChunker Improved Splitting Tests', () => {
             CODE_WITH_NESTED_BRACKETS,
             'javascript',
             undefined,
-            options,
             abortController.signal,
         );
 
@@ -216,8 +212,8 @@ public class TestClass
 
         const options: EmbeddingOptions = {};
 
-        const pythonResult = await codeChunker.chunkCode(python, 'python', undefined, options, abortController.signal);
-        const csharpResult = await codeChunker.chunkCode(csharp, 'csharp', undefined, options, abortController.signal);
+        const pythonResult = await codeChunker.chunkCode(python, 'python', undefined, abortController.signal);
+        const csharpResult = await codeChunker.chunkCode(csharp, 'csharp', undefined, abortController.signal);
 
         expect(pythonResult.chunks.length).toBeGreaterThan(0);
         expect(csharpResult.chunks.length).toBeGreaterThan(0);
@@ -230,7 +226,7 @@ public class TestClass
     });
 
     it('should handle empty input correctly', async () => {
-        const result = await codeChunker.chunkCode('', 'javascript', undefined, {}, abortController.signal);
+        const result = await codeChunker.chunkCode('', 'javascript', undefined, abortController.signal);
         // The new chunker returns an empty result for empty input.
         expect(result.chunks).toHaveLength(0);
         expect(result.offsets).toHaveLength(0);
@@ -238,7 +234,7 @@ public class TestClass
 
     it('should handle very small input', async () => {
         const tinyCode = 'x=1;';
-        const result = await codeChunker.chunkCode(tinyCode, 'javascript', undefined, {}, abortController.signal);
+        const result = await codeChunker.chunkCode(tinyCode, 'javascript', undefined, abortController.signal);
         expect(result.chunks).toHaveLength(1);
         expect(result.chunks[0]).toBe(tinyCode);
     });
@@ -258,7 +254,6 @@ line 3 of code
             unsupportedLanguageCode,
             'unsupported-language',
             undefined,
-            options,
             abortController.signal
         );
 
@@ -277,7 +272,7 @@ line 3 of code
 
     it('should handle abort signal correctly', async () => {
         const localAbortController = new AbortController();
-        const chunkPromise = codeChunker.chunkCode(CODE_WITH_LONG_LINE, 'javascript', undefined, {}, localAbortController.signal);
+        const chunkPromise = codeChunker.chunkCode(CODE_WITH_LONG_LINE, 'javascript', undefined, localAbortController.signal);
         localAbortController.abort();
         await expect(chunkPromise).rejects.toThrow('Operation cancelled');
     });
@@ -289,7 +284,7 @@ line 3 of code
           return "😀 " + ${Array(20).fill('word').join(' ')};
         }`;
 
-        const result = await codeChunker.chunkCode(unicodeText, 'javascript', undefined, {}, abortController.signal);
+        const result = await codeChunker.chunkCode(unicodeText, 'javascript', undefined, abortController.signal);
         const allText = result.chunks.join('');
         expect(allText).toContain('😀');
         expect(allText).toContain('こんにちは');
@@ -313,7 +308,7 @@ line 3 of code
           );
         }`;
 
-        const result = await codeChunker.chunkCode(jsxCode, 'tsx', undefined, {}, abortController.signal);
+        const result = await codeChunker.chunkCode(jsxCode, 'tsx', undefined, abortController.signal);
         const fullText = result.chunks.join('');
         expect(fullText).toContain('<div className="container">');
         expect(fullText).toContain('{dynamicContent}');
@@ -322,7 +317,7 @@ line 3 of code
     it('should process large files within reasonable time', async () => {
         const largeSample = Array(1000).fill(CODE_WITH_COMMENTS_AND_STRINGS).join('\\n\\n');
         const startTime = performance.now();
-        const result = await codeChunker.chunkCode(largeSample, 'javascript', undefined, {}, abortController.signal);
+        const result = await codeChunker.chunkCode(largeSample, 'javascript', undefined, abortController.signal);
         const duration = performance.now() - startTime;
         expect(result.chunks.length).toBeGreaterThan(10);
         expect(duration).toBeLessThan(10000); // 10 seconds max
@@ -372,7 +367,7 @@ Final thoughts and summary of the document.`;
 
     it('should correctly chunk basic markdown content', async () => {
         const options: EmbeddingOptions = {};
-        const result = await codeChunker.chunkCode(BASIC_MARKDOWN, 'markdown', undefined, options, abortController.signal);
+        const result = await codeChunker.chunkCode(BASIC_MARKDOWN, 'markdown', undefined, abortController.signal);
         expect(result.chunks.length).toBeGreaterThan(1);
         const allText = result.chunks.join('');
         expect(allText).toContain('# Main Title');
@@ -393,7 +388,7 @@ function hello() {
 
 This should be a separate chunk.
 `;
-        const result = await codeChunker.chunkCode(markdownWithCode, 'markdown', undefined, {}, new AbortController().signal);
+        const result = await codeChunker.chunkCode(markdownWithCode, 'markdown', undefined, new AbortController().signal);
 
         // Expect at least 3 chunks: title, code block, and final paragraph.
         expect(result.chunks.length).toBeGreaterThanOrEqual(3);

@@ -146,7 +146,6 @@ describe('WorkerCodeChunker Tests', () => {
       CODE_WITH_POTENTIAL_SYMBOL_BREAKS,
       'typescript',
       undefined,
-      options,
       abortController.signal,
     );
 
@@ -167,7 +166,6 @@ describe('WorkerCodeChunker Tests', () => {
       CODE_WITH_OVERSIZED_STRUCTURE,
       'typescript',
       undefined,
-      options,
       abortController.signal,
     );
 
@@ -187,7 +185,6 @@ describe('WorkerCodeChunker Tests', () => {
       CODE_WITH_NESTED_STRUCTURES,
       'typescript',
       'tsx',
-      options,
       abortController.signal,
     );
 
@@ -216,7 +213,6 @@ describe('WorkerCodeChunker Tests', () => {
       CODE_WITH_OVERSIZED_STRUCTURE,
       'typescript',
       undefined,
-      options,
       abortController.signal,
     );
 
@@ -250,7 +246,7 @@ class MyClass {
 }
 
 `;
-    const result = await codeChunker.chunkCode(codeWithWhitespace, 'typescript', undefined, {}, abortController.signal);
+    const result = await codeChunker.chunkCode(codeWithWhitespace, 'typescript', undefined, abortController.signal);
     expect(result.chunks).toHaveLength(1);
     const chunk = result.chunks[0];
     expect(chunk.startsWith('class')).toBe(true);
@@ -319,8 +315,8 @@ namespace Utils {
 `;
     const options: EmbeddingOptions = {};
 
-    const pythonResult = await codeChunker.chunkCode(pythonCode, 'python', undefined, options, abortController.signal);
-    const cppResult = await codeChunker.chunkCode(cppCode, 'cpp', undefined, options, abortController.signal);
+    const pythonResult = await codeChunker.chunkCode(pythonCode, 'python', undefined, abortController.signal);
+    const cppResult = await codeChunker.chunkCode(cppCode, 'cpp', undefined, abortController.signal);
 
     expect(pythonResult.chunks.length).toBeGreaterThan(0);
     expect(cppResult.chunks.length).toBeGreaterThan(0);
@@ -347,7 +343,6 @@ namespace Utils {
       realCode,
       'cpp',
       undefined,
-      options,
       abortController.signal,
     );
 
@@ -375,7 +370,7 @@ namespace Utils {
  * A block comment.
  */
 `;
-    const result = await codeChunker.chunkCode(codeWithOnlyComments, 'typescript', undefined, {}, abortController.signal);
+    const result = await codeChunker.chunkCode(codeWithOnlyComments, 'typescript', undefined, abortController.signal);
     expect(result.chunks.length).toBe(1);
     expect(result.chunks[0]).toContain('// This is a file with only comments.');
   });
@@ -389,7 +384,7 @@ class MixedWhitespace {
         return 1; // Indented with spaces
     }
 }`;
-    const result = await codeChunker.chunkCode(codeWithMixedWhitespace, 'typescript', undefined, {}, abortController.signal);
+    const result = await codeChunker.chunkCode(codeWithMixedWhitespace, 'typescript', undefined, abortController.signal);
     expect(result.chunks.length).toBe(1);
     const chunk = result.chunks[0];
     // The outer indentation should be trimmed, but the relative indentation should be preserved.

@@ -120,7 +120,7 @@ export function standaloneFunction(test: string): boolean {
         const signal = controller.signal;
 
         // Chunk the code
-        const result = await chunker.chunkCode(code, 'typescript', undefined, options, signal);
+        const result = await chunker.chunkCode(code, 'typescript', undefined, signal);
 
         // Verify the result has chunks
         expect(result.chunks.length).toBeGreaterThan(0);
@@ -168,7 +168,7 @@ export function standaloneFunction(test: string): boolean {
         const signal = controller.signal;
 
         // Chunk the code
-        const result = await chunker.chunkCode(longFunction, 'javascript', undefined, options, signal);
+        const result = await chunker.chunkCode(longFunction, 'javascript', undefined, signal);
 
         // Should split into multiple chunks due to size
         expect(result.chunks.length).toBeGreaterThan(1);
@@ -250,7 +250,7 @@ namespace utils {
         const signal = controller.signal;
 
         // Chunk the code
-        const result = await chunker.chunkCode(complexCppCode, 'cpp', undefined, options, signal);
+        const result = await chunker.chunkCode(complexCppCode, 'cpp', undefined, signal);
 
         // Verify chunking result
         expect(result.chunks.length).toBeGreaterThan(0);
@@ -303,7 +303,7 @@ namespace utils {
         const signal = controller.signal;
 
         // Chunk the code
-        const result = await chunker.chunkCode(complexCppCode, 'cpp', undefined, options, signal);
+        const result = await chunker.chunkCode(complexCppCode, 'cpp', undefined, signal);
 
         // Verify chunking result
         expect(result.chunks.length).toBeGreaterThan(0);
@@ -354,7 +354,7 @@ namespace MyTestNamespace
         }
     }
 }`;
-        const result = await chunker.chunkCode(csharpCode, 'csharp', undefined, {}, new AbortController().signal);
+        const result = await chunker.chunkCode(csharpCode, 'csharp', undefined, new AbortController().signal);
 
         // Expect three main chunks: one for the using statement, one for the second using statement, and one for the namespace.
         expect(result.chunks.length).toBe(1);

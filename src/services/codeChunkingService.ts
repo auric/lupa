@@ -90,7 +90,6 @@ export class CodeChunkingService implements vscode.Disposable {
                 file.content,
                 langData?.language || '',
                 langData?.variant,
-                embeddingOptions,
                 abortSignal,
             );
             return result;
