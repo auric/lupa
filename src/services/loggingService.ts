@@ -11,16 +11,6 @@ const LOG_LEVEL_VALUES: Record<LogLevel, number> = {
     error: 3
 };
 
-const LOG_LEVEL_COLORS: Record<LogLevel, string> = {
-    debug: '\x1b[36m', // Cyan
-    info: '\x1b[32m',  // Green
-    warn: '\x1b[33m',  // Yellow
-    error: '\x1b[31m'  // Red
-};
-
-const RESET_COLOR = '\x1b[0m';
-
-
 /**
  * High-level logging functions for convenient usage throughout the codebase
  * These provide a clean replacement for console.log calls
@@ -44,13 +34,13 @@ export class Log {
  */
 export class LoggingService implements vscode.Disposable {
     private static _instance: LoggingService | null = null;
-    private readonly outputChannel: vscode.OutputChannel;
+    private readonly outputChannel: vscode.LogOutputChannel;
     private logLevel: LogLevel;
     private outputTarget: OutputTarget;
     private settingsService: WorkspaceSettingsService | null = null;
 
     private constructor() {
-        this.outputChannel = vscode.window.createOutputChannel('CodeLens PR Analyzer');
+        this.outputChannel = vscode.window.createOutputChannel('CodeLens PR Analyzer', { log: true });
 
         // Initialize with default values - will be updated when settings service is set
         this.logLevel = 'info';
@@ -121,9 +111,8 @@ export class LoggingService implements vscode.Disposable {
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.${String(now.getMilliseconds()).padStart(3, '0')}`;
 
-        const color = LOG_LEVEL_COLORS[level];
         const levelStr = level;
-        let formattedMessage = `${timestamp} ${color}[${levelStr}]${RESET_COLOR} ${message}`;
+        let formattedMessage = `${timestamp} [${levelStr}] ${message}`;
 
         if (args.length > 0) {
             const argsStr = args.map(arg =>
@@ -152,8 +141,23 @@ export class LoggingService implements vscode.Disposable {
 
         const formattedMessage = this.formatMessage(level, logMessage, ...args);
 
+        const output = this.outputTarget === 'channel' ? this.outputChannel : console;
         if (this.outputTarget === 'channel') {
-            this.outputChannel.appendLine(formattedMessage);
+            // Use native VS Code log methods for colored output
+            switch (level) {
+                case 'debug':
+                    output.debug(logMessage, ...args);
+                    break;
+                case 'info':
+                    output.info(logMessage, ...args);
+                    break;
+                case 'warn':
+                    output.warn(logMessage, ...args);
+                    break;
+                case 'error':
+                    output.error(logMessage, ...args);
+                    break;
+            }
         } else {
             // Output to console based on log level
             switch (level) {
