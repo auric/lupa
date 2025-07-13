@@ -254,7 +254,6 @@ The `EmbeddingDatabaseAdapter` (src/services/embeddingDatabaseAdapter.ts) bridge
 - **Result Processing**: Processes embedding results from indexing
 - **Storage Management**: Manages storing embeddings in database
 - **Similarity Search**: Enhances vector similarity search
-- **Structure Awareness**: Adds code structure awareness to results
 - **Result Enhancement**: Enhances search results with additional context
 
 Key interactions:
@@ -305,9 +304,9 @@ Key interactions:
 The `CodeAnalysisService` (`src/services/codeAnalysisService.ts`) analyzes code structure using Tree-sitter:
 
 - **Language Parsing**: Parses code into an Abstract Syntax Tree (AST) using the appropriate Tree-sitter grammar.
-- **Points of Interest Extraction**: Uses language-specific queries from `treeSitterQueries.ts` to find significant nodes (functions, classes, imports) that serve as chunking breakpoints.
+- **Points of Interest Extraction**: Uses language-specific queries from `treeSitterQueries.ts` to find significant, high-level nodes (e.g., functions, classes) that serve as chunking breakpoints. It intentionally ignores smaller or less meaningful structures like individual import statements.
 - **Symbol Identification**: Provides a `findSymbols` method to extract named symbols (functions, classes, etc.) from code, which is used by the `ContextProvider` to identify key entities in a diff.
-- **Comment Extraction**: `getLinesForPointsOfInterest(code: string, fileExtension: string)` identifies comments and decorators to associate them with the correct code structures.
+- **Comment Association**: The `getLinesForPointsOfInterest` method correctly associates preceding comments and decorators with the code structures they document, ensuring that documentation is included in the same chunk as the code.
 
 Key interactions:
 
@@ -520,12 +519,11 @@ The embedding generation process follows these steps:
 
 3. **Structure-Aware Chunking**
 
-   - Parse the file using Tree-sitter to identify structures
-   - Identify functions, classes, methods, and blocks
-   - Create a structural map of the file
-   - Generate chunk boundaries that respect structural elements
-   - Ensure chunks fit within model token limits
-   - Add appropriate overlaps between chunks for context continuity
+   - **Breakpoint Identification**: The file is parsed using Tree-sitter to identify the start lines of major structural elements (classes, namespaces, functions) as defined in `treeSitterQueries.ts`.
+   - **Segment Creation**: The code is split into segments based on these breakpoints. The content before the first major structure is treated as a "header" chunk.
+   - **Token Validation**: Each segment is checked against the model's token limit.
+   - **Fallback for Oversized Chunks**: If a segment (representing a large class or function) exceeds the token limit, it is passed to a line-by-line basic chunker, which splits it into smaller pieces that respect the token limit.
+   - **Finalization**: Chunks are finalized by trimming extraneous whitespace, but no artificial overlaps are added.
 
 4. **Embedding Generation**
 
@@ -685,10 +683,10 @@ The database system uses a hybrid approach: SQLite for structured metadata and H
 - **content**: `TEXT NOT NULL` - The raw text content of the code chunk.
 - **start_offset**: `INTEGER NOT NULL` - The chunk's starting character offset in the original file.
 - **end_offset**: `INTEGER NOT NULL` - The chunk's ending character offset in the original file.
-- **parent_structure_id**: `TEXT` - An ID linking chunks that belong to the same oversized parent structure that was split.
-- **structure_order**: `INTEGER` - The order of this chunk within a split parent structure.
-- **is_oversized**: `BOOLEAN` - A flag indicating if this chunk is a result of splitting an oversized structure.
-- **structure_type**: `TEXT` - The Tree-sitter node type of the primary structure in this chunk (e.g., 'function_declaration').
+- **parent_structure_id**: `TEXT` - (Legacy) No longer populated by the current chunking strategy.
+- **structure_order**: `INTEGER` - (Legacy) No longer populated by the current chunking strategy.
+- **is_oversized**: `BOOLEAN` - (Legacy) No longer populated by the current chunking strategy.
+- **structure_type**: `TEXT` - (Legacy) No longer populated by the current chunking strategy.
 
 ##### 4.1.3 Embeddings Table (SQLite - Metadata for ANN Index)
 
@@ -729,10 +727,10 @@ This structure (`ProcessingResult`) represents the outcome of processing a singl
 - `embeddings`: `number[][]` - An array of embedding vectors. Each `number[]` corresponds to a successfully embedded chunk from the file. The order matches `chunkOffsets` and the arrays within `metadata`.
 - `chunkOffsets`: `number[]` - An array of numbers, where each number is the starting character offset of a chunk within the original file. The order matches `embeddings` and the arrays within `metadata`.
 - `metadata`: `ChunkMetadata` - An object containing arrays of metadata, where each index corresponds to a chunk:
-  - `parentStructureIds`: `(string | null)[]` - For each chunk, the ID of its parent structure if it was part of a larger structure that was split; otherwise `null`.
-  - `structureOrders`: `(number | null)[]` - For each chunk, its order within a split parent structure; otherwise `null`.
-  - `isOversizedFlags`: `(boolean | null)[]` - For each chunk, true if it's part of an oversized structure that was split; otherwise `null`.
-  - `structureTypes`: `(string | null)[]` - For each chunk, the Tree-sitter type of its primary code structure; otherwise `null`.
+  - `parentStructureIds`: `(string | null)[]` - (Legacy) This array is present but will be populated with `null` by the current chunker.
+  - `structureOrders`: `(number | null)[]` - (Legacy) This array is present but will be populated with `null` by the current chunker.
+  - `isOversizedFlags`: `(boolean | null)[]` - (Legacy) This array is present but will be populated with `null` by the current chunker.
+  - `structureTypes`: `(string | null)[]` - (Legacy) This array is present but will be populated with `null` by the current chunker.
 - `error?`: string - An optional string containing an error message if file-level processing failed or to aggregate errors from individual chunk processing.
 
 #### 4.2.3 Similarity Search Result Format (`SimilaritySearchResult` in `embeddingTypes.ts`)
