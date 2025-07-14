@@ -121,13 +121,10 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
         const systemResources = this.resourceDetectionService.detectSystemResources();
         const modelsInfo = this.checkModelsAvailability();
 
-        // Determine if we should use the high memory model
-        const useHighMemoryModel = this.shouldUseHighMemoryModel(systemResources, modelsInfo);
-
-        // Select model based on our decision
-        const model = useHighMemoryModel ?
-            EmbeddingModel.JinaEmbeddings :
-            EmbeddingModel.MiniLM;
+        // Default to MiniLM unless user has explicitly selected Jina
+        // No automatic selection of high memory model anymore
+        const model = EmbeddingModel.MiniLM;
+        const useHighMemoryModel = false;
 
         const modelInfo = this.modelInfos[model];
 
@@ -149,14 +146,15 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
         fallbackExists: boolean;
     } {
         // Check for specific model directories
+        // MiniLM is now the primary model, Jina is fallback
         const primaryModelPath = path.join(
             this.basePath,
-            this.modelInfos[EmbeddingModel.JinaEmbeddings].path
+            this.modelInfos[EmbeddingModel.MiniLM].path
         );
 
         const fallbackModelPath = path.join(
             this.basePath,
-            this.modelInfos[EmbeddingModel.MiniLM].path
+            this.modelInfos[EmbeddingModel.JinaEmbeddings].path
         );
 
         const primaryExists = fs.existsSync(primaryModelPath) &&
@@ -172,42 +170,6 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
     }
 
     /**
-     * Decide whether to use the high memory model
-     */
-    private shouldUseHighMemoryModel(
-        systemResources: SystemResources,
-        modelsInfo: { primaryExists: boolean; fallbackExists: boolean; }
-    ): boolean {
-        // Force high memory model if specified in options
-        if (this.options.forceHighMemoryModel) {
-            return modelsInfo.primaryExists;
-        }
-
-        // Force low memory model if specified in options
-        if (this.options.forceLowMemoryModel) {
-            return false;
-        }
-
-        // If primary model doesn't exist, we have to use fallback
-        if (!modelsInfo.primaryExists) {
-            return false;
-        }
-
-        // If fallback model doesn't exist, we have to use primary
-        if (!modelsInfo.fallbackExists) {
-            return true;
-        }
-
-        // Check if we have enough memory for the high-memory model based on percentage of total memory
-        // This is better than a fixed threshold as it accounts for different system sizes
-        const minMemoryPercentage = 0.25; // Need at least 25% of total memory available
-        return systemResources.totalMemoryGB >= Math.max(
-            this.options.highMemoryThreshold,
-            systemResources.totalMemoryGB * minMemoryPercentage
-        );
-    }
-
-    /**
      * Update the status bar with information about the selected model
      */
     private updateModelStatusInfo(
@@ -216,14 +178,15 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
     ): void {
         let modelInfo = '';
 
+        // MiniLM is now primary, Jina is fallback
         if (modelsInfo.primaryExists && modelsInfo.fallbackExists) {
-            modelInfo = selectedModel === EmbeddingModel.JinaEmbeddings ?
-                'Using Jina Embeddings' :
-                'Using MiniLM';
+            modelInfo = selectedModel === EmbeddingModel.MiniLM ?
+                'Using MiniLM (primary)' :
+                'Using Jina Embeddings';
         } else if (modelsInfo.primaryExists) {
-            modelInfo = 'Using Jina Embeddings';
+            modelInfo = 'Using MiniLM (primary)';
         } else if (modelsInfo.fallbackExists) {
-            modelInfo = 'Using MiniLM';
+            modelInfo = 'Using Jina Embeddings (fallback)';
         } else {
             this.statusBarService.showTemporaryMessage('No embedding models available', 5000, 'error');
             return;
@@ -270,14 +233,14 @@ export class EmbeddingModelSelectionService implements vscode.Disposable {
                 `  Total Memory: ${this.formatBytes(resources.totalMemoryGB * 1024 * 1024 * 1024)}\n` +
                 `  Available Memory: ${this.formatBytes(resources.availableMemoryGB * 1024 * 1024 * 1024)}\n` +
                 `  CPU Cores: ${resources.cpuCount}\n\n` +
-                `Primary Model (${EmbeddingModel.JinaEmbeddings}):\n` +
+                `Primary Model (${EmbeddingModel.MiniLM}):\n` +
                 `  Status: ${primaryExists ? 'Available' : 'Not available'}\n` +
                 `  Size: ${this.formatBytes(primarySize)}\n` +
-                `  Context Length: ${this.modelInfos[EmbeddingModel.JinaEmbeddings].contextLength} tokens\n\n` +
-                `Fallback Model (${EmbeddingModel.MiniLM}):\n` +
+                `  Context Length: ${this.modelInfos[EmbeddingModel.MiniLM].contextLength} tokens\n\n` +
+                `Fallback Model (${EmbeddingModel.JinaEmbeddings}):\n` +
                 `  Status: ${fallbackExists ? 'Available' : 'Not available'}\n` +
                 `  Size: ${this.formatBytes(fallbackSize)}\n` +
-                `  Context Length: ${this.modelInfos[EmbeddingModel.MiniLM].contextLength} tokens\n\n` +
+                `  Context Length: ${this.modelInfos[EmbeddingModel.JinaEmbeddings].contextLength} tokens\n\n` +
                 `Total size: ${this.formatBytes(primarySize + fallbackSize)}`;
 
             vscode.window.showInformationMessage(message, { modal: true });

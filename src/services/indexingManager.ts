@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { IndexingService, IndexingServiceOptions } from './indexingService';
 import { VectorDatabaseService } from './vectorDatabaseService';
-import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
+import { IEmbeddingStorage } from '../interfaces/embeddingStorage';
 import { StatusBarService } from './statusBarService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import {
@@ -31,8 +31,7 @@ export class IndexingManager implements vscode.Disposable {
      * @param modelSelectionService Service for embedding model selection
      * @param vectorDatabaseService Service for vector database operations
      * @param resourceDetectionService Service for resource detection
-     * @param embeddingDatabaseAdapter Adapter for embedding database operations (can be null initially)
-     * @param options Configuration options
+     * @param embeddingStorage Storage interface for embedding operations (can be null initially)
      */
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -40,7 +39,7 @@ export class IndexingManager implements vscode.Disposable {
         private readonly modelSelectionService: EmbeddingModelSelectionService,
         private readonly vectorDatabaseService: VectorDatabaseService,
         private readonly resourceDetectionService: ResourceDetectionService,
-        private embeddingDatabaseAdapter: EmbeddingDatabaseAdapter | null
+        private embeddingStorage: IEmbeddingStorage | null
     ) {
         this.statusBarService = StatusBarService.getInstance();
 
@@ -52,11 +51,11 @@ export class IndexingManager implements vscode.Disposable {
     }
 
     /**
-     * Set the embedding database adapter (used to break circular dependency)
-     * @param embeddingDatabaseAdapter The adapter to set
+     * Set the embedding storage (used to break circular dependency)
+     * @param embeddingStorage The storage interface implementation to set
      */
-    public setEmbeddingDatabaseAdapter(embeddingDatabaseAdapter: EmbeddingDatabaseAdapter): void {
-        this.embeddingDatabaseAdapter = embeddingDatabaseAdapter;
+    public setEmbeddingStorage(embeddingStorage: IEmbeddingStorage): void {
+        this.embeddingStorage = embeddingStorage;
     }
 
     /**
@@ -141,10 +140,10 @@ export class IndexingManager implements vscode.Disposable {
         }
 
         const statusId = 'indexing';
-        
+
         try {
             this.statusBarService.showProgress(statusId, 'Rebuilding database', 'Full reindexing in progress');
-            
+
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: 'Rebuilding database',
@@ -267,7 +266,7 @@ export class IndexingManager implements vscode.Disposable {
                 // For full reindexing, we process all files.
                 // For continuous indexing, we only process files that need reindexing.
                 const needsIndexing = isFullReindexing ||
-                    await this.embeddingDatabaseAdapter!.needsReindexing(filePath, fileContent);
+                    await this.embeddingStorage!.needsReindexing(filePath, fileContent);
 
                 // Increment total checked files counter
                 totalFilesChecked++;
@@ -309,8 +308,8 @@ export class IndexingManager implements vscode.Disposable {
             return;
         }
 
-        if (!this.embeddingDatabaseAdapter) {
-            vscode.window.showErrorMessage('Embedding database adapter is not initialized');
+        if (!this.embeddingStorage) {
+            vscode.window.showErrorMessage('Embedding storage is not initialized');
             return;
         }
 
@@ -383,18 +382,14 @@ export class IndexingManager implements vscode.Disposable {
                 if (processingResult.success && processingResult.embeddings && processingResult.embeddings.length > 0) {
                     const fileToStore = filesToProcess.find(f => f.id === processingResult.fileId);
                     if (fileToStore) {
-                        const singleFileResultMap = new Map<string, ProcessingResult>();
-                        singleFileResultMap.set(processingResult.fileId, processingResult);
-
                         try {
-                            await this.embeddingDatabaseAdapter!.storeEmbeddingResults(
-                                [fileToStore], // Array with a single file
-                                singleFileResultMap,
-                                (processedInStorage, totalInStorageBatch) => {
-                                    // This callback is for storage progress within a batch, usually quick.
-                                }
+                            const stored = await this.embeddingStorage!.storeEmbeddingResult(
+                                fileToStore,
+                                processingResult
                             );
-                            totalStored++;
+                            if (stored) {
+                                totalStored++;
+                            }
                             // Update progress for vscode.Progress notification
                             const currentProgressMessage = `Indexing: ${totalStored}/${totalToProcess} files processed and stored.`;
                             const overallPercentForNotification = totalToProcess > 0 ? Math.round((totalStored / totalToProcess) * 100) : 0;

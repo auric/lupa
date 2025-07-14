@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Framework**: VS Code Extension API
 - **Build Tool**: Vite
 - **Testing**: Vitest
-- **Embedding Models**: Hugging Face Transformers (@huggingface/transformers)
+- **Embedding Models**: Hugging Face Transformers (@huggingface/transformers) - Default: Xenova/all-MiniLM-L6-v2
 - **Vector Search**: HNSWlib for Approximate Nearest Neighbor (ANN) search
 - **Database**: SQLite (@vscode/sqlite3) for metadata storage
 - **Code Analysis**: Tree-sitter for parsing and symbol extraction
@@ -51,10 +51,16 @@ npm run prepare-models
 
 ## Architecture Overview
 
-The extension follows a layered, service-oriented architecture with clear separation of concerns:
+The extension follows a layered, service-oriented architecture with clear separation of concerns and dependency inversion to eliminate circular dependencies:
 
-### Core Coordinator
-- **`PRAnalysisCoordinator`** (`src/services/prAnalysisCoordinator.ts`) - Central orchestration component that initializes services, manages commands, and coordinates the analysis workflow
+### Core Coordinator Layer
+- **`PRAnalysisCoordinator`** (`src/services/prAnalysisCoordinator.ts`) - Refactored lightweight coordinator that delegates to specialized coordinators
+- **`ServiceManager`** (`src/services/serviceManager.ts`) - Centralized dependency injection container with phased initialization and service reinitialization
+- **`AnalysisOrchestrator`** (`src/coordinators/analysisOrchestrator.ts`) - Handles core PR analysis workflow
+- **`EmbeddingModelCoordinator`** (`src/coordinators/embeddingModelCoordinator.ts`) - Handles embedding model UI workflows, delegates service reinitialization to ServiceManager
+- **`CopilotModelCoordinator`** (`src/coordinators/copilotModelCoordinator.ts`) - Manages GitHub Copilot language model operations
+- **`DatabaseOrchestrator`** (`src/coordinators/databaseOrchestrator.ts`) - Manages database operations and optimization
+- **`CommandRegistry`** (`src/coordinators/commandRegistry.ts`) - Centralizes VS Code command registration
 
 ### Indexing System
 - **`IndexingService`** (`src/services/indexingService.ts`) - Orchestrates file chunking and embedding generation using async generators
@@ -67,13 +73,14 @@ The extension follows a layered, service-oriented architecture with clear separa
 - **`ContextProvider`** (`src/services/contextProvider.ts`) - Combines LSP queries with semantic similarity search
   - Uses VS Code LSP for precise structural information (definitions, references)
   - Uses embedding-based search for semantic similarity via HNSWlib ANN index
-- **`EmbeddingDatabaseAdapter`** (`src/services/embeddingDatabaseAdapter.ts`) - Bridges indexing and storage systems
+- **`EmbeddingDatabaseAdapter`** (`src/services/embeddingDatabaseAdapter.ts`) - Bridges indexing and storage systems with singleton pattern
 - **`VectorDatabaseService`** (`src/services/vectorDatabaseService.ts`) - Manages SQLite metadata and HNSWlib vector index
 
 ### Analysis System
 - **`AnalysisProvider`** (`src/services/analysisProvider.ts`) - Manages code analysis using Copilot models
-- **`CopilotModelManager`** (`src/models/copilotModelManager.ts`) - Interfaces with VS Code's Language Model API
+- **`CopilotModelManager`** (`src/models/copilotModelManager.ts`) - Interfaces with VS Code's Language Model API (implements vscode.Disposable)
 - **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Optimizes context to fit token limits
+- **`ContextProvider`** (`src/services/contextProvider.ts`) - Singleton service that combines LSP queries with semantic similarity search
 
 ### Git Integration
 - **`GitService`** (`src/services/gitService.ts`) - Interfaces with Git via VS Code's Git extension
@@ -85,10 +92,17 @@ The extension follows a layered, service-oriented architecture with clear separa
 
 ## Data Flow
 
+### Service Initialization (Phase-Based)
+1. **Phase 1 - Foundation**: `WorkspaceSettingsService`, `ResourceDetectionService`, `LoggingService`, `StatusBarService`, `UIManager`, `GitOperationsManager`
+2. **Phase 2 - Core**: `EmbeddingModelSelectionService`, `CopilotModelManager`, `VectorDatabaseService`
+3. **Phase 3 - Complex**: `IndexingManager` → `IndexingService` → `EmbeddingDatabaseAdapter` (breaks circular dependency via null injection then setter injection)
+4. **Phase 4 - High-Level**: `ContextProvider`, `AnalysisProvider`
+
+### Analysis Workflow
 1. **Indexing**: Files are processed by `IndexingService` which uses `CodeChunkingService` for structure-aware chunking, then `EmbeddingGenerationService` generates embeddings in parallel using worker threads
 2. **Storage**: Embeddings and metadata are stored via `VectorDatabaseService` (SQLite + HNSWlib)
 3. **Analysis**: When analyzing PRs, `ContextProvider` combines LSP queries and embedding search to find relevant context
-4. **Optimization**: `TokenManagerService` optimizes context to fit model token limits
+4. **Optimization**: `TokenManagerService` optimizes context to fit model limits
 5. **Generation**: `AnalysisProvider` sends the optimized prompt to Copilot models via `CopilotModelManager`
 
 ## Key File Locations
@@ -96,6 +110,15 @@ The extension follows a layered, service-oriented architecture with clear separa
 ### Services
 - `src/services/` - All service implementations
 - `src/services/prAnalysisCoordinator.ts` - Main coordinator (entry point)
+- `src/services/serviceManager.ts` - Centralized dependency injection container
+
+### Coordinators
+- `src/coordinators/` - Specialized coordinator implementations
+- `src/coordinators/analysisOrchestrator.ts` - PR analysis orchestration
+- `src/coordinators/embeddingModelCoordinator.ts` - Embedding model management
+- `src/coordinators/copilotModelCoordinator.ts` - Copilot model management
+- `src/coordinators/databaseOrchestrator.ts` - Database operations
+- `src/coordinators/commandRegistry.ts` - VS Code command registration
 
 ### Types
 - `src/types/` - TypeScript type definitions
@@ -142,8 +165,17 @@ The extension follows a layered, service-oriented architecture with clear separa
 
 ### Model Management
 - Embedding models are downloaded to `models/` directory
-- Supports both Jina and MiniLM embedding models
+- **Default model**: Xenova/all-MiniLM-L6-v2 (Jina models being phased out)
+- Proper separation between embedding models and GitHub Copilot language models
 - Model selection affects vector database configuration
+
+### Circular Dependency Resolution
+The new architecture eliminates circular dependencies through:
+- **Dependency Inversion**: Using interfaces and null injection followed by setter injection
+- **Phased Initialization**: ServiceManager initializes services in 4 phases to respect dependencies
+- **Service Registry**: Type-safe service access through IServiceRegistry interface
+- **Specialized Coordinators**: Breaking monolithic coordinator into focused components
+- **Null Injection Pattern**: IndexingManager is created with null EmbeddingDatabaseAdapter, then the adapter is created and injected via setter
 
 ### Status Bar Architecture
 - **Contextual Progress**: Status indicators appear only during active operations

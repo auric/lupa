@@ -3,6 +3,7 @@ import { hash } from 'crypto';
 import { VectorDatabaseService } from './vectorDatabaseService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { IndexingService } from './indexingService';
+import { IEmbeddingStorage } from '../interfaces/embeddingStorage';
 import type { ProcessingResult } from '../types/indexingTypes';
 import { SimilaritySearchOptions, SimilaritySearchResult } from '../types/embeddingTypes';
 import { Log } from './loggingService';
@@ -12,7 +13,7 @@ import { quickHash } from '../utils/hashUtils';
  * EmbeddingDatabaseAdapter provides high-level operations to integrate
  * the VectorDatabaseService with the IndexingService and PR analysis workflow
  */
-export class EmbeddingDatabaseAdapter implements vscode.Disposable {
+export class EmbeddingDatabaseAdapter implements IEmbeddingStorage, vscode.Disposable {
     private static instance: EmbeddingDatabaseAdapter | null = null;
     private embeddingModel: string;
 

@@ -28,8 +28,8 @@
                 "title": "CodeLens PR: Select Embedding Model"
             },
             {
-                "command": "codelens-pr-analyzer.showModelsInfo",
-                "title": "CodeLens PR: Show PR Analyzer Models Info"
+                "command": "codelens-pr-analyzer.showEmbeddingModelsInfo",
+                "title": "CodeLens PR: Show Embedding Models Info"
             },
             {
                 "command": "codelens-pr-analyzer.manageIndexing",

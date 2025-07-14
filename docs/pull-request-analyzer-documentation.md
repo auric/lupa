@@ -4,14 +4,17 @@
 
 ### 1.1 Architectural Overview
 
-The CodeLens Pull Request Analyzer follows a layered, service-oriented architecture with clear separation of concerns. The system is designed around these key architectural principles:
+The CodeLens Pull Request Analyzer follows a layered, service-oriented architecture with clear separation of concerns and dependency inversion to eliminate circular dependencies. The system is designed around these key architectural principles:
 
 - **Modular Services**: Each component is implemented as a self-contained service
-- **Dependency Injection**: Services receive dependencies through their constructors
+- **Dependency Injection**: Services receive dependencies through their constructors with phased initialization
 - **Singleton Pattern**: Core services are implemented as singletons to ensure consistent state
 - **Event-Based Communication**: Services communicate through events for loose coupling
 - **Worker Thread Isolation**: Computationally intensive tasks are isolated in worker threads
 - **Reactive UI Updates**: UI components react to state changes in underlying services
+- **Circular Dependency Resolution**: Uses dependency inversion with null injection followed by setter injection
+- **Specialized Coordinators**: Decomposed architecture with focused coordinators for different concerns
+- **Type Safety**: IServiceRegistry interface ensures compile-time service access validation
 
 The overall architecture consists of these primary layers:
 
@@ -24,10 +27,13 @@ The overall architecture consists of these primary layers:
 
 #### 1.1.2 Coordination Layer
 
-- Orchestrates the interactions between services
-- Manages the workflow of PR analysis operations
-- Handles high-level error recovery and fallback strategies
-- Provides a simplified API for the extension layer
+- **ServiceManager** (`src/services/serviceManager.ts`): Centralized dependency injection container with phased initialization and service reinitialization
+- **PRAnalysisCoordinator** (`src/services/prAnalysisCoordinator.ts`): Lightweight coordinator that delegates to specialized coordinators
+- **AnalysisOrchestrator** (`src/coordinators/analysisOrchestrator.ts`): Handles core PR analysis workflow
+- **EmbeddingModelCoordinator** (`src/coordinators/embeddingModelCoordinator.ts`): Handles embedding model UI workflows, delegates service reinitialization to ServiceManager
+- **CopilotModelCoordinator** (`src/coordinators/copilotModelCoordinator.ts`): Manages GitHub Copilot language model operations
+- **DatabaseOrchestrator** (`src/coordinators/databaseOrchestrator.ts`): Manages database operations and optimization
+- **CommandRegistry** (`src/coordinators/commandRegistry.ts`): Centralizes VS Code command registration
 
 #### 1.1.3 Service Layer
 
@@ -62,13 +68,17 @@ The overall architecture consists of these primary layers:
 
 The components interact through these primary mechanisms:
 
-#### 1.2.1 Service Initialization Flow
+#### 1.2.1 Service Initialization Flow (Phase-Based)
 
 1. **Extension Activation**: When the extension activates, it creates the `PRAnalysisCoordinator`
-2. **Coordinator Initialization**: The coordinator initializes core services in the correct dependency order
-3. **Service Registration**: Each service registers itself with dependent services
-4. **Command Registration**: VS Code commands are registered to invoke coordinator methods
-5. **Event Subscription**: Services subscribe to events from other services
+2. **ServiceManager Creation**: PRAnalysisCoordinator creates ServiceManager for dependency injection
+3. **Phase 1 - Foundation Services**: `WorkspaceSettingsService`, `ResourceDetectionService`, `LoggingService`, `StatusBarService`, `UIManager`, `GitOperationsManager`
+4. **Phase 2 - Core Services**: `EmbeddingModelSelectionService`, `CopilotModelManager`, `VectorDatabaseService`
+5. **Phase 3 - Complex Services**: `IndexingManager` → `IndexingService` → `EmbeddingDatabaseAdapter` (breaks circular dependency via null injection then setter injection)
+6. **Phase 4 - High-Level Services**: `ContextProvider`, `AnalysisProvider`
+7. **Coordinator Creation**: Specialized coordinators are created with the service registry
+8. **Command Registration**: VS Code commands are registered through CommandRegistry
+9. **Event Subscription**: Services subscribe to events from other services
 
 #### 1.2.2 Analysis Workflow
 
@@ -95,7 +105,7 @@ The components interact through these primary mechanisms:
 #### 1.2.3 Indexing Workflow
 
 1.  **File Discovery & Prioritization**: The `IndexingManager` identifies source files in the workspace. For continuous indexing, it checks which files have changed since the last run. For a full re-index, all supported files are selected.
-2.  **Model Selection**: `EmbeddingModelSelectionService` determines the optimal embedding model (`Jina` or `MiniLM`) based on system resources and user configuration. The `PRAnalysisCoordinator` ensures the `VectorDatabaseService` is configured with the correct embedding dimension for this model.
+2.  **Model Selection**: `EmbeddingModelSelectionService` determines the optimal embedding model (default: `Xenova/all-MiniLM-L6-v2`, Jina models being phased out) based on system resources and user configuration. The `ServiceManager` ensures the `VectorDatabaseService` is configured with the correct embedding dimension for this model.
 3.  **Generator-Based Processing**: The `IndexingManager` invokes `IndexingService.processFilesGenerator`, which returns an `async` generator. This allows the manager to process results for each file as soon as they are ready.
 4.  **Structure-Aware Chunking**: For each file, `IndexingService` uses `CodeChunkingService` (which internally uses `CodeAnalysisService`) to parse the code and break it into structurally coherent chunks on the main extension thread.
 5.  **Parallel Embedding Generation**: The resulting chunks for a file are passed to `EmbeddingGenerationService`, which manages a `Tinypool` worker pool. Each worker (`embeddingGeneratorWorker.ts`) generates an embedding for a single chunk in a separate process, ensuring the main thread remains responsive.
@@ -179,25 +189,74 @@ These aspects affect multiple components across the system:
 - **No Global State**: StatusBarService operates as a stateless UI utility
 - **Automatic Lifecycle**: Status items are created on-demand and auto-disposed
 
+#### 1.3.5 Circular Dependency Resolution Strategy
+
+- **Dependency Inversion**: Using interfaces and abstract dependencies
+- **Null Injection Pattern**: Creating services with null dependencies, then injecting via setters
+- **Phased Initialization**: ServiceManager respects dependency order through 4 distinct phases
+- **Service Registry**: Type-safe access to all services through IServiceRegistry interface
+- **Setter Injection**: Complete circular dependencies after initial creation
+
 ## 2. Core Components
 
-### 2.1 PR Analysis Coordinator
+### 2.0 Architecture Summary
 
-The `PRAnalysisCoordinator` (src/services/prAnalysisCoordinator.ts) is the central orchestration component. Its primary responsibilities include:
+- Lightweight `PRAnalysisCoordinator` (~117 lines) delegating to specialized coordinators
+- `ServiceManager` with phased initialization and dependency inversion
+- Specialized coordinators for different concerns (analysis, models, database, commands)
+- Eliminated circular dependencies through null injection + setter injection pattern
+- Clear separation between embedding models (MiniLM) and Copilot language models
 
-#### 2.1.1 Service Initialization
+### 2.1 Coordination Architecture
 
-- Initializes all required services in the correct dependency order
-- Resolves circular dependencies through deferred initialization
-- Handles initialization failures with appropriate user feedback
-- Tracks initialized services for proper disposal
+#### 2.1.1 ServiceManager (Dependency Injection Container)
 
-#### 2.1.2 Command Management
+The `ServiceManager` (`src/services/serviceManager.ts`) is the centralized dependency injection container that eliminates circular dependencies:
 
-- Registers all extension commands with VS Code
-- Maps commands to appropriate service methods
-- Handles command errors with user-friendly messages
-- Provides progress feedback for long-running commands
+**Phased Initialization:**
+- **Phase 1 - Foundation**: Services with no dependencies (settings, logging, UI, Git)
+- **Phase 2 - Core**: Model management and database services
+- **Phase 3 - Complex**: Breaks circular dependencies using null injection then setter injection pattern
+- **Phase 4 - High-Level**: Services that depend on complex services
+
+**Circular Dependency Resolution:**
+- `IndexingManager` is created with null `EmbeddingDatabaseAdapter`
+- `IndexingService` is extracted from the manager
+- `EmbeddingDatabaseAdapter` is created with the `IndexingService`
+- Adapter is injected back into the manager via setter injection
+
+#### 2.1.2 PRAnalysisCoordinator (Lightweight Orchestrator)
+
+The refactored `PRAnalysisCoordinator` (`src/services/prAnalysisCoordinator.ts`) is now a lightweight component that delegates to specialized coordinators:
+
+**Responsibilities:**
+- Creates and manages the `ServiceManager`
+- Instantiates specialized coordinators with the service registry
+- Provides external access to coordinators for testing/integration
+- Handles disposal of all coordinators and services
+
+#### 2.1.3 Specialized Coordinators
+
+**AnalysisOrchestrator** (`src/coordinators/analysisOrchestrator.ts`):
+- Handles core PR analysis workflow orchestration
+- Manages UI interactions and Git operations for analysis
+
+**EmbeddingModelCoordinator** (`src/coordinators/embeddingModelCoordinator.ts`):
+- Manages embedding model selection and switching (MiniLM focus)
+- Handles database reindexing when models change
+
+**CopilotModelCoordinator** (`src/coordinators/copilotModelCoordinator.ts`):
+- Manages GitHub Copilot language model operations
+- Separate from embedding model management for clarity
+
+**DatabaseOrchestrator** (`src/coordinators/databaseOrchestrator.ts`):
+- Manages database operations and optimization
+- Handles storage statistics and maintenance
+
+**CommandRegistry** (`src/coordinators/commandRegistry.ts`):
+- Centralizes VS Code command registration
+- Maps commands to appropriate coordinator methods
+- Reduces complexity in main coordinator
 
 #### 2.1.3 Analysis Workflow Orchestration
 

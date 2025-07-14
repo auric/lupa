@@ -32,7 +32,7 @@ export interface TaskCompatibility {
 /**
  * Service for managing language models through VS Code's API
  */
-export class CopilotModelManager {
+export class CopilotModelManager implements vscode.Disposable {
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelCache: ModelDetail[] | null = null;
     private lastModelRefresh: number = 0;
@@ -250,5 +250,15 @@ export class CopilotModelManager {
             .replace(/^- \*\*(.*)\*\*/gm, '<div class="model-item"><strong>$1</strong></div>')
             .replace(/^  - (.*$)/gm, '<div class="model-detail">$1</div>')
             .replace(/\n/gm, '<br>');
+    }
+
+    /**
+     * Dispose of resources
+     */
+    public dispose(): void {
+        // Clear cached data
+        this.modelCache = null;
+        this.currentModel = null;
+        this.lastModelRefresh = 0;
     }
 }

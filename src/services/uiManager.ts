@@ -273,13 +273,12 @@ export class UIManager {
      */
     public async showModelSelectionOptions(): Promise<string | undefined> {
         const options = [
-            'Use optimal model (automatic selection)',
-            'Force high-memory model (Jina Embeddings)',
-            'Force low-memory model (MiniLM)'
+            'Use default model (MiniLM)',
+            'Use high-memory model (Jina Embeddings)'
         ];
 
         return await vscode.window.showQuickPick(options, {
-            placeHolder: 'Select embedding model preference'
+            placeHolder: 'Select embedding model'
         });
     }
 
