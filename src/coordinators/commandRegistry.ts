@@ -78,7 +78,7 @@ export class CommandRegistry implements vscode.Disposable {
     private showTestWebview(): void {
         const title = "Test PR Analysis - Sample Data";
 
-        // Sample diff text
+        // Sample diff text with word-level changes to showcase markEdits
         const diffText = `diff --git a/src/services/analysisProvider.ts b/src/services/analysisProvider.ts
 index 1234567..abcdefg 100644
 --- a/src/services/analysisProvider.ts
@@ -101,7 +101,67 @@ index 1234567..abcdefg 100644
 +            const systemPrompt = this.tokenManager.getSystemPromptForMode(mode);
 
              const tokenComponents = {
-                 systemPrompt,`;
+                 systemPrompt,
+
+diff --git a/src/webview/components/DiffTab.tsx b/src/webview/components/DiffTab.tsx
+index 2345678..bcdefgh 100644
+--- a/src/webview/components/DiffTab.tsx
++++ b/src/webview/components/DiffTab.tsx
+@@ -1,4 +1,4 @@
+-import React, { memo } from 'react';
++import React, { memo, useMemo } from 'react';
+-import { Diff, Hunk } from 'react-diff-view';
++import { Diff, Hunk, markEdits } from 'react-diff-view';
+ import 'react-diff-view/style/index.css';
+
+@@ -15,8 +15,20 @@ export const DiffTab = memo<DiffTabProps>(({ diffFiles, viewType }) => {
+     }
+
++    // Process files with word-level diff highlighting
++    const processedFiles = useMemo(() => {
++        return diffFiles.map(file => {
++            try {
++                // Apply markEdits enhancer for word-level highlighting
++                const enhancedHunks = markEdits(file.hunks, {
++                    threshold: 0.3, // Similarity threshold for word-level comparison
++                    aProps: { className: 'diff-word-removed' },
++                    bProps: { className: 'diff-word-added' }
++                });
++                
++                return { ...file, hunks: enhancedHunks };
++            } catch (error) {
++                console.warn('Failed to enhance hunks for file:', file.newPath || file.oldPath, error);
++                return file;
++            }
++        });
++    }, [diffFiles]);
++
+     const result = (
+         <div className="border rounded-lg" style={{ maxHeight: '80vh', overflow: 'auto' }}>
+             <div className="w-full">
+-                {diffFiles.map((file, index) => (
++                {processedFiles.map((file, index) => (
+                     <div key={index} className="mb-4">
+                         {/* File header */}
+                         <div className="bg-muted p-2 text-sm font-mono border-b">
+
+diff --git a/src/types/modelTypes.ts b/src/types/modelTypes.ts
+index 3456789..cdefghi 100644
+--- a/src/types/modelTypes.ts
++++ b/src/types/modelTypes.ts
+@@ -8,7 +8,7 @@ export enum AnalysisMode {
+ }
+
+ export interface ModelConfiguration {
+-    name: string;
++    modelName: string;
+     description: string;
+-    maxTokens: number;
+-    temperature: number;
++    maxInputTokens: number;
++    defaultTemperature: number;
++    supports: string[];
+ }`;
 
         // Sample context with all types of data
         const context = `## Definitions Found (LSP)
