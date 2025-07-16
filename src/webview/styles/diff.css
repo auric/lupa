@@ -1,0 +1,106 @@
+/* react-diff-view styles */
+
+/* react-diff-view CSS variables for VSCode theming */
+:root {
+    --diff-background-color: var(--vscode-editor-background);
+    --diff-text-color: var(--vscode-editor-foreground);
+    --diff-font-family: var(--vscode-editor-font-family, 'Consolas, Courier, monospace');
+    --diff-selection-background-color: var(--vscode-editor-selectionBackground);
+    --diff-selection-text-color: var(--vscode-editor-foreground);
+    
+    /* Gutter colors - use VSCode's diff gutter variables or fallback to line backgrounds */
+    --diff-gutter-insert-background-color: var(--vscode-diffEditorGutter-insertedLineBackground, var(--vscode-diffEditor-insertedLineBackground));
+    --diff-gutter-insert-text-color: var(--vscode-editor-foreground);
+    --diff-gutter-delete-background-color: var(--vscode-diffEditorGutter-removedLineBackground, var(--vscode-diffEditor-removedLineBackground));
+    --diff-gutter-delete-text-color: var(--vscode-editor-foreground);
+    --diff-gutter-selected-background-color: var(--vscode-editor-selectionBackground);
+    --diff-gutter-selected-text-color: var(--vscode-editor-foreground);
+    
+    /* Code background colors - use VSCode's exact diff variables */
+    --diff-code-insert-background-color: var(--vscode-diffEditor-insertedTextBackground);
+    --diff-code-insert-text-color: var(--vscode-editor-foreground);
+    --diff-code-delete-background-color: var(--vscode-diffEditor-removedTextBackground);
+    --diff-code-delete-text-color: var(--vscode-editor-foreground);
+    --diff-code-insert-edit-background-color: var(--vscode-diffEditor-insertedTextBackground);
+    --diff-code-insert-edit-text-color: var(--vscode-editor-foreground);
+    --diff-code-delete-edit-background-color: var(--vscode-diffEditor-removedTextBackground);
+    --diff-code-delete-edit-text-color: var(--vscode-editor-foreground);
+    --diff-code-selected-background-color: var(--vscode-editor-selectionBackground);
+    --diff-code-selected-text-color: var(--vscode-editor-foreground);
+    --diff-omit-gutter-line-color: var(--vscode-editorWarning-foreground);
+}
+
+/* Override default diff styles to match VSCode theme */
+.diff {
+    background-color: var(--diff-background-color);
+    color: var(--diff-text-color);
+    font-family: var(--diff-font-family);
+    font-size: var(--vscode-editor-font-size, 12px);
+    line-height: 1.4;
+}
+
+.diff-gutter {
+    background-color: var(--vscode-editorGutter-background);
+    color: var(--vscode-editorLineNumber-foreground);
+    border-color: var(--vscode-panel-border);
+}
+
+.diff-code {
+    background-color: var(--diff-background-color);
+    color: var(--diff-text-color);
+}
+
+.diff-code-normal {
+    background-color: var(--diff-background-color);
+    color: var(--diff-text-color);
+}
+
+.diff-line {
+    background-color: var(--diff-background-color);
+}
+
+.diff-hunk {
+    border-color: var(--vscode-panel-border);
+}
+
+/* Additional overrides for better VSCode integration */
+.diff-gutter-normal {
+    background-color: var(--vscode-editorGutter-background);
+    color: var(--vscode-editorLineNumber-foreground);
+}
+
+.diff-gutter-insert {
+    background-color: var(--vscode-diffEditorGutter-insertedLineBackground, var(--vscode-diffEditor-insertedLineBackground));
+    color: var(--vscode-editor-foreground);
+}
+
+.diff-gutter-delete {
+    background-color: var(--vscode-diffEditorGutter-removedLineBackground, var(--vscode-diffEditor-removedLineBackground));
+    color: var(--vscode-editor-foreground);
+}
+
+.diff-code-insert {
+    background-color: var(--vscode-diffEditor-insertedTextBackground);
+    color: var(--vscode-editor-foreground);
+}
+
+.diff-code-delete {
+    background-color: var(--vscode-diffEditor-removedTextBackground);
+    color: var(--vscode-editor-foreground);
+}
+
+.diff-decoration {
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    border-color: var(--vscode-panel-border);
+}
+
+.diff-decoration-gutter {
+    background-color: var(--vscode-editorGutter-background);
+    color: var(--vscode-editorLineNumber-foreground);
+}
+
+.diff-decoration-content {
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+}

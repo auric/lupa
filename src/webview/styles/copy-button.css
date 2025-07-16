@@ -1,0 +1,13 @@
+/* Copy button specific styles */
+
+/* Copy button hover effects */
+button[variant="outline"] {
+    border-color: var(--vscode-button-secondaryBackground);
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+}
+
+button[variant="outline"]:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+    border-color: var(--vscode-button-secondaryHoverBackground);
+}
