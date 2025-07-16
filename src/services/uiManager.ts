@@ -179,7 +179,38 @@ export class UIManager {
         );
 
         panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel);
+        
+        // Send initial theme information to webview
+        this.sendThemeToWebview(panel.webview);
+        
+        // Listen for theme changes and update webview
+        const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
+            this.sendThemeToWebview(panel.webview);
+        });
+
+        // Clean up theme listener when panel is disposed
+        panel.onDidDispose(() => {
+            themeChangeDisposable.dispose();
+        });
+
         return panel;
+    }
+
+    /**
+     * Send current theme information to webview
+     */
+    private sendThemeToWebview(webview: vscode.Webview): void {
+        const activeTheme = vscode.window.activeColorTheme;
+        const themeData = {
+            kind: activeTheme.kind,
+            isDarkTheme: activeTheme.kind === vscode.ColorThemeKind.Dark || 
+                        activeTheme.kind === vscode.ColorThemeKind.HighContrast
+        };
+
+        webview.postMessage({
+            type: 'theme-changed',
+            data: themeData
+        });
     }
 
     /**
