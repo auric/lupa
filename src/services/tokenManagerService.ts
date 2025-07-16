@@ -331,6 +331,15 @@ export class TokenManagerService {
         return result;
     }
 
+    /**
+     * Formats context snippets for display
+     * @param snippets The list of ContextSnippet objects to format.
+     * @param wasTruncated Whether to add a truncation message at the end.
+     * @returns A formatted markdown string for display.
+     */
+    public formatContextSnippetsForDisplay(snippets: ContextSnippet[], wasTruncated: boolean = false): string {
+        return this.formatContextSnippetsToString(snippets, wasTruncated);
+    }
 
     /**
      * Get the current model's token limit

@@ -412,7 +412,13 @@ export class ContextProvider implements vscode.Disposable {
             rankedEmbeddingResults.forEach(embResult => {
                 const scoreDisplay = (embResult.score * 100).toFixed(1);
                 const fileHeader = `### File: \`${embResult.filePath}\` (Relevance: ${scoreDisplay}%)`;
-                const formattedContent = `${fileHeader}\n\`\`\`\n${embResult.content}\n\`\`\``;
+                
+                // Get language from file extension for syntax highlighting
+                const fileExtension = path.extname(embResult.filePath).substring(1);
+                const language = getLanguageForExtension(fileExtension);
+                const languageHint = language ? language.language : 'text';
+                
+                const formattedContent = `${fileHeader}\n\`\`\`${languageHint}\n${embResult.content}\n\`\`\``;
 
                 let embHunkIdentifiers: string[] = [];
                 const fileDiffData = parsedDiffFileHunks.find(f => f.filePath === embResult.filePath);
@@ -661,7 +667,13 @@ export class ContextProvider implements vscode.Disposable {
                     allResults.forEach(embResult => {
                         const scoreDisplay = (embResult.score * 100).toFixed(1);
                         const fileHeader = `### File: \`${embResult.filePath}\` (Fallback Relevance: ${scoreDisplay}%)`;
-                        const formattedContent = `${fileHeader}\n\`\`\`\n${embResult.content}\n\`\`\``;
+                        
+                        // Get language from file extension for syntax highlighting
+                        const fileExtension = path.extname(embResult.filePath).substring(1);
+                        const language = getLanguageForExtension(fileExtension);
+                        const languageHint = language ? language.language : 'text';
+                        
+                        const formattedContent = `${fileHeader}\n\`\`\`${languageHint}\n${embResult.content}\n\`\`\``;
                         fallbackSnippets.push({
                             id: `fallback-emb-${embResult.fileId}-${embResult.chunkId || quickHash(embResult.content)}`,
                             type: 'embedding',
@@ -834,11 +846,15 @@ export class ContextProvider implements vscode.Disposable {
                     '\n\n// ... [additional content truncated for brevity] ...';
             }
 
+            // Get language from file extension for syntax highlighting
+            const fileExtension = path.extname(filePath).substring(1);
+            const language = getLanguageForExtension(fileExtension);
+            const languageHint = language ? language.language : 'text';
+
             // Format with markdown for better readability
             formattedFiles.push([
-
                 `${fileHeader}${contentDescription}`,
-                '```',
+                `\`\`\`${languageHint}`,
                 combinedContent,
                 '```',
                 '' // Empty line for spacing

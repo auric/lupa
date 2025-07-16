@@ -84,9 +84,6 @@ export class UIManager {
         }
 
         // Generate URIs for the assets using extension context
-        const diff2htmlCssUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
-            this.extensionContext.extensionUri, 'dist', 'diff2html.min.css'
-        ));
         const mainScriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
             this.extensionContext.extensionUri, 'dist', 'webview', 'main.js'
         ));
@@ -98,7 +95,6 @@ export class UIManager {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>${titleTruncated}</title>
-            <link href="${diff2htmlCssUri}" rel="stylesheet">
             <style>
                 body {
                     margin: 0;
@@ -136,7 +132,7 @@ export class UIManager {
                     analysis: ${JSON.stringify(analysis)}
                 };
             </script>
-            <script type="module" src="${mainScriptUri}"></script>
+            <script src="${mainScriptUri}"></script>
         </body>
         </html>
         `;

@@ -29,15 +29,56 @@ const isExternalDependency = (source: string, importer: string | undefined, isRe
 export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     const isProduction = mode === 'production';
 
-    // Vite Build Configuration
+    // Node.js library configuration (extension and workers)
     const libOptions: LibraryOptions = {
         entry: {
             extension: resolve(__dirname, 'src/extension.ts'),
             'workers/embeddingGeneratorWorker': resolve(__dirname, 'src/workers/embeddingGeneratorWorker.ts'),
-            'webview/main': resolve(__dirname, 'src/webview/main.tsx'),
         },
         formats: ['cjs'],
         fileName: (_format, entryName) => `${entryName}.js`,
+    };
+
+    // Webview app configuration (browser-like)
+    const webviewBuildConfig: BuildOptions = {
+        rollupOptions: {
+            input: resolve(__dirname, 'src/webview/main.tsx'),
+            output: {
+                entryFileNames: 'webview/main.js',
+                chunkFileNames: 'webview/[name].js',
+                assetFileNames: (assetInfo) => {
+                    if (assetInfo.name?.endsWith('.css')) {
+                        return 'webview/main.css';
+                    }
+                    return 'webview/[name].[ext]';
+                },
+                format: 'iife',
+                name: 'WebviewApp'
+            },
+            external: []
+        },
+        outDir: resolve(__dirname, 'dist'),
+        sourcemap: !isProduction,
+        minify: isProduction,
+        target: 'es2020',
+        emptyOutDir: false,
+    };
+
+    // Node.js library configuration
+    const nodeBuildConfig: BuildOptions = {
+        lib: libOptions,
+        outDir: resolve(__dirname, 'dist'),
+        sourcemap: !isProduction,
+        minify: isProduction,
+        target: 'es2024',
+        rollupOptions: {
+            output: {
+                exports: 'named'
+            },
+            external: isExternalDependency,
+        },
+        ssr: true,
+        emptyOutDir: true,
     };
 
     const staticCopyTargets: Target[] = [
@@ -61,27 +102,10 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
             src: 'models/',
             dest: '.',
         },
-        {
-            src: 'node_modules/diff2html/bundles/css/diff2html.min.css',
-            dest: '.',
-        },
     ];
 
-    const buildConfig: BuildOptions = {
-        lib: libOptions,
-        outDir: resolve(__dirname, 'dist'),
-        sourcemap: !isProduction,
-        minify: isProduction,
-        target: 'es2024',
-        rollupOptions: {
-            output: {
-                exports: 'named'
-            },
-            external: isExternalDependency,
-        },
-        ssr: true, // Signal that this is an SSR/Node.js build
-        emptyOutDir: true,
-    };
+    // Determine which build config to use
+    const buildConfig = process.env.BUILD_TARGET === 'webview' ? webviewBuildConfig : nodeBuildConfig;
 
     // Vitest Configuration (from existing setup)
     const testConfig: VitestInlineConfig = {
