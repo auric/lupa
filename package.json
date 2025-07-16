@@ -56,8 +56,8 @@
                 "title": "CodeLens PR: Select Language Model"
             },
             {
-                "command": "codelens-pr-analyzer.testStructureAnalyzer",
-                "title": "CodeLens PR: Test Structure Analyzer"
+                "command": "codelens-pr-analyzer.testWebview",
+                "title": "CodeLens PR: Test Webview (Development)"
             }
         ]
     },
