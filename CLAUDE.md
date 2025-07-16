@@ -12,6 +12,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Framework**: VS Code Extension API
 - **Build Tool**: Vite
 - **Testing**: Vitest
+- **UI Framework**: React 19 with TypeScript
+- **UI Components**: shadcn/ui with Tailwind CSS v4
+- **Diff Viewer**: react-diff-view with VSCode theme integration
+- **Markdown**: react-markdown v10 with syntax highlighting
 - **Embedding Models**: Hugging Face Transformers (@huggingface/transformers) - Default: Xenova/all-MiniLM-L6-v2
 - **Vector Search**: HNSWlib for Approximate Nearest Neighbor (ANN) search
 - **Database**: SQLite (@vscode/sqlite3) for metadata storage
@@ -90,6 +94,23 @@ The extension follows a layered, service-oriented architecture with clear separa
 - **`UIManager`** (`src/services/uiManager.ts`) - Creates webviews and handles user interactions
 - **`StatusBarService`** (`src/services/statusBarService.ts`) - Manages multiple, contextual VS Code status bar items with on-demand progress indicators
 
+### Modern React UI System
+- **`AnalysisView.tsx`** (`src/webview/AnalysisView.tsx`) - Main React component with clean hook-based architecture
+- **Component Architecture**:
+  - `AnalysisTab.tsx` - Memoized analysis results display
+  - `ContextTab.tsx` - Memoized context information display  
+  - `DiffTab.tsx` - Memoized diff viewer using react-diff-view
+  - `MarkdownRenderer.tsx` - Syntax-highlighted markdown with code block detection
+  - `CopyButton.tsx` - Reusable copy-to-clipboard functionality
+- **Custom Hooks**:
+  - `useTheme.tsx` - VSCode theme detection and luminance calculation
+  - `useCopyToClipboard.tsx` - Copy functionality with temporary state management
+- **Styling Architecture**:
+  - `globals.css` - Global VSCode theme integration and shadcn UI variables
+  - `styles/markdown.css` - Markdown and syntax highlighting styles
+  - `styles/diff.css` - react-diff-view theme integration
+  - `styles/copy-button.css` - Copy button specific styles
+
 ## Data Flow
 
 ### Service Initialization (Phase-Based)
@@ -144,6 +165,50 @@ The extension follows a layered, service-oriented architecture with clear separa
 - Test files follow pattern: `*.test.ts` or `*.spec.ts`
 - Mocks are in `__mocks__/` directory
 - Run single test: `npx vitest run src/path/to/test.test.ts`
+
+## React UI Implementation Details
+
+### Component Architecture
+The webview uses a modern React architecture with performance optimizations:
+
+- **Main Component** (`src/webview/AnalysisView.tsx`): Lightweight container using custom hooks
+- **Memoized Components**: All tab components use `React.memo` for performance
+- **Custom Hooks**: Extracted theme detection and copy functionality
+- **Modular CSS**: Separate files for different UI concerns
+
+### Key Features
+- **VSCode Theme Integration**: Automatic light/dark theme detection with luminance calculation
+- **Syntax Highlighting**: react-syntax-highlighter with VSCode color schemes
+- **Code Block Detection**: Fixed react-markdown v9 compatibility for proper block detection
+- **Copy Functionality**: Copy buttons on all code blocks with success feedback
+- **Diff Viewer**: react-diff-view with full VSCode theme integration
+- **Responsive Design**: Adaptive diff view (split/unified) based on window size
+
+### Performance Optimizations
+- **React.memo**: Prevents unnecessary re-renders of tab components
+- **Hook Extraction**: Separates concerns and improves testability
+- **CSS Code Splitting**: Modular styles for better maintainability
+- **Efficient Rendering**: Proper key props and minimal state updates
+
+### File Structure
+```
+src/webview/
+├── AnalysisView.tsx           # Main component (117 lines)
+├── components/
+│   ├── AnalysisTab.tsx        # Analysis results
+│   ├── ContextTab.tsx         # Context information
+│   ├── DiffTab.tsx            # Diff viewer
+│   ├── MarkdownRenderer.tsx   # Markdown with syntax highlighting
+│   └── CopyButton.tsx         # Reusable copy button
+├── hooks/
+│   ├── useTheme.tsx           # VSCode theme detection
+│   └── useCopyToClipboard.tsx # Copy functionality
+├── styles/
+│   ├── markdown.css           # Markdown styles
+│   ├── diff.css               # Diff viewer styles
+│   └── copy-button.css        # Copy button styles
+└── globals.css                # Global styles & theme variables
+```
 
 ## Development Notes
 
