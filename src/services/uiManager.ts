@@ -11,7 +11,7 @@ export class UIManager {
     /**
      * Create a new UIManager
      */
-    constructor() {
+    constructor(private readonly extensionContext: vscode.ExtensionContext) {
         this.statusBarService = StatusBarService.getInstance();
     }
 
@@ -75,13 +75,19 @@ export class UIManager {
     }
 
     /**
-     * Generate PR analysis with HTML
+     * Generate PR analysis with HTML that loads React app
      */
-    public generatePRAnalysisHtml(title: string, diffText: string, context: string, analysis: string): string {
+    public generatePRAnalysisHtml(title: string, diffText: string, context: string, analysis: string, panel: vscode.WebviewPanel): string {
         let titleTruncated = title;
         if (title.length > 100) {
             titleTruncated = title.substring(0, 97) + '...';
         }
+
+        // Generate URIs for the assets using extension context
+        const mainScriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
+            this.extensionContext.extensionUri, 'dist', 'webview', 'main.js'
+        ));
+
         return `
         <!DOCTYPE html>
         <html>
@@ -91,166 +97,45 @@ export class UIManager {
             <title>${titleTruncated}</title>
             <style>
                 body {
-                    font-family: var(--vscode-font-family);
-                    font-size: var(--vscode-font-size);
-                    color: var(--vscode-editor-foreground);
-                    background-color: var(--vscode-editor-background);
-                    padding: 20px;
-                    line-height: 1.5;
+                    margin: 0;
+                    padding: 0;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background-color: #ffffff;
+                    color: #000000;
                 }
-                h1 {
-                    color: var(--vscode-titleBar-activeForeground);
-                    font-size: 1.5em;
-                    border-bottom: 1px solid var(--vscode-panel-border);
-                    padding-bottom: 10px;
-                }
-                h2 {
-                    color: var(--vscode-editor-foreground);
-                    font-size: 1.3em;
-                    margin-top: 20px;
-                }
-                h3 {
-                    color: var(--vscode-textLink-foreground);
-                    font-size: 1.1em;
-                    margin-top: 15px;
-                }
-                pre {
-                    background-color: var(--vscode-textCodeBlock-background);
-                    padding: 10px;
-                    border-radius: 5px;
+                #root {
+                    width: 100%;
+                    height: 100vh;
                     overflow: auto;
-                    font-family: var(--vscode-editor-font-family);
-                    max-height: 300px;
                 }
-                code {
-                    font-family: var(--vscode-editor-font-family);
-                }
-                .relevance {
-                    color: var(--vscode-charts-green);
-                    font-size: 0.9em;
-                }
-                .diff-stats {
-                    color: var(--vscode-textLink-foreground);
-                    margin-bottom: 20px;
-                }
-                .tabs {
+                .loading {
                     display: flex;
-                    margin-bottom: 20px;
-                    border-bottom: 1px solid var(--vscode-panel-border);
-                }
-                .tab {
-                    padding: 10px 15px;
-                    cursor: pointer;
-                    background-color: var(--vscode-button-secondaryBackground);
-                    color: var(--vscode-button-secondaryForeground);
-                    margin-right: 5px;
-                    border-radius: 5px 5px 0 0;
-                }
-                .tab.active {
-                    background-color: var(--vscode-button-background);
-                    color: var(--vscode-button-foreground);
-                }
-                .tab-content {
-                    display: none;
-                }
-                .tab-content.active {
-                    display: block;
-                }
-                .hint {
-                    font-style: italic;
-                    color: var(--vscode-descriptionForeground);
-                    margin-top: 10px;
-                }
-                .partial-truncation-notice {
-                    font-style: italic;
-                    color: var(--vscode-descriptionForeground); /* Same as hint or a bit more subtle */
-                    display: inline-block; /* To allow margin if needed, though <br> handles spacing */
-                    /* margin-top: 5px; */ /* Optional: if more space is desired around it */
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    font-size: 16px;
+                    color: #666;
                 }
             </style>
         </head>
         <body>
-            <h1>${titleTruncated}</h1>
-
-            <div class="tabs">
-                <div class="tab active" onclick="switchTab('analysis')">AI Analysis</div>
-                <div class="tab" onclick="switchTab('context')">Context</div>
-                <div class="tab" onclick="switchTab('diff')">Changes</div>
-            </div>
-
-            <div id="analysis" class="tab-content active">
-                <div class="hint">AI analysis of the pull request</div>
-                <div class="analysis-content">
-                    ${this.markdownToHtml(analysis)}
-                </div>
-            </div>
-
-            <div id="context" class="tab-content">
-                <div class="hint">Showing relevant code context found for the changes</div>
-                <div class="context-content">
-                    ${this.markdownToHtml(context)}
-                </div>
-            </div>
-
-            <div id="diff" class="tab-content">
-                <div class="hint">Showing raw diff of the changes</div>
-                <pre><code>${this.escapeHtml(diffText)}</code></pre>
+            <div id="root">
+                <div class="loading">Loading analysis...</div>
             </div>
 
             <script>
-                function switchTab(tabId) {
-                    // Hide all tab content
-                    document.querySelectorAll('.tab-content').forEach(content => {
-                        content.classList.remove('active');
-                    });
-
-                    // Deactivate all tabs
-                    document.querySelectorAll('.tab').forEach(tab => {
-                        tab.classList.remove('active');
-                    });
-
-                    // Activate selected tab and content
-                    document.getElementById(tabId).classList.add('active');
-                    document.querySelector('.tab[onclick*="' + tabId + '"]').classList.add('active');
-                }
+                // Inject analysis data into window object
+                window.analysisData = {
+                    title: ${JSON.stringify(titleTruncated)},
+                    diffText: ${JSON.stringify(diffText)},
+                    context: ${JSON.stringify(context)},
+                    analysis: ${JSON.stringify(analysis)}
+                };
             </script>
+            <script src="${mainScriptUri}"></script>
         </body>
         </html>
         `;
-    }
-
-    /**
-     * Convert markdown to HTML (basic implementation)
-     */
-    private markdownToHtml(markdown: string): string {
-        return markdown
-            // Headings
-            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-            // Code blocks
-            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-            // Inline code
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            // Line breaks
-            .replace(/\n/g, '<br>')
-            // Specific message for partially truncated files
-            .replace(/\[File content partially truncated to fit token limit\]/g, '<span class="partial-truncation-notice">[File content partially truncated to fit token limit]</span>')
-            // File paths with relevance scores (ensure this comes after more specific replacements if there's overlap)
-            .replace(/### File: `([^`]+)` \(Relevance: ([0-9.]+)%\)/g,
-                '<h3>File: <code>$1</code> <span class="relevance">(Relevance: $2%)</span></h3>');
-    }
-
-    /**
-     * Escape HTML special characters
-     */
-    private escapeHtml(text: string): string {
-        return text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
     }
 
     /**
@@ -293,8 +178,39 @@ export class UIManager {
             { enableScripts: true }
         );
 
-        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis);
+        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel);
+        
+        // Send initial theme information to webview
+        this.sendThemeToWebview(panel.webview);
+        
+        // Listen for theme changes and update webview
+        const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
+            this.sendThemeToWebview(panel.webview);
+        });
+
+        // Clean up theme listener when panel is disposed
+        panel.onDidDispose(() => {
+            themeChangeDisposable.dispose();
+        });
+
         return panel;
+    }
+
+    /**
+     * Send current theme information to webview
+     */
+    private sendThemeToWebview(webview: vscode.Webview): void {
+        const activeTheme = vscode.window.activeColorTheme;
+        const themeData = {
+            kind: activeTheme.kind,
+            isDarkTheme: activeTheme.kind === vscode.ColorThemeKind.Dark || 
+                        activeTheme.kind === vscode.ColorThemeKind.HighContrast
+        };
+
+        webview.postMessage({
+            type: 'theme-changed',
+            data: themeData
+        });
     }
 
     /**

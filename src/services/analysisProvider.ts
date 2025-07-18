@@ -159,7 +159,7 @@ export class AnalysisProvider implements vscode.Disposable {
             Log.info(`Context optimized: ${optimizedSnippets.length} snippets selected. Truncated: ${wasTruncated}`);
 
             // This string is for returning to the UI/caller, representing the context that was considered.
-            const finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsToString(optimizedSnippets, wasTruncated);
+            const finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsForDisplay(optimizedSnippets, wasTruncated);
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
 

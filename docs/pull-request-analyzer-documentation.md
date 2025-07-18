@@ -4,7 +4,7 @@
 
 ### 1.1 Architectural Overview
 
-The CodeLens Pull Request Analyzer follows a layered, service-oriented architecture with clear separation of concerns and dependency inversion to eliminate circular dependencies. The system is designed around these key architectural principles:
+The CodeLens Pull Request Analyzer follows a layered, service-oriented architecture with clear separation of concerns and dependency inversion to eliminate circular dependencies. The system features a modern React-based UI with full VSCode theme integration and performance optimizations. The system is designed around these key architectural principles:
 
 - **Modular Services**: Each component is implemented as a self-contained service
 - **Dependency Injection**: Services receive dependencies through their constructors with phased initialization
@@ -59,10 +59,14 @@ The overall architecture consists of these primary layers:
 
 #### 1.1.6 UI Layer
 
-- Presents analysis results and status information
-- Handles user interactions and commands
-- Provides feedback on long-running operations
-- Supports different view modalities (webview, editor annotations, status bar)
+- **React-Based Webview**: Modern React 19 architecture with TypeScript
+- **Component-Based Design**: Modular, memoized components for optimal performance
+- **VSCode Theme Integration**: Automatic light/dark theme detection with full integration
+- **Syntax Highlighting**: react-syntax-highlighter with VSCode color schemes
+- **Diff Visualization**: react-diff-view with responsive split/unified views
+- **Handles user interactions and commands**
+- **Provides feedback on long-running operations**
+- **Supports different view modalities (webview, editor annotations, status bar)**
 
 ### 1.2 Component Interactions
 
@@ -509,17 +513,17 @@ Key interactions:
 
 ### 2.7 UI Components
 
-The UI system presents analysis results and interacts with users.
+The UI system presents analysis results using a modern React-based architecture.
 
 #### 2.7.1 UI Manager
 
 The `UIManager` (src/services/uiManager.ts) manages UI components:
 
-- **Webview Creation**: Creates webviews for results
-- **HTML Generation**: Generates HTML for analysis display
+- **Webview Creation**: Creates React-based webviews for results
+- **HTML Generation**: Generates HTML wrapper for React components
 - **User Interaction**: Handles user input and selection
 - **Progress Display**: Shows progress for long operations
-- **Markdown Rendering**: Renders markdown to HTML
+- **React Integration**: Manages React component lifecycle
 
 Key interactions:
 
@@ -528,7 +532,52 @@ Key interactions:
 - Uses `StatusBarService` for status updates
 - Provides selection interfaces to coordinator
 
-#### 2.7.2 Status Bar Service
+#### 2.7.2 React UI Architecture
+
+The webview uses a modern React architecture with performance optimizations:
+
+**Main Components:**
+- **`AnalysisView.tsx`**: Main container component using custom hooks
+- **`AnalysisTab.tsx`**: Memoized analysis results display
+- **`ContextTab.tsx`**: Memoized context information display
+- **`DiffTab.tsx`**: Memoized diff viewer using react-diff-view
+- **`MarkdownRenderer.tsx`**: Syntax-highlighted markdown with code block detection
+- **`CopyButton.tsx`**: Reusable copy-to-clipboard functionality
+
+**Custom Hooks:**
+- **`useTheme.tsx`**: VSCode theme detection with luminance calculation
+- **`useCopyToClipboard.tsx`**: Copy functionality with temporary state management
+
+**Styling Architecture:**
+- **`globals.css`**: Global VSCode theme integration and shadcn UI variables
+- **`styles/markdown.css`**: Markdown and syntax highlighting styles
+- **`styles/diff.css`**: react-diff-view VSCode theme integration
+- **`styles/copy-button.css`**: Copy button specific styles
+
+**Key Features:**
+- **VSCode Theme Integration**: Automatic light/dark theme detection
+- **Syntax Highlighting**: react-syntax-highlighter with VSCode color schemes
+- **Code Block Detection**: Fixed react-markdown v9 compatibility
+- **Copy Functionality**: Copy buttons on all code blocks with success feedback
+- **Diff Viewer**: react-diff-view with full VSCode theme integration
+- **Responsive Design**: Adaptive diff view (split/unified) based on window size
+- **Performance Optimizations**: React.memo, hook extraction, CSS code splitting
+
+**Implementation Details:**
+
+The React UI implementation addresses several key technical challenges:
+
+1. **react-markdown v9 Compatibility**: Fixed code block detection using parent element analysis, newline detection, and language class detection instead of the deprecated `inline` prop.
+
+2. **VSCode Theme Integration**: Implemented automatic theme detection using CSS variable parsing and luminance calculation to determine light/dark mode.
+
+3. **Language Hint Generation**: Fixed language detection for syntax highlighting by properly accessing the `language` property from `SupportedLanguage` objects.
+
+4. **Performance Optimization**: Reduced main component from 425 lines to 117 lines through proper component decomposition and memoization.
+
+5. **Modular Architecture**: Separated concerns into focused components with individual CSS files for better maintainability.
+
+#### 2.7.3 Status Bar Service
 
 The `StatusBarService` (src/services/statusBarService.ts) manages contextual, on-demand status display:
 

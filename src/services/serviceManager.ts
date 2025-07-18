@@ -130,7 +130,7 @@ export class ServiceManager implements vscode.Disposable {
         this.services.codeAnalysis = new CodeAnalysisService();
 
         // UI and Git services (independent)
-        this.services.uiManager = new UIManager();
+        this.services.uiManager = new UIManager(this.context);
         this.services.gitOperations = new GitOperationsManager();
     }
 

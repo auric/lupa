@@ -1,0 +1,178 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Import component-specific styles */
+@import "./styles/markdown.css";
+@import "./styles/diff.css";
+@import "./styles/copy-button.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Map VSCode theme variables to Shadcn UI CSS Variables */
+:root {
+  --background: var(--vscode-editor-background);
+  --foreground: var(--vscode-editor-foreground);
+  --card: var(--vscode-sideBar-background);
+  --card-foreground: var(--vscode-sideBar-foreground);
+  --popover: var(--vscode-quickInput-background);
+  --popover-foreground: var(--vscode-quickInput-foreground);
+  --primary: var(--vscode-button-background);
+  --primary-foreground: var(--vscode-button-foreground);
+  --secondary: var(--vscode-button-secondaryBackground);
+  --secondary-foreground: var(--vscode-button-secondaryForeground);
+  --muted: var(--vscode-input-background);
+  --muted-foreground: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-list-hoverBackground);
+  --accent-foreground: var(--vscode-list-hoverForeground);
+  --destructive: var(--vscode-errorForeground);
+  --destructive-foreground: var(--vscode-editor-background);
+  --border: var(--vscode-panel-border);
+  --input: var(--vscode-input-background);
+  --ring: var(--vscode-focusBorder);
+  --radius: 0.375rem;
+  --chart-1: var(--vscode-charts-blue);
+  --chart-2: var(--vscode-charts-green);
+  --chart-3: var(--vscode-charts-purple);
+  --chart-4: var(--vscode-charts-orange);
+  --chart-5: var(--vscode-charts-red);
+  --sidebar: var(--vscode-sideBar-background);
+  --sidebar-foreground: var(--vscode-sideBar-foreground);
+  --sidebar-primary: var(--vscode-button-background);
+  --sidebar-primary-foreground: var(--vscode-button-foreground);
+  --sidebar-accent: var(--vscode-list-hoverBackground);
+  --sidebar-accent-foreground: var(--vscode-list-hoverForeground);
+  --sidebar-border: var(--vscode-sideBar-border);
+  --sidebar-ring: var(--vscode-focusBorder);
+  --tab-active-border-top: var(--vscode-tab-activeBorderTop, var(--vscode-tab-activeBorder, var(--vscode-focusBorder)));
+}
+
+/* Add the Shadcn CSS variables to our theme layer */
+@theme {
+  --radius: 0.5rem;
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/* Base styles for the webview */
+body {
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  margin: 0;
+  padding: 0;
+}
+
+/* VSCode webview fills the entire container */
+html, body, #root {
+  height: 100%;
+}
+
+/* VSCode-style tab components */
+.vscode-tabs-list {
+  @apply flex-shrink-0 w-full justify-start rounded-none border-b border-border bg-card h-8 p-0;
+}
+
+.vscode-tab-trigger {
+  @apply rounded-none border-t border-transparent h-8 px-3 text-xs font-medium;
+  @apply data-[state=active]:bg-transparent;
+  border-top-width: 1px;
+}
+
+.vscode-tab-trigger[data-state="active"] {
+  border-top-color: var(--tab-active-border-top);
+}
+
+.vscode-tab-content {
+  @apply flex-1 m-0 p-3 focus-visible:outline-none;
+}
+
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* VSCode automatically handles light/dark themes through CSS variables */
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}

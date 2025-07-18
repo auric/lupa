@@ -1,0 +1,56 @@
+/* Markdown and syntax highlighting styles */
+
+/* Custom syntax highlighting styles using VSCode colors */
+.hljs {
+  background: var(--vscode-textCodeBlock-background) !important;
+  color: var(--vscode-editor-foreground) !important;
+}
+
+.hljs-keyword {
+  color: var(--vscode-symbolIcon-keywordForeground) !important;
+}
+
+.hljs-string {
+  color: var(--vscode-symbolIcon-stringForeground) !important;
+}
+
+.hljs-comment {
+  color: var(--vscode-symbolIcon-textForeground) !important;
+  font-style: italic;
+}
+
+.hljs-number {
+  color: var(--vscode-symbolIcon-numberForeground) !important;
+}
+
+.hljs-function {
+  color: var(--vscode-symbolIcon-functionForeground) !important;
+}
+
+.hljs-class {
+  color: var(--vscode-symbolIcon-classForeground) !important;
+}
+
+.hljs-variable {
+  color: var(--vscode-symbolIcon-variableForeground) !important;
+}
+
+.hljs-type {
+  color: var(--vscode-symbolIcon-typeParameterForeground) !important;
+}
+
+.hljs-built_in {
+  color: var(--vscode-symbolIcon-keywordForeground) !important;
+}
+
+/* Code block copy button styling */
+.prose .relative .absolute {
+    /* Ensure copy buttons are properly positioned and styled */
+    z-index: 10;
+}
+
+.prose pre {
+    /* Ensure code blocks have proper spacing for copy buttons */
+    position: relative;
+    padding-top: 2rem;
+}

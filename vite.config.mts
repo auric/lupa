@@ -7,16 +7,29 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type LibraryOptions, type BuildOptions, type UserConfig, type ConfigEnv } from 'vite';
 import { viteStaticCopy, type Target } from 'vite-plugin-static-copy';
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
 // Importing Vitest's config type for explicit typing if needed, though UserConfig from Vite includes 'test'
 import type { InlineConfig as VitestInlineConfig } from 'vitest/node';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// External dependencies function for different entry points
+const isExternalDependency = (source: string, importer: string | undefined, isResolved: boolean): boolean => {
+    // For webview entry, only externalize vscode
+    if (importer && importer.includes('src/webview/')) {
+        return source === 'vscode';
+    }
+
+    // For extension and workers, externalize these Node.js packages
+    return ['vscode', 'onnxruntime-node', 'hnswlib-node', '@vscode/sqlite3', '@tailwindcss/vite'].includes(source);
+};
+
 export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     const isProduction = mode === 'production';
 
-    // Vite Build Configuration
+    // Node.js library configuration (extension and workers)
     const libOptions: LibraryOptions = {
         entry: {
             extension: resolve(__dirname, 'src/extension.ts'),
@@ -24,6 +37,48 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         },
         formats: ['cjs'],
         fileName: (_format, entryName) => `${entryName}.js`,
+    };
+
+    // Webview app configuration (browser-like)
+    const webviewBuildConfig: BuildOptions = {
+        rollupOptions: {
+            input: resolve(__dirname, 'src/webview/main.tsx'),
+            output: {
+                entryFileNames: 'webview/main.js',
+                chunkFileNames: 'webview/[name].js',
+                assetFileNames: (assetInfo) => {
+                    if (assetInfo.name?.endsWith('.css')) {
+                        return 'webview/main.css';
+                    }
+                    return 'webview/[name].[ext]';
+                },
+                format: 'iife',
+                name: 'WebviewApp'
+            },
+            external: []
+        },
+        outDir: resolve(__dirname, 'dist'),
+        sourcemap: !isProduction,
+        minify: isProduction,
+        target: 'es2020',
+        emptyOutDir: false,
+    };
+
+    // Node.js library configuration
+    const nodeBuildConfig: BuildOptions = {
+        lib: libOptions,
+        outDir: resolve(__dirname, 'dist'),
+        sourcemap: !isProduction,
+        minify: isProduction,
+        target: 'es2024',
+        rollupOptions: {
+            output: {
+                exports: 'named'
+            },
+            external: isExternalDependency,
+        },
+        ssr: true,
+        emptyOutDir: true,
     };
 
     const staticCopyTargets: Target[] = [
@@ -49,21 +104,8 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         },
     ];
 
-    const buildConfig: BuildOptions = {
-        lib: libOptions,
-        outDir: resolve(__dirname, 'dist'),
-        sourcemap: !isProduction,
-        minify: isProduction,
-        target: 'es2024',
-        rollupOptions: {
-            output: {
-                exports: 'named'
-            },
-            external: ['vscode', 'onnxruntime-node', 'hnswlib-node', '@vscode/sqlite3'],
-        },
-        ssr: true, // Signal that this is an SSR/Node.js build
-        emptyOutDir: true,
-    };
+    // Determine which build config to use
+    const buildConfig = process.env.BUILD_TARGET === 'webview' ? webviewBuildConfig : nodeBuildConfig;
 
     // Vitest Configuration (from existing setup)
     const testConfig: VitestInlineConfig = {
@@ -81,7 +123,8 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     // Vite Resolve Configuration (from existing setup)
     const resolveConfig = {
         alias: {
-            'vscode': resolve(__dirname, './__mocks__/vscode.js')
+            'vscode': resolve(__dirname, './__mocks__/vscode.js'),
+            '@': resolve(__dirname, './src')
         }
     };
 
@@ -96,6 +139,8 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
             ...config,
             build: buildConfig,
             plugins: [
+                react(),
+                tailwindcss(),
                 viteStaticCopy({
                     targets: staticCopyTargets,
                 }),
