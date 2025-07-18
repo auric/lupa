@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Framework**: VS Code Extension API
 - **Build Tool**: Vite
 - **Testing**: Vitest
-- **UI Framework**: React 19 with TypeScript
+- **UI Framework**: React 19 with TypeScript and React Compiler
 - **UI Components**: shadcn/ui with Tailwind CSS v4
 - **Diff Viewer**: react-diff-view with VSCode theme integration
 - **Markdown**: react-markdown v10 with syntax highlighting
@@ -185,7 +185,8 @@ The webview uses a modern React architecture with performance optimizations:
 - **Responsive Design**: Adaptive diff view (split/unified) based on window size
 
 ### Performance Optimizations
-- **React.memo**: Prevents unnecessary re-renders of tab components
+- **React Compiler**: Automatic memoization and optimization for React 19
+- **Strategic memo()**: Manual memoization for expensive components (DiffTab, ContextTab, MarkdownRenderer)
 - **Hook Extraction**: Separates concerns and improves testability
 - **CSS Code Splitting**: Modular styles for better maintainability
 - **Efficient Rendering**: Proper key props and minimal state updates

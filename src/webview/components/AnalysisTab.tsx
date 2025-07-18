@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface AnalysisTabProps {
@@ -8,12 +8,12 @@ interface AnalysisTabProps {
     copiedStates?: Record<string, boolean>;
 }
 
-export const AnalysisTab = memo<AnalysisTabProps>(({ 
+export const AnalysisTab = ({ 
     content, 
     isDarkTheme, 
     onCopy, 
     copiedStates 
-}) => {
+}: AnalysisTabProps) => {
     console.time('Analysis tab render');
     const result = (
         <MarkdownRenderer
@@ -26,4 +26,4 @@ export const AnalysisTab = memo<AnalysisTabProps>(({
     );
     console.timeEnd('Analysis tab render');
     return result;
-});
+};

@@ -139,7 +139,15 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
             ...config,
             build: buildConfig,
             plugins: [
-                react(),
+                react({
+                    babel: {
+                        plugins: [
+                            ["babel-plugin-react-compiler", {
+                                target: "19" // React 19 support - provides automatic memoization
+                            }]
+                        ]
+                    }
+                }),
                 tailwindcss(),
                 viteStaticCopy({
                     targets: staticCopyTargets,
