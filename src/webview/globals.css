@@ -43,6 +43,7 @@
   --sidebar-accent-foreground: var(--vscode-list-hoverForeground);
   --sidebar-border: var(--vscode-sideBar-border);
   --sidebar-ring: var(--vscode-focusBorder);
+  --tab-active-border-top: var(--vscode-tab-activeBorderTop, var(--vscode-tab-activeBorder, var(--vscode-focusBorder)));
 }
 
 /* Add the Shadcn CSS variables to our theme layer */
@@ -100,6 +101,30 @@ body {
   color: var(--vscode-editor-foreground);
   margin: 0;
   padding: 0;
+}
+
+/* VSCode webview fills the entire container */
+html, body, #root {
+  height: 100%;
+}
+
+/* VSCode-style tab components */
+.vscode-tabs-list {
+  @apply flex-shrink-0 w-full justify-start rounded-none border-b border-border bg-card h-8 p-0;
+}
+
+.vscode-tab-trigger {
+  @apply rounded-none border-t border-transparent h-8 px-3 text-xs font-medium;
+  @apply data-[state=active]:bg-transparent;
+  border-top-width: 1px;
+}
+
+.vscode-tab-trigger[data-state="active"] {
+  border-top-color: var(--tab-active-border-top);
+}
+
+.vscode-tab-content {
+  @apply flex-1 m-0 p-3 focus-visible:outline-none;
 }
 
 

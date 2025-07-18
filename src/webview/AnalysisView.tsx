@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { parseDiff } from 'react-diff-view';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTheme } from './hooks/useTheme';
 import { useCopyToClipboard } from './hooks/useCopyToClipboard';
@@ -51,77 +50,49 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
     const viewType = windowWidth > 1024 ? 'split' : 'unified';
 
     return (
-        <div className="container mx-auto p-4 max-w-7xl">
-            <Card className="w-full">
-                <CardHeader>
-                    <CardTitle className="text-2xl">{title}</CardTitle>
-                    <CardDescription>
-                        Pull request analysis with context and code changes
-                    </CardDescription>
-                </CardHeader>
+        <div className="h-full flex flex-col bg-background">
+            {/* VSCode-style header */}
+            <div className="flex-shrink-0 px-3 py-2 border-b border-border bg-card">
+                <h1 className="text-xs font-medium text-foreground truncate">{title}</h1>
+                <p className="text-xs text-muted-foreground mt-0.5 opacity-75">Pull request analysis with context and code changes</p>
+            </div>
 
-                <CardContent>
-                    <Tabs defaultValue="analysis" className="w-full">
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="analysis">Analysis</TabsTrigger>
-                            <TabsTrigger value="context">Context</TabsTrigger>
-                            <TabsTrigger value="changes">Changes</TabsTrigger>
-                        </TabsList>
+            {/* VSCode-style tabs */}
+            <Tabs defaultValue="analysis" className="flex-1 flex flex-col">
+                <TabsList className="vscode-tabs-list">
+                    <TabsTrigger value="analysis" className="vscode-tab-trigger">
+                        Analysis
+                    </TabsTrigger>
+                    <TabsTrigger value="context" className="vscode-tab-trigger">
+                        Context
+                    </TabsTrigger>
+                    <TabsTrigger value="changes" className="vscode-tab-trigger">
+                        Changes
+                    </TabsTrigger>
+                </TabsList>
 
-                        <TabsContent value="analysis" className="mt-6">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg">Analysis Results</CardTitle>
-                                    <CardDescription>
-                                        AI-powered analysis of the pull request
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <AnalysisTab
-                                        content={analysis}
-                                        isDarkTheme={isDarkTheme}
-                                        onCopy={copyToClipboard}
-                                        copiedStates={copiedStates}
-                                    />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
+                <TabsContent value="analysis" className="vscode-tab-content">
+                    <AnalysisTab
+                        content={analysis}
+                        isDarkTheme={isDarkTheme}
+                        onCopy={copyToClipboard}
+                        copiedStates={copiedStates}
+                    />
+                </TabsContent>
 
-                        <TabsContent value="context" className="mt-6">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg">Context Information</CardTitle>
-                                    <CardDescription>
-                                        Relevant code context and related files
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <ContextTab
-                                        content={context}
-                                        isDarkTheme={isDarkTheme}
-                                        onCopy={copyToClipboard}
-                                        copiedStates={copiedStates}
-                                    />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
+                <TabsContent value="context" className="vscode-tab-content">
+                    <ContextTab
+                        content={context}
+                        isDarkTheme={isDarkTheme}
+                        onCopy={copyToClipboard}
+                        copiedStates={copiedStates}
+                    />
+                </TabsContent>
 
-                        <TabsContent value="changes" className="mt-6">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="text-lg">Code Changes</CardTitle>
-                                    <CardDescription>
-                                        Side-by-side view of code modifications
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <DiffTab diffFiles={diffFiles} viewType={viewType} />
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
+                <TabsContent value="changes" className="vscode-tab-content">
+                    <DiffTab diffFiles={diffFiles} viewType={viewType} />
+                </TabsContent>
+            </Tabs>
         </div>
     );
 };
