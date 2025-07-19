@@ -131,6 +131,13 @@ export class UIManager {
                     context: ${JSON.stringify(context)},
                     analysis: ${JSON.stringify(analysis)}
                 };
+                
+                // Inject initial theme data
+                window.initialTheme = {
+                    kind: ${vscode.window.activeColorTheme.kind},
+                    isDarkTheme: ${vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark || 
+                                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast}
+                };
             </script>
             <script src="${mainScriptUri}"></script>
         </body>
@@ -179,9 +186,6 @@ export class UIManager {
         );
 
         panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel);
-        
-        // Send initial theme information to webview
-        this.sendThemeToWebview(panel.webview);
         
         // Listen for theme changes and update webview
         const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {

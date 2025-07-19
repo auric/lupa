@@ -45,12 +45,6 @@
 
 /* Code block copy button styling */
 .prose .relative .absolute {
-    /* Ensure copy buttons are properly positioned and styled */
-    z-index: 10;
-}
-
-.prose pre {
-    /* Ensure code blocks have proper spacing for copy buttons */
-    position: relative;
-    padding-top: 2rem;
+  /* Ensure copy buttons are properly positioned and styled */
+  z-index: 10;
 }

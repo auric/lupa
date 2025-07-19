@@ -21,6 +21,15 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
     const isDarkTheme = useTheme();
     const { copyToClipboard, copiedStates } = useCopyToClipboard();
 
+    // Apply dark class to document element when theme changes
+    useEffect(() => {
+        if (isDarkTheme) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }, [isDarkTheme]);
+
     // Handle window resize for responsive diff view
     useEffect(() => {
         const handleResize = () => {

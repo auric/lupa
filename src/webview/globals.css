@@ -1,12 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@plugin "@tailwindcss/typography";
 
 /* Import component-specific styles */
 @import "./styles/markdown.css";
 @import "./styles/diff.css";
 @import "./styles/copy-button.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Map VSCode theme variables to Shadcn UI CSS Variables */
 :root {
@@ -43,7 +44,10 @@
   --sidebar-accent-foreground: var(--vscode-list-hoverForeground);
   --sidebar-border: var(--vscode-sideBar-border);
   --sidebar-ring: var(--vscode-focusBorder);
-  --tab-active-border-top: var(--vscode-tab-activeBorderTop, var(--vscode-tab-activeBorder, var(--vscode-focusBorder)));
+  --tab-active-border-top: var(
+    --vscode-tab-activeBorderTop,
+    var(--vscode-tab-activeBorder, var(--vscode-focusBorder))
+  );
 }
 
 /* Add the Shadcn CSS variables to our theme layer */
@@ -104,7 +108,9 @@ body {
 }
 
 /* VSCode webview fills the entire container */
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
 }
 
@@ -126,7 +132,6 @@ html, body, #root {
 .vscode-tab-content {
   @apply flex-1 m-0 p-3 focus-visible:outline-none;
 }
-
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);

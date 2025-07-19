@@ -6,7 +6,11 @@ import { useState, useEffect } from 'react';
  * @returns boolean indicating if dark theme is active
  */
 export const useTheme = () => {
-    const [isDarkTheme, setIsDarkTheme] = useState<boolean>(false);
+    // Initialize with theme data from window object (no race condition)
+    const [isDarkTheme, setIsDarkTheme] = useState<boolean>(() => {
+        const initialTheme = (window as any).initialTheme;
+        return initialTheme?.isDarkTheme ?? false;
+    });
 
     useEffect(() => {
         // Listen for theme messages from extension host

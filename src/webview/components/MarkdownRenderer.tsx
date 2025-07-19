@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { CopyButton } from './CopyButton';
@@ -27,8 +27,8 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
         <div className="relative">
             {showCopy && (
                 <div className="absolute top-2 right-2 z-10">
-                    <CopyButton 
-                        text={content} 
+                    <CopyButton
+                        text={content}
                         id={id}
                         onCopy={onCopy}
                         isCopied={copiedStates[id]}
@@ -39,6 +39,10 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
+                        // Override pre element to prevent default wrapper
+                        pre: ({ children }: any) => {
+                            return <>{children}</>;
+                        },
                         code: ({ className, children, node, ...props }: any) => {
                             const match = /language-(\w+)/.exec(className || '');
                             const language = match ? match[1] : '';
@@ -52,10 +56,10 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                             const isBlock = node?.parent?.tagName === 'pre';
                             const hasNewlines = String(children).includes('\n');
                             const hasLanguageClass = !!match;
-                            
+
                             // A code block is detected if:
                             // - It's wrapped in a <pre> tag, OR
-                            // - It has a language class, OR  
+                            // - It has a language class, OR
                             // - It contains newlines (multiline)
                             const isCodeBlock = isBlock || hasLanguageClass || hasNewlines;
 
@@ -79,7 +83,7 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                                 const codeBlockId = `code-${id}-${Math.abs(textContent.split('').reduce((a, b) => a + b.charCodeAt(0), 0))}`;
 
                                 return (
-                                    <div className="relative">
+                                    <div style={{ position: 'relative' }}>
                                         <SyntaxHighlighter
                                             style={isDarkTheme ? (vscDarkPlus as any) : (vs as any)}
                                             language={language || 'text'}
@@ -89,15 +93,19 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                                                 margin: 0,
                                                 borderRadius: '0.5rem',
                                                 background: 'var(--vscode-textCodeBlock-background)',
-                                                fontSize: 'var(--vscode-editor-font-size, 12px)',
-                                                fontFamily: 'var(--vscode-editor-font-family, monospace)',
+                                                fontSize: 'var(--vscode-editor-font-size)',
+                                                fontFamily: 'var(--vscode-editor-font-family)',
+                                                fontWeight: 'var(--vscode-editor-font-weight)',
+                                                lineHeight: '1.5',
                                                 color: 'var(--vscode-editor-foreground)',
                                             }}
                                             codeTagProps={{
                                                 style: {
                                                     background: 'transparent',
                                                     color: 'inherit',
-                                                    fontFamily: 'inherit',
+                                                    fontFamily: 'var(--vscode-editor-font-family)',
+                                                    fontWeight: 'var(--vscode-editor-font-weight)',
+                                                    fontSize: 'var(--vscode-editor-font-size)',
                                                 }
                                             }}
                                             {...props}
@@ -115,7 +123,15 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                                 );
                             } else {
                                 return (
-                                    <code className="bg-muted px-1 py-0.5 rounded text-sm" {...props}>
+                                    <code 
+                                        className="bg-muted px-1 py-0.5 rounded" 
+                                        style={{
+                                            fontFamily: 'var(--vscode-editor-font-family)',
+                                            fontSize: 'var(--vscode-editor-font-size)',
+                                            fontWeight: 'var(--vscode-editor-font-weight)',
+                                        }}
+                                        {...props}
+                                    >
                                         {children}
                                     </code>
                                 );
