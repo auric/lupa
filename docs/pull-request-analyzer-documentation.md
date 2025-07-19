@@ -110,11 +110,11 @@ The components interact through these primary mechanisms:
 
 1.  **File Discovery & Prioritization**: The `IndexingManager` identifies source files in the workspace. For continuous indexing, it checks which files have changed since the last run. For a full re-index, all supported files are selected.
 2.  **Model Selection**: `EmbeddingModelSelectionService` determines the optimal embedding model (default: `Xenova/all-MiniLM-L6-v2`, Jina models being phased out) based on system resources and user configuration. The `ServiceManager` ensures the `VectorDatabaseService` is configured with the correct embedding dimension for this model.
-3.  **Generator-Based Processing**: The `IndexingManager` invokes `IndexingService.processFilesGenerator`, which returns an `async` generator. This allows the manager to process results for each file as soon as they are ready.
+3.  **Single-File Processing**: The `IndexingManager` orchestrates multiple calls to `IndexingService.processFile()`, processing files one at a time with proper error handling and progress reporting.
 4.  **Structure-Aware Chunking**: For each file, `IndexingService` uses `CodeChunkingService` (which internally uses `CodeAnalysisService`) to parse the code and break it into structurally coherent chunks on the main extension thread.
 5.  **Parallel Embedding Generation**: The resulting chunks for a file are passed to `EmbeddingGenerationService`, which manages a `Tinypool` worker pool. Each worker (`embeddingGeneratorWorker.ts`) generates an embedding for a single chunk in a separate process, ensuring the main thread remains responsive.
-6.  **Yielding Results**: Once all chunks for a single file have been embedded, `IndexingService` constructs a single `ProcessingResult` object and `yields` it.
-7.  **Real-time Storage**: The `IndexingManager` consumes the yielded `ProcessingResult` in a `for await...of` loop and immediately passes it to the `EmbeddingDatabaseAdapter` to be saved in the `VectorDatabaseService` (both SQLite and the HNSWlib index).
+6.  **Synchronous Results**: Once all chunks for a single file have been embedded, `IndexingService` constructs and returns a complete `ProcessingResult` object.
+7.  **Immediate Storage**: The `IndexingManager` receives the complete `ProcessingResult` and immediately passes it to the `EmbeddingDatabaseAdapter` to be saved in the `VectorDatabaseService` (both SQLite and the HNSWlib index).
 8.  **Status Updates**: `IndexingManager` manages a `vscode.Progress` notification window for overall progress and contextual status bar indicators using the `StatusBarService` with unique operation IDs and automatic cleanup.
 
 #### 1.2.4 Context Retrieval Workflow (Hybrid LSP + Embedding)
@@ -282,20 +282,23 @@ The indexing system consists of several components working together to generate 
 
 #### 2.2.1 Indexing Service
 
-The [`IndexingService`](src/services/indexingService.ts:1) (src/services/indexingService.ts) orchestrates the file chunking and embedding generation process. Its primary method, `processFilesGenerator`, is an `async` generator that yields processing results for each file as they become available. It delegates to [`CodeChunkingService`](src/services/codeChunkingService.ts:1) and [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1).
+The [`IndexingService`](src/services/indexingService.ts:1) (src/services/indexingService.ts) processes individual files for chunking and embedding generation. Its primary method, `processFile`, processes a single file and returns a `ProcessingResult`. It delegates to [`CodeChunkingService`](src/services/codeChunkingService.ts:1) and [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1).
 
 - **Orchestrates Chunking**: Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) to process files. [`CodeChunkingService`](src/services/codeChunkingService.ts:1) internally utilizes [`WorkerCodeChunker`](src/workers/workerCodeChunker.ts:1) (and [`CodeAnalysisService`](src/services/codeAnalysisService.ts:1)) to read files and break them into manageable code chunks. This chunking happens on the main thread, typically one file at a time.
 - **Orchestrates Embedding Generation**: After [`CodeChunkingService`](src/services/codeChunkingService.ts:1) successfully chunks a file, [`IndexingService`](src/services/indexingService.ts:1) passes the resulting `ChunkForEmbedding[]` to [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1). [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) manages a `Tinypool` worker pool (running [`embeddingGeneratorWorker.ts`](src/workers/embeddingGeneratorWorker.ts:1)) and dispatches individual chunk embedding tasks to these workers.
-- **Iterative Processing & Yielding**: The `processFilesGenerator` method (e.g., `async *processFilesGenerator(initialFiles: FileToProcess[], ...): AsyncGenerator<YieldedProcessingOutput>`) iterates through files. For each file, it orchestrates chunking and embedding generation. Upon successful processing of a file, it constructs a `ProcessingResult` and yields it as part of a `YieldedProcessingOutput` object (which includes `filePath` and `result`). It no longer uses a `batchCompletedCallback`.
+- **Single-File Processing**: Uses `processFile(file: FileToProcess, token?: vscode.CancellationToken)` method that processes one file at a time, applying Single Responsibility Principle.
+- **Synchronous Result**: Returns a complete `ProcessingResult` for the processed file, containing embeddings, chunk offsets, and metadata.
+- **Error Handling**: Implements custom error types (`ChunkingError`, `EmbeddingError`) with proper cause chaining for better error context.
+- **Resource Cleanup**: Supports cancellation through `AbortSignal` with proper resource cleanup using try/finally blocks.
 - **Cancellation Support**: Supports cancellation of in-progress indexing operations, propagating signals to chunking and embedding tasks.
 - **Focus on Processing**: Pure processing logic without UI concerns; status updates are handled by `IndexingManager`.
 
 Key interactions:
 
-- Receives files to process from `IndexingManager` as input to `processFilesGenerator`.
+- Receives individual files to process from `IndexingManager` via `processFile()` method calls.
 - Uses [`CodeChunkingService`](src/services/codeChunkingService.ts:1) for structure-aware code chunking of individual files.
 - Uses [`EmbeddingGenerationService`](src/services/embeddingGenerationService.ts:1) for parallel embedding generation of chunks from a file.
-- Yields `YieldedProcessingOutput` (containing `filePath` and `ProcessingResult`) for each successfully processed file to its caller (typically `IndexingManager`).
+- Returns complete `ProcessingResult` for each processed file to its caller (typically `IndexingManager`).
 - Does not handle status updates; focuses purely on processing logic.
 
 #### 2.2.2 Indexing Manager
@@ -306,14 +309,14 @@ The `IndexingManager` (src/services/indexingManager.ts) provides higher-level in
 - **Continuous Indexing**: Manages background indexing of workspace files.
 - **Full Reindexing**: Coordinates full database rebuilds.
 - **File Discovery**: Finds relevant files for indexing.
-- **Consuming Indexing Results**: Calls `indexingService.processFilesGenerator(...)` and uses a `for await...of` loop to consume the `YieldedProcessingOutput` for each file.
-- **Data Persistence**: For each yielded result, it is responsible for saving the `ProcessingResult` via the `EmbeddingDatabaseAdapter`.
+- **Batch Orchestration**: Orchestrates multiple `indexingService.processFile(...)` calls to process files sequentially or in controlled batches.
+- **Data Persistence**: For each completed file processing result, it is responsible for saving the `ProcessingResult` via the `EmbeddingDatabaseAdapter`.
 
 Key interactions:
 
 - Uses `EmbeddingModelSelectionService` to select models.
 - Creates and manages `IndexingService` instances.
-- Calls `indexingService.processFilesGenerator` and iterates over the yielded results.
+- Calls `indexingService.processFile` for each file that needs processing.
 - Uses `EmbeddingDatabaseAdapter` to save each `ProcessingResult`.
 - The `IndexingService` updates the last indexing timestamp in `WorkspaceSettingsService` upon successful completion.
 - `IndexingManager` manages its own `vscode.Progress` display for notifications and contextual status bar indicators using unique operation IDs.
@@ -647,11 +650,11 @@ The embedding generation process follows these steps:
    - Apply appropriate pooling strategy (mean, max, etc.)
    - Normalize vectors if specified
 
-5. **Result Processing and Yielding**
+5. **Result Processing and Return**
    - [`IndexingService`](src/services/indexingService.ts:1) collects chunking details and embedding results for a file.
    - It constructs the final `ProcessingResult` for that file.
-   - [`IndexingService`](src/services/indexingService.ts:1) then yields this `ProcessingResult` (as part of `YieldedProcessingOutput`).
-   - `IndexingManager` consumes the yielded result and handles its persistence, typically by calling `EmbeddingDatabaseAdapter` to store the data.
+   - [`IndexingService`](src/services/indexingService.ts:1) returns this complete `ProcessingResult` to the caller.
+   - `IndexingManager` receives the result and handles its persistence, typically by calling `EmbeddingDatabaseAdapter` to store the data.
 
 ### 3.2 Similarity Search & Context Retrieval Algorithm (Hybrid LSP + Embedding with ANN)
 
@@ -835,7 +838,7 @@ The database system uses a hybrid approach: SQLite for structured metadata and H
 
 #### 4.2.2 Embedding Processing Result (`ProcessingResult` in `indexingTypes.ts`)
 
-This structure (`ProcessingResult`) represents the outcome of processing a single file for embeddings, orchestrated by `IndexingService`. It's part of the `YieldedProcessingOutput` that `IndexingService.processFilesGenerator` yields. It combines chunking information and the resulting embedding vectors for the file. This `ProcessingResult` is then typically passed to `EmbeddingDatabaseAdapter` for storage.
+This structure (`ProcessingResult`) represents the outcome of processing a single file for embeddings, orchestrated by `IndexingService`. It's returned directly by `IndexingService.processFile()` and combines chunking information and the resulting embedding vectors for the file. This `ProcessingResult` is then typically passed to `EmbeddingDatabaseAdapter` for storage.
 
 - `fileId`: string - Unique identifier of the processed file.
 - `filePath`: string - The workspace-relative path to the file.

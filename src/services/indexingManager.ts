@@ -360,85 +360,107 @@ export class IndexingManager implements vscode.Disposable {
             const totalToProcess = filesToProcess.length; // This is the actual number of files that need processing
             let lastReportedPercentForNotification = 0;
 
-            // Process the files with the IndexingService, saving results as they are yielded
-            // IndexingService.processFilesGenerator does not take a progress callback directly.
-            // Progress for the vscode.Progress notification will be updated based on yielded items.
-            const generator = this.indexingService!.processFilesGenerator(
-                filesToProcess,
-                token
-            );
+            // Process files one by one using the new single-file API
+            let filesProcessed = 0;
 
-            let filesProcessedByGenerator = 0;
-
-            for await (const yieldedItem of generator) {
+            for (const file of filesToProcess) {
                 if (token.isCancellationRequested) {
-                    Log.info('[IndexingManager] Cancellation requested, stopping result processing.');
+                    Log.info('[IndexingManager] Cancellation requested, stopping file processing.');
                     break;
                 }
 
-                filesProcessedByGenerator++;
-                const processingResult = yieldedItem.result;
+                try {
+                    // Process single file
+                    const processingResult = await this.indexingService!.processFile(file, token);
+                    filesProcessed++;
 
-                if (processingResult.success && processingResult.embeddings && processingResult.embeddings.length > 0) {
-                    const fileToStore = filesToProcess.find(f => f.id === processingResult.fileId);
-                    if (fileToStore) {
+                    if (processingResult.success && processingResult.embeddings && processingResult.embeddings.length > 0) {
                         try {
                             const stored = await this.embeddingStorage!.storeEmbeddingResult(
-                                fileToStore,
+                                file,
                                 processingResult
                             );
                             if (stored) {
                                 totalStored++;
                             }
-                            // Update progress for vscode.Progress notification
+                            
+                            // Update progress
                             const currentProgressMessage = `Indexing: ${totalStored}/${totalToProcess} files processed and stored.`;
-                            const overallPercentForNotification = totalToProcess > 0 ? Math.round((totalStored / totalToProcess) * 100) : 0;
-                            const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
+                            const overallPercent = totalToProcess > 0 ? Math.round((filesProcessed / totalToProcess) * 100) : 0;
+                            const increment = Math.max(0, overallPercent - lastReportedPercentForNotification);
 
                             progress.report({
                                 message: currentProgressMessage,
                                 increment: increment
                             });
-                            if (overallPercentForNotification > lastReportedPercentForNotification) {
-                                lastReportedPercentForNotification = overallPercentForNotification;
+                            
+                            if (overallPercent > lastReportedPercentForNotification) {
+                                lastReportedPercentForNotification = overallPercent;
                             }
+                            
                             Log.info(`[IndexingManager] Stored embeddings for file: ${processingResult.filePath}. Total stored: ${totalStored}/${totalToProcess}`);
 
                         } catch (error) {
                             Log.error(`[IndexingManager] Error storing embedding result for file ${processingResult.filePath}:`, error);
                             progress.report({ message: `Error storing ${processingResult.filePath}.` });
                         }
+                    } else if (processingResult.error) {
+                        Log.error(`[IndexingManager] Error processing file ${processingResult.filePath}:`, processingResult.error);
+                        
+                        // Update progress for errors
+                        const currentProgressMessage = `Indexing: ${filesProcessed}/${totalToProcess} files attempted. Error with ${processingResult.filePath}.`;
+                        const overallPercent = totalToProcess > 0 ? Math.round((filesProcessed / totalToProcess) * 100) : 0;
+                        const increment = Math.max(0, overallPercent - lastReportedPercentForNotification);
+                        
+                        progress.report({
+                            message: currentProgressMessage,
+                            increment: increment
+                        });
+                        
+                        if (overallPercent > lastReportedPercentForNotification) {
+                            lastReportedPercentForNotification = overallPercent;
+                        }
                     } else {
-                        Log.warn(`[IndexingManager] File with id ${processingResult.fileId} not found in filesToProcess list for storing.`);
+                        // File processed successfully but no embeddings (e.g. empty file)
+                        Log.info(`[IndexingManager] File ${processingResult.filePath} processed, no new embeddings to store.`);
+                        
+                        // Update progress
+                        const currentProgressMessage = `Indexing: ${filesProcessed}/${totalToProcess} files analyzed.`;
+                        const overallPercent = totalToProcess > 0 ? Math.round((filesProcessed / totalToProcess) * 100) : 0;
+                        const increment = Math.max(0, overallPercent - lastReportedPercentForNotification);
+                        
+                        progress.report({
+                            message: currentProgressMessage,
+                            increment: increment
+                        });
+                        
+                        if (overallPercent > lastReportedPercentForNotification) {
+                            lastReportedPercentForNotification = overallPercent;
+                        }
                     }
-                } else if (processingResult.error) {
-                    Log.error(`[IndexingManager] Error processing file ${processingResult.filePath} from generator:`, processingResult.error);
-                    // Update progress for vscode.Progress notification even for errors, to show activity
-                    const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files attempted. Error with ${processingResult.filePath}.`;
-                    const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
-                    const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
+                } catch (error) {
+                    filesProcessed++;
+                    Log.error(`[IndexingManager] Unexpected error processing file ${file.path}:`, error);
+                    
+                    // Update progress for unexpected errors
+                    const currentProgressMessage = `Indexing: ${filesProcessed}/${totalToProcess} files attempted. Unexpected error with ${file.path}.`;
+                    const overallPercent = totalToProcess > 0 ? Math.round((filesProcessed / totalToProcess) * 100) : 0;
+                    const increment = Math.max(0, overallPercent - lastReportedPercentForNotification);
+                    
                     progress.report({
                         message: currentProgressMessage,
                         increment: increment
                     });
-                    if (overallPercentForNotification > lastReportedPercentForNotification) {
-                        lastReportedPercentForNotification = overallPercentForNotification;
-                    }
-                } else {
-                    // File processed, but no embeddings (e.g. empty file, or no content to embed)
-                    Log.info(`[IndexingManager] File ${processingResult.filePath} processed by generator, no new embeddings to store.`);
-                    // Update progress for vscode.Progress notification
-                    const currentProgressMessage = `Indexing: ${filesProcessedByGenerator}/${totalToProcess} files analyzed.`;
-                    const overallPercentForNotification = totalToProcess > 0 ? Math.round((filesProcessedByGenerator / totalToProcess) * 100) : 0;
-                    const increment = Math.max(0, overallPercentForNotification - lastReportedPercentForNotification);
-                    progress.report({
-                        message: currentProgressMessage,
-                        increment: increment
-                    });
-                    if (overallPercentForNotification > lastReportedPercentForNotification) {
-                        lastReportedPercentForNotification = overallPercentForNotification;
+                    
+                    if (overallPercent > lastReportedPercentForNotification) {
+                        lastReportedPercentForNotification = overallPercent;
                     }
                 }
+            }
+
+            // Update last indexing timestamp if all files were processed successfully
+            if (!token.isCancellationRequested && totalStored > 0) {
+                this.indexingService!.updateLastIndexingTimestamp();
             }
 
             // Final report
@@ -449,11 +471,9 @@ export class IndexingManager implements vscode.Disposable {
                 progress.report({ message });
                 Log.info(message);
             } else {
-                // totalProcessedForNotification is no longer updated with the new generator.
-                // filesProcessedByGenerator reflects how many files had their processing completed (success or error) by IndexingService.
                 const message = `Indexing cancelled. ` +
                     `Checked ${totalFilesChecked} files. ` +
-                    `Attempted processing for ${filesProcessedByGenerator} files and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
+                    `Attempted processing for ${filesProcessed} files and stored ${totalStored} of ${totalFilesNeededIndexing} files that needed indexing.`;
                 progress.report({ message });
                 Log.info(message);
             }

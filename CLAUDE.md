@@ -67,7 +67,7 @@ The extension follows a layered, service-oriented architecture with clear separa
 - **`CommandRegistry`** (`src/coordinators/commandRegistry.ts`) - Centralizes VS Code command registration
 
 ### Indexing System
-- **`IndexingService`** (`src/services/indexingService.ts`) - Orchestrates file chunking and embedding generation using async generators
+- **`IndexingService`** (`src/services/indexingService.ts`) - Processes individual files for chunking and embedding generation using single-file API
 - **`IndexingManager`** (`src/services/indexingManager.ts`) - Manages continuous and full re-indexing workflows
 - **`CodeChunkingService`** (`src/services/codeChunkingService.ts`) - Structure-aware code chunking using Tree-sitter
 - **`EmbeddingGenerationService`** (`src/services/embeddingGenerationService.ts`) - Manages worker pool for parallel embedding generation
@@ -120,7 +120,7 @@ The extension follows a layered, service-oriented architecture with clear separa
 4. **Phase 4 - High-Level**: `ContextProvider`, `AnalysisProvider`
 
 ### Analysis Workflow
-1. **Indexing**: Files are processed by `IndexingService` which uses `CodeChunkingService` for structure-aware chunking, then `EmbeddingGenerationService` generates embeddings in parallel using worker threads
+1. **Indexing**: Files are processed individually by `IndexingService.processFile()` which uses `CodeChunkingService` for structure-aware chunking, then `EmbeddingGenerationService` generates embeddings in parallel using worker threads. The `IndexingManager` orchestrates multiple single-file calls for batch processing.
 2. **Storage**: Embeddings and metadata are stored via `VectorDatabaseService` (SQLite + HNSWlib)
 3. **Analysis**: When analyzing PRs, `ContextProvider` combines LSP queries and embedding search to find relevant context
 4. **Optimization**: `TokenManagerService` optimizes context to fit model limits
@@ -242,6 +242,14 @@ The new architecture eliminates circular dependencies through:
 - **Service Registry**: Type-safe service access through IServiceRegistry interface
 - **Specialized Coordinators**: Breaking monolithic coordinator into focused components
 - **Null Injection Pattern**: IndexingManager is created with null EmbeddingDatabaseAdapter, then the adapter is created and injected via setter
+
+### IndexingService Architecture
+The IndexingService follows Single Responsibility Principle with these key improvements:
+- **Single-File Processing**: `processFile()` method processes one file at a time instead of batch generators
+- **Custom Error Types**: `ChunkingError` and `EmbeddingError` with proper cause chaining for better debugging
+- **Proper Resource Cleanup**: AbortSignal handling with try/finally blocks ensures resources are always cleaned up
+- **Simplified Testing**: Direct method calls instead of complex generator patterns make testing more straightforward
+- **Clear Separation**: File processing logic is separated from batch orchestration, which is handled by IndexingManager
 
 ### Status Bar Architecture
 - **Contextual Progress**: Status indicators appear only during active operations

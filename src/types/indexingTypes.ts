@@ -52,14 +52,3 @@ export interface EmbeddingGenerationOutput {
     embedding: number[] | null;
     error?: string;
 }
-
-/**
- * Represents the output yielded by the `processFilesGenerator`.
- * As per indexing_refactor_plan.md (section 3).
- */
-export interface YieldedProcessingOutput {
-    /** Path to the file. */
-    filePath: string;
-    /** The final processing result for the file. */
-    result: ProcessingResult;
-}

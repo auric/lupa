@@ -342,31 +342,34 @@ export class EmbeddingDatabaseAdapter implements IEmbeddingStorage, vscode.Dispo
             let processedCount = 0;
             const totalToProcess = filesToProcess.length;
 
-            const generator = this.indexingService.processFilesGenerator(
-                filesToProcess,
-                token // Pass the cancellation token
-            );
-
-            for await (const yieldedOutput of generator) {
+            // Process files one by one using the new single-file API
+            for (const file of filesToProcess) {
                 if (token?.isCancellationRequested) {
-                    // Check cancellation inside the loop
                     throw new Error('Operation cancelled during embedding generation');
                 }
 
-                const { result } = yieldedOutput; // result is ProcessingResult
-                const originalIndex = fileIdToOriginalIndex.get(result.fileId);
+                try {
+                    const result = await this.indexingService.processFile(file, token);
+                    const originalIndex = fileIdToOriginalIndex.get(result.fileId);
 
-                if (originalIndex !== undefined) {
-                    const originalText = texts[originalIndex];
-                    if (result.success && result.embeddings.length > 0) {
-                        // Assuming the first embedding is representative if multiple chunks were made from the text.
-                        // This matches the previous logic.
-                        embeddings.set(originalText, result.embeddings[0]);
-                    } else if (!result.success) {
-                        Log.warn(`Failed to generate embedding for text (index ${originalIndex}): ${result.error || 'Unknown error'}`);
+                    if (originalIndex !== undefined) {
+                        const originalText = texts[originalIndex];
+                        if (result.success && result.embeddings.length > 0) {
+                            // Use the first embedding if multiple chunks were created from the text
+                            embeddings.set(originalText, result.embeddings[0]);
+                        } else if (!result.success) {
+                            Log.warn(`Failed to generate embedding for text (index ${originalIndex}): ${result.error || 'Unknown error'}`);
+                        }
+                    } else {
+                        Log.warn(`Received embedding result for unknown fileId: ${result.fileId}`);
                     }
-                } else {
-                    Log.warn(`Received embedding result for unknown fileId: ${result.fileId}`);
+                } catch (error) {
+                    if (token?.isCancellationRequested) {
+                        throw new Error('Operation cancelled during embedding generation');
+                    }
+                    const originalIndex = fileIdToOriginalIndex.get(file.id);
+                    Log.error(`Error processing temporary file for embedding (index ${originalIndex}):`, error);
+                    // Continue with next file rather than failing the entire batch
                 }
 
                 processedCount++;
