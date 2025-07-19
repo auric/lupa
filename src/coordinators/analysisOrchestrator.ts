@@ -1,8 +1,5 @@
 import * as vscode from 'vscode';
-import { AnalysisProvider } from '../services/analysisProvider';
-import { GitOperationsManager } from '../services/gitOperationsManager';
-import { UIManager } from '../services/uiManager';
-import { StatusBarService } from '../services/statusBarService';
+import { AnalysisMode } from '../types/modelTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 
 /**
@@ -13,14 +10,14 @@ export class AnalysisOrchestrator implements vscode.Disposable {
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly services: IServiceRegistry
-    ) {}
+    ) { }
 
     /**
      * Orchestrate the complete PR analysis workflow
      */
     public async analyzePR(): Promise<void> {
         const statusId = 'pr-analysis';
-        
+
         try {
             this.services.statusBar.showProgress(statusId, 'Analyzing PR', 'PR analysis in progress');
 
@@ -124,10 +121,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
         }
 
         // Select analysis mode
-        const analysisMode = await this.services.uiManager.selectAnalysisMode();
-        if (!analysisMode) {
-            return null;
-        }
+        const analysisMode = AnalysisMode.Comprehensive;
 
         return {
             diffResult,
