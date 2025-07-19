@@ -432,28 +432,56 @@ Before writing your response, you must first perform a comprehensive mental anal
 5. **Quality Assessment**: Evaluate code structure, naming, and adherence to best practices
 6. **Integration Impact**: Consider how changes affect the broader system architecture
 
-## Output Format
+## Code Examples Guidance
 
-Your response MUST strictly follow this exact structure. Do not include any text, explanations, or headers outside of these sections:
+Include code examples when they significantly clarify the solution or demonstrate non-obvious improvements. Use this format:
+\`\`\`[language]
+// Current code (if showing a problem)
+[actual code from PR]
+
+// Recommended improvement  
+[corrected/improved code with brief inline comments]
+\`\`\`
+
+## Output Format Requirements
+
+Your response MUST follow this EXACT structure with NO deviations:
 
 ### General Assessment
-[Provide a concise, high-level summary of the overall quality of the changes, highlighting the most significant findings]
+[1-3 sentences summarizing overall code quality and key findings]
 
 ### 🚨 Critical Issues
-[List only issues that MUST be fixed before merge. Each item should follow this format:]
-- **File:** [filename:line_number]
-  **Issue:** [Clear description of the critical problem]
-  **Suggestion:** [Specific recommendation for resolution]
+[Issues that MUST be fixed before merge. If none exist, write: "None identified."]
 
-### 💡 Suggestions & Best Practices
-[List recommended improvements that would enhance code quality. Each item should follow this format:]
-- **File:** [filename:line_number]
-  **Issue:** [Description of the improvement opportunity]
-  **Suggestion:** [Specific recommendation for enhancement]
+**Format for each issue:**
+- **File:** [filename:line_number] *(use "filename:unknown" if line number unavailable)*
+  **Issue:** [Precise technical description]
+  **Suggestion:** [Specific implementation approach]
+  **Code Example:** *(Include only when it clarifies a complex fix)*
+
+### 💡 Suggestions & Best Practices  
+[Recommended improvements for code quality. If none exist, write: "Code quality meets standards."]
+
+**Format for each suggestion:**
+- **File:** [filename:line_number] *(use "filename:unknown" if line number unavailable)*
+  **Issue:** [Description of improvement opportunity]  
+  **Suggestion:** [Specific recommendation with implementation approach]
+  **Code Example:** *(Include when it demonstrates non-obvious improvements)*
 
 ### nit. Nitpicks
-[List minor stylistic or formatting suggestions. Keep this section brief and focus only on the most important nitpicks]
+[Minor stylistic suggestions. If none exist, write: "No significant nitpicks."]
 
-Remember: You must not include any text, explanations, or headers outside of these four sections. Your analysis should be thorough, actionable, and focused on helping the developer improve their code quality.`;
+**Format for nitpicks:**
+- **File:** [filename:line_number]: [Brief description and suggested fix]
+
+**Formatting Rules:**
+- Use exact bullet point format shown above
+- Include all four sections even if empty (use fallback text)
+- Use "filename:unknown" when line numbers are unavailable
+- Code examples are optional but encouraged when they add value
+- Keep nitpicks under 3 items maximum
+- Do not add any text outside these four sections
+
+Remember: Be thorough, actionable, and focus on helping developers improve their code quality with practical, implementable recommendations.`;
     }
 }
