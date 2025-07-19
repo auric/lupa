@@ -74,6 +74,7 @@ const mockTokenManagerInstance = {
     calculateTokenAllocation: vi.fn(),
     optimizeContext: vi.fn(),
     formatContextSnippetsToString: vi.fn((snippets, _truncated) => snippets.map(s => s.content).join('\n\n')),
+    formatContextSnippetsForDisplay: vi.fn((snippets, _truncated) => snippets.map(s => s.content).join('\n\n')),
     calculateTokens: vi.fn(async (text: string) => Math.ceil(text.length / 4)), // Add this line
 };
 vi.mock('../services/tokenManagerService', () => ({
@@ -342,8 +343,8 @@ describe('AnalysisProvider', () => {
 
 
         expect(result.analysis).toBe("Mocked LLM analysis result.");
-        expect(mockTokenManagerInstance.formatContextSnippetsToString).toHaveBeenCalledWith(optimizedSnippetsFromManager, true);
-        expect(result.context).toBe("Long snippet 1 DEF [Truncated]");
+        expect(mockTokenManagerInstance.formatContextSnippetsForDisplay).toHaveBeenCalledWith(optimizedSnippetsFromManager, true);
+        expect(result.context).toBe("Long snippet 1 DEF");
     });
 
     it('should handle cancellation during context retrieval', async () => {
