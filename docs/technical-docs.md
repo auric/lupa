@@ -119,7 +119,7 @@ The components interact through these primary mechanisms:
 
 #### 1.2.4 Context Retrieval Workflow (Hybrid LSP + Embedding)
 
-The context retrieval workflow now employs a hybrid approach, combining precise structural information via Language Server Protocol (LSP) with broader semantic similarity via embeddings. The integration of an Approximate Nearest Neighbor (ANN) library (HNSWlib) is in progress for the embedding search component.
+The context retrieval workflow now employs a hybrid approach, combining precise structural information via Language Server Protocol (LSP) with broader semantic similarity via embeddings. The integration of an Approximate Nearest Neighbor (ANN) library (HNSWlib) is fully implemented for the embedding search component.
 
 1.  **Diff Parsing & Symbol/Query Extraction (`ContextProvider`):**
 
@@ -137,7 +137,7 @@ The context retrieval workflow now employs a hybrid approach, combining precise 
 
     - The `embeddingQueries` are used to generate query embeddings via the active `IndexingService`.
     - `EmbeddingDatabaseAdapter.findRelevantCodeContextForChunks` calls `VectorDatabaseService.findSimilarCode`.
-    - `VectorDatabaseService.findSimilarCode` (now, or soon to be fully using HNSWlib) queries the ANN index with these vectors to get the K nearest numerical labels and their distances.
+    - `VectorDatabaseService.findSimilarCode` (which uses HNSWlib) queries the ANN index with these vectors to get the K nearest numerical labels and their distances.
     - Metadata (chunk content, file path, etc.) for these labels is fetched from SQLite.
     - Results are converted to `SimilaritySearchResult` objects, which are then transformed into `ContextSnippet` objects with `type: 'embedding'` and relevance scores based on similarity.
 
