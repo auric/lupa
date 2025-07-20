@@ -16,7 +16,7 @@ import {
 } from '../types/contextTypes';
 import { getLanguageForExtension, type SupportedLanguage } from '../types/types';
 import { Log } from './loggingService';
-import { quickHash } from '../utils/hashUtils';
+import { quickHash } from '../lib/hashUtils';
 
 /**
  * Represents symbol information found within a diff, including file path.
@@ -412,12 +412,12 @@ export class ContextProvider implements vscode.Disposable {
             rankedEmbeddingResults.forEach(embResult => {
                 const scoreDisplay = (embResult.score * 100).toFixed(1);
                 const fileHeader = `### File: \`${embResult.filePath}\` (Relevance: ${scoreDisplay}%)`;
-                
+
                 // Get language from file extension for syntax highlighting
                 const fileExtension = path.extname(embResult.filePath).substring(1);
                 const language = getLanguageForExtension(fileExtension);
                 const languageHint = language ? language.language : 'text';
-                
+
                 const formattedContent = `${fileHeader}\n\`\`\`${languageHint}\n${embResult.content}\n\`\`\``;
 
                 let embHunkIdentifiers: string[] = [];
@@ -667,12 +667,12 @@ export class ContextProvider implements vscode.Disposable {
                     allResults.forEach(embResult => {
                         const scoreDisplay = (embResult.score * 100).toFixed(1);
                         const fileHeader = `### File: \`${embResult.filePath}\` (Fallback Relevance: ${scoreDisplay}%)`;
-                        
+
                         // Get language from file extension for syntax highlighting
                         const fileExtension = path.extname(embResult.filePath).substring(1);
                         const language = getLanguageForExtension(fileExtension);
                         const languageHint = language ? language.language : 'text';
-                        
+
                         const formattedContent = `${fileHeader}\n\`\`\`${languageHint}\n${embResult.content}\n\`\`\``;
                         fallbackSnippets.push({
                             id: `fallback-emb-${embResult.fileId}-${embResult.chunkId || quickHash(embResult.content)}`,

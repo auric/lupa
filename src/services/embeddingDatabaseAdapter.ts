@@ -7,7 +7,7 @@ import { IEmbeddingStorage } from '../interfaces/embeddingStorage';
 import type { ProcessingResult } from '../types/indexingTypes';
 import { SimilaritySearchOptions, SimilaritySearchResult } from '../types/embeddingTypes';
 import { Log } from './loggingService';
-import { quickHash } from '../utils/hashUtils';
+import { quickHash } from '../lib/hashUtils';
 
 /**
  * EmbeddingDatabaseAdapter provides high-level operations to integrate
