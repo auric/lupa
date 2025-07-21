@@ -30,7 +30,7 @@ export class Log {
 }
 
 /**
- * Centralized logging service for the CodeLens PR Analyzer extension
+ * Centralized logging service for the Lupa extension
  */
 export class LoggingService implements vscode.Disposable {
     private static _instance: LoggingService | null = null;
@@ -40,7 +40,7 @@ export class LoggingService implements vscode.Disposable {
     private settingsService: WorkspaceSettingsService | null = null;
 
     private constructor() {
-        this.outputChannel = vscode.window.createOutputChannel('CodeLens PR Analyzer', { log: true });
+        this.outputChannel = vscode.window.createOutputChannel('Lupa', { log: true });
 
         // Initialize with default values - will be updated when settings service is set
         this.logLevel = 'info';

@@ -1,6 +1,6 @@
 {
-    "name": "codelens-pr-analyzer",
-    "displayName": "CodeLens PR Analyzer",
+    "name": "lupa",
+    "displayName": "🔍 Lupa",
     "description": "A VS Code extension for comprehensive pull request analysis using GitHub Copilot models",
     "version": "0.1.0",
     "engines": {
@@ -20,44 +20,44 @@
     "contributes": {
         "commands": [
             {
-                "command": "codelens-pr-analyzer.analyzePR",
-                "title": "CodeLens PR: Analyze Pull Request"
+                "command": "lupa.analyzePR",
+                "title": "Lupa: Analyze Pull Request"
             },
             {
-                "command": "codelens-pr-analyzer.selectEmbeddingModel",
-                "title": "CodeLens PR: Select Embedding Model"
+                "command": "lupa.selectEmbeddingModel",
+                "title": "Lupa: Select Embedding Model"
             },
             {
-                "command": "codelens-pr-analyzer.showEmbeddingModelsInfo",
-                "title": "CodeLens PR: Show Embedding Models Info"
+                "command": "lupa.showEmbeddingModelsInfo",
+                "title": "Lupa: Show Embedding Models Info"
             },
             {
-                "command": "codelens-pr-analyzer.manageIndexing",
-                "title": "CodeLens PR: Manage PR Analyzer Indexing"
+                "command": "lupa.manageIndexing",
+                "title": "Lupa: Manage PR Analyzer Indexing"
             },
             {
-                "command": "codelens-pr-analyzer.manageDatabase",
-                "title": "CodeLens PR: Manage PR Analyzer Database"
+                "command": "lupa.manageDatabase",
+                "title": "Lupa: Manage PR Analyzer Database"
             },
             {
-                "command": "codelens-pr-analyzer.startContinuousIndexing",
-                "title": "CodeLens PR: Start Continuous File Indexing"
+                "command": "lupa.startContinuousIndexing",
+                "title": "Lupa: Start Continuous File Indexing"
             },
             {
-                "command": "codelens-pr-analyzer.stopContinuousIndexing",
-                "title": "CodeLens PR: Stop Continuous File Indexing"
+                "command": "lupa.stopContinuousIndexing",
+                "title": "Lupa: Stop Continuous File Indexing"
             },
             {
-                "command": "codelens-pr-analyzer.showLanguageModelsInfo",
-                "title": "CodeLens PR: Show Language Models Info"
+                "command": "lupa.showLanguageModelsInfo",
+                "title": "Lupa: Show Language Models Info"
             },
             {
-                "command": "codelens-pr-analyzer.selectLanguageModel",
-                "title": "CodeLens PR: Select Language Model"
+                "command": "lupa.selectLanguageModel",
+                "title": "Lupa: Select Language Model"
             },
             {
-                "command": "codelens-pr-analyzer.testWebview",
-                "title": "CodeLens PR: Test Webview (Development)"
+                "command": "lupa.testWebview",
+                "title": "Lupa: Test Webview (Development)"
             }
         ]
     },

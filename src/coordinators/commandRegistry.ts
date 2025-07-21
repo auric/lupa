@@ -26,48 +26,48 @@ export class CommandRegistry implements vscode.Disposable {
      */
     public registerAllCommands(): void {
         // Core analysis commands
-        this.registerCommand('codelens-pr-analyzer.analyzePR', () =>
+        this.registerCommand('lupa.analyzePR', () =>
             this.analysisOrchestrator.analyzePR()
         );
 
         // Embedding model commands
-        this.registerCommand('codelens-pr-analyzer.selectEmbeddingModel', () =>
+        this.registerCommand('lupa.selectEmbeddingModel', () =>
             this.embeddingModelCoordinator.showEmbeddingModelSelectionOptions()
         );
 
-        this.registerCommand('codelens-pr-analyzer.showEmbeddingModelsInfo', () =>
+        this.registerCommand('lupa.showEmbeddingModelsInfo', () =>
             this.embeddingModelCoordinator.showEmbeddingModelsInfo()
         );
 
         // Copilot language model commands
-        this.registerCommand('codelens-pr-analyzer.showLanguageModelsInfo', () =>
+        this.registerCommand('lupa.showLanguageModelsInfo', () =>
             this.copilotModelCoordinator.showCopilotModelsInfo()
         );
 
-        this.registerCommand('codelens-pr-analyzer.selectLanguageModel', () =>
+        this.registerCommand('lupa.selectLanguageModel', () =>
             this.copilotModelCoordinator.showCopilotModelSelectionOptions()
         );
 
         // Database management commands
-        this.registerCommand('codelens-pr-analyzer.manageDatabase', () =>
+        this.registerCommand('lupa.manageDatabase', () =>
             this.databaseOrchestrator.showDatabaseManagementOptions()
         );
 
         // Indexing commands
-        this.registerCommand('codelens-pr-analyzer.startContinuousIndexing', () =>
+        this.registerCommand('lupa.startContinuousIndexing', () =>
             this.services.indexingManager.startContinuousIndexing()
         );
 
-        this.registerCommand('codelens-pr-analyzer.stopContinuousIndexing', () =>
+        this.registerCommand('lupa.stopContinuousIndexing', () =>
             this.services.indexingManager.stopContinuousIndexing()
         );
 
-        this.registerCommand('codelens-pr-analyzer.manageIndexing', () =>
+        this.registerCommand('lupa.manageIndexing', () =>
             this.services.indexingService.showIndexingManagementOptions()
         );
 
         // Test webview command for development
-        this.registerCommand('codelens-pr-analyzer.testWebview', () =>
+        this.registerCommand('lupa.testWebview', () =>
             this.showTestWebview()
         );
     }

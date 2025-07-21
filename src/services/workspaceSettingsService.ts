@@ -38,7 +38,7 @@ export interface WorkspaceSettings {
  * Service for persisting and loading workspace-specific settings
  */
 export class WorkspaceSettingsService implements vscode.Disposable {
-    private static readonly SETTINGS_FILENAME = 'codelens-pr-analyzer.json';
+    private static readonly SETTINGS_FILENAME = 'lupa.json';
     private settings: WorkspaceSettings = {};
     private settingsPath: string | null = null;
     private saveDebounceTimeout: NodeJS.Timeout | null = null;

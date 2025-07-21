@@ -1,10 +1,10 @@
-# CodeLens Pull Request Analyzer Technical Documentation
+# Lupa Technical Documentation
 
 ## 1. System Architecture
 
 ### 1.1 Architectural Overview
 
-The CodeLens Pull Request Analyzer follows a layered, service-oriented architecture with clear separation of concerns and dependency inversion to eliminate circular dependencies. The system features a modern React-based UI with full VSCode theme integration and performance optimizations. The system is designed around these key architectural principles:
+The Lupa follows a layered, service-oriented architecture with clear separation of concerns and dependency inversion to eliminate circular dependencies. The system features a modern React-based UI with full VSCode theme integration and performance optimizations. The system is designed around these key architectural principles:
 
 - **Modular Services**: Each component is implemented as a self-contained service
 - **Dependency Injection**: Services receive dependencies through their constructors with phased initialization
