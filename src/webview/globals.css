@@ -6,6 +6,7 @@
 @import "./styles/markdown.css";
 @import "./styles/diff.css";
 @import "./styles/copy-button.css";
+@import "./styles/file-link.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

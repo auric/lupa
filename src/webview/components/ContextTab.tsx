@@ -1,5 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { FileLink } from './FileLink';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../../components/ui/accordion';
 
 interface ContextTabProps {

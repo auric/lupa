@@ -16,7 +16,7 @@ interface AnalysisViewProps {
 
 const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, analysis }) => {
     const [windowWidth, setWindowWidth] = useState<number>(window.innerWidth);
-    
+
     // Use custom hooks
     const isDarkTheme = useTheme();
     const { copyToClipboard, copiedStates } = useCopyToClipboard();
@@ -62,8 +62,12 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
         <div className="h-full flex flex-col bg-background">
             {/* VSCode-style header */}
             <div className="flex-shrink-0 px-3 py-2 border-b border-border bg-card">
-                <h1 className="text-xs font-medium text-foreground truncate">{title}</h1>
-                <p className="text-xs text-muted-foreground mt-0.5 opacity-75">Pull request analysis with context and code changes</p>
+                <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                        <h1 className="text-xs font-medium text-foreground truncate">{title}</h1>
+                        <p className="text-xs text-muted-foreground mt-0.5 opacity-75">Pull request analysis with context and code changes</p>
+                    </div>
+                </div>
             </div>
 
             {/* VSCode-style tabs */}

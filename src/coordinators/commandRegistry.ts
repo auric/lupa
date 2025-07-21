@@ -127,7 +127,7 @@ index 2345678..bcdefgh 100644
 +                    aProps: { className: 'diff-word-removed' },
 +                    bProps: { className: 'diff-word-added' }
 +                });
-+                
++
 +                return { ...file, hunks: enhancedHunks };
 +            } catch (error) {
 +                console.warn('Failed to enhance hunks for file:', file.newPath || file.oldPath, error);

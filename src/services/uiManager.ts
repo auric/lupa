@@ -1,6 +1,14 @@
 import * as vscode from 'vscode';
 import { StatusBarService } from './statusBarService';
 import { AnalysisMode } from '../types/modelTypes';
+import { Log } from './loggingService';
+import {
+    WebviewMessageType,
+    OpenFilePayload,
+    ValidatePathPayload,
+    PathValidationResultPayload,
+    ThemeUpdatePayload
+} from '../types/webviewMessages';
 
 /**
  * UIManager handles all UI-related functionality
@@ -11,7 +19,10 @@ export class UIManager {
     /**
      * Create a new UIManager
      */
-    constructor(private readonly extensionContext: vscode.ExtensionContext) {
+    constructor(
+        private readonly extensionContext: vscode.ExtensionContext,
+        private readonly gitRepositoryRoot: string
+    ) {
         this.statusBarService = StatusBarService.getInstance();
     }
 
@@ -124,6 +135,14 @@ export class UIManager {
             </div>
 
             <script>
+                // Acquire VSCode API immediately and make it globally available
+                window.vscode = (function() {
+                    if (typeof acquireVsCodeApi !== 'undefined') {
+                        return acquireVsCodeApi();
+                    }
+                    return null;
+                })();
+                
                 // Inject analysis data into window object
                 window.analysisData = {
                     title: ${JSON.stringify(titleTruncated)},
@@ -131,12 +150,12 @@ export class UIManager {
                     context: ${JSON.stringify(context)},
                     analysis: ${JSON.stringify(analysis)}
                 };
-                
+
                 // Inject initial theme data
                 window.initialTheme = {
                     kind: ${vscode.window.activeColorTheme.kind},
-                    isDarkTheme: ${vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark || 
-                                  vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast}
+                    isDarkTheme: ${vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
+            vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast}
                 };
             </script>
             <script src="${mainScriptUri}"></script>
@@ -186,7 +205,10 @@ export class UIManager {
         );
 
         panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel);
-        
+
+        // Set up message listeners for webview communication
+        this.setupWebviewMessageHandlers(panel.webview);
+
         // Listen for theme changes and update webview
         const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
             this.sendThemeToWebview(panel.webview);
@@ -201,19 +223,163 @@ export class UIManager {
     }
 
     /**
+     * Set up message handlers for webview communication
+     */
+    private setupWebviewMessageHandlers(webview: vscode.Webview): void {
+        webview.onDidReceiveMessage(
+            (message: WebviewMessageType) => {
+                switch (message.command) {
+                    case 'openFile':
+                        this.handleOpenFileMessage(message.payload);
+                        break;
+                    case 'validatePath':
+                        this.handleValidatePathMessage(message.payload, webview);
+                        break;
+                    default:
+                        Log.warn(`Unknown webview message command: ${(message as any).command}`);
+                }
+            }
+        );
+    }
+
+    /**
+     * Handle openFile message from webview
+     */
+    private async handleOpenFileMessage(payload: OpenFilePayload): Promise<void> {
+        try {
+            Log.info(`Opening file from webview: ${payload.filePath}`, payload);
+
+            // Use vscode.Uri for secure file path handling
+            // Note: payload.filePath is now the resolved absolute path from validation
+            const fileUri = vscode.Uri.file(payload.filePath);
+
+            // Open the document
+            const document = await vscode.workspace.openTextDocument(fileUri);
+
+            // Prepare show options with line/column positioning
+            const showOptions: vscode.TextDocumentShowOptions = {
+                viewColumn: vscode.ViewColumn.One
+            };
+
+            // Set selection if line/column are provided
+            if (payload.line !== undefined) {
+                const line = Math.max(0, payload.line - 1); // Convert to 0-based indexing
+                const column = Math.max(0, (payload.column ?? 1) - 1); // Convert to 0-based indexing
+
+                const position = new vscode.Position(line, column);
+                showOptions.selection = new vscode.Range(position, position);
+            }
+
+            // Show the document in the editor
+            await vscode.window.showTextDocument(document, showOptions);
+
+            Log.info(`Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`);
+        } catch (error) {
+            Log.error(`Failed to open file: ${payload.filePath}`, error);
+
+            // Show user-friendly error message
+            vscode.window.showErrorMessage(
+                `Could not open file: ${payload.filePath}. ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
+        }
+    }
+
+    /**
+     * Handle validatePath message from webview
+     */
+    private async handleValidatePathMessage(payload: ValidatePathPayload, webview: vscode.Webview): Promise<void> {
+        try {
+            Log.info(`Validating file path from webview: ${payload.filePath}`);
+
+            let isValid = false;
+            let resolvedPath: string | undefined;
+
+            // Strategy 1: Absolute path
+            if (payload.filePath.includes(':') || payload.filePath.startsWith('/')) {
+                const fileUri = vscode.Uri.file(payload.filePath);
+                try {
+                    const fileStat = await vscode.workspace.fs.stat(fileUri);
+                    isValid = fileStat.type === vscode.FileType.File;
+                    if (isValid) {
+                        resolvedPath = fileUri.fsPath;
+                    }
+                } catch (error) {
+                }
+            }
+
+            // Strategy 2: Relative to Git repository root (primary strategy for PR paths)
+            if (!isValid && this.gitRepositoryRoot && this.gitRepositoryRoot.trim() !== '') {
+                const gitRelativeUri = vscode.Uri.joinPath(vscode.Uri.file(this.gitRepositoryRoot), payload.filePath);
+                try {
+                    const fileStat = await vscode.workspace.fs.stat(gitRelativeUri);
+                    isValid = fileStat.type === vscode.FileType.File;
+                    if (isValid) {
+                        resolvedPath = gitRelativeUri.fsPath;
+                    }
+                } catch (error) {
+                }
+            }
+
+            // Strategy 3: Relative to workspace root (fallback)
+            if (!isValid && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                const workspaceRoot = vscode.workspace.workspaceFolders[0].uri;
+                const workspaceRelativeUri = vscode.Uri.joinPath(workspaceRoot, payload.filePath);
+                try {
+                    const fileStat = await vscode.workspace.fs.stat(workspaceRelativeUri);
+                    isValid = fileStat.type === vscode.FileType.File;
+                    if (isValid) {
+                        resolvedPath = workspaceRelativeUri.fsPath;
+                    }
+                } catch (error) {
+                }
+            }
+
+            // Send validation result back to webview (including resolved path for openFile)
+            const response: PathValidationResultPayload = {
+                filePath: payload.filePath,
+                isValid,
+                requestId: payload.requestId,
+                ...(resolvedPath && { resolvedPath })
+            };
+
+            webview.postMessage({
+                command: 'pathValidationResult',
+                payload: response
+            });
+
+            Log.info(`Path validation result for ${payload.filePath}: ${isValid}${resolvedPath ? ` (resolved: ${resolvedPath})` : ''}`);
+        } catch (error) {
+            // File doesn't exist or access error
+            Log.info(`Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+
+            // Send negative validation result
+            const response: PathValidationResultPayload = {
+                filePath: payload.filePath,
+                isValid: false,
+                requestId: payload.requestId
+            };
+
+            webview.postMessage({
+                command: 'pathValidationResult',
+                payload: response
+            });
+        }
+    }
+
+    /**
      * Send current theme information to webview
      */
     private sendThemeToWebview(webview: vscode.Webview): void {
         const activeTheme = vscode.window.activeColorTheme;
-        const themeData = {
+        const themeData: ThemeUpdatePayload = {
             kind: activeTheme.kind,
-            isDarkTheme: activeTheme.kind === vscode.ColorThemeKind.Dark || 
-                        activeTheme.kind === vscode.ColorThemeKind.HighContrast
+            isDarkTheme: activeTheme.kind === vscode.ColorThemeKind.Dark ||
+                activeTheme.kind === vscode.ColorThemeKind.HighContrast
         };
 
         webview.postMessage({
-            type: 'theme-changed',
-            data: themeData
+            command: 'themeUpdate',
+            payload: themeData
         });
     }
 

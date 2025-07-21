@@ -15,8 +15,8 @@ export const useTheme = () => {
     useEffect(() => {
         // Listen for theme messages from extension host
         const handleMessage = (event: MessageEvent) => {
-            if (event.data.type === 'theme-changed') {
-                const themeData = event.data.data;
+            if (event.data.command === 'themeUpdate') {
+                const themeData = event.data.payload;
                 console.log('Theme changed via vscode.window.activeColorTheme:', themeData);
                 setIsDarkTheme(themeData.isDarkTheme);
             }

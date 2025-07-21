@@ -43,6 +43,15 @@
   color: var(--vscode-symbolIcon-keywordForeground) !important;
 }
 
+/* Fix Tailwind Typography adding backticks to inline code */
+.prose code::before {
+  content: "" !important;
+}
+
+.prose code::after {
+  content: "" !important;
+}
+
 /* Code block copy button styling */
 .prose .relative .absolute {
   /* Ensure copy buttons are properly positioned and styled */

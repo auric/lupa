@@ -129,9 +129,16 @@ export class ServiceManager implements vscode.Disposable {
         this.services.statusBar = StatusBarService.getInstance();
         this.services.codeAnalysis = new CodeAnalysisService();
 
-        // UI and Git services (independent)
-        this.services.uiManager = new UIManager(this.context);
+        // Initialize Git operations first to get repository root
         this.services.gitOperations = new GitOperationsManager();
+        await this.services.gitOperations.initialize();
+
+        // Get Git repository root path for UIManager dependency injection
+        const repository = this.services.gitOperations.getRepository();
+        const gitRootPath = repository?.rootUri.fsPath || '';
+
+        // Initialize UIManager with Git repository root path
+        this.services.uiManager = new UIManager(this.context, gitRootPath);
     }
 
     /**
