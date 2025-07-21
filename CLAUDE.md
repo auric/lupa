@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**CodeLens PR Analyzer** is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It leverages both Language Server Protocol (LSP) queries and semantic similarity search via embeddings to provide intelligent context for PR analysis.
+**Lupa** is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It leverages both Language Server Protocol (LSP) queries and semantic similarity search via embeddings to provide intelligent context for PR analysis.
 
 ## Key Technologies
 
@@ -287,11 +287,11 @@ The IndexingService follows Single Responsibility Principle with these key impro
 
 The extension provides these VS Code commands:
 
-- `codelens-pr-analyzer.analyzePR` - Analyze Pull Request
-- `codelens-pr-analyzer.manageIndexing` - Manage indexing operations
-- `codelens-pr-analyzer.selectEmbeddingModel` - Select embedding model
-- `codelens-pr-analyzer.startContinuousIndexing` - Start background indexing
-- `codelens-pr-analyzer.stopContinuousIndexing` - Stop background indexing
+- `lupa.analyzePR` - Analyze Pull Request
+- `lupa.manageIndexing` - Manage indexing operations
+- `lupa.selectEmbeddingModel` - Select embedding model
+- `lupa.startContinuousIndexing` - Start background indexing
+- `lupa.stopContinuousIndexing` - Stop background indexing
 
 ## Debugging
 
@@ -326,3 +326,44 @@ The extension provides these VS Code commands:
 - **Claude Code**: Use `/agent-name` (e.g., `/bmad-master`, `/dev`, `/pm`)
 - **Commands**: Use `*command` syntax (e.g., `*help`, `*create`, `*status`)
 - **Document Requirements**: Place PRD at `docs/prd.md` and Architecture at `docs/architecture.md`
+
+## Coding Standards
+
+This project follows strict TypeScript development standards to ensure code quality, maintainability, and consistency across the codebase.
+
+### TypeScript Guidelines
+
+- **Type Safety**: Use TypeScript interfaces and strict typing throughout
+- **Undefined Handling**: For potentially undefined data, use union types (`| undefined`) instead of optional object members
+- **Async Patterns**: Always use `async/await` for asynchronous operations, avoid Promise chains
+- **Error Handling**: Implement comprehensive error handling with try/catch blocks and proper error propagation
+
+### Code Structure
+
+- **Function Size**: Keep functions small and focused on a single responsibility
+- **Naming Conventions**: Use consistent, descriptive naming following TypeScript/JavaScript conventions
+  - Classes: PascalCase (e.g., `ServiceManager`, `AnalysisProvider`)
+  - Methods/Functions: camelCase (e.g., `processFile`, `generateEmbeddings`)
+  - Constants: UPPER_SNAKE_CASE (e.g., `DEFAULT_MODEL_NAME`)
+  - Interfaces: PascalCase with 'I' prefix (e.g., `IServiceRegistry`)
+- **File Organization**: Follow established patterns in `src/` directory structure
+
+### Logging and Debugging
+
+- **Logging Service**: Use the centralized `Log` service for all logging instead of `console.log`
+- **Exceptions**: Workers (`src/workers/`) and webviews (`src/webview/`) may use `console.log` due to their isolated execution contexts
+- **Debug Information**: Include meaningful context in log messages for troubleshooting
+
+### Architecture Compliance
+
+- **Dependency Injection**: Follow the established ServiceManager pattern for dependency management
+- **Circular Dependencies**: Avoid circular dependencies using dependency inversion and phased initialization
+- **Service Patterns**: Implement services as singletons where appropriate, with proper disposal methods
+- **Interface Implementation**: Use interfaces to define contracts between services
+
+### Testing Requirements
+
+- **Test Coverage**: Write unit tests for new functionality using Vitest
+- **Mocking**: Use proper mocking for dependencies in isolated unit tests
+- **Integration Tests**: Include integration tests for service interactions
+- **Test Naming**: Follow pattern `*.test.ts` or `*.spec.ts` for test files
