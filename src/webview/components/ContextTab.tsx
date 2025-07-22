@@ -23,35 +23,44 @@ export const ContextTab = memo<ContextTabProps>(({
     // Parse content sections for accordion structure
     const sections = useMemo(() => {
         const sectionDelimiters = [
-            { title: 'Definitions Found (LSP)', regex: /## Definitions Found \(LSP\)/g },
-            { title: 'References Found (LSP)', regex: /## References Found \(LSP\)/g },
-            { title: 'Semantically Similar Code (Embeddings)', regex: /## Semantically Similar Code \(Embeddings\)/g }
+            { title: 'Definitions Found (LSP)', regex: /## Definitions Found \(LSP\)/ },
+            { title: 'References Found (LSP)', regex: /## References Found \(LSP\)/ },
+            { title: 'Semantically Similar Code (Embeddings)', regex: /## Semantically Similar Code \(Embeddings\)/ }
         ];
         
         const foundSections: Array<{ title: string; content: string; id: string }> = [];
         
-        sectionDelimiters.forEach((delimiter, index) => {
-            const match = delimiter.regex.exec(content);
-            if (match) {
-                const startIndex = match.index;
-                const nextDelimiter = sectionDelimiters[index + 1];
-                let endIndex = content.length;
-                
-                if (nextDelimiter) {
-                    const nextMatch = nextDelimiter.regex.exec(content);
-                    if (nextMatch) {
-                        endIndex = nextMatch.index;
-                    }
-                }
-                
-                const sectionContent = content.slice(startIndex, endIndex).trim();
-                if (sectionContent) {
-                    foundSections.push({
-                        title: delimiter.title,
-                        content: sectionContent,
-                        id: `section-${index}`
-                    });
-                }
+        // Find all section positions first
+        const sectionPositions: Array<{ title: string; index: number; id: string }> = [];
+        
+        sectionDelimiters.forEach((delimiter, delimiterIndex) => {
+            const match = content.match(delimiter.regex);
+            if (match && match.index !== undefined) {
+                sectionPositions.push({
+                    title: delimiter.title,
+                    index: match.index,
+                    id: `section-${delimiterIndex}`
+                });
+            }
+        });
+        
+        // Sort by position in content
+        sectionPositions.sort((a, b) => a.index - b.index);
+        
+        // Extract content for each section
+        sectionPositions.forEach((section, index) => {
+            const startIndex = section.index;
+            const endIndex = index < sectionPositions.length - 1 
+                ? sectionPositions[index + 1].index 
+                : content.length;
+            
+            const sectionContent = content.slice(startIndex, endIndex).trim();
+            if (sectionContent) {
+                foundSections.push({
+                    title: section.title,
+                    content: sectionContent,
+                    id: section.id
+                });
             }
         });
         
