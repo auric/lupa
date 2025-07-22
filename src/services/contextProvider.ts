@@ -79,7 +79,7 @@ export class ContextProvider implements vscode.Disposable {
      * @returns A string identifier for the hunk.
      */
     private getHunkIdentifier(filePath: string, hunkData: { newStart: number }): string {
-        return `${filePath}:L${hunkData.newStart}`;
+        return `${filePath}:${hunkData.newStart}`;
     }
 
     /**
@@ -1046,7 +1046,7 @@ export class ContextProvider implements vscode.Disposable {
                 const relativePath = vscode.workspace.asRelativePath(location.uri, false);
                 const languageId = getLanguageForExtension(path.extname(relativePath))?.language || document.languageId || 'plaintext';
 
-                const formattedSnippet = `**${defaultTitleType} in \`${relativePath}\` (L${location.range.start.line + 1}):**\n\`\`\`${languageId}\n${snippetContent.trimEnd()}\n\`\`\``;
+                const formattedSnippet = `**${defaultTitleType} in \`${relativePath}:${location.range.start.line + 1}\`:**\n\`\`\`${languageId}\n${snippetContent.trimEnd()}\n\`\`\``;
                 snippets.push(formattedSnippet);
                 snippetCache.set(cacheKey, formattedSnippet);
 

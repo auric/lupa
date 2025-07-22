@@ -127,12 +127,12 @@ export class TokenManagerService {
             return { optimizedSnippets: [], wasTruncated: true };
         }
 
-        // Sort snippets: LSP defs > LSP refs > Embeddings (by score)
+        // Sort snippets: Embeddings > LSP refs > LSP defs (for PR analysis relevance)
         const sortedSnippets = [...snippets].sort((a, b) => {
             const typePriority = (type: ContextSnippet['type']): number => {
-                if (type === 'lsp-definition') return 3;
-                if (type === 'lsp-reference') return 2;
-                return 1; // embedding
+                if (type === 'embedding') return 3; // Highest: similar patterns most valuable
+                if (type === 'lsp-reference') return 2; // Medium: usage patterns for impact analysis
+                return 1; // lsp-definition: lowest priority, often less relevant for PR analysis
             };
             const priorityA = typePriority(a.type);
             const priorityB = typePriority(b.type);
@@ -300,20 +300,21 @@ export class TokenManagerService {
 
         const parts: string[] = [];
 
-        if (lspDefinitions.length > 0) {
-            parts.push("## Definitions Found (LSP)");
-            lspDefinitions.forEach(s => parts.push(s.content));
+        // Display in priority order: Embeddings > References > Definitions
+        if (embeddings.length > 0) {
+            parts.push("## Semantically Similar Code (Embeddings)");
+            // Embeddings content is already formatted markdown from ContextProvider
+            embeddings.forEach(s => parts.push(s.content));
         }
 
         if (lspReferences.length > 0) {
-            parts.push(lspReferences.length > 0 && lspDefinitions.length > 0 ? "\n## References Found (LSP)" : "## References Found (LSP)");
+            parts.push(embeddings.length > 0 ? "\n## References Found (LSP)" : "## References Found (LSP)");
             lspReferences.forEach(s => parts.push(s.content));
         }
 
-        if (embeddings.length > 0) {
-            parts.push((lspDefinitions.length > 0 || lspReferences.length > 0) ? "\n## Semantically Similar Code (Embeddings)" : "## Semantically Similar Code (Embeddings)");
-            // Embeddings content is already formatted markdown from ContextProvider
-            embeddings.forEach(s => parts.push(s.content));
+        if (lspDefinitions.length > 0) {
+            parts.push((embeddings.length > 0 || lspReferences.length > 0) ? "\n## Definitions Found (LSP)" : "## Definitions Found (LSP)");
+            lspDefinitions.forEach(s => parts.push(s.content));
         }
 
         let result = parts.join('\n\n').trim();

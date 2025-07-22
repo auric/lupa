@@ -428,7 +428,7 @@ The `TokenManagerService` (`src/services/tokenManagerService.ts`) manages token 
 
 - **Token Counting**: Accurately counts tokens for different components (system prompt, structured diff, context snippets) using the current language model's `countTokens` method (via `CopilotModelManager`).
 - **Token Allocation**: Calculates the total token usage and compares it against the selected language model's limit, determining the budget available specifically for context snippets.
-- **Context Optimization**: The `optimizeContext` method now receives an array of `ContextSnippet` objects. It prunes this list based on `relevanceScore` (LSP definitions > LSP references > embedding scores) to fit within the `availableTokens` budget. It handles partial truncation of snippets if needed, adding appropriate truncation messages.
+- **Context Optimization**: The `optimizeContext` method now receives an array of `ContextSnippet` objects. It prunes this list based on `relevanceScore` (embeddings > LSP references > LSP definitions) to fit within the `availableTokens` budget, prioritizing semantic similarity for PR analysis. It handles partial truncation of snippets if needed, adding appropriate truncation messages.
 - **Context Formatting**: The `formatContextSnippetsToString` method takes an array of `ContextSnippet` objects and formats them into a single markdown string, typically used for UI display or logging, clearly labeling LSP and embedding sections.
 - **Prompt Component Understanding**: Accounts for tokens used by the system prompt and the _interleaved structure_ of the diff and its linked context when calculating available tokens for context snippets.
 
@@ -693,7 +693,7 @@ The context retrieval process combines LSP-based structural search with embeddin
 
     - The `AnalysisProvider` receives the `HybridContextResult`.
     - `TokenManagerService.calculateTokenAllocation` determines the token budget available specifically for context snippets, considering the system prompt and the token cost of the _interleaved diff structure_.
-    - `TokenManagerService.optimizeContext` receives the full list of `ContextSnippet`s and prunes it based on relevance scores (LSP defs > LSP refs > embedding scores) to fit the budget. It handles partial truncation.
+    - `TokenManagerService.optimizeContext` receives the full list of `ContextSnippet`s and prunes it based on relevance scores (embeddings > LSP refs > LSP defs) to fit the budget, prioritizing semantic similarity for PR analysis. It handles partial truncation.
     - The `AnalysisProvider` then constructs the final LLM prompt by interleaving `DiffHunk`s from `parsedDiff` with their associated, _optimized_ `ContextSnippet`s.
 
 6.  **Final Context for UI (`AnalysisProvider` -> `TokenManagerService`):**
@@ -717,7 +717,7 @@ The token management process ensures the final prompt, which now includes an int
 3.  **Context Snippet Optimization (`TokenManagerService.optimizeContext`):**
 
     - Receives the full list of `ContextSnippet` objects (from LSP and embeddings) and the `contextAllocationTokens` budget.
-    - Sorts snippets by relevance: LSP definitions > LSP references > embedding results (by similarity score).
+    - Sorts snippets by relevance: embedding results (by similarity score) > LSP references > LSP definitions, optimized for PR analysis needs.
     - Iteratively adds sorted snippets to a "selected list" as long as their cumulative token count (including small buffers for inter-snippet newlines) fits within `contextAllocationTokens`.
     - If a snippet doesn't fit fully but significant budget remains, it attempts partial truncation (e.g., keeping headers, a portion of the content, and adding a `[File content partially truncated...]` message). The token cost of the truncated snippet (including the message) must fit.
     - Returns the `optimizedSnippets` array and a `wasTruncated` flag.

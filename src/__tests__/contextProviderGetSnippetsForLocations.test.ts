@@ -182,7 +182,7 @@ describe('ContextProvider', () => {
             const snippets = await contextProvider.getSnippetsForLocations(locations, 2);
 
             expect(snippets).toHaveLength(1);
-            expect(snippets[0]).toContain('**Context in `mock/workspace/file1.ts` (L11):**');
+            expect(snippets[0]).toContain('**Context in `mock/workspace/file1.ts:11`:**');
             expect(snippets[0]).toContain('```typescript');
             // Lines 10-12 are target, contextLines = 2 => 8-14 (0-indexed) => 9-15 (1-indexed)
             // Line 9 content (index 8)

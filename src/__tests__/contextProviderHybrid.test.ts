@@ -340,11 +340,11 @@ index 123..456 100644
         const { snippets, parsedDiff } = result;
 
         // Check for LSP definition snippets for `changedFunction`
-        expect(snippetsContainText(snippets, '**Definition in `src/file1.ts` (L3):**')).toBe(true);
+        expect(snippetsContainText(snippets, '**Definition in `src/file1.ts:3`:**')).toBe(true);
         expect(snippetsContainText(snippets, 'export function changedFunction(param: string): void {')).toBe(true);
 
         // Check for LSP reference snippets for `changedFunction`
-        expect(snippetsContainText(snippets, '**Reference in `src/dep.ts` (L1):**')).toBe(true);
+        expect(snippetsContainText(snippets, '**Reference in `src/dep.ts:1`:**')).toBe(true);
         expect(snippetsContainText(snippets, 'export function helper(): number { return 1; }')).toBe(true);
 
 
@@ -362,12 +362,12 @@ index 123..456 100644
         expect(file1Diff).toBeDefined();
         expect(file1Diff?.hunks).toBeInstanceOf(Array);
         expect(file1Diff?.hunks.length).toBeGreaterThan(0);
-        expect(file1Diff?.hunks[0].hunkId).toBe('src/file1.ts:L1'); // Based on @@ -1,3 +1,5 @@
+        expect(file1Diff?.hunks[0].hunkId).toBe('src/file1.ts:1'); // Based on @@ -1,3 +1,5 @@
 
         // Verify snippet association with hunkId
         const lspDefSnippet = snippets.find(s => s.type === 'lsp-definition' && s.content.includes('changedFunction'));
         expect(lspDefSnippet).toBeDefined();
-        expect(lspDefSnippet?.associatedHunkIdentifiers).toContain('src/file1.ts:L1');
+        expect(lspDefSnippet?.associatedHunkIdentifiers).toContain('src/file1.ts:1');
 
 
         // Verify mocks

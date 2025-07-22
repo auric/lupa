@@ -124,7 +124,7 @@ describe('TokenManagerService', () => {
             expect(wasTruncated).toBe(false);
         });
 
-        it('should prioritize snippets by relevance (LSP def > LSP ref > embedding score)', async () => {
+        it('should prioritize snippets by relevance (embedding score > LSP ref > LSP def)', async () => {
             const lspDef = createSnippet('lspDef', 'lsp-definition', 'Definition content '.repeat(5), 1.0); // ~25 tokens
             const lspRef = createSnippet('lspRef', 'lsp-reference', 'Reference content '.repeat(5), 0.9); // ~25 tokens
             const highEmb = createSnippet('highEmb', 'embedding', 'High score embedding '.repeat(5), 0.95); // ~25 tokens
@@ -133,13 +133,14 @@ describe('TokenManagerService', () => {
 
             const snippets: ContextSnippet[] = [lowEmb, highEmb, lspRef, midEmb, lspDef]; // Unsorted
 
-            // Available tokens allow for lspDef, lspRef, and highEmb (approx 25*3 = 75 tokens + buffer)
+            // Available tokens allow for the top 3 embeddings (approx 25*3 = 75 tokens + buffer)
             const availableTokens = 85;
             const { optimizedSnippets, wasTruncated } = await tokenManagerService.optimizeContext(snippets, availableTokens);
 
             expect(wasTruncated).toBe(true);
             expect(optimizedSnippets.length).toBe(3);
-            expect(optimizedSnippets.map(s => s.id)).toEqual(['lspDef', 'lspRef', 'highEmb']);
+            // New priority: embeddings first (by score), then LSP refs, then LSP defs
+            expect(optimizedSnippets.map(s => s.id)).toEqual(['highEmb', 'midEmb', 'lowEmb']);
         });
 
         it('should truncate the last fitting snippet if it partially exceeds the limit (embedding)', async () => {
@@ -154,23 +155,13 @@ describe('TokenManagerService', () => {
             const { optimizedSnippets, wasTruncated } = await tokenManagerService.optimizeContext(snippets, availableTokens);
 
             expect(wasTruncated).toBe(true);
-            // With corrected logic, s1 (def) and s3 (ref) should fit. s2Emb (emb) will be too large for partial.
-            // s1 tokens = 3. s3 tokens = 5. buffer for s3 = 1. Total = 3+1+5 = 9.
-            // availableTokens = 25. Remaining for s2Emb partial attempt = 25 - 9 = 16.
-            // partial msg tokens = 12. min content for partial = 10. 16 > 12+10 is false.
-            // So s2Emb is not added.
-            expect(optimizedSnippets.length).toBe(2);
-            expect(optimizedSnippets[0].id).toBe('s1');
-            expect(optimizedSnippets[1].id).toBe('s3'); // s3 should be selected over a non-fitting s2Emb
-            // The following lines checking for s2-emb-partial are no longer valid for this test setup
-            // expect(optimizedSnippets[1].content).toContain('[File content partially truncated to fit token limit]');
-            // const s1Tokens = await mockLanguageModel.countTokens(s1.content);
-            // const s2PartialTokens = await mockLanguageModel.countTokens(optimizedSnippets[1].content); // This would be s3's content
-            // const bufferTokens = await mockLanguageModel.countTokens('\n\n');
-            // expect(s1Tokens + bufferTokens + s2PartialTokens).toBeLessThanOrEqual(availableTokens);
-            const totalUsed = await mockLanguageModel.countTokens(optimizedSnippets[0].content) +
-                await mockLanguageModel.countTokens('\n\n') +
-                await mockLanguageModel.countTokens(optimizedSnippets[1].content);
+            // With new priority (embedding > ref > def), s2Emb (embedding) gets highest priority and will be truncated
+            // to fit within the available token budget, demonstrating the new priority system.
+            expect(optimizedSnippets.length).toBe(1);
+            expect(optimizedSnippets[0].id).toBe('s2-emb-partial'); // s2Emb gets partial truncation due to embedding priority
+            expect(optimizedSnippets[0].content).toContain('[File content partially truncated to fit token limit]');
+            
+            const totalUsed = await mockLanguageModel.countTokens(optimizedSnippets[0].content);
             expect(totalUsed).toBeLessThanOrEqual(availableTokens);
         });
 
