@@ -334,7 +334,15 @@ This project follows strict TypeScript development standards to ensure code qual
 ### TypeScript Guidelines
 
 - **Type Safety**: Use TypeScript interfaces and strict typing throughout
-- **Undefined Handling**: For potentially undefined data, use union types (`| undefined`) instead of optional object members
+- **Optional Parameter Handling**: Use explicit union types (`| undefined` or `| null`) instead of optional operators (`?`) for better type safety and clarity
+  - ✅ Preferred: `parameter: string | undefined`
+  - ❌ Avoid: `parameter?: string`
+  - This makes null/undefined handling explicit and prevents accidental undefined access
+  - For object properties that may not exist, use `| undefined` to be explicit about the possibility
+- **Null vs Undefined**: Be consistent in choice between `null` and `undefined`
+  - Use `| undefined` for values that may not be set or initialized
+  - Use `| null` for values that are explicitly set to represent "no value"
+  - Avoid mixing both in the same interface unless semantically meaningful
 - **Async Patterns**: Always use `async/await` for asynchronous operations, avoid Promise chains
 - **Error Handling**: Implement comprehensive error handling with try/catch blocks and proper error propagation
 
