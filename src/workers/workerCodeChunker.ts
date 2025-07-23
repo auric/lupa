@@ -176,7 +176,7 @@ export class WorkerCodeChunker {
     /**
      * Filters out insignificant chunks to improve embedding quality.
      * Removes chunks that consist solely of:
-     * 1. Garbage tokens (}, ), ], end) optionally followed by comments
+     * 1. Closing structural tokens (}, ), ], ;, end) on every meaningful line
      * 2. Only comments and whitespace
      */
     private filterInsignificantChunks(
@@ -186,14 +186,13 @@ export class WorkerCodeChunker {
     ): { chunks: string[], offsets: number[] } {
         const filteredChunks: string[] = [];
         const filteredOffsets: number[] = [];
-        const garbageTokens = ['}', ')', ']', 'end'];
         let discardedCount = 0;
 
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
             const chunkOffset = offsets[i];
 
-            if (this.isInsignificantChunk(chunk, languageConfig, garbageTokens)) {
+            if (this.isInsignificantChunk(chunk, languageConfig)) {
                 // Log with truncated content for readability
                 const truncatedChunk = chunk.length > 60
                     ? chunk.substring(0, 60).replace(/\n/g, '\\n') + '...'
@@ -219,8 +218,7 @@ export class WorkerCodeChunker {
      */
     private isInsignificantChunk(
         chunk: string,
-        languageConfig: SupportedLanguage | undefined,
-        garbageTokens: string[]
+        languageConfig: SupportedLanguage | undefined
     ): boolean {
         const trimmedChunk = chunk.trim();
 
@@ -233,11 +231,9 @@ export class WorkerCodeChunker {
             return true;
         }
 
-        // Check if chunk starts with a garbage token followed by optional comment
-        for (const token of garbageTokens) {
-            if (this.isGarbageTokenChunk(chunk, token, languageConfig)) {
-                return true;
-            }
+        // Check if chunk contains only closing structural tokens
+        if (this.isClosingTokensOnlyChunk(chunk, languageConfig)) {
+            return true;
         }
 
         return false;
@@ -299,41 +295,106 @@ export class WorkerCodeChunker {
         return false;
     }
 
+
     /**
-     * Checks if a chunk starts with a garbage token followed by optional comment.
+     * Checks if a chunk contains only closing structural tokens (}, ), ], ;, end) 
+     * on every meaningful line (excluding comments and whitespace).
      */
-    private isGarbageTokenChunk(
+    private isClosingTokensOnlyChunk(
         chunk: string,
-        garbageToken: string,
         languageConfig: SupportedLanguage | undefined
     ): boolean {
-        const trimmedChunk = chunk.trim();
+        const lines = chunk.split('\n');
+        let hasAnyMeaningfulContent = false;
 
-        if (!trimmedChunk.startsWith(garbageToken)) {
-            return false;
-        }
-
-        // Get the rest of the content after the garbage token
-        const restOfContent = trimmedChunk.substring(garbageToken.length).trim();
-
-        if (restOfContent === '') {
-            return true; // Just the garbage token alone
-        }
-
-        // Check if the rest is only comments
-        const restLines = restOfContent.split('\n');
-        for (const line of restLines) {
+        for (const line of lines) {
             const trimmedLine = line.trim();
+            
+            // Skip empty lines
             if (trimmedLine === '') {
-                continue; // Whitespace is okay
+                continue;
             }
 
-            if (!this.isCommentLine(trimmedLine, languageConfig)) {
-                return false; // Found non-comment content after garbage token
+            // Skip pure comment lines
+            if (this.isCommentLine(trimmedLine, languageConfig)) {
+                continue;
+            }
+
+            // Handle lines with closing tokens followed by comments (e.g., "} // namespace")
+            if (this.isClosingTokensWithComment(trimmedLine, languageConfig)) {
+                hasAnyMeaningfulContent = true;
+                continue; // This counts as closing-tokens-only
+            }
+
+            // This line has non-comment content
+            hasAnyMeaningfulContent = true;
+
+            // Check if line contains only closing structural tokens
+            if (!this.isLineOnlyClosingTokens(trimmedLine)) {
+                return false; // Found meaningful content
             }
         }
 
-        return true; // Only comments follow the garbage token
+        // If we had meaningful content and all lines were only closing tokens, it's garbage
+        return hasAnyMeaningfulContent;
+    }
+
+    /**
+     * Checks if a line contains only closing structural tokens and whitespace.
+     */
+    private isLineOnlyClosingTokens(line: string): boolean {
+        const trimmedLine = line.trim();
+        
+        if (trimmedLine === '') {
+            return true; // Empty line
+        }
+
+        // Handle "end" keyword (Ruby, etc.)
+        if (trimmedLine === 'end') {
+            return true;
+        }
+
+        // Remove all whitespace to analyze character tokens
+        const cleanLine = trimmedLine.replace(/\s/g, '');
+        
+        // Check if every character is a closing structural token
+        const closingTokens = new Set(['}', ')', ']', ';']);
+        
+        for (const char of cleanLine) {
+            if (!closingTokens.has(char)) {
+                return false; // Found non-closing token
+            }
+        }
+
+        return true; // All characters are closing tokens
+    }
+
+    /**
+     * Checks if a line contains closing tokens followed by a comment (e.g., "} // namespace").
+     */
+    private isClosingTokensWithComment(
+        line: string,
+        languageConfig: SupportedLanguage | undefined
+    ): boolean {
+        const trimmedLine = line.trim();
+
+        // Only process if we have a language configuration with a comment marker
+        if (!languageConfig?.lineCommentMarker) {
+            return false; // Cannot identify comments without language config
+        }
+
+        const commentMarker = languageConfig.lineCommentMarker;
+        if (!trimmedLine.includes(commentMarker)) {
+            return false; // No comment found
+        }
+
+        const beforeComment = trimmedLine.split(commentMarker)[0].trim();
+        if (beforeComment === '') {
+            return false; // Pure comment line
+        }
+
+        // Check if everything before the comment is only closing tokens
+        return this.isLineOnlyClosingTokens(beforeComment);
     }
 
     private trimCommonLeadingWhitespace(lines: string[]): string[] {

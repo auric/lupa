@@ -620,5 +620,93 @@ def test_function():
       expect(allContent).toContain('const bracketCount = "}".length');
       expect(allContent).toContain('const result = array.map(x => x)');
     });
+
+    it('should filter chunks that match garbage-chunks.md examples', async () => {
+      // Test specific garbage chunk patterns from garbage-chunks.md
+      const garbageChunk1 = `		}
+	}
+
+} // namespace`;
+
+      const garbageChunk2 = `	}
+}
+
+`;
+
+      const garbageChunk3 = `};
+
+`;
+
+      const garbageChunk4 = `		return false;
+	}
+
+	return true;
+}`;
+
+      // Test legitimate garbage chunks (pure closing tokens with optional comments)
+      const testCases = [garbageChunk1, garbageChunk2, garbageChunk3];
+      
+      for (const garbageChunk of testCases) {
+        const result = await codeChunker.chunkCode(garbageChunk, 'typescript', undefined, abortController.signal);
+        expect(result.chunks.length).toBe(0); // Should be filtered out completely
+      }
+
+      // garbageChunk4 contains actual code (return statements), so it should NOT be filtered
+      const result4 = await codeChunker.chunkCode(garbageChunk4, 'typescript', undefined, abortController.signal);
+      expect(result4.chunks.length).toBeGreaterThan(0); // Should preserve meaningful code
+    });
+
+    it('should handle chunks with only closing structural tokens', async () => {
+      const onlyClosingTokens = `}
+)
+]
+;`;
+
+      const result = await codeChunker.chunkCode(onlyClosingTokens, 'typescript', undefined, abortController.signal);
+      expect(result.chunks.length).toBe(0); // Should be filtered out
+    });
+
+    it('should handle chunks with mixed closing tokens and semicolons', async () => {
+      const mixedClosingTokens = `});
+]};
+};;`;
+
+      const result = await codeChunker.chunkCode(mixedClosingTokens, 'typescript', undefined, abortController.signal);
+      expect(result.chunks.length).toBe(0); // Should be filtered out
+    });
+
+    it('should handle Ruby end keyword correctly', async () => {
+      const rubyEndOnly = `end
+end
+end`;
+
+      const result = await codeChunker.chunkCode(rubyEndOnly, 'ruby', undefined, abortController.signal);
+      expect(result.chunks.length).toBe(0); // Should be filtered out
+    });
+
+    it('should preserve chunks with meaningful content mixed with closing tokens', async () => {
+      const meaningfulContent = `function test() {
+  return 1;
+}
+const x = 2;`;
+
+      const result = await codeChunker.chunkCode(meaningfulContent, 'typescript', undefined, abortController.signal);
+      expect(result.chunks.length).toBeGreaterThan(0); // Should preserve meaningful code
+      
+      const allContent = result.chunks.join('\n');
+      expect(allContent).toContain('function test()');
+      expect(allContent).toContain('return 1;');
+      expect(allContent).toContain('const x = 2;');
+    });
+
+    it('should handle namespace closing patterns correctly', async () => {
+      const namespaceClosing = `		}
+	}
+
+} // namespace TestNamespace`;
+
+      const result = await codeChunker.chunkCode(namespaceClosing, 'cpp', undefined, abortController.signal);
+      expect(result.chunks.length).toBe(0); // Should be filtered out as garbage
+    });
   });
 });
