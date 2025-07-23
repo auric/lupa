@@ -364,15 +364,15 @@ namespace Utils {
   it('should handle files containing only comments', async () => {
     const codeWithOnlyComments = `
 // This is a file with only comments.
-// It should be treated as a single chunk.
+// It should be filtered out as insignificant.
 
 /**
  * A block comment.
  */
 `;
     const result = await codeChunker.chunkCode(codeWithOnlyComments, 'typescript', undefined, abortController.signal);
-    expect(result.chunks.length).toBe(1);
-    expect(result.chunks[0]).toContain('// This is a file with only comments.');
+    // Comment-only chunks should be filtered out, resulting in 0 chunks
+    expect(result.chunks.length).toBe(0);
   });
 
   it('should correctly handle mixed tabs and spaces for indentation', async () => {
@@ -392,5 +392,233 @@ class MixedWhitespace {
     expect(chunk).toContain("\t// This line is indented with a tab");
     expect(chunk).toContain("\t    // This line has a tab and spaces");
     expect(chunk).toContain("    method()");
+  });
+
+  describe('Insignificant Chunk Filtering', () => {
+    it('should discard chunks containing only garbage tokens', async () => {
+      const codeWithGarbageChunks = `function test() {
+  const obj = { a: 1 };
+  return obj;
+}`;
+
+      // This test simulates the chunker producing garbage chunks
+      // We'll create a mock scenario where chunks like "}" would be produced
+      const result = await codeChunker.chunkCode(codeWithGarbageChunks, 'typescript', undefined, abortController.signal);
+
+      // All chunks should contain meaningful content, not just closing braces
+      for (const chunk of result.chunks) {
+        const trimmed = chunk.trim();
+        expect(trimmed).not.toBe('}');
+        expect(trimmed).not.toBe(')');
+        expect(trimmed).not.toBe(']');
+        expect(trimmed).not.toMatch(/^}\s*$/);
+      }
+    });
+
+    it('should discard chunks with garbage tokens followed by comments', async () => {
+      const codeWithGarbageAndComments = `namespace TestNamespace {
+  class TestClass {
+    method() {
+      return 1;
+    }
+  }
+} // end namespace`;
+
+      const result = await codeChunker.chunkCode(codeWithGarbageAndComments, 'typescript', undefined, abortController.signal);
+
+      // Should not have chunks that are just "} // comment"
+      for (const chunk of result.chunks) {
+        const trimmed = chunk.trim();
+        expect(trimmed).not.toMatch(/^}\s*\/\/.*$/);
+        expect(trimmed).not.toMatch(/^\)\s*\/\/.*$/);
+        expect(trimmed).not.toMatch(/^]\s*\/\/.*$/);
+      }
+    });
+
+    it('should discard chunks containing only comments and whitespace', async () => {
+      const codeWithCommentOnlyChunks = `class TestClass {
+  // This is a comment
+  /* This is a block comment */
+
+  method() {
+    return 1;
+  }
+
+  // Another comment
+  /* Another block comment */
+}`;
+
+      const result = await codeChunker.chunkCode(codeWithCommentOnlyChunks, 'typescript', undefined, abortController.signal);
+
+      // All chunks should contain some actual code, not just comments
+      for (const chunk of result.chunks) {
+        const lines = chunk.split('\n');
+        let hasNonCommentContent = false;
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed === '') continue;
+
+          // Check if line contains actual code (not just comments)
+          if (!trimmed.startsWith('//') &&
+            !trimmed.startsWith('/*') &&
+            !trimmed.endsWith('*/') &&
+            !trimmed.startsWith('*')) {
+            hasNonCommentContent = true;
+            break;
+          }
+        }
+
+        expect(hasNonCommentContent).toBe(true);
+      }
+    });
+
+    it('should handle partial block comments correctly', async () => {
+      const codeWithPartialBlockComments = `/*
+ * This is a multi-line comment
+ * that might get split across chunks
+ */
+function test() {
+  /*
+   * Another block comment
+   * with multiple lines
+   */
+  return 1;
+}`;
+
+      const result = await codeChunker.chunkCode(codeWithPartialBlockComments, 'typescript', undefined, abortController.signal);
+
+      // Should not have chunks that are only partial block comments
+      for (const chunk of result.chunks) {
+        const lines = chunk.split('\n');
+        let hasNonCommentContent = false;
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed === '') continue;
+
+          // Check if line contains actual code (not just comment patterns)
+          if (!trimmed.startsWith('/*') &&
+            !trimmed.endsWith('*/') &&
+            !trimmed.startsWith('*') &&
+            !trimmed.startsWith('//')) {
+            hasNonCommentContent = true;
+            break;
+          }
+        }
+
+        expect(hasNonCommentContent).toBe(true);
+      }
+    });
+
+    it('should preserve legitimate small code chunks', async () => {
+      const codeWithSmallButValidChunks = `const a = 1;
+const b = 2;
+const sum = a + b;
+return sum;`;
+
+      const result = await codeChunker.chunkCode(codeWithSmallButValidChunks, 'typescript', undefined, abortController.signal);
+
+      expect(result.chunks.length).toBeGreaterThan(0);
+
+      // All chunks should be preserved as they contain valid code
+      const allContent = result.chunks.join('\n');
+      expect(allContent).toContain('const a = 1');
+      expect(allContent).toContain('const b = 2');
+      expect(allContent).toContain('const sum = a + b');
+      expect(allContent).toContain('return sum');
+    });
+
+    it('should handle Ruby "end" keyword correctly', async () => {
+      const rubyCodeWithEndKeyword = `class TestClass
+  def test_method
+    puts "Hello"
+  end
+
+  def another_method
+    return true
+  end
+end`;
+
+      const result = await codeChunker.chunkCode(rubyCodeWithEndKeyword, 'ruby', undefined, abortController.signal);
+
+      // Should not have chunks that are just "end"
+      for (const chunk of result.chunks) {
+        const trimmed = chunk.trim();
+        expect(trimmed).not.toBe('end');
+        expect(trimmed).not.toMatch(/^end\s*$/);
+        expect(trimmed).not.toMatch(/^end\s*#.*$/); // end followed by comment
+      }
+    });
+
+    it('should handle different language comment markers', async () => {
+      const pythonCodeWithComments = `# This is a Python comment
+def test_function():
+    # Another comment
+    return True
+
+# Final comment`;
+
+      const result = await codeChunker.chunkCode(pythonCodeWithComments, 'python', undefined, abortController.signal);
+
+      // Should not have chunks that are only Python comments
+      for (const chunk of result.chunks) {
+        const lines = chunk.split('\n');
+        let hasNonCommentContent = false;
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed === '') continue;
+
+          if (!trimmed.startsWith('#')) {
+            hasNonCommentContent = true;
+            break;
+          }
+        }
+
+        expect(hasNonCommentContent).toBe(true);
+      }
+    });
+
+    it('should handle languages without line comment markers (CSS)', async () => {
+      const cssCode = `/* CSS block comment */
+.container {
+  width: 100%;
+  height: 100vh;
+}
+
+/* Another block comment */
+.button {
+  background: blue;
+  color: white;
+}`;
+
+      const result = await codeChunker.chunkCode(cssCode, 'css', undefined, abortController.signal);
+
+      expect(result.chunks.length).toBeGreaterThan(0);
+
+      // Should preserve meaningful CSS content
+      const allContent = result.chunks.join('\n');
+      expect(allContent).toContain('.container');
+      expect(allContent).toContain('.button');
+      expect(allContent).toContain('width: 100%');
+    });
+
+    it('should not filter chunks incorrectly when they contain valid code starting with filtering patterns', async () => {
+      const codeWithValidPatterns = `function test() {
+  const endOfString = "end";
+  const bracketCount = "}".length;
+  const result = array.map(x => x);
+  return result;
+}`;
+
+      const result = await codeChunker.chunkCode(codeWithValidPatterns, 'typescript', undefined, abortController.signal);
+
+      // All content should be preserved since it's valid code
+      const allContent = result.chunks.join('\n');
+      expect(allContent).toContain('const endOfString = "end"');
+      expect(allContent).toContain('const bracketCount = "}".length');
+      expect(allContent).toContain('const result = array.map(x => x)');
+    });
   });
 });

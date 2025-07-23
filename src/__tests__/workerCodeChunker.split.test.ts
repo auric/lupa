@@ -138,16 +138,48 @@ describe('WorkerCodeChunker Improved Splitting Tests', () => {
             abortController.signal,
         );
 
-        // Find chunks containing comments
-        const commentChunks = result.chunks.filter(chunk =>
-            chunk.includes('//') || chunk.includes('/*')
-        );
+        // All chunks should contain meaningful code, not just comments
+        expect(result.chunks.length).toBeGreaterThan(0);
+        
+        // Verify that no chunks are comment-only (this is the new filtering behavior)
+        for (const chunk of result.chunks) {
+            const lines = chunk.split('\n');
+            let hasNonCommentContent = false;
+            
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed === '') continue;
+                
+                // Check if line contains actual code (not just comments)
+                if (!trimmed.startsWith('//') && 
+                    !trimmed.startsWith('/*') && 
+                    !trimmed.endsWith('*/') &&
+                    !trimmed.startsWith('*')) {
+                    hasNonCommentContent = true;
+                    break;
+                }
+            }
+            
+            expect(hasNonCommentContent).toBe(true);
+        }
 
-        // Verify that at least some comments were found
-        expect(commentChunks.length).toBeGreaterThan(0);
+        // Find chunks containing both code and comments (these should be preserved)
+        const mixedChunks = result.chunks.filter(chunk => {
+            const hasComments = chunk.includes('//') || chunk.includes('/*');
+            const lines = chunk.split('\n');
+            let hasCode = lines.some(line => {
+                const trimmed = line.trim();
+                return trimmed !== '' && 
+                       !trimmed.startsWith('//') && 
+                       !trimmed.startsWith('/*') && 
+                       !trimmed.endsWith('*/') &&
+                       !trimmed.startsWith('*');
+            });
+            return hasComments && hasCode;
+        });
 
         // Ensure no chunks end with just the comment marker
-        for (const chunk of commentChunks) {
+        for (const chunk of mixedChunks) {
             // A chunk shouldn't end with just a comment marker
             expect(chunk.trimEnd()).not.toMatch(/\/\/\s*$/);
             expect(chunk.trimEnd()).not.toMatch(/\/\*\s*$/);

@@ -181,9 +181,25 @@ export function standaloneFunction(test: string): boolean {
         // These regex patterns match incomplete identifiers, string literals, or operators
         // 1. Content Integrity Check
         const reconstructedCode = result.chunks.join('\n');
-        const originalLines = longFunction.split('\n').filter(line => line.trim() !== '');
-        const reconstructedLines = reconstructedCode.split('\n').filter(line => line.trim() !== '');
-        expect(reconstructedLines.length).toEqual(originalLines.length);
+        
+        // With the new filtering, comment-only chunks are removed, so we expect fewer lines
+        // Count meaningful code lines (non-comment lines) in both original and reconstructed
+        const originalCodeLines = longFunction.split('\n').filter(line => {
+            const trimmed = line.trim();
+            return trimmed !== '' && !trimmed.startsWith('//');
+        });
+        const reconstructedCodeLines = reconstructedCode.split('\n').filter(line => {
+            const trimmed = line.trim();
+            return trimmed !== '' && !trimmed.startsWith('//');
+        });
+        
+        // The meaningful code content should be preserved
+        expect(reconstructedCodeLines.length).toEqual(originalCodeLines.length);
+        
+        // Verify the filtering is working - reconstructed should have fewer total lines
+        const originalTotalLines = longFunction.split('\n').filter(line => line.trim() !== '');
+        const reconstructedTotalLines = reconstructedCode.split('\n').filter(line => line.trim() !== '');
+        expect(reconstructedTotalLines.length).toBeLessThan(originalTotalLines.length);
 
         // 2. Syntactic Sanity Check
         const badLineEndings = [

@@ -1,6 +1,8 @@
 import { CodeAnalysisService } from '../services/codeAnalysisService';
 import { WorkerTokenEstimator } from './workerTokenEstimator';
 import type { DetailedChunkingResult, EmbeddingOptions } from '../types/embeddingTypes';
+import type { SupportedLanguage } from '../types/types';
+import { SUPPORTED_LANGUAGES } from '../types/types';
 import { LANGUAGE_QUERIES } from '../config/treeSitterQueries';
 
 export class WorkerCodeChunker {
@@ -34,7 +36,7 @@ export class WorkerCodeChunker {
             console.error(`Advanced chunking failed for language ${language}. Falling back.`, error);
             if (signal.aborted) throw new Error('Operation cancelled');
         }
-        return this.createBasicChunks(text, maxTokens);
+        return this.createBasicChunks(text, maxTokens, language);
     }
 
     private async createStructureAwareChunks(text: string, language: string, variant: string | undefined, maxTokens: number, signal: AbortSignal): Promise<DetailedChunkingResult> {
@@ -49,7 +51,7 @@ export class WorkerCodeChunker {
         const breakpoints = breakpointLines.map(line => lineOffsets[line] ?? text.length);
 
         if (breakpoints.length === 0) {
-            return this.createBasicChunks(text, maxTokens);
+            return this.createBasicChunks(text, maxTokens, language);
         }
 
         const chunks: string[] = [];
@@ -69,7 +71,7 @@ export class WorkerCodeChunker {
                 chunks.push(segment);
                 offsets.push(currentOffset);
             } else {
-                const subChunks = await this.createBasicChunks(segment, maxTokens);
+                const subChunks = await this.createBasicChunks(segment, maxTokens, language);
                 subChunks.chunks.forEach((sc, i) => {
                     chunks.push(sc);
                     offsets.push(currentOffset + subChunks.offsets[i]);
@@ -78,7 +80,7 @@ export class WorkerCodeChunker {
             currentOffset = bp;
         }
 
-        return this.finalizeChunks(chunks, offsets);
+        return this.finalizeChunks(chunks, offsets, language);
     }
 
     private async createMarkdownChunks(text: string, maxTokens: number, signal: AbortSignal): Promise<DetailedChunkingResult> {
@@ -101,7 +103,7 @@ export class WorkerCodeChunker {
                 chunks.push(p);
                 offsets.push(currentOffset);
             } else {
-                const subChunks = await this.createBasicChunks(p, maxTokens);
+                const subChunks = await this.createBasicChunks(p, maxTokens, 'markdown');
                 subChunks.chunks.forEach((sc, i) => {
                     chunks.push(sc);
                     offsets.push(currentOffset + subChunks.offsets[i]);
@@ -110,10 +112,10 @@ export class WorkerCodeChunker {
             currentOffset += p.length + (text.substring(currentOffset + p.length).match(/^\s*\n/) || [''])[0].length;
         }
 
-        return this.finalizeChunks(chunks, offsets);
+        return this.finalizeChunks(chunks, offsets, 'markdown');
     }
 
-    private async createBasicChunks(text: string, maxTokens: number): Promise<DetailedChunkingResult> {
+    private async createBasicChunks(text: string, maxTokens: number, language: string | undefined = undefined): Promise<DetailedChunkingResult> {
         const chunks: string[] = [];
         const offsets: number[] = [];
         const lines = text.split('\n');
@@ -167,9 +169,172 @@ export class WorkerCodeChunker {
             offsets.push(chunkStartOffset);
         }
 
-        return this.finalizeChunks(chunks, offsets);
+        return this.finalizeChunks(chunks, offsets, language);
     }
 
+
+    /**
+     * Filters out insignificant chunks to improve embedding quality.
+     * Removes chunks that consist solely of:
+     * 1. Garbage tokens (}, ), ], end) optionally followed by comments
+     * 2. Only comments and whitespace
+     */
+    private filterInsignificantChunks(
+        chunks: string[],
+        offsets: number[],
+        languageConfig: SupportedLanguage | undefined
+    ): { chunks: string[], offsets: number[] } {
+        const filteredChunks: string[] = [];
+        const filteredOffsets: number[] = [];
+        const garbageTokens = ['}', ')', ']', 'end'];
+        let discardedCount = 0;
+
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const chunkOffset = offsets[i];
+
+            if (this.isInsignificantChunk(chunk, languageConfig, garbageTokens)) {
+                // Log with truncated content for readability
+                const truncatedChunk = chunk.length > 60
+                    ? chunk.substring(0, 60).replace(/\n/g, '\\n') + '...'
+                    : chunk.replace(/\n/g, '\\n');
+                console.debug(`Discarding insignificant chunk at offset ${chunkOffset}: "${truncatedChunk}"`);
+                discardedCount++;
+                continue;
+            }
+
+            filteredChunks.push(chunk);
+            filteredOffsets.push(chunkOffset);
+        }
+
+        if (discardedCount > 0) {
+            console.log(`Filtered out ${discardedCount} insignificant chunks. Kept ${filteredChunks.length} chunks.`);
+        }
+
+        return { chunks: filteredChunks, offsets: filteredOffsets };
+    }
+
+    /**
+     * Determines if a chunk is insignificant and should be filtered out.
+     */
+    private isInsignificantChunk(
+        chunk: string,
+        languageConfig: SupportedLanguage | undefined,
+        garbageTokens: string[]
+    ): boolean {
+        const trimmedChunk = chunk.trim();
+
+        if (trimmedChunk === '') {
+            return true;
+        }
+
+        // Check if chunk consists only of comments and whitespace
+        if (this.isCommentOnlyChunk(chunk, languageConfig)) {
+            return true;
+        }
+
+        // Check if chunk starts with a garbage token followed by optional comment
+        for (const token of garbageTokens) {
+            if (this.isGarbageTokenChunk(chunk, token, languageConfig)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks if a chunk contains only comments and whitespace.
+     */
+    private isCommentOnlyChunk(chunk: string, languageConfig: SupportedLanguage | undefined): boolean {
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine === '') {
+                continue; // Whitespace-only lines are okay
+            }
+
+            // Check if line is a comment
+            if (!this.isCommentLine(trimmedLine, languageConfig)) {
+                return false; // Found non-comment content
+            }
+        }
+
+        return true; // All non-empty lines are comments
+    }
+
+    /**
+     * Checks if a line is a comment (line comment, block comment start/end, or block comment continuation).
+     */
+    private isCommentLine(line: string, languageConfig: SupportedLanguage | undefined): boolean {
+        const trimmed = line.trim();
+
+        // Check for line comments if marker is available
+        if (languageConfig?.lineCommentMarker && trimmed.startsWith(languageConfig.lineCommentMarker)) {
+            return true;
+        }
+
+        // Check for block comment patterns
+        // Complete block comment: /* ... */
+        if (trimmed.startsWith('/*') && trimmed.endsWith('*/')) {
+            return true;
+        }
+
+        // Block comment start: /*
+        if (trimmed.startsWith('/*')) {
+            return true;
+        }
+
+        // Block comment end: */
+        if (trimmed.endsWith('*/')) {
+            return true;
+        }
+
+        // Block comment continuation: lines that start with * (common in multi-line block comments)
+        if (trimmed.startsWith('*') && !trimmed.startsWith('*/')) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks if a chunk starts with a garbage token followed by optional comment.
+     */
+    private isGarbageTokenChunk(
+        chunk: string,
+        garbageToken: string,
+        languageConfig: SupportedLanguage | undefined
+    ): boolean {
+        const trimmedChunk = chunk.trim();
+
+        if (!trimmedChunk.startsWith(garbageToken)) {
+            return false;
+        }
+
+        // Get the rest of the content after the garbage token
+        const restOfContent = trimmedChunk.substring(garbageToken.length).trim();
+
+        if (restOfContent === '') {
+            return true; // Just the garbage token alone
+        }
+
+        // Check if the rest is only comments
+        const restLines = restOfContent.split('\n');
+        for (const line of restLines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine === '') {
+                continue; // Whitespace is okay
+            }
+
+            if (!this.isCommentLine(trimmedLine, languageConfig)) {
+                return false; // Found non-comment content after garbage token
+            }
+        }
+
+        return true; // Only comments follow the garbage token
+    }
 
     private trimCommonLeadingWhitespace(lines: string[]): string[] {
         if (lines.length === 0) {
@@ -193,13 +358,23 @@ export class WorkerCodeChunker {
         return lines;
     }
 
-    private finalizeChunks(chunks: string[], offsets: number[]): DetailedChunkingResult {
+    private finalizeChunks(chunks: string[], offsets: number[], language: string | undefined = undefined): DetailedChunkingResult {
+        // Apply insignificant chunk filtering before final processing
+        let filteredResult = { chunks, offsets };
+        if (language) {
+            // Find language configuration from supported languages
+            const languageConfig = Object.values(SUPPORTED_LANGUAGES).find(
+                lang => lang.language === language
+            );
+            filteredResult = this.filterInsignificantChunks(chunks, offsets, languageConfig);
+        }
+
         const finalChunks: string[] = [];
         const finalOffsets: number[] = [];
 
-        for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            const chunkOffset = offsets[i];
+        for (let i = 0; i < filteredResult.chunks.length; i++) {
+            const chunk = filteredResult.chunks[i];
+            const chunkOffset = filteredResult.offsets[i];
 
             const lines = chunk.split('\n');
             let firstLineIdx = 0;
