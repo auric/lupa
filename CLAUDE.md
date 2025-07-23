@@ -302,30 +302,45 @@ The extension provides these VS Code commands:
 
 ## BMAD Method Integration
 
-**BMAD (Breakthrough Method for Agile AI-Driven Development)** is integrated for enhanced development workflows using specialized AI agents.
+**BMAD (Breakthrough Method for Agile AI-Driven Development)** is integrated for enhanced development workflows using specialized AI agents. BMAD focuses on structured, quality-controlled development with emphasis on documentation-first approaches and systematic integration.
 
-### BMAD File Locations
+### BMAD Core Architecture
 
-- **Agents**: `.bmad-core/agents/` - Specialized AI agents (pm, architect, dev, qa, sm, etc.)
-- **Templates**: `.bmad-core/templates/` - Document templates (YAML format)
+The BMAD system provides structured prompts, templates, and workflows to guide AI agents through complex development tasks. It supports both greenfield (new projects) and brownfield (existing project enhancement) development approaches.
+
+#### Core Directory Structure
+
+- **Agents**: `.bmad-core/agents/` - Specialized AI agents with YAML headers defining roles, capabilities, and dependencies
+- **Agent Teams**: `.bmad-core/agent-teams/` - Coordinated multi-agent workflows
+- **Templates**: `.bmad-core/templates/` - Document templates with markup language rules
 - **Tasks**: `.bmad-core/tasks/` - Repeatable action instructions
 - **Workflows**: `.bmad-core/workflows/` - Development sequence definitions
 - **Checklists**: `.bmad-core/checklists/` - Quality assurance validation
-- **Data**: `.bmad-core/data/` - Knowledge base and preferences
+- **Data**: `.bmad-core/data/` - Knowledge base and technical preferences
 - **Configuration**: `.bmad-core/core-config.yaml` - BMAD behavior settings
 
-### Important Template Path Resolution
+### Agent File Reading and Dependency Resolution
 
-**CRITICAL**: When BMAD tasks reference templates or other dependencies, they are located in `.bmad-core/` subdirectories, NOT in the same directory as the task. For example:
+**CRITICAL**: BMAD agents MUST automatically load and read additional files based on their YAML configuration headers. Each agent:
 
-- Task references `prd-tmpl.yaml` → Look in `.bmad-core/templates/prd-tmpl.yaml`
-- Task references `architect-checklist.md` → Look in `.bmad-core/checklists/architect-checklist.md`
+1. **Loads Dependencies**: Agents specify required resources in their YAML headers (templates, tasks, knowledge base data)
+2. **Reads Project Documentation**: Agents automatically access project-specific documentation from `docs/` folder
+3. **Follows Lean Context Principle**: Agents only load resources they need to maintain focused context
+4. **Supports Recursive Dependencies**: The dependency resolution system recursively finds and bundles required resources
 
-### BMAD Agent Usage
+#### Dependency Path Resolution
 
-- **Claude Code**: Use `/agent-name` (e.g., `/bmad-master`, `/dev`, `/pm`)
-- **Commands**: Use `*command` syntax (e.g., `*help`, `*create`, `*status`)
-- **Document Requirements**: Place PRD at `docs/prd.md` and Architecture at `docs/architecture.md`
+When BMAD agents reference files, they follow this resolution order:
+
+1. `.bmad-core/` subdirectories for framework resources
+2. `docs/` directory for project-specific documentation
+3. Root directory for project files
+
+**Examples**:
+
+- Agent references `prd-tmpl.yaml` → Loads from `.bmad-core/templates/prd-tmpl.yaml`
+- Agent references `architect-checklist.md` → Loads from `.bmad-core/checklists/architect-checklist.md`
+- Agent needs project architecture → Reads from `docs/project-architecture.md`
 
 ## Coding Standards
 
