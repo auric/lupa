@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
 import { ContextSnippet } from '../types/contextTypes';
@@ -127,8 +128,15 @@ export class TokenManagerService {
             return { optimizedSnippets: [], wasTruncated: true };
         }
 
+        // First deduplicate the snippets to remove duplicates
+        const deduplicatedSnippets = this.deduplicateContext(snippets);
+
+        if (deduplicatedSnippets.length === 0) {
+            return { optimizedSnippets: [], wasTruncated: false };
+        }
+
         // Sort snippets: Embeddings > LSP refs > LSP defs (for PR analysis relevance)
-        const sortedSnippets = [...snippets].sort((a, b) => {
+        const sortedSnippets = [...deduplicatedSnippets].sort((a, b) => {
             const typePriority = (type: ContextSnippet['type']): number => {
                 if (type === 'embedding') return 3; // Highest: similar patterns most valuable
                 if (type === 'lsp-reference') return 2; // Medium: usage patterns for impact analysis
@@ -283,7 +291,7 @@ export class TokenManagerService {
             } // End of 'if (targetTinyContentTokens > 0)'
         } // End of 'if (sortedSnippets.length > 0 && selectedSnippets.length === 0 ...)' for tiny snippet logic
 
-        Log.info(`Context optimization: ${selectedSnippets.length} of ${snippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
+        Log.info(`Context optimization: ${selectedSnippets.length} of ${deduplicatedSnippets.length} deduplicated snippets selected (${snippets.length} original). Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
         return { optimizedSnippets: selectedSnippets, wasTruncated };
     }
 
@@ -330,6 +338,39 @@ export class TokenManagerService {
         }
 
         return result;
+    }
+
+    /**
+     * Removes duplicate context snippets using SHA-256 hashing.
+     * @param snippets List of context snippets to deduplicate
+     * @returns Array of unique context snippets
+     */
+    private deduplicateContext(snippets: ContextSnippet[]): ContextSnippet[] {
+        if (snippets.length === 0) {
+            return [];
+        }
+
+        const seen = new Set<string>();
+        const deduplicatedSnippets: ContextSnippet[] = [];
+
+        for (const snippet of snippets) {
+            // Create hash based on content only (not id or other metadata)
+            const hash = crypto.createHash('sha256').update(snippet.content.trim()).digest('hex');
+
+            if (!seen.has(hash)) {
+                seen.add(hash);
+                deduplicatedSnippets.push(snippet);
+            } else {
+                Log.info(`Duplicate context snippet filtered out: ${snippet.id}`);
+            }
+        }
+
+        const removedCount = snippets.length - deduplicatedSnippets.length;
+        if (removedCount > 0) {
+            Log.info(`Context deduplication: removed ${removedCount} duplicate snippets out of ${snippets.length} total`);
+        }
+
+        return deduplicatedSnippets;
     }
 
     /**
@@ -440,7 +481,7 @@ Include code examples when they significantly clarify the solution or demonstrat
 // Current code (if showing a problem)
 [actual code from PR]
 
-// Recommended improvement  
+// Recommended improvement
 [corrected/improved code with brief inline comments]
 \`\`\`
 
@@ -460,12 +501,12 @@ Your response MUST follow this EXACT structure with NO deviations:
   **Suggestion:** [Specific implementation approach]
   **Code Example:** *(Include only when it clarifies a complex fix)*
 
-### 💡 Suggestions & Best Practices  
+### 💡 Suggestions & Best Practices
 [Recommended improvements for code quality. If none exist, write: "Code quality meets standards."]
 
 **Format for each suggestion:**
 - **File:** [filename:line_number] *(use "filename:unknown" if line number unavailable)*
-  **Issue:** [Description of improvement opportunity]  
+  **Issue:** [Description of improvement opportunity]
   **Suggestion:** [Specific recommendation with implementation approach]
   **Code Example:** *(Include when it demonstrates non-obvious improvements)*
 

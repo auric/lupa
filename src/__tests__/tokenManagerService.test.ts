@@ -283,6 +283,45 @@ describe('TokenManagerService', () => {
             vi.mocked(mockLanguageModel.countTokens).mockImplementation(originalCountTokens);
         });
 
+        it('should work correctly with deduplication and truncation combined', async () => {
+            // Create snippets with some duplicates
+            const snippets: ContextSnippet[] = [
+                createSnippet('s1', 'embedding', 'High relevance content '.repeat(5), 0.95), // ~25 tokens
+                createSnippet('s2', 'lsp-definition', 'High relevance content '.repeat(5), 1.0), // Duplicate of s1, ~25 tokens
+                createSnippet('s3', 'lsp-reference', 'Medium relevance content '.repeat(5), 0.8), // ~25 tokens
+                createSnippet('s4', 'embedding', 'Low relevance content '.repeat(5), 0.7), // ~25 tokens
+            ];
+
+            // First test deduplication separately
+            const deduplicated = tokenManagerService.deduplicateContext(snippets);
+            expect(deduplicated.length).toBe(3); // s2 should be removed as duplicate of s1
+
+            // Now test that truncation works on deduplicated results
+            // Available tokens should fit 2 snippets (50-60 tokens including buffers)
+            const availableTokens = 60;
+            const { optimizedSnippets, wasTruncated } = await tokenManagerService.optimizeContext(snippets, availableTokens);
+
+            // Should have selected top 2 snippets after deduplication
+            expect(wasTruncated).toBe(true);
+            expect(optimizedSnippets.length).toBe(2);
+            // With new priority (embedding > ref > def), should select s1 (embedding) and s3 (reference)
+            expect(optimizedSnippets.map(s => s.id)).toEqual(['s1', 's4']); // Both embeddings, sorted by relevance
+        });
+
+        it('should return an empty array if deduplication results in an empty list', async () => {
+            const snippets: ContextSnippet[] = [
+                createSnippet('s1', 'embedding', 'duplicate content', 0.9),
+                createSnippet('s2', 'embedding', 'duplicate content', 0.8),
+            ];
+            // Mock deduplicateContext to return an empty array
+            // @ts-expect-error
+            vi.spyOn(tokenManagerService, 'deduplicateContext').mockReturnValue([]);
+
+            const { optimizedSnippets, wasTruncated } = await tokenManagerService.optimizeContext(snippets, 100);
+
+            expect(optimizedSnippets.length).toBe(0);
+            expect(wasTruncated).toBe(false);
+        });
 
         it('should correctly format snippets to string with headers and truncation message', async () => {
             const lspDef = createSnippet('lspDef', 'lsp-definition', 'Definition content', 1.0);
@@ -311,6 +350,85 @@ describe('TokenManagerService', () => {
 
             formatted = tokenManagerService.formatContextSnippetsToString([], false);
             expect(formatted).toEqual("No relevant context snippets were selected or found.");
+        });
+    });
+
+    describe('deduplicateContext', () => {
+        const createSnippet = (id: string, type: ContextSnippet['type'], content: string, relevanceScore: number): ContextSnippet => ({
+            id, type, content, relevanceScore
+        });
+
+        it('should remove duplicate snippets based on content', () => {
+            const snippets: ContextSnippet[] = [
+                createSnippet('s1', 'lsp-definition', 'function test() { return 42; }', 1.0),
+                createSnippet('s2', 'embedding', 'function test() { return 42; }', 0.8), // Same content as s1
+                createSnippet('s3', 'lsp-reference', 'function other() { return 24; }', 0.9),
+            ];
+
+            const deduplicated = tokenManagerService.deduplicateContext(snippets);
+
+            expect(deduplicated.length).toBe(2);
+            expect(deduplicated.map(s => s.id)).toEqual(['s1', 's3']);
+        });
+
+        it('should preserve order of first occurrence when deduplicating', () => {
+            const snippets: ContextSnippet[] = [
+                createSnippet('s1', 'embedding', 'duplicate content', 0.8),
+                createSnippet('s2', 'lsp-definition', 'unique content', 1.0),
+                createSnippet('s3', 'lsp-reference', 'duplicate content', 0.9), // Same as s1
+                createSnippet('s4', 'embedding', 'another unique', 0.7),
+            ];
+
+            const deduplicated = tokenManagerService.deduplicateContext(snippets);
+
+            expect(deduplicated.length).toBe(3);
+            expect(deduplicated.map(s => s.id)).toEqual(['s1', 's2', 's4']);
+        });
+
+        it('should handle empty array', () => {
+            const deduplicated = tokenManagerService.deduplicateContext([]);
+            expect(deduplicated).toEqual([]);
+        });
+
+        it('should handle array with no duplicates', () => {
+            const snippets: ContextSnippet[] = [
+                createSnippet('s1', 'lsp-definition', 'unique content 1', 1.0),
+                createSnippet('s2', 'embedding', 'unique content 2', 0.8),
+                createSnippet('s3', 'lsp-reference', 'unique content 3', 0.9),
+            ];
+
+            const deduplicated = tokenManagerService.deduplicateContext(snippets);
+
+            expect(deduplicated.length).toBe(3);
+            expect(deduplicated).toEqual(snippets);
+        });
+
+        it('should handle whitespace differences in content', () => {
+            const snippets: ContextSnippet[] = [
+                createSnippet('s1', 'lsp-definition', 'function test() { return 42; }', 1.0),
+                createSnippet('s2', 'embedding', '  function test() { return 42; }  ', 0.8), // Same content with whitespace
+                createSnippet('s3', 'lsp-reference', 'function test() { return 42; }\n', 0.9), // Same content with newline
+            ];
+
+            const deduplicated = tokenManagerService.deduplicateContext(snippets);
+
+            // All should be considered the same due to trim() in hash creation
+            expect(deduplicated.length).toBe(1);
+            expect(deduplicated[0].id).toBe('s1');
+        });
+
+        it('should deduplicate all identical snippets leaving only one', () => {
+            const snippets: ContextSnippet[] = [
+                createSnippet('s1', 'lsp-definition', 'identical content', 1.0),
+                createSnippet('s2', 'lsp-definition', 'identical content', 0.9),
+                createSnippet('s3', 'lsp-definition', 'identical content', 0.8),
+                createSnippet('s4', 'lsp-definition', 'identical content', 0.7),
+            ];
+
+            const deduplicated = tokenManagerService.deduplicateContext(snippets);
+
+            expect(deduplicated.length).toBe(1);
+            expect(deduplicated[0].id).toBe('s1'); // First occurrence preserved
         });
     });
 

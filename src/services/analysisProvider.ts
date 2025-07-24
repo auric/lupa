@@ -110,27 +110,7 @@ export class AnalysisProvider implements vscode.Disposable {
             const preliminaryContextStringForAllSnippets = this.tokenManager.formatContextSnippetsToString(allContextSnippets, false);
 
             // --- Calculate diffStructureTokens ---
-            // Construct the diff part of the prompt with XML structure *without* actual context content to get its token cost
-            const instructionsXmlForCalc = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
-            const contextXmlPlaceholderForCalc = "<context>\n[CONTEXT_PLACEHOLDER]\n</context>\n\n";
-            
-            let fileContentXmlForCalc = "<file_to_review>\n";
-            for (const fileDiff of parsedDiff) {
-                fileContentXmlForCalc += `File: ${fileDiff.filePath}\n`;
-                for (const hunk of fileDiff.hunks) {
-                    const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
-                    if (hunkHeaderMatch) {
-                        fileContentXmlForCalc += `${hunkHeaderMatch[0]}\n`;
-                    } else {
-                        fileContentXmlForCalc += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
-                    }
-                    fileContentXmlForCalc += hunk.lines.join('\n') + '\n\n';
-                }
-            }
-            fileContentXmlForCalc += "</file_to_review>\n\n";
-            
-            const diffStructureForTokenCalc = instructionsXmlForCalc + contextXmlPlaceholderForCalc + fileContentXmlForCalc;
-            const calculatedDiffStructureTokens = await this.tokenManager.calculateTokens(diffStructureForTokenCalc);
+            const calculatedDiffStructureTokens = await this.calculateDiffStructureTokens(diffText, parsedDiff);
             // --- End Calculate diffStructureTokens ---
 
             const tokenComponents = {
@@ -154,7 +134,7 @@ export class AnalysisProvider implements vscode.Disposable {
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
 
-            // Optimize the context snippets based on the allocated budget
+            // Optimize the context snippets (includes deduplication internally)
             const { optimizedSnippets, wasTruncated } = await this.tokenManager.optimizeContext(
                 allContextSnippets,
                 allocation.contextAllocationTokens
@@ -166,31 +146,7 @@ export class AnalysisProvider implements vscode.Disposable {
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
 
-            // Construct the final interleaved prompt using XML structure and optimized snippets
-            const contextXml = optimizedSnippets.length > 0 ? `<context>
-${finalOptimizedContextStringForReturn}
-</context>
-
-` : '';
-
-            let fileContentXml = "<file_to_review>\n";
-            for (const fileDiff of parsedDiff) {
-                fileContentXml += `File: ${fileDiff.filePath}\n`;
-                for (const hunk of fileDiff.hunks) {
-                    const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
-                    if (hunkHeaderMatch) {
-                        fileContentXml += `${hunkHeaderMatch[0]}\n`;
-                    } else {
-                        fileContentXml += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
-                    }
-                    fileContentXml += hunk.lines.join('\n') + '\n\n';
-                }
-            }
-            fileContentXml += "</file_to_review>\n\n";
-
-            const instructionsXml = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
-            
-            const finalInterleavedPromptContent = `${instructionsXml}${contextXml}${fileContentXml}`.trim();
+            const finalInterleavedPromptContent = this.buildFinalPrompt(diffText, parsedDiff, finalOptimizedContextStringForReturn, optimizedSnippets.length > 0);
 
             const messages = [
                 vscode.LanguageModelChatMessage.Assistant(systemPrompt),
@@ -226,8 +182,51 @@ ${finalOptimizedContextStringForReturn}
         }
     }
 
-    // getSystemPromptForMode is removed as it's now in TokenManagerService.
-    // The actual method that was here has been deleted.
+    private async calculateDiffStructureTokens(diffText: string, parsedDiff: DiffHunk[]): Promise<number> {
+        const instructionsXmlForCalc = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
+        const contextXmlPlaceholderForCalc = "<context>\n[CONTEXT_PLACEHOLDER]\n</context>\n\n";
+
+        let fileContentXmlForCalc = "<file_to_review>\n";
+        for (const fileDiff of parsedDiff) {
+            fileContentXmlForCalc += `File: ${fileDiff.filePath}\n`;
+            for (const hunk of fileDiff.hunks) {
+                const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
+                if (hunkHeaderMatch) {
+                    fileContentXmlForCalc += `${hunkHeaderMatch[0]}\n`;
+                } else {
+                    fileContentXmlForCalc += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                }
+                fileContentXmlForCalc += hunk.lines.join('\n') + '\n\n';
+            }
+        }
+        fileContentXmlForCalc += "</file_to_review>\n\n";
+
+        const diffStructureForTokenCalc = instructionsXmlForCalc + contextXmlPlaceholderForCalc + fileContentXmlForCalc;
+        return this.tokenManager.calculateTokens(diffStructureForTokenCalc);
+    }
+
+    private buildFinalPrompt(diffText: string, parsedDiff: DiffHunk[], contextString: string, hasContext: boolean): string {
+        const contextXml = hasContext ? `<context>\n${contextString}\n</context>\n\n` : '';
+
+        let fileContentXml = "<file_to_review>\n";
+        for (const fileDiff of parsedDiff) {
+            fileContentXml += `File: ${fileDiff.filePath}\n`;
+            for (const hunk of fileDiff.hunks) {
+                const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
+                if (hunkHeaderMatch) {
+                    fileContentXml += `${hunkHeaderMatch[0]}\n`;
+                } else {
+                    fileContentXml += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                }
+                fileContentXml += hunk.lines.join('\n') + '\n\n';
+            }
+        }
+        fileContentXml += "</file_to_review>\n\n";
+
+        const instructionsXml = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
+
+        return `${instructionsXml}${contextXml}${fileContentXml}`.trim();
+    }
 
     /**
      * Dispose of resources
