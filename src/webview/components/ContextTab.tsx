@@ -15,8 +15,6 @@ export const ContextTab = memo<ContextTabProps>(({
     onCopy
 }) => {
     console.time('Context tab render');
-    console.log('Context content preview:', content.substring(0, 500) + '...');
-    console.log('Context contains code blocks:', content.includes('```'));
 
     // Parse content sections for accordion structure
     const sections = useMemo(() => {
