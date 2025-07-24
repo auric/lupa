@@ -102,17 +102,13 @@ export class CopilotModelManager implements vscode.Disposable {
                 }
             }
 
-            const selector: any = {
-                vendor: 'copilot'
+            const selector: vscode.LanguageModelChatSelector = {
+                vendor: 'copilot',
+                ...options
             };
 
-            // Add family and version if specified
-            if (options?.family) {
-                selector.family = options.family;
-
-                if (options.version) {
-                    selector.version = options.version;
-                }
+            if (!options) {
+                selector.id = 'gpt-4.1';
             }
 
             const models = await vscode.lm.selectChatModels(selector);
