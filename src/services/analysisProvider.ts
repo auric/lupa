@@ -110,23 +110,26 @@ export class AnalysisProvider implements vscode.Disposable {
             const preliminaryContextStringForAllSnippets = this.tokenManager.formatContextSnippetsToString(allContextSnippets, false);
 
             // --- Calculate diffStructureTokens ---
-            // Construct the diff part of the prompt *without* context snippets to get its token cost
-            let diffStructureForTokenCalc = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
+            // Construct the diff part of the prompt with XML structure *without* actual context content to get its token cost
+            const instructionsXmlForCalc = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
+            const contextXmlPlaceholderForCalc = "<context>\n[CONTEXT_PLACEHOLDER]\n</context>\n\n";
+            
+            let fileContentXmlForCalc = "<file_to_review>\n";
             for (const fileDiff of parsedDiff) {
-                diffStructureForTokenCalc += `File: ${fileDiff.filePath}\n`;
+                fileContentXmlForCalc += `File: ${fileDiff.filePath}\n`;
                 for (const hunk of fileDiff.hunks) {
                     const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
                     if (hunkHeaderMatch) {
-                        diffStructureForTokenCalc += `${hunkHeaderMatch[0]}\n`;
+                        fileContentXmlForCalc += `${hunkHeaderMatch[0]}\n`;
                     } else {
-                        diffStructureForTokenCalc += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                        fileContentXmlForCalc += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
                     }
-                    diffStructureForTokenCalc += hunk.lines.join('\n') + '\n';
-                    // Add placeholders for context markers to account for their tokens
-                    diffStructureForTokenCalc += "\n--- Relevant Context for this Hunk ---\n";
-                    diffStructureForTokenCalc += "--- End Context for this Hunk ---\n\n";
+                    fileContentXmlForCalc += hunk.lines.join('\n') + '\n\n';
                 }
             }
+            fileContentXmlForCalc += "</file_to_review>\n\n";
+            
+            const diffStructureForTokenCalc = instructionsXmlForCalc + contextXmlPlaceholderForCalc + fileContentXmlForCalc;
             const calculatedDiffStructureTokens = await this.tokenManager.calculateTokens(diffStructureForTokenCalc);
             // --- End Calculate diffStructureTokens ---
 
@@ -163,47 +166,31 @@ export class AnalysisProvider implements vscode.Disposable {
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
 
-            // Construct the final interleaved prompt using the optimized snippets
-            let finalInterleavedPromptContent = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
-            const MAX_SNIPPETS_PER_HUNK = 3; // Configurable: Max context snippets to show per hunk
+            // Construct the final interleaved prompt using XML structure and optimized snippets
+            const contextXml = optimizedSnippets.length > 0 ? `<context>
+${finalOptimizedContextStringForReturn}
+</context>
 
+` : '';
+
+            let fileContentXml = "<file_to_review>\n";
             for (const fileDiff of parsedDiff) {
-                finalInterleavedPromptContent += `File: ${fileDiff.filePath}\n`;
+                fileContentXml += `File: ${fileDiff.filePath}\n`;
                 for (const hunk of fileDiff.hunks) {
-                    // Append hunk header and lines
                     const hunkHeaderMatch = diffText.match(new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\+${hunk.newStart},${hunk.newLines} @@.*`, "m"));
                     if (hunkHeaderMatch) {
-                        finalInterleavedPromptContent += `${hunkHeaderMatch[0]}\n`;
+                        fileContentXml += `${hunkHeaderMatch[0]}\n`;
                     } else {
-                        // Fallback if regex fails, though it should ideally match
-                        finalInterleavedPromptContent += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
+                        fileContentXml += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
                     }
-                    finalInterleavedPromptContent += hunk.lines.join('\n') + '\n';
-
-                    // Find and append relevant *optimized* context snippets for this hunk
-                    const relevantSnippetsForHunk = optimizedSnippets
-                        .filter(snippet => snippet.associatedHunkIdentifiers?.includes(hunk.hunkId || ''))
-                        .sort((a, b) => b.relevanceScore - a.relevanceScore) // Sort by relevance
-                        .slice(0, MAX_SNIPPETS_PER_HUNK); // Take top N
-
-                    if (relevantSnippetsForHunk.length > 0) {
-                        finalInterleavedPromptContent += "\n--- Relevant Context for this Hunk ---\n";
-                        for (const snippet of relevantSnippetsForHunk) {
-                            finalInterleavedPromptContent += `${snippet.content}\n\n`; // Snippet content is already formatted
-                        }
-                        finalInterleavedPromptContent += "--- End Context for this Hunk ---\n\n";
-                    } else {
-                        // If no snippets for this hunk, ensure the structure is consistent for token calculation
-                        // (though this part was already included in diffStructureForTokenCalc)
-                        // We can optionally add a "No specific context for this hunk." message if desired,
-                        // but it might add unnecessary tokens if not adding value.
-                        // For now, just ensure the structure is consistent with the pre-calculation.
-                        // Adding the markers even if empty ensures the pre-calculated diffStructureTokens is accurate.
-                        finalInterleavedPromptContent += "\n--- Relevant Context for this Hunk ---\n";
-                        finalInterleavedPromptContent += "--- End Context for this Hunk ---\n\n";
-                    }
+                    fileContentXml += hunk.lines.join('\n') + '\n\n';
                 }
             }
+            fileContentXml += "</file_to_review>\n\n";
+
+            const instructionsXml = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
+            
+            const finalInterleavedPromptContent = `${instructionsXml}${contextXml}${fileContentXml}`.trim();
 
             const messages = [
                 vscode.LanguageModelChatMessage.Assistant(systemPrompt),

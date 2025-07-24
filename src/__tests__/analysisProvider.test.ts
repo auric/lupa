@@ -268,9 +268,9 @@ describe('AnalysisProvider', () => {
         expect(interleavedUserMessageContent).toContain('File: file.ts');
         expect(interleavedUserMessageContent).toContain('@@ -1,1 +1,1 @@'); // Hunk header from diffText
         expect(interleavedUserMessageContent).toContain('-console.log("old");\n+console.log("new");'); // Hunk lines
-        expect(interleavedUserMessageContent).toContain('--- Relevant Context for this Hunk ---');
+        expect(interleavedUserMessageContent).toContain('<context>');
         expect(interleavedUserMessageContent).toContain('Snippet 1 content');
-        expect(interleavedUserMessageContent).toContain('--- End Context for this Hunk ---');
+        expect(interleavedUserMessageContent).toContain('</context>');
 
         expect(result.analysis).toBe("Mocked LLM analysis result.");
         // result.context is now the string formatted from optimizedSnippets
@@ -335,11 +335,11 @@ describe('AnalysisProvider', () => {
         expect(interleavedUserMessageContent).toContain('File: file.ts');
         expect(interleavedUserMessageContent).toContain('@@ -1,1 +1,1 @@');
         expect(interleavedUserMessageContent).toContain('-old\n+new');
-        expect(interleavedUserMessageContent).toContain('--- Relevant Context for this Hunk ---');
+        expect(interleavedUserMessageContent).toContain('<context>');
         expect(interleavedUserMessageContent).toContain('Long snippet 1 DEF'); // Only the optimized snippet
         expect(interleavedUserMessageContent).not.toContain('Long snippet 2 EMB');
         expect(interleavedUserMessageContent).not.toContain('Unrelated snippet');
-        expect(interleavedUserMessageContent).toContain('--- End Context for this Hunk ---');
+        expect(interleavedUserMessageContent).toContain('</context>');
 
 
         expect(result.analysis).toBe("Mocked LLM analysis result.");
@@ -429,13 +429,17 @@ describe('AnalysisProvider', () => {
 
         mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
 
-        // 1. Manually construct the expected diffStructureForTokenCalc string
-        let expectedDiffStructure = "Analyze the following pull request changes. For each hunk of changes, relevant context snippets are provided if available.\n\n";
-        expectedDiffStructure += `File: ${mockParsedDiff[0].filePath}\n`;
-        expectedDiffStructure += `@@ -1,2 +1,2 @@\n`; // Hunk header from diffText
-        expectedDiffStructure += mockParsedDiff[0].hunks[0].lines.join('\n') + '\n';
-        expectedDiffStructure += "\n--- Relevant Context for this Hunk ---\n";
-        expectedDiffStructure += "--- End Context for this Hunk ---\n\n";
+        // 1. Manually construct the expected diffStructureForTokenCalc string with XML structure
+        const instructionsXmlForCalc = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
+        const contextXmlPlaceholderForCalc = "<context>\n[CONTEXT_PLACEHOLDER]\n</context>\n\n";
+
+        let fileContentXmlForCalc = "<file_to_review>\n";
+        fileContentXmlForCalc += `File: ${mockParsedDiff[0].filePath}\n`;
+        fileContentXmlForCalc += `@@ -1,2 +1,2 @@\n`; // Hunk header from diffText
+        fileContentXmlForCalc += mockParsedDiff[0].hunks[0].lines.join('\n') + '\n\n';
+        fileContentXmlForCalc += "</file_to_review>\n\n";
+
+        const expectedDiffStructure = instructionsXmlForCalc + contextXmlPlaceholderForCalc + fileContentXmlForCalc;
 
         const MOCKED_DIFF_STRUCTURE_TOKENS = 75; // Arbitrary mock value
         const MOCKED_CONTEXT_ALLOCATION_BUDGET = 1000; // Arbitrary mock value
@@ -531,23 +535,119 @@ describe('AnalysisProvider', () => {
         const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
         const interleavedUserMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
 
-        // Construct the expected segment for the hunk with empty context
-        let expectedHunkSegment = `File: ${mockParsedDiff[0].filePath}\n`;
-        expectedHunkSegment += `@@ -1,1 +1,1 @@\n`;
-        expectedHunkSegment += mockParsedDiff[0].hunks[0].lines.join('\n') + '\n';
-        expectedHunkSegment += "\n--- Relevant Context for this Hunk ---\n";
-        // No snippet content here
-        expectedHunkSegment += "--- End Context for this Hunk ---\n\n";
+        // Check that XML structure is present
+        expect(interleavedUserMessageContent).toContain('<instructions>');
+        expect(interleavedUserMessageContent).toContain('<file_to_review>');
+        expect(interleavedUserMessageContent).toContain(`File: ${mockParsedDiff[0].filePath}`);
+        expect(interleavedUserMessageContent).toContain(`@@ -1,1 +1,1 @@`);
+        expect(interleavedUserMessageContent).toContain(mockParsedDiff[0].hunks[0].lines.join('\n'));
+        expect(interleavedUserMessageContent).toContain('</file_to_review>');
 
-        expect(interleavedUserMessageContent).toContain(expectedHunkSegment);
-        // Also check that no actual snippet content (like "Some other snippet") is present for this hunk
-        const hunkContextContent = interleavedUserMessageContent.substring(
-            interleavedUserMessageContent.indexOf("--- Relevant Context for this Hunk ---"),
-            interleavedUserMessageContent.indexOf("--- End Context for this Hunk ---") + "--- End Context for this Hunk ---".length
+        // Since there are no optimized snippets, there shouldn't be a context section
+        expect(interleavedUserMessageContent).not.toContain('<context>');
+        expect(interleavedUserMessageContent).not.toContain("Some other snippet");
+
+
+    });
+
+    it('should not include <context> tag when no snippets are available', async () => {
+        const diffText = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-console.log("old");\n+console.log("new");';
+        const gitRootPath = '/test/repo';
+        const mode = AnalysisMode.Comprehensive;
+        const mockHybridResult: HybridContextResult = {
+            snippets: [], // No snippets
+            parsedDiff: [
+                { filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }] }
+            ]
+        };
+
+        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
+        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
+            fitsWithinLimit: true,
+            contextAllocationTokens: 5000,
+        } as any);
+        mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: [], wasTruncated: false });
+
+        await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
+
+        expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
+        const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
+        const userMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
+
+        expect(userMessageContent).not.toContain('<context>');
+        expect(userMessageContent).not.toContain('</context>');
+        expect(userMessageContent).toContain('<file_to_review>');
+    });
+
+    it('should structure prompt with XML tags', async () => {
+        const diffText = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-console.log("old");\n+console.log("new");';
+        const mockAnalysis = 'Mocked XML-structured analysis result.';
+
+        // Set up mock context data
+        const mockSnippets: ContextSnippet[] = [
+            { id: 's1', type: 'embedding', content: 'Test snippet content', relevanceScore: 0.9, filePath: 'file.ts', startLine: 10 }
+        ];
+        const mockParsedDiff: DiffHunk[] = [
+            {
+                filePath: 'file.ts',
+                hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }]
+            }
+        ];
+        const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
+
+        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
+
+        // Set up token manager mocks
+        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
+            totalAvailableTokens: 8000,
+            totalRequiredTokens: 1000,
+            systemPromptTokens: 50,
+            diffTextTokens: 100,
+            contextTokens: 200,
+            userMessagesTokens: 0,
+            assistantMessagesTokens: 0,
+            otherTokens: 50,
+            fitsWithinLimit: true,
+            contextAllocationTokens: 5000
+        });
+        mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: mockSnippets, wasTruncated: false });
+        mockTokenManagerInstance.formatContextSnippetsForDisplay.mockReturnValue('Test snippet content');
+
+        // Set up mock generation to return our expected analysis
+        vi.mocked(mockLanguageModel.sendRequest).mockImplementation(async (messages, _options, _token) => {
+            async function* generateResponse() {
+                yield mockAnalysis;
+            }
+            return { text: generateResponse() };
+        });
+
+        const result = await analysisProvider.analyzePullRequest(
+            diffText,
+            '/mock/git/root',
+            AnalysisMode.Comprehensive,
         );
-        expect(hunkContextContent).not.toContain("Some other snippet"); // Ensure unrelated snippets aren't leaking in
-        expect(hunkContextContent).toBe("--- Relevant Context for this Hunk ---\n--- End Context for this Hunk ---");
 
+        expect(result.analysis).toBe(mockAnalysis);
 
+        // Verify that the prompt was structured with XML tags
+        expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
+        const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
+        const userMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
+
+        // Check for XML structure
+        expect(userMessageContent).toContain('<instructions>');
+        expect(userMessageContent).toContain('</instructions>');
+        expect(userMessageContent).toContain('<context>');
+        expect(userMessageContent).toContain('</context>');
+        expect(userMessageContent).toContain('<file_to_review>');
+        expect(userMessageContent).toContain('</file_to_review>');
+
+        // Verify the order: instructions, context, file_to_review
+        const instructionsIndex = userMessageContent.indexOf('<instructions>');
+        const contextIndex = userMessageContent.indexOf('<context>');
+        const fileIndex = userMessageContent.indexOf('<file_to_review>');
+
+        expect(instructionsIndex).toBeLessThan(contextIndex);
+        expect(contextIndex).toBeLessThan(fileIndex);
     });
 });
