@@ -15,8 +15,7 @@ interface MarkdownRendererProps {
     id: string;
     isDarkTheme: boolean;
     showCopy?: boolean;
-    onCopy?: (text: string, id: string) => void;
-    copiedStates?: Record<string, boolean>;
+    onCopy?: (text: string) => void;
 }
 
 interface ValidatedPath extends ParsedPath {
@@ -117,8 +116,7 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
     id,
     isDarkTheme,
     showCopy = true,
-    onCopy,
-    copiedStates = {}
+    onCopy
 }) => {
     const [validatedPaths, setValidatedPaths] = useState<Map<string, ValidatedPath>>(() => {
         // Initialize with existing cache
@@ -489,7 +487,6 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                             id={codeBlockId}
                             className="absolute top-2 right-2"
                             onCopy={onCopy}
-                            isCopied={copiedStates[codeBlockId]}
                         />
                     </div>
                 );
@@ -527,7 +524,6 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                         text={content}
                         id={id}
                         onCopy={onCopy}
-                        isCopied={copiedStates[id]}
                     />
                 </div>
             )}
@@ -540,5 +536,14 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                 </ReactMarkdown>
             </div>
         </div>
+    );
+}, (prevProps, nextProps) => {
+    // Simple comparison - no need to check copy states since buttons manage their own state
+    return (
+        prevProps.content === nextProps.content &&
+        prevProps.id === nextProps.id &&
+        prevProps.isDarkTheme === nextProps.isDarkTheme &&
+        prevProps.showCopy === nextProps.showCopy &&
+        prevProps.onCopy === nextProps.onCopy
     );
 });

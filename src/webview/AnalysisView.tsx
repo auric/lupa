@@ -19,7 +19,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
 
     // Use custom hooks
     const isDarkTheme = useTheme();
-    const { copyToClipboard, copiedStates } = useCopyToClipboard();
+    const copyToClipboard = useCopyToClipboard();
 
     // Apply dark class to document element when theme changes
     useEffect(() => {
@@ -89,7 +89,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
                         content={analysis}
                         isDarkTheme={isDarkTheme}
                         onCopy={copyToClipboard}
-                        copiedStates={copiedStates}
                     />
                 </TabsContent>
 
@@ -98,7 +97,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
                         content={context}
                         isDarkTheme={isDarkTheme}
                         onCopy={copyToClipboard}
-                        copiedStates={copiedStates}
                     />
                 </TabsContent>
 

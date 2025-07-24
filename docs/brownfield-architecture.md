@@ -77,7 +77,7 @@ project-root/
 │   ├── types/            # TypeScript type definitions
 │   └── config/           # Configuration files (e.g., treeSitterQueries.ts)
 ├── dist/                 # Compiled output
-├── vitest.setup.ts       # Setup for Vitest tests
+├── vitest.jsdom.setup.ts # Setup for Vitest jsdom tests
 ├── vite.config.mts       # Vite build configuration
 └── package.json          # Project manifest
 ```
@@ -123,7 +123,7 @@ The system requires a sophisticated "Circular Dependency Resolution Strategy" us
 
 ### Current Test Coverage
 
-- The project uses **Vitest** for unit and integration testing, as configured in `vite.config.mts`. Test files (`*.test.ts`, `*.spec.ts`) are located alongside the source files in the `src/` directory.
+- The project uses **Vitest** for unit and integration testing, as configured in `vite.config.mts`. Test files (`*.test.ts`, `*.spec.ts`, `*.test.tsx`, `*.spec.tsx`) are located alongside the source files in the `src/__tests__` directory.
 
 ### Running Tests
 

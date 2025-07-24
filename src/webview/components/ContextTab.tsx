@@ -6,20 +6,18 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '..
 interface ContextTabProps {
     content: string;
     isDarkTheme: boolean;
-    onCopy?: (text: string, id: string) => void;
-    copiedStates?: Record<string, boolean>;
+    onCopy?: (text: string) => void;
 }
 
-export const ContextTab = memo<ContextTabProps>(({ 
-    content, 
-    isDarkTheme, 
-    onCopy, 
-    copiedStates 
+export const ContextTab = memo<ContextTabProps>(({
+    content,
+    isDarkTheme,
+    onCopy
 }) => {
     console.time('Context tab render');
     console.log('Context content preview:', content.substring(0, 500) + '...');
     console.log('Context contains code blocks:', content.includes('```'));
-    
+
     // Parse content sections for accordion structure
     const sections = useMemo(() => {
         const sectionDelimiters = [
@@ -27,12 +25,12 @@ export const ContextTab = memo<ContextTabProps>(({
             { title: 'References Found (LSP)', regex: /## References Found \(LSP\)/ },
             { title: 'Semantically Similar Code (Embeddings)', regex: /## Semantically Similar Code \(Embeddings\)/ }
         ];
-        
+
         const foundSections: Array<{ title: string; content: string; id: string }> = [];
-        
+
         // Find all section positions first
         const sectionPositions: Array<{ title: string; index: number; id: string }> = [];
-        
+
         sectionDelimiters.forEach((delimiter, delimiterIndex) => {
             const match = content.match(delimiter.regex);
             if (match && match.index !== undefined) {
@@ -43,17 +41,17 @@ export const ContextTab = memo<ContextTabProps>(({
                 });
             }
         });
-        
+
         // Sort by position in content
         sectionPositions.sort((a, b) => a.index - b.index);
-        
+
         // Extract content for each section
         sectionPositions.forEach((section, index) => {
             const startIndex = section.index;
-            const endIndex = index < sectionPositions.length - 1 
-                ? sectionPositions[index + 1].index 
+            const endIndex = index < sectionPositions.length - 1
+                ? sectionPositions[index + 1].index
                 : content.length;
-            
+
             const sectionContent = content.slice(startIndex, endIndex).trim();
             if (sectionContent) {
                 foundSections.push({
@@ -63,10 +61,10 @@ export const ContextTab = memo<ContextTabProps>(({
                 });
             }
         });
-        
+
         return foundSections;
     }, [content]);
-    
+
     const result = (
         <div className="space-y-4">
             {sections.length > 1 ? (
@@ -77,13 +75,12 @@ export const ContextTab = memo<ContextTabProps>(({
                             <AccordionTrigger className="text-left">
                                 {section.title}
                             </AccordionTrigger>
-                            <AccordionContent>
+                            <AccordionContent className="context-section-content">
                                 <MarkdownRenderer
                                     content={section.content}
                                     id={`${section.id}-content`}
                                     isDarkTheme={isDarkTheme}
                                     onCopy={onCopy}
-                                    copiedStates={copiedStates}
                                 />
                             </AccordionContent>
                         </AccordionItem>
@@ -91,17 +88,18 @@ export const ContextTab = memo<ContextTabProps>(({
                 </Accordion>
             ) : (
                 // Show single section without accordion
-                <MarkdownRenderer
-                    content={content}
-                    id="context"
-                    isDarkTheme={isDarkTheme}
-                    onCopy={onCopy}
-                    copiedStates={copiedStates}
-                />
+                <div className="context-section-content">
+                    <MarkdownRenderer
+                        content={content}
+                        id="context"
+                        isDarkTheme={isDarkTheme}
+                        onCopy={onCopy}
+                    />
+                </div>
             )}
         </div>
     );
-    
+
     console.timeEnd('Context tab render');
     return result;
 });

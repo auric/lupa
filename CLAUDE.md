@@ -168,7 +168,7 @@ The extension follows a layered, service-oriented architecture with clear separa
 ### Tests
 
 - `src/__tests__/` - Vitest test files
-- `vitest.setup.ts` - Test setup configuration
+- `vitest.jsdom.setup.ts` - Test setup configuration for jsdom environment
 
 ## Testing Strategy
 
@@ -389,4 +389,4 @@ This project follows strict TypeScript development standards to ensure code qual
 - **Test Coverage**: Write unit tests for new functionality using Vitest
 - **Mocking**: Use proper mocking for dependencies in isolated unit tests
 - **Integration Tests**: Include integration tests for service interactions
-- **Test Naming**: Follow pattern `*.test.ts` or `*.spec.ts` for test files
+- **Test Naming**: Follow pattern `*.test.ts`, `*.spec.ts`, `*.test.tsx`, `*.spec.tsx` for test files

@@ -110,14 +110,35 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     // Vitest Configuration (from existing setup)
     const testConfig: VitestInlineConfig = {
         globals: true,
-        environment: 'node',
-        setupFiles: ['./vitest.setup.ts'],
-        include: ['src/**/*.{test,spec}.{ts,tsx}'],
         mockReset: true,
         coverage: {
             provider: 'v8',
             reporter: ['text', 'lcov'],
         },
+        projects: [
+            {
+                test: {
+                    name: 'node',
+                    environment: 'node',
+                    include: ['src/**/*.{test,spec}.ts'],
+                    exclude: ['src/**/*.{test,spec}.tsx'],
+                    alias: {
+                        vscode: resolve(__dirname, './__mocks__/vscode.js'),
+                    }
+                }
+            },
+            {
+                test: {
+                    name: 'jsdom',
+                    environment: 'jsdom',
+                    include: ['src/**/*.{test,spec}.tsx'],
+                    setupFiles: ['./vitest.jsdom.setup.ts'],
+                    alias: {
+                        '@': resolve(__dirname, './src'),
+                    }
+                }
+            }
+        ]
     };
 
     // Vite Resolve Configuration (from existing setup)

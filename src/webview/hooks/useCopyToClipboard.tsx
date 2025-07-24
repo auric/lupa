@@ -1,23 +1,16 @@
-import { useState } from 'react';
+import { useCallback } from 'react';
 
 /**
- * Custom hook for handling copy to clipboard functionality
- * @returns object with copyToClipboard function and copiedStates
+ * Ultra-simple copy to clipboard hook that doesn't manage any state
+ * Each button manages its own state individually to prevent cascade re-renders
  */
 export const useCopyToClipboard = () => {
-    const [copiedStates, setCopiedStates] = useState<Record<string, boolean>>({});
-
-    const copyToClipboard = async (text: string, id: string) => {
-        try {
-            await navigator.clipboard.writeText(text);
-            setCopiedStates(prev => ({ ...prev, [id]: true }));
-            setTimeout(() => {
-                setCopiedStates(prev => ({ ...prev, [id]: false }));
-            }, 1000);
-        } catch (err) {
+    const copyToClipboard = useCallback((text: string) => {
+        // Just perform the clipboard operation - no state management here
+        navigator.clipboard.writeText(text).catch(err => {
             console.error('Failed to copy text: ', err);
-        }
-    };
+        });
+    }, []);
 
-    return { copyToClipboard, copiedStates };
+    return copyToClipboard;
 };
