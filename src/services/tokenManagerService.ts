@@ -39,6 +39,13 @@ export interface TokenAllocation {
 }
 
 /**
+ * Content prioritization order configuration
+ */
+export interface ContentPrioritization {
+    order: ('diff' | 'embeddings' | 'lsp-references' | 'lsp-definitions')[];
+}
+
+/**
  * Service for managing token calculations and optimizations
  * Follows Single Responsibility Principle by focusing only on token management
  */
@@ -52,6 +59,9 @@ export class TokenManagerService {
 
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelDetails: { family: string; maxInputTokens: number } | null = null;
+    private contentPrioritization: ContentPrioritization = {
+        order: ['diff', 'embeddings', 'lsp-references', 'lsp-definitions']
+    };
 
     constructor(
         private readonly modelManager: CopilotModelManager,
@@ -83,27 +93,33 @@ export class TokenManagerService {
         const contextTokens = components.context // Assuming components.context is the full, unoptimized string
             ? await this.currentModel!.countTokens(components.context) : 0;
 
+        // Calculate content tokens only (without message overhead)
         let userMessagesTokens = 0;
+        let userMessageCount = 0;
         if (components.userMessages) {
             for (const message of components.userMessages) {
-                userMessagesTokens += (await this.currentModel!.countTokens(message) || 0) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+                userMessagesTokens += await this.currentModel!.countTokens(message) || 0;
+                userMessageCount++;
             }
         }
 
         let assistantMessagesTokens = 0;
+        let assistantMessageCount = 0;
         if (components.assistantMessages) {
             for (const message of components.assistantMessages) {
-                assistantMessagesTokens += (await this.currentModel!.countTokens(message) || 0) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+                assistantMessagesTokens += await this.currentModel!.countTokens(message) || 0;
+                assistantMessageCount++;
             }
         }
 
-        // Calculate response prefill tokens
+        // Calculate response prefill content tokens only
         const responsePrefillTokens = components.responsePrefill
-            ? await this.currentModel!.countTokens(components.responsePrefill) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE : 0;
+            ? await this.currentModel!.countTokens(components.responsePrefill) : 0;
 
-        // Calculate message structure overhead (typically 3 messages: system, user, assistant prefill)
+        // Calculate total message overhead based on actual message count
         const messageCount = (components.systemPrompt ? 1 : 0) +
-            (userMessagesTokens > 0 ? 1 : 0) +
+            userMessageCount +
+            assistantMessageCount +
             (components.responsePrefill ? 1 : 0);
         const messageOverheadTokens = messageCount * TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
 
@@ -132,6 +148,163 @@ export class TokenManagerService {
     }
 
     /**
+     * Set the content prioritization order
+     * @param prioritization Content prioritization configuration
+     */
+    public setContentPrioritization(prioritization: ContentPrioritization): void {
+        this.contentPrioritization = prioritization;
+    }
+
+    /**
+     * Get current content prioritization order
+     * @returns Current content prioritization configuration
+     */
+    public getContentPrioritization(): ContentPrioritization {
+        return { ...this.contentPrioritization };
+    }
+
+    /**
+     * Perform proportional truncation based on configured prioritization
+     * @param components Token components to truncate
+     * @param targetTokens Target token limit to fit within
+     * @returns Truncated components that fit within the token limit
+     */
+    public async performProportionalTruncation(
+        components: TokenComponents,
+        targetTokens: number
+    ): Promise<{ truncatedComponents: TokenComponents, wasTruncated: boolean }> {
+        await this.updateModelInfo();
+
+        const currentTokens = await this.calculateComponentTokens(components);
+        if (currentTokens <= targetTokens) {
+            return { truncatedComponents: components, wasTruncated: false };
+        }
+
+        // Calculate how much we need to reduce
+        const reductionNeeded = currentTokens - targetTokens;
+        const truncatedComponents = { ...components };
+        let wasTruncated = false;
+
+        // Apply proportional reduction based on priority order
+        for (const contentType of this.contentPrioritization.order.reverse()) {
+            if (reductionNeeded <= 0) break;
+
+            switch (contentType) {
+                case 'diff':
+                    if (truncatedComponents.diffText) {
+                        const result = await this.truncateContent(truncatedComponents.diffText, reductionNeeded * 0.25);
+                        truncatedComponents.diffText = result.content;
+                        wasTruncated = wasTruncated || result.wasTruncated;
+                    }
+                    break;
+                case 'embeddings':
+                case 'lsp-references':
+                case 'lsp-definitions':
+                    if (truncatedComponents.context) {
+                        const result = await this.truncateContent(truncatedComponents.context, reductionNeeded * 0.25);
+                        truncatedComponents.context = result.content;
+                        wasTruncated = wasTruncated || result.wasTruncated;
+                    }
+                    break;
+            }
+        }
+
+        return { truncatedComponents, wasTruncated };
+    }
+
+    /**
+     * Calculate total tokens for given components
+     * @param components Token components to calculate
+     * @returns Total token count
+     */
+    private async calculateComponentTokens(components: TokenComponents): Promise<number> {
+        await this.updateModelInfo();
+        if (!this.currentModel) return 0;
+
+        let totalTokens = 0;
+
+        if (components.systemPrompt) {
+            totalTokens += await this.currentModel.countTokens(components.systemPrompt);
+        }
+        if (components.diffText) {
+            totalTokens += await this.currentModel.countTokens(components.diffText);
+        }
+        if (components.context) {
+            totalTokens += await this.currentModel.countTokens(components.context);
+        }
+        // Calculate message content and overhead separately
+        let messageCount = 0;
+        if (components.userMessages) {
+            for (const message of components.userMessages) {
+                totalTokens += await this.currentModel.countTokens(message);
+                messageCount++;
+            }
+        }
+        if (components.assistantMessages) {
+            for (const message of components.assistantMessages) {
+                totalTokens += await this.currentModel.countTokens(message);
+                messageCount++;
+            }
+        }
+        if (components.responsePrefill) {
+            totalTokens += await this.currentModel.countTokens(components.responsePrefill);
+            messageCount++;
+        }
+        
+        // Add system prompt to message count if present
+        if (components.systemPrompt) {
+            messageCount++;
+        }
+        
+        // Add message overhead
+        totalTokens += messageCount * TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+        if (components.diffStructureTokens) {
+            totalTokens += components.diffStructureTokens;
+        }
+
+        return totalTokens + TokenManagerService.FORMATTING_OVERHEAD;
+    }
+
+    /**
+     * Truncate content proportionally from the end
+     * @param content Content to truncate
+     * @param tokensToRemove Number of tokens to remove
+     * @returns Truncated content and truncation status
+     */
+    private async truncateContent(content: string, tokensToRemove: number): Promise<{ content: string, wasTruncated: boolean }> {
+        await this.updateModelInfo();
+        if (!this.currentModel || tokensToRemove <= 0) {
+            return { content, wasTruncated: false };
+        }
+
+        const currentTokens = await this.currentModel.countTokens(content);
+        if (tokensToRemove >= currentTokens) {
+            // Drop entirely if truncation would remove everything
+            return { content: '', wasTruncated: true };
+        }
+
+        const targetTokens = currentTokens - tokensToRemove;
+        const charsPerToken = 4.0; // Estimation
+        const targetChars = Math.floor(targetTokens * charsPerToken);
+
+        if (targetChars <= 0) {
+            return { content: '', wasTruncated: true };
+        }
+
+        let truncatedContent = content.substring(0, targetChars);
+
+        // Ensure we don't break in the middle of a line
+        const lastNewline = truncatedContent.lastIndexOf('\n');
+        if (lastNewline > -1) {
+            truncatedContent = truncatedContent.substring(0, lastNewline);
+        }
+
+        truncatedContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+
+        return { content: truncatedContent, wasTruncated: true };
+    }
+
+    /**
      * Optimizes a list of context snippets to fit within available token allocation
      * by prioritizing based on relevance.
      * @param snippets A list of ContextSnippet objects.
@@ -155,13 +328,32 @@ export class TokenManagerService {
             return { optimizedSnippets: [], wasTruncated: false };
         }
 
-        // Sort snippets: Embeddings > LSP refs > LSP defs (for PR analysis relevance)
-        const sortedSnippets = [...deduplicatedSnippets].sort((a, b) => {
+        // Sort snippets using prioritization configuration
+        const sortedSnippets = this.prioritizeSnippets(deduplicatedSnippets);
+
+        return await this.selectSnippetsWithinTokenLimit(sortedSnippets, availableTokens);
+    }
+
+    /**
+     * Prioritize snippets based on configured prioritization order
+     * @param snippets Snippets to prioritize
+     * @returns Prioritized snippets
+     */
+    private prioritizeSnippets(snippets: ContextSnippet[]): ContextSnippet[] {
+        return [...snippets].sort((a, b) => {
             const typePriority = (type: ContextSnippet['type']): number => {
-                if (type === 'embedding') return 3; // Highest: similar patterns most valuable
-                if (type === 'lsp-reference') return 2; // Medium: usage patterns for impact analysis
-                return 1; // lsp-definition: lowest priority, often less relevant for PR analysis
+                // Map context types to prioritization order
+                const typeMap: Record<ContextSnippet['type'], string> = {
+                    'embedding': 'embeddings',
+                    'lsp-reference': 'lsp-references',
+                    'lsp-definition': 'lsp-definitions'
+                };
+
+                const mappedType = typeMap[type];
+                const index = this.contentPrioritization.order.indexOf(mappedType as any);
+                return index === -1 ? 0 : this.contentPrioritization.order.length - index;
             };
+
             const priorityA = typePriority(a.type);
             const priorityB = typePriority(b.type);
 
@@ -170,12 +362,26 @@ export class TokenManagerService {
             }
             return b.relevanceScore - a.relevanceScore; // Higher score first
         });
+    }
 
+    /**
+     * Select snippets that fit within token limit
+     * @param sortedSnippets Pre-sorted snippets by priority
+     * @param availableTokens Available token limit
+     * @returns Selected snippets and truncation status
+     */
+    private async selectSnippetsWithinTokenLimit(
+        sortedSnippets: ContextSnippet[],
+        availableTokens: number
+    ): Promise<{ optimizedSnippets: ContextSnippet[], wasTruncated: boolean }> {
         const selectedSnippets: ContextSnippet[] = [];
         let currentTokens = 0;
         let wasTruncated = false;
 
         for (const snippet of sortedSnippets) {
+            if (!this.currentModel) {
+                break;
+            }
             const snippetTokens = await this.currentModel.countTokens(snippet.content);
             // Add a small buffer for newlines between snippets
             const tokensWithBuffer = snippetTokens + (selectedSnippets.length > 0 ? await this.currentModel.countTokens('\n\n') : 0);
@@ -188,6 +394,9 @@ export class TokenManagerService {
                 wasTruncated = true;
                 // Attempt to partially include the current snippet if it's large and some space remains
                 const remainingTokensForPartial = availableTokens - currentTokens;
+                if (!this.currentModel) {
+                    break;
+                }
                 const partialTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.PARTIAL_TRUNCATION_MESSAGE);
                 const MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT = 10; // Minimum actual content tokens we want to try for
                 const safetyBufferForPartialCalc = 5; // Buffer for token calculation inaccuracies
@@ -246,6 +455,9 @@ export class TokenManagerService {
                                 }
                                 partialContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
 
+                                if (!this.currentModel) {
+                                    break;
+                                }
                                 const partialSnippetTokens = await this.currentModel.countTokens(partialContent);
                                 if (currentTokens + partialSnippetTokens <= availableTokens) {
                                     selectedSnippets.push({ ...snippet, content: partialContent, id: `${snippet.id}-partial` });
@@ -266,6 +478,9 @@ export class TokenManagerService {
         // try to add a "tiny" piece of the most relevant snippet.
         const MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT = 10;
         // For tiny content, we still use PARTIAL_TRUNCATION_MESSAGE as it's shorter and indicates partial nature.
+        if (!this.currentModel) {
+            return { optimizedSnippets: selectedSnippets, wasTruncated };
+        }
         const partialMsgTokensForTiny = await this.currentModel.countTokens(TokenManagerService.PARTIAL_TRUNCATION_MESSAGE);
         const safetyBufferForTinyCalc = 5; // Safety buffer for token calculation of content part
 
@@ -299,6 +514,9 @@ export class TokenManagerService {
                         }
                     }
                     tinyContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+                    if (!this.currentModel) {
+                        return { optimizedSnippets: selectedSnippets, wasTruncated };
+                    }
                     const tinySnippetTokens = await this.currentModel.countTokens(tinyContent);
 
                     if (tinySnippetTokens <= availableTokens) {
@@ -311,7 +529,7 @@ export class TokenManagerService {
             } // End of 'if (targetTinyContentTokens > 0)'
         } // End of 'if (sortedSnippets.length > 0 && selectedSnippets.length === 0 ...)' for tiny snippet logic
 
-        Log.info(`Context optimization: ${selectedSnippets.length} of ${deduplicatedSnippets.length} deduplicated snippets selected (${snippets.length} original). Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
+        Log.info(`Context optimization: ${selectedSnippets.length} of ${sortedSnippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
         return { optimizedSnippets: selectedSnippets, wasTruncated };
     }
 

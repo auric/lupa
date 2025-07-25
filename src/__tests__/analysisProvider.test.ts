@@ -284,7 +284,7 @@ describe('AnalysisProvider', () => {
 
         const result = await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
 
-        expect(mockContextProviderInstance.getContextForDiff).toHaveBeenCalledWith(diffText, gitRootPath, undefined, mode, undefined, expect.any(Function), undefined);
+        expect(mockContextProviderInstance.getContextForDiff).toHaveBeenCalledWith(diffText, gitRootPath, undefined, mode, expect.any(Function), undefined);
         expect(mockTokenManagerInstance.calculateTokenAllocation).toHaveBeenCalled();
         // optimizeContext IS called to get the structured snippets, even if no actual optimization occurs
         expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(mockSnippets, 5000);

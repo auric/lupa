@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TokenManagerService } from '../services/tokenManagerService';
+import { TokenManagerService, ContentPrioritization } from '../services/tokenManagerService';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { ContextSnippet } from '../types/contextTypes';
 import { AnalysisMode } from '../types/modelTypes';
@@ -509,13 +509,13 @@ describe('TokenManagerService', () => {
             const expectedSystemTokens = 4;
             const expectedDiffTokens = 3;
             const expectedContextTokens = 3;
-            const expectedResponsePrefillTokens = 7 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']; // 7 + 5 = 12
+            const expectedResponsePrefillTokens = 7; // Content tokens only, no overhead
             // Message count: 1 (system prompt) + 0 (no userMessages) + 1 (responsePrefill) = 2
             const expectedMessageOverheadTokens = 2 * TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']; // 2 messages * 5 = 10
             const expectedOtherTokens = TokenManagerService['FORMATTING_OVERHEAD']; // 50
 
             const expectedTotalRequired = expectedSystemTokens + expectedDiffTokens + expectedContextTokens +
-                expectedResponsePrefillTokens + expectedMessageOverheadTokens + expectedOtherTokens; // 4+3+3+12+15+50 = 87
+                expectedResponsePrefillTokens + expectedMessageOverheadTokens + expectedOtherTokens; // 4+3+3+7+10+50 = 77
 
             const safeMaxTokens = Math.floor(8000 * TokenManagerService['SAFETY_MARGIN_RATIO']); // 7600
 
@@ -556,7 +556,7 @@ describe('TokenManagerService', () => {
             expect(allocation.systemPromptTokens).toBe(4);
             expect(allocation.diffTextTokens).toBe(25); // Should use diffStructureTokens
             expect(allocation.contextTokens).toBe(3);
-            expect(allocation.responsePrefillTokens).toBe(2 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']);
+            expect(allocation.responsePrefillTokens).toBe(2); // Content tokens only
             // Message count: 1 (system prompt) + 0 (no userMessages) + 1 (responsePrefill) = 2
             expect(allocation.messageOverheadTokens).toBe(2 * TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']);
         });
@@ -701,6 +701,220 @@ describe('TokenManagerService', () => {
 
             // Should be close but allocation includes extra formatting overhead
             expect(Math.abs(completeTokens - allocationCoreTokens)).toBeLessThanOrEqual(allocation.otherTokens);
+        });
+    });
+
+    describe('Content Prioritization Methods', () => {
+        describe('setContentPrioritization and getContentPrioritization', () => {
+            it('should set and get content prioritization order', () => {
+                const customPrioritization: ContentPrioritization = {
+                    order: ['lsp-definitions', 'lsp-references', 'embeddings', 'diff']
+                };
+
+                tokenManagerService.setContentPrioritization(customPrioritization);
+                const result = tokenManagerService.getContentPrioritization();
+
+                expect(result.order).toEqual(customPrioritization.order);
+                expect(result).not.toBe(customPrioritization); // Should return a copy
+            });
+
+            it('should have default prioritization order', () => {
+                const defaultPrioritization = tokenManagerService.getContentPrioritization();
+                expect(defaultPrioritization.order).toEqual(['diff', 'embeddings', 'lsp-references', 'lsp-definitions']);
+            });
+
+            it('should update snippet prioritization based on configuration', async () => {
+                const snippets = [
+                    { id: 's1', type: 'lsp-definition' as const, content: 'def content', relevanceScore: 1.0 },
+                    { id: 's2', type: 'embedding' as const, content: 'emb content', relevanceScore: 0.8 },
+                    { id: 's3', type: 'lsp-reference' as const, content: 'ref content', relevanceScore: 0.9 }
+                ];
+
+                // Set custom prioritization: definitions > references > embeddings
+                tokenManagerService.setContentPrioritization({
+                    order: ['diff', 'lsp-definitions', 'lsp-references', 'embeddings']
+                });
+
+                const { optimizedSnippets } = await tokenManagerService.optimizeContext(snippets, 1000);
+                
+                // Should be ordered by new priority: definition, reference, embedding
+                expect(optimizedSnippets.map(s => s.type)).toEqual(['lsp-definition', 'lsp-reference', 'embedding']);
+            });
+        });
+
+        describe('performProportionalTruncation', () => {
+            it('should return original components if they fit within target tokens', async () => {
+                const components = {
+                    systemPrompt: 'Short prompt',
+                    diffText: 'Short diff',
+                    context: 'Short context'
+                };
+
+                const { truncatedComponents, wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 1000);
+
+                expect(wasTruncated).toBe(false);
+                expect(truncatedComponents.systemPrompt).toBe(components.systemPrompt);
+                expect(truncatedComponents.diffText).toBe(components.diffText);
+                expect(truncatedComponents.context).toBe(components.context);
+            });
+
+            it('should truncate components proportionally when exceeding target', async () => {
+                const components = {
+                    systemPrompt: 'This is a system prompt that is quite long '.repeat(10),
+                    diffText: 'This is diff text that is very long '.repeat(20),
+                    context: 'This is context that is extremely long '.repeat(30)
+                };
+
+                // Mock countTokens to return predictable values
+                vi.mocked(mockLanguageModel.countTokens).mockImplementation(async (text: string | vscode.LanguageModelChatMessage | vscode.LanguageModelChatMessage[]) => {
+                    if (typeof text === 'string') {
+                        if (text.includes('system prompt')) return Math.ceil(text.length / 4);
+                        if (text.includes('diff text')) return Math.ceil(text.length / 4);
+                        if (text.includes('context')) return Math.ceil(text.length / 4);
+                        return Math.ceil(text.length / 4);
+                    }
+                    return 5;
+                });
+
+                const { truncatedComponents, wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 50);
+
+                expect(wasTruncated).toBe(true);
+                expect(truncatedComponents.diffText).not.toBe(components.diffText);
+                expect(truncatedComponents.context).not.toBe(components.context);
+            });
+
+            it('should respect prioritization order during truncation', async () => {
+                // Set prioritization to truncate diff first (lowest priority)
+                tokenManagerService.setContentPrioritization({
+                    order: ['embeddings', 'lsp-references', 'lsp-definitions', 'diff']
+                });
+
+                const components = {
+                    diffText: 'Long diff content '.repeat(20),
+                    context: 'Long context content '.repeat(20)
+                };
+
+                const { truncatedComponents, wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 50);
+
+                expect(wasTruncated).toBe(true);
+                // Diff should be truncated more aggressively due to lower priority
+                expect(truncatedComponents.diffText?.length).toBeLessThan(components.diffText.length);
+            });
+
+            it('should handle empty or undefined components', async () => {
+                const components = {
+                    systemPrompt: undefined,
+                    diffText: undefined,
+                    context: undefined
+                };
+
+                const { truncatedComponents, wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 50);
+
+                expect(wasTruncated).toBe(false);
+                expect(truncatedComponents).toEqual(components);
+            });
+
+            it('should handle components with response prefill and messages', async () => {
+                const components = {
+                    systemPrompt: 'System prompt text',
+                    userMessages: ['User message 1', 'User message 2'],
+                    assistantMessages: ['Assistant response'],
+                    responsePrefill: 'Response prefill text',
+                    diffStructureTokens: 100
+                };
+
+                const { truncatedComponents, wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 50);
+
+                // Should handle all component types without errors
+                expect(truncatedComponents).toBeDefined();
+                expect(typeof wasTruncated).toBe('boolean');
+            });
+        });
+
+        describe('calculateComponentTokens (private method functionality)', () => {
+            it('should calculate tokens correctly through performProportionalTruncation', async () => {
+                const components = {
+                    systemPrompt: 'Test prompt', // ~3 tokens
+                    diffText: 'Test diff', // ~3 tokens  
+                    context: 'Test context' // ~3 tokens
+                };
+
+                // Test that it doesn't truncate when tokens are within limit
+                const { wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 100);
+                expect(wasTruncated).toBe(false);
+
+                // Test that it does truncate when tokens exceed limit
+                const { wasTruncated: shouldTruncate } = await tokenManagerService.performProportionalTruncation(components, 5);
+                expect(shouldTruncate).toBe(true);
+            });
+        });
+
+        describe('truncateContent (private method functionality)', () => {
+            it('should truncate content from the end and add truncation message', async () => {
+                const longContent = 'This is a very long content that needs to be truncated '.repeat(20);
+                
+                // Use a very small target to force truncation
+                const components = { context: longContent };
+                const { truncatedComponents, wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 20);
+
+                expect(wasTruncated).toBe(true);
+                expect(truncatedComponents.context).toBeDefined();
+                expect(truncatedComponents.context?.length).toBeLessThan(longContent.length);
+                expect(truncatedComponents.context).toContain('[File content partially truncated to fit token limit]');
+            });
+
+            it('should drop content entirely if truncation would remove everything', async () => {
+                const shortContent = 'Short';
+                const components = { context: shortContent };
+                
+                // Mock to make the content appear to need more tokens to remove than it has
+                const originalCountTokens = mockLanguageModel.countTokens;
+                vi.mocked(mockLanguageModel.countTokens).mockImplementation(async (text: string | vscode.LanguageModelChatMessage | vscode.LanguageModelChatMessage[]) => {
+                    if (typeof text === 'string' && text === shortContent) return 10; // Make it seem large
+                    return Math.ceil(String(text).length / 4);
+                });
+
+                const { truncatedComponents, wasTruncated } = await tokenManagerService.performProportionalTruncation(components, 5);
+
+                expect(wasTruncated).toBe(true);
+                expect(truncatedComponents.context).toBe('');
+
+                // Restore original mock
+                vi.mocked(mockLanguageModel.countTokens).mockImplementation(originalCountTokens);
+            });
+        });
+
+        describe('prioritizeSnippets (private method functionality through optimizeContext)', () => {
+            it('should use custom prioritization order for snippet sorting', async () => {
+                const snippets = [
+                    { id: 'def1', type: 'lsp-definition' as const, content: 'definition', relevanceScore: 0.9 },
+                    { id: 'emb1', type: 'embedding' as const, content: 'embedding', relevanceScore: 0.8 },
+                    { id: 'ref1', type: 'lsp-reference' as const, content: 'reference', relevanceScore: 0.7 }
+                ];
+
+                // Set custom priority: references > definitions > embeddings
+                tokenManagerService.setContentPrioritization({
+                    order: ['diff', 'lsp-references', 'lsp-definitions', 'embeddings']
+                });
+
+                const { optimizedSnippets } = await tokenManagerService.optimizeContext(snippets, 1000);
+                
+                // Should prioritize by new order: reference, definition, embedding
+                expect(optimizedSnippets.map(s => s.id)).toEqual(['ref1', 'def1', 'emb1']);
+            });
+
+            it('should fall back to relevance score for same priority types', async () => {
+                const snippets = [
+                    { id: 'emb1', type: 'embedding' as const, content: 'embedding1', relevanceScore: 0.7 },
+                    { id: 'emb2', type: 'embedding' as const, content: 'embedding2', relevanceScore: 0.9 },
+                    { id: 'emb3', type: 'embedding' as const, content: 'embedding3', relevanceScore: 0.8 }
+                ];
+
+                const { optimizedSnippets } = await tokenManagerService.optimizeContext(snippets, 1000);
+                
+                // Same type (embedding), so should sort by relevance score (highest first)
+                expect(optimizedSnippets.map(s => s.id)).toEqual(['emb2', 'emb3', 'emb1']);
+            });
         });
     });
 });
