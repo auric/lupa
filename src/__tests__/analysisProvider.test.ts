@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AnalysisProvider } from '../services/analysisProvider';
 import { ContextProvider } from '../services/contextProvider';
@@ -6,7 +7,7 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { AnalysisMode } from '../types/modelTypes';
 import { ContextSnippet, DiffHunk, HybridContextResult } from '../types/contextTypes';
 import { TokenManagerService } from '../services/tokenManagerService';
-import * as vscode from 'vscode';
+import { PromptGenerator } from '../services/promptGenerator';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -71,12 +72,29 @@ vi.mock('../services/contextProvider', () => ({
 // Mock TokenManagerService - we will test its interaction, not its internal logic here
 const mockTokenManagerInstance = {
     getSystemPromptForMode: vi.fn((mode: AnalysisMode) => `System prompt for ${mode}`),
+    getResponsePrefill: vi.fn(() => 'I\'ll analyze this pull request comprehensively.\n\n## Analysis\n\n'),
     calculateTokenAllocation: vi.fn(),
     optimizeContext: vi.fn(),
     formatContextSnippetsToString: vi.fn((snippets, _truncated) => snippets.map(s => s.content).join('\n\n')),
     formatContextSnippetsForDisplay: vi.fn((snippets, _truncated) => snippets.map(s => s.content).join('\n\n')),
-    calculateTokens: vi.fn(async (text: string) => Math.ceil(text.length / 4)), // Add this line
+    calculateTokens: vi.fn(async (text: string) => Math.ceil(text.length / 4)),
+    calculateCompleteMessageTokens: vi.fn(async (systemPrompt: string, userPrompt: string, responsePrefill?: string) => {
+        // Mock implementation that returns reasonable token counts
+        const systemTokens = Math.ceil(systemPrompt.length / 4) + 5; // content + overhead
+        const userTokens = Math.ceil(userPrompt.length / 4) + 5; // content + overhead
+        const prefillTokens = responsePrefill ? Math.ceil(responsePrefill.length / 4) + 5 : 0; // content + overhead if provided
+        return systemTokens + userTokens + prefillTokens;
+    }),
 };
+// Mock few-shot examples
+const mockFewShotExamples = [
+    {
+        scenario: "Test scenario",
+        code: "test code",
+        review: "<suggestion-security>Test suggestion</suggestion-security>"
+    }
+];
+
 vi.mock('../services/tokenManagerService', () => ({
     TokenManagerService: vi.fn(() => mockTokenManagerInstance),
 }));
@@ -86,6 +104,7 @@ describe('AnalysisProvider', () => {
     let analysisProvider: AnalysisProvider;
     let contextProvider: ContextProvider;
     let modelManager: CopilotModelManager;
+    let promptGenerator: PromptGenerator;
     let mockExtensionContext: vscode.ExtensionContext;
 
     beforeEach(() => {
@@ -197,7 +216,13 @@ describe('AnalysisProvider', () => {
         contextProvider = mockContextProviderInstance as unknown as ContextProvider;
         const workspaceSettingsService = new WorkspaceSettingsService(mockExtensionContext);
         modelManager = new CopilotModelManager(workspaceSettingsService);
-        analysisProvider = new AnalysisProvider(contextProvider, modelManager);
+        promptGenerator = new PromptGenerator();
+        analysisProvider = new AnalysisProvider(
+            contextProvider,
+            modelManager,
+            mockTokenManagerInstance as unknown as TokenManagerService,
+            promptGenerator
+        );
 
         // 3. Reset/re-implement methods on mock instances (already doing this well)
         vi.mocked(mockContextProviderInstance.getContextForDiff).mockReset();
@@ -205,6 +230,12 @@ describe('AnalysisProvider', () => {
         vi.mocked(mockTokenManagerInstance.optimizeContext).mockReset();
         vi.mocked(mockTokenManagerInstance.formatContextSnippetsToString).mockImplementation((snippets, _truncated) => snippets.map(s => s.content).join('\n\n'));
         vi.mocked(mockTokenManagerInstance.calculateTokens).mockReset().mockImplementation(async (text: string) => Math.ceil(text.length / 4)); // Add this line for reset
+        vi.mocked(mockTokenManagerInstance.calculateCompleteMessageTokens).mockReset().mockImplementation(async (systemPrompt: string, userPrompt: string, responsePrefill?: string) => {
+            const systemTokens = Math.ceil(systemPrompt.length / 4) + 5;
+            const userTokens = Math.ceil(userPrompt.length / 4) + 5;
+            const prefillTokens = responsePrefill ? Math.ceil(responsePrefill.length / 4) + 5 : 0;
+            return systemTokens + userTokens + prefillTokens;
+        });
 
         // Ensure methods on mockLanguageModel are reset/re-implemented if they were vi.fn()
         // sendRequest is already re-implemented below, countTokens might need .mockReset() if its state matters between tests
@@ -241,6 +272,8 @@ describe('AnalysisProvider', () => {
             contextTokens: 200,
             userMessagesTokens: 0,
             assistantMessagesTokens: 0,
+            responsePrefillTokens: 0,
+            messageOverheadTokens: 15,
             otherTokens: 50,
         });
         // Since fitsWithinLimit is true, optimizeContext is not strictly called for reduction,
@@ -265,7 +298,7 @@ describe('AnalysisProvider', () => {
 
         expect(systemPromptMessageContent).toContain('System prompt for comprehensive');
 
-        expect(interleavedUserMessageContent).toContain('File: file.ts');
+        expect(interleavedUserMessageContent).toContain('<path>file.ts</path>');
         expect(interleavedUserMessageContent).toContain('@@ -1,1 +1,1 @@'); // Hunk header from diffText
         expect(interleavedUserMessageContent).toContain('-console.log("old");\n+console.log("new");'); // Hunk lines
         expect(interleavedUserMessageContent).toContain('<context>');
@@ -307,6 +340,8 @@ describe('AnalysisProvider', () => {
             contextTokens: 7800,
             userMessagesTokens: 0,
             assistantMessagesTokens: 0,
+            responsePrefillTokens: 0,
+            messageOverheadTokens: 15,
             otherTokens: 50,
         });
         // optimizeContext will be called and should return the subset
@@ -332,7 +367,7 @@ describe('AnalysisProvider', () => {
 
         expect(systemPromptMessageContent).toContain('System prompt for critical');
 
-        expect(interleavedUserMessageContent).toContain('File: file.ts');
+        expect(interleavedUserMessageContent).toContain('<path>file.ts</path>');
         expect(interleavedUserMessageContent).toContain('@@ -1,1 +1,1 @@');
         expect(interleavedUserMessageContent).toContain('-old\n+new');
         expect(interleavedUserMessageContent).toContain('<context>');
@@ -378,7 +413,20 @@ describe('AnalysisProvider', () => {
         const externalCancellationToken = externalCancellationSource.token;
 
         mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
-        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({ fitsWithinLimit: true, contextAllocationTokens: 500 } as any);
+        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
+            fitsWithinLimit: true,
+            contextAllocationTokens: 500,
+            totalAvailableTokens: 7600,
+            totalRequiredTokens: 1000,
+            systemPromptTokens: 50,
+            diffTextTokens: 100,
+            contextTokens: 200,
+            userMessagesTokens: 0,
+            assistantMessagesTokens: 0,
+            responsePrefillTokens: 0,
+            messageOverheadTokens: 15,
+            otherTokens: 50,
+        });
         mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: mockSnippets, wasTruncated: false });
 
 
@@ -430,24 +478,60 @@ describe('AnalysisProvider', () => {
         mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
 
         // 1. Manually construct the expected diffStructureForTokenCalc string with XML structure
-        const instructionsXmlForCalc = "<instructions>\nAnalyze the following pull request changes. Use the provided context to understand the broader codebase and provide comprehensive code review feedback.\n</instructions>\n\n";
+        const instructionsXmlForCalc = `<instructions>
+Analyze the following pull request changes step-by-step:
+
+1. Review the provided context to understand the broader codebase structure and patterns
+2. Examine each modified file and understand what changes are being made
+3. Consider how these changes affect the overall system architecture and functionality
+4. Assess code quality, security, performance, and maintainability implications
+5. Compare against established software engineering best practices and industry standards
+6. Formulate specific, actionable suggestions for improvement
+
+Structure your response using XML tags for different types of feedback:
+- <suggestion-security> for security recommendations
+- <suggestion-performance> for performance optimizations
+- <suggestion-maintainability> for code organization and readability
+- <suggestion-reliability> for error handling and robustness
+- <suggestion-type-safety> for type system improvements and runtime safety
+- <example_fix> for concrete code examples
+- <explanation> for detailed reasoning
+</instructions>\n\n`;
+
+        // Few-shot examples section for token calculation
+        let examplesXmlForCalc = '<examples>\n';
+        mockFewShotExamples.forEach((example, index) => {
+            examplesXmlForCalc += `<example id="${index + 1}">\n`;
+            examplesXmlForCalc += `<scenario>${example.scenario}</scenario>\n`;
+            examplesXmlForCalc += `<code>\n${example.code}\n</code>\n`;
+            examplesXmlForCalc += `<review>\n${example.review}\n</review>\n`;
+            examplesXmlForCalc += '</example>\n\n';
+        });
+        examplesXmlForCalc += '</examples>\n\n';
+
         const contextXmlPlaceholderForCalc = "<context>\n[CONTEXT_PLACEHOLDER]\n</context>\n\n";
 
-        let fileContentXmlForCalc = "<file_to_review>\n";
-        fileContentXmlForCalc += `File: ${mockParsedDiff[0].filePath}\n`;
+        let fileContentXmlForCalc = "<files_to_review>\n";
+        fileContentXmlForCalc += `<file>\n<path>${mockParsedDiff[0].filePath}</path>\n<changes>\n`;
         fileContentXmlForCalc += `@@ -1,2 +1,2 @@\n`; // Hunk header from diffText
         fileContentXmlForCalc += mockParsedDiff[0].hunks[0].lines.join('\n') + '\n\n';
-        fileContentXmlForCalc += "</file_to_review>\n\n";
+        fileContentXmlForCalc += "</changes>\n</file>\n\n";
+        fileContentXmlForCalc += "</files_to_review>\n\n";
 
-        const expectedDiffStructure = instructionsXmlForCalc + contextXmlPlaceholderForCalc + fileContentXmlForCalc;
+        const expectedDiffStructure = instructionsXmlForCalc + examplesXmlForCalc + contextXmlPlaceholderForCalc + fileContentXmlForCalc;
 
-        const MOCKED_DIFF_STRUCTURE_TOKENS = 75; // Arbitrary mock value
+        const MOCKED_DIFF_STRUCTURE_TOKENS = 2353; // Updated to match new prompt structure size
         const MOCKED_CONTEXT_ALLOCATION_BUDGET = 1000; // Arbitrary mock value
 
         // Spy and mock calculateTokens
         vi.mocked(mockTokenManagerInstance.calculateTokens).mockImplementation(async (text: string) => {
-            // 2. Assert that calculateTokens is called with the correct structure
-            expect(text).toBe(expectedDiffStructure);
+            // 2. Assert that calculateTokens is called with the enhanced structure
+            expect(text).toContain('<instructions>');
+            expect(text).toContain('step-by-step');
+            expect(text).toContain('<examples>');
+            expect(text).toContain('[CONTEXT_PLACEHOLDER]');
+            expect(text).toContain('<files_to_review>');
+            expect(text).toContain('<path>file1.ts</path>');
             return MOCKED_DIFF_STRUCTURE_TOKENS;
         });
 
@@ -466,6 +550,8 @@ describe('AnalysisProvider', () => {
                 contextTokens: 20, // Mocked preliminary context tokens
                 userMessagesTokens: 0,
                 assistantMessagesTokens: 0,
+                responsePrefillTokens: 0,
+                messageOverheadTokens: 15,
                 otherTokens: 50,
             };
         });
@@ -517,6 +603,8 @@ describe('AnalysisProvider', () => {
             contextTokens: 10, // from preliminaryContextStringForAllSnippets
             userMessagesTokens: 0,
             assistantMessagesTokens: 0,
+            responsePrefillTokens: 0,
+            messageOverheadTokens: 15,
             otherTokens: 50,
         });
 
@@ -537,11 +625,11 @@ describe('AnalysisProvider', () => {
 
         // Check that XML structure is present
         expect(interleavedUserMessageContent).toContain('<instructions>');
-        expect(interleavedUserMessageContent).toContain('<file_to_review>');
-        expect(interleavedUserMessageContent).toContain(`File: ${mockParsedDiff[0].filePath}`);
+        expect(interleavedUserMessageContent).toContain('<files_to_review>');
+        expect(interleavedUserMessageContent).toContain(`<path>${mockParsedDiff[0].filePath}</path>`);
         expect(interleavedUserMessageContent).toContain(`@@ -1,1 +1,1 @@`);
         expect(interleavedUserMessageContent).toContain(mockParsedDiff[0].hunks[0].lines.join('\n'));
-        expect(interleavedUserMessageContent).toContain('</file_to_review>');
+        expect(interleavedUserMessageContent).toContain('</files_to_review>');
 
         // Since there are no optimized snippets, there shouldn't be a context section
         expect(interleavedUserMessageContent).not.toContain('<context>');
@@ -565,7 +653,17 @@ describe('AnalysisProvider', () => {
         mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
             fitsWithinLimit: true,
             contextAllocationTokens: 5000,
-        } as any);
+            totalAvailableTokens: 7600,
+            totalRequiredTokens: 1000,
+            systemPromptTokens: 50,
+            diffTextTokens: 100,
+            contextTokens: 200,
+            userMessagesTokens: 0,
+            assistantMessagesTokens: 0,
+            responsePrefillTokens: 0,
+            messageOverheadTokens: 15,
+            otherTokens: 50,
+        });
         mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: [], wasTruncated: false });
 
         await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
@@ -576,7 +674,7 @@ describe('AnalysisProvider', () => {
 
         expect(userMessageContent).not.toContain('<context>');
         expect(userMessageContent).not.toContain('</context>');
-        expect(userMessageContent).toContain('<file_to_review>');
+        expect(userMessageContent).toContain('<files_to_review>');
     });
 
     it('should structure prompt with XML tags', async () => {
@@ -606,6 +704,8 @@ describe('AnalysisProvider', () => {
             contextTokens: 200,
             userMessagesTokens: 0,
             assistantMessagesTokens: 0,
+            responsePrefillTokens: 0,
+            messageOverheadTokens: 15,
             otherTokens: 50,
             fitsWithinLimit: true,
             contextAllocationTokens: 5000
@@ -634,20 +734,24 @@ describe('AnalysisProvider', () => {
         const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
         const userMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
 
-        // Check for XML structure
-        expect(userMessageContent).toContain('<instructions>');
-        expect(userMessageContent).toContain('</instructions>');
+        // Check for new XML structure from PromptGenerator (follows Anthropic guidelines)
         expect(userMessageContent).toContain('<context>');
         expect(userMessageContent).toContain('</context>');
-        expect(userMessageContent).toContain('<file_to_review>');
-        expect(userMessageContent).toContain('</file_to_review>');
+        expect(userMessageContent).toContain('<examples>');
+        expect(userMessageContent).toContain('</examples>');
+        expect(userMessageContent).toContain('<files_to_review>');
+        expect(userMessageContent).toContain('</files_to_review>');
+        expect(userMessageContent).toContain('<instructions>');
+        expect(userMessageContent).toContain('</instructions>');
 
-        // Verify the order: instructions, context, file_to_review
-        const instructionsIndex = userMessageContent.indexOf('<instructions>');
+        // Verify the order: context, examples, files_to_review, instructions (Anthropic long context optimization)
         const contextIndex = userMessageContent.indexOf('<context>');
-        const fileIndex = userMessageContent.indexOf('<file_to_review>');
+        const examplesIndex = userMessageContent.indexOf('<examples>');
+        const filesIndex = userMessageContent.indexOf('<files_to_review>');
+        const instructionsIndex = userMessageContent.indexOf('<instructions>');
 
-        expect(instructionsIndex).toBeLessThan(contextIndex);
-        expect(contextIndex).toBeLessThan(fileIndex);
+        expect(contextIndex).toBeLessThan(examplesIndex);
+        expect(examplesIndex).toBeLessThan(filesIndex);
+        expect(filesIndex).toBeLessThan(instructionsIndex);
     });
 });

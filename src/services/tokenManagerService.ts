@@ -4,6 +4,8 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
 import { ContextSnippet } from '../types/contextTypes';
 import { Log } from './loggingService';
+import { PromptGenerator } from './promptGenerator';
+
 
 /**
  * Components of an analysis that consume tokens
@@ -15,6 +17,7 @@ export interface TokenComponents {
     userMessages?: string[];
     assistantMessages?: string[];
     diffStructureTokens?: number; // Tokens for the diff's structural representation in an interleaved prompt
+    responsePrefill?: string; // Response prefill content that will be sent to the model
 }
 
 /**
@@ -28,6 +31,8 @@ export interface TokenAllocation {
     contextTokens: number; // Tokens of the preliminary formatted string
     userMessagesTokens: number;
     assistantMessagesTokens: number;
+    responsePrefillTokens: number; // Tokens for response prefill content
+    messageOverheadTokens: number; // Overhead for chat message structure
     otherTokens: number; // Reserved for formatting, metadata, etc.
     fitsWithinLimit: boolean;
     contextAllocationTokens: number; // How many tokens can be allocated to context
@@ -45,11 +50,14 @@ export class TokenManagerService {
     private static readonly TRUNCATION_MESSAGE = '\n\n[Context truncated to fit token limit. Some information might be missing.]';
     private static readonly PARTIAL_TRUNCATION_MESSAGE = '\n\n[File content partially truncated to fit token limit]';
 
-
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelDetails: { family: string; maxInputTokens: number } | null = null;
 
-    constructor(private readonly modelManager: CopilotModelManager) { }
+    constructor(
+        private readonly modelManager: CopilotModelManager,
+        private readonly promptGenerator: PromptGenerator
+    ) {
+    }
 
     /**
      * Calculate token allocation for all components with a specific model
@@ -89,12 +97,22 @@ export class TokenManagerService {
             }
         }
 
+        // Calculate response prefill tokens
+        const responsePrefillTokens = components.responsePrefill
+            ? await this.currentModel!.countTokens(components.responsePrefill) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE : 0;
+
+        // Calculate message structure overhead (typically 3 messages: system, user, assistant prefill)
+        const messageCount = (components.systemPrompt ? 1 : 0) +
+            (userMessagesTokens > 0 ? 1 : 0) +
+            (components.responsePrefill ? 1 : 0);
+        const messageOverheadTokens = messageCount * TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+
         const otherTokens = TokenManagerService.FORMATTING_OVERHEAD;
         const totalRequiredTokens = systemPromptTokens + diffTokens + contextTokens +
-            userMessagesTokens + assistantMessagesTokens + otherTokens;
+            userMessagesTokens + assistantMessagesTokens + responsePrefillTokens + messageOverheadTokens + otherTokens;
 
         const nonContextTokens = systemPromptTokens + diffTokens +
-            userMessagesTokens + assistantMessagesTokens + otherTokens;
+            userMessagesTokens + assistantMessagesTokens + responsePrefillTokens + messageOverheadTokens + otherTokens;
         const contextAllocation = Math.max(0, safeMaxTokens - nonContextTokens);
 
         return {
@@ -105,6 +123,8 @@ export class TokenManagerService {
             contextTokens, // Tokens of the full unoptimized context string
             userMessagesTokens,
             assistantMessagesTokens,
+            responsePrefillTokens,
+            messageOverheadTokens,
             otherTokens,
             fitsWithinLimit: totalRequiredTokens <= safeMaxTokens,
             contextAllocationTokens: contextAllocation
@@ -403,6 +423,36 @@ export class TokenManagerService {
     }
 
     /**
+     * Calculate total tokens for complete message array that will be sent to model
+     * @param systemPrompt System prompt content
+     * @param userPrompt User prompt content
+     * @param responsePrefill Response prefill content
+     * @returns Total token count including message overhead
+     */
+    public async calculateCompleteMessageTokens(
+        systemPrompt: string,
+        userPrompt: string,
+        responsePrefill?: string
+    ): Promise<number> {
+        await this.updateModelInfo();
+
+        let totalTokens = 0;
+
+        // System message tokens + overhead
+        totalTokens += await this.currentModel!.countTokens(systemPrompt) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+
+        // User message tokens + overhead
+        totalTokens += await this.currentModel!.countTokens(userPrompt) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+
+        // Response prefill tokens + overhead (if provided)
+        if (responsePrefill) {
+            totalTokens += await this.currentModel!.countTokens(responsePrefill) + TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+        }
+
+        return totalTokens;
+    }
+
+    /**
      * Update model information from the model manager
      */
     private async updateModelInfo(): Promise<void> {
@@ -447,83 +497,19 @@ export class TokenManagerService {
      * @returns System prompt text
      */
     public getSystemPromptForMode(mode: AnalysisMode): string {
-        return `You are a world-class Principal Software Engineer, renowned for your meticulous and insightful code reviews. Your expertise spans decades of experience in building robust, secure, and maintainable software systems.
+        return this.promptGenerator.getSystemPrompt(mode);
+    }
 
-## Core Principles
+    /**
+     * Get response prefill to guide output format
+     * @returns Response prefill text
+     */
+    public getResponsePrefill(): string {
+        return this.promptGenerator.getResponsePrefill();
+    }
 
-You must follow these fundamental principles in every review:
-
-1. **Security First**: Actively identify and flag potential security vulnerabilities, including but not limited to injection attacks, authentication bypasses, authorization flaws, data exposure risks, cryptographic failures, and insecure configurations. Always consider the OWASP Top 10 and emerging threat vectors.
-
-2. **Robustness and Reliability**: Scrutinize error handling patterns, identify edge cases that could cause failures, detect potential race conditions, evaluate fault tolerance mechanisms, and ensure proper resource management and cleanup.
-
-3. **Performance**: Analyze algorithmic complexity, identify potential bottlenecks, evaluate resource usage patterns, assess database query efficiency, detect memory leaks, and consider scalability implications under load.
-
-4. **Maintainability and Readability**: Enforce adherence to SOLID principles, DRY (Don't Repeat Yourself), and clean code practices. Evaluate code clarity, naming conventions, function decomposition, and overall architectural coherence.
-
-5. **Best Practices**: Ensure compliance with language-specific idioms, framework conventions, industry standards, and established patterns. Identify anti-patterns and suggest modern, idiomatic alternatives.
-
-## Review Process
-
-Before writing your response, you must first perform a comprehensive mental analysis:
-
-1. **Initial Assessment**: Quickly scan the changes to understand the scope and purpose
-2. **Security Analysis**: Systematically examine each change for potential security implications
-3. **Logic Review**: Trace through the code paths to identify logical errors or edge cases
-4. **Performance Evaluation**: Assess computational complexity and resource usage patterns
-5. **Quality Assessment**: Evaluate code structure, naming, and adherence to best practices
-6. **Integration Impact**: Consider how changes affect the broader system architecture
-
-## Code Examples Guidance
-
-Include code examples when they significantly clarify the solution or demonstrate non-obvious improvements. Use this format:
-\`\`\`[language]
-// Current code (if showing a problem)
-[actual code from PR]
-
-// Recommended improvement
-[corrected/improved code with brief inline comments]
-\`\`\`
-
-## Output Format Requirements
-
-Your response MUST follow this EXACT structure with NO deviations:
-
-### General Assessment
-[1-3 sentences summarizing overall code quality and key findings]
-
-### 🚨 Critical Issues
-[Issues that MUST be fixed before merge. If none exist, write: "None identified."]
-
-**Format for each issue:**
-- **File:** [filename:line_number] *(use "filename:unknown" if line number unavailable)*
-  **Issue:** [Precise technical description]
-  **Suggestion:** [Specific implementation approach]
-  **Code Example:** *(Include only when it clarifies a complex fix)*
-
-### 💡 Suggestions & Best Practices
-[Recommended improvements for code quality. If none exist, write: "Code quality meets standards."]
-
-**Format for each suggestion:**
-- **File:** [filename:line_number] *(use "filename:unknown" if line number unavailable)*
-  **Issue:** [Description of improvement opportunity]
-  **Suggestion:** [Specific recommendation with implementation approach]
-  **Code Example:** *(Include when it demonstrates non-obvious improvements)*
-
-### nit. Nitpicks
-[Minor stylistic suggestions. If none exist, write: "No significant nitpicks."]
-
-**Format for nitpicks:**
-- **File:** [filename:line_number]: [Brief description and suggested fix]
-
-**Formatting Rules:**
-- Use exact bullet point format shown above
-- Include all four sections even if empty (use fallback text)
-- Use "filename:unknown" when line numbers are unavailable
-- Code examples are optional but encouraged when they add value
-- Keep nitpicks under 3 items maximum
-- Do not add any text outside these four sections
-
-Remember: Be thorough, actionable, and focus on helping developers improve their code quality with practical, implementable recommendations.`;
+    public dispose(): void {
+        this.currentModel = null;
+        this.modelDetails = null;
     }
 }

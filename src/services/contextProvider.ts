@@ -309,7 +309,6 @@ export class ContextProvider implements vscode.Disposable {
      * @param gitRootPath The root path of the git repository
      * @param options Optional search options
      * @param analysisMode Analysis mode that determines relevance strategy
-     * @param _systemPrompt Optional system prompt (now handled by AnalysisProvider/TokenManager)
      * @param progressCallback Optional callback for progress updates
      * @param token Optional cancellation token
      * @returns A promise resolving to a HybridContextResult object.
@@ -319,7 +318,6 @@ export class ContextProvider implements vscode.Disposable {
         gitRootPath: string,
         options?: SimilaritySearchOptions,
         analysisMode: AnalysisMode = AnalysisMode.Comprehensive,
-        _systemPrompt?: string, // No longer used here for optimization logic
         progressCallback?: (processed: number, total: number) => void,
         token?: vscode.CancellationToken
     ): Promise<HybridContextResult> {
