@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
-import { ContextSnippet } from '../types/contextTypes';
+import { ContextSnippet, ContentType } from '../types/contextTypes';
 import { Log } from './loggingService';
 import { PromptGenerator } from './promptGenerator';
 
@@ -13,7 +13,10 @@ import { PromptGenerator } from './promptGenerator';
 export interface TokenComponents {
     systemPrompt?: string;
     diffText?: string; // Original flat diff, can be used as fallback or for non-interleaved
-    context?: string; // This will be the preliminary formatted string of all snippets
+    contextSnippets?: ContextSnippet[]; // Original context snippets for type-aware truncation
+    embeddingContext?: string; // Context from embedding search
+    lspReferenceContext?: string; // Context from LSP references
+    lspDefinitionContext?: string; // Context from LSP definitions
     userMessages?: string[];
     assistantMessages?: string[];
     diffStructureTokens?: number; // Tokens for the diff's structural representation in an interleaved prompt
@@ -42,7 +45,7 @@ export interface TokenAllocation {
  * Content prioritization order configuration
  */
 export interface ContentPrioritization {
-    order: ('diff' | 'embeddings' | 'lsp-references' | 'lsp-definitions')[];
+    order: ContentType[];
 }
 
 /**
@@ -50,17 +53,26 @@ export interface ContentPrioritization {
  * Follows Single Responsibility Principle by focusing only on token management
  */
 export class TokenManagerService {
-    // Standard overhead for different token components
+    // Token calculation constants - could be made configurable in future
     private static readonly TOKEN_OVERHEAD_PER_MESSAGE = 5;
-    private static readonly FORMATTING_OVERHEAD = 50; // For overall prompt structure
+    private static readonly FORMATTING_OVERHEAD = 50;
     private static readonly SAFETY_MARGIN_RATIO = 0.95; // 5% safety margin
-    private static readonly TRUNCATION_MESSAGE = '\n\n[Context truncated to fit token limit. Some information might be missing.]';
-    private static readonly PARTIAL_TRUNCATION_MESSAGE = '\n\n[File content partially truncated to fit token limit]';
+
+    // Truncation constants
+    private static readonly TRUNCATION_MESSAGES = {
+        CONTEXT: '\n\n[Context truncated to fit token limit. Some information might be missing.]',
+        PARTIAL: '\n\n[File content partially truncated to fit token limit]'
+    } as const;
+
+    // Context optimization constants
+    private static readonly MIN_CONTENT_TOKENS_FOR_PARTIAL = 10;
+    private static readonly SAFETY_BUFFER_FOR_PARTIAL = 5;
+    private static readonly CHARS_PER_TOKEN_ESTIMATE = 4.0;
 
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelDetails: { family: string; maxInputTokens: number } | null = null;
     private contentPrioritization: ContentPrioritization = {
-        order: ['diff', 'embeddings', 'lsp-references', 'lsp-definitions']
+        order: ['diff', 'embedding', 'lsp-reference', 'lsp-definition']
     };
 
     constructor(
@@ -90,8 +102,17 @@ export class TokenManagerService {
             ? components.diffStructureTokens
             : (components.diffText ? await this.currentModel!.countTokens(components.diffText) : 0);
 
-        const contextTokens = components.context // Assuming components.context is the full, unoptimized string
-            ? await this.currentModel!.countTokens(components.context) : 0;
+        // Calculate context tokens from separated fields
+        let contextTokens = 0;
+        if (components.embeddingContext) {
+            contextTokens += await this.currentModel!.countTokens(components.embeddingContext);
+        }
+        if (components.lspReferenceContext) {
+            contextTokens += await this.currentModel!.countTokens(components.lspReferenceContext);
+        }
+        if (components.lspDefinitionContext) {
+            contextTokens += await this.currentModel!.countTokens(components.lspDefinitionContext);
+        }
 
         // Calculate content tokens only (without message overhead)
         let userMessagesTokens = 0;
@@ -164,7 +185,9 @@ export class TokenManagerService {
     }
 
     /**
-     * Perform proportional truncation based on configured prioritization
+     * Perform waterfall truncation based on configured prioritization.
+     * Uses a waterfall approach: try to preserve highest priority content fully,
+     * but allow truncation if needed to make room for lower priority content.
      * @param components Token components to truncate
      * @param targetTokens Target token limit to fit within
      * @returns Truncated components that fit within the token limit
@@ -175,41 +198,287 @@ export class TokenManagerService {
     ): Promise<{ truncatedComponents: TokenComponents, wasTruncated: boolean }> {
         await this.updateModelInfo();
 
-        const currentTokens = await this.calculateComponentTokens(components);
-        if (currentTokens <= targetTokens) {
-            return { truncatedComponents: components, wasTruncated: false };
-        }
+        // Ensure we have separated context fields
+        const normalizedComponents = this.ensureSeparatedContextFields(components);
 
-        // Calculate how much we need to reduce
-        const reductionNeeded = currentTokens - targetTokens;
-        const truncatedComponents = { ...components };
+        const currentTokens = await this.calculateComponentTokens(normalizedComponents);
+        if (currentTokens <= targetTokens) {
+            return { truncatedComponents: normalizedComponents, wasTruncated: false };
+        }
+        const truncatedComponents = { ...normalizedComponents };
         let wasTruncated = false;
 
-        // Apply proportional reduction based on priority order
-        for (const contentType of this.contentPrioritization.order.reverse()) {
-            if (reductionNeeded <= 0) break;
+        // Calculate fixed overhead tokens (non-truncatable components)
+        const fixedTokens = await this.calculateFixedTokens(components);
+        const availableTokensForContent = Math.max(0, targetTokens - fixedTokens);
+
+        if (availableTokensForContent <= 0) {
+            // Not enough space even for fixed components - clear truncatable content
+            truncatedComponents.diffText = '';
+            truncatedComponents.embeddingContext = '';
+            truncatedComponents.lspReferenceContext = '';
+            truncatedComponents.lspDefinitionContext = '';
+            return { truncatedComponents: truncatedComponents, wasTruncated: true };
+        }
+
+        // Calculate current content sizes
+        const diffTokens = truncatedComponents.diffText ?
+            await this.currentModel!.countTokens(truncatedComponents.diffText) : 0;
+        const embeddingTokens = truncatedComponents.embeddingContext ?
+            await this.currentModel!.countTokens(truncatedComponents.embeddingContext) : 0;
+        const lspRefTokens = truncatedComponents.lspReferenceContext ?
+            await this.currentModel!.countTokens(truncatedComponents.lspReferenceContext) : 0;
+        const lspDefTokens = truncatedComponents.lspDefinitionContext ?
+            await this.currentModel!.countTokens(truncatedComponents.lspDefinitionContext) : 0;
+        // Strategy: Waterfall allocation in priority order
+        // Calculate total content tokens using separated fields
+        const totalContextTokens = embeddingTokens + lspRefTokens + lspDefTokens;
+        const totalContentTokens = diffTokens + totalContextTokens;
+
+        if (totalContentTokens <= availableTokensForContent) {
+            // Everything fits - no truncation needed
+            return { truncatedComponents: truncatedComponents, wasTruncated: false };
+        }
+
+        // Apply TRUE waterfall allocation based on priority order
+        // Higher priority content gets allocated first, lower priority gets remaining space
+        let remainingTokens = availableTokensForContent;
+
+        // Process content types in priority order (highest first)
+        for (const contentType of this.contentPrioritization.order) {
+            if (remainingTokens <= 0) {
+                // No tokens left - clear all remaining content types
+                this.clearRemainingContentByType(truncatedComponents, contentType);
+                wasTruncated = true;
+                break;
+            }
 
             switch (contentType) {
                 case 'diff':
-                    if (truncatedComponents.diffText) {
-                        const result = await this.truncateContent(truncatedComponents.diffText, reductionNeeded * 0.25);
-                        truncatedComponents.diffText = result.content;
-                        wasTruncated = wasTruncated || result.wasTruncated;
+                    if (truncatedComponents.diffText && diffTokens > 0) {
+                        if (diffTokens <= remainingTokens) {
+                            // Diff fits completely - allocate full space
+                            remainingTokens -= diffTokens;
+                        } else {
+                            // Diff is too large - truncate to fit remaining space
+                            const tokensToRemove = diffTokens - remainingTokens;
+                            const result = await this.truncateContent(truncatedComponents.diffText, tokensToRemove);
+                            truncatedComponents.diffText = result.content;
+                            wasTruncated = wasTruncated || result.wasTruncated;
+                            remainingTokens = 0; // All tokens used by diff
+                        }
                     }
                     break;
-                case 'embeddings':
-                case 'lsp-references':
-                case 'lsp-definitions':
-                    if (truncatedComponents.context) {
-                        const result = await this.truncateContent(truncatedComponents.context, reductionNeeded * 0.25);
-                        truncatedComponents.context = result.content;
-                        wasTruncated = wasTruncated || result.wasTruncated;
+
+                case 'embedding':
+                    if (truncatedComponents.embeddingContext && embeddingTokens > 0) {
+                        if (embeddingTokens <= remainingTokens) {
+                            // Embedding context fits completely in remaining space
+                            remainingTokens -= embeddingTokens;
+                        } else {
+                            // Embedding context is too large for remaining space - truncate to fit
+                            const tokensToRemove = embeddingTokens - remainingTokens;
+                            const result = await this.truncateContent(truncatedComponents.embeddingContext, tokensToRemove);
+                            truncatedComponents.embeddingContext = result.content;
+                            wasTruncated = wasTruncated || result.wasTruncated;
+                            remainingTokens = 0; // All remaining tokens used
+                        }
+                    }
+                    break;
+
+                case 'lsp-reference':
+                    if (truncatedComponents.lspReferenceContext && lspRefTokens > 0) {
+                        if (lspRefTokens <= remainingTokens) {
+                            // LSP reference context fits completely in remaining space
+                            remainingTokens -= lspRefTokens;
+                        } else {
+                            // LSP reference context is too large for remaining space - truncate to fit
+                            const tokensToRemove = lspRefTokens - remainingTokens;
+                            const result = await this.truncateContent(truncatedComponents.lspReferenceContext, tokensToRemove);
+                            truncatedComponents.lspReferenceContext = result.content;
+                            wasTruncated = wasTruncated || result.wasTruncated;
+                            remainingTokens = 0; // All remaining tokens used
+                        }
+                    }
+                    break;
+
+                case 'lsp-definition':
+                    if (truncatedComponents.lspDefinitionContext && lspDefTokens > 0) {
+                        if (lspDefTokens <= remainingTokens) {
+                            // LSP definition context fits completely in remaining space
+                            remainingTokens -= lspDefTokens;
+                        } else {
+                            // LSP definition context is too large for remaining space - truncate to fit
+                            const tokensToRemove = lspDefTokens - remainingTokens;
+                            const result = await this.truncateContent(truncatedComponents.lspDefinitionContext, tokensToRemove);
+                            truncatedComponents.lspDefinitionContext = result.content;
+                            wasTruncated = wasTruncated || result.wasTruncated;
+                            remainingTokens = 0; // All remaining tokens used
+                        }
                     }
                     break;
             }
         }
 
-        return { truncatedComponents, wasTruncated };
+        // Return the truncated components with separate context fields
+        return { truncatedComponents: truncatedComponents, wasTruncated };
+    }
+
+    /**
+     * Get priority weight for content type (higher number = higher priority)
+     * @param contentType The content type to get priority for
+     * @returns Priority weight
+     */
+    private getPriorityWeight(contentType: string): number {
+        const index = this.contentPrioritization.order.indexOf(contentType as any);
+        if (index === -1) return 1;
+        return this.contentPrioritization.order.length - index;
+    }
+
+    /**
+     * Clear content for the current and all remaining lower-priority content types
+     * @param components Components to clear
+     * @param currentContentType The current content type being processed
+     */
+    private clearRemainingContentByType(
+        components: TokenComponents,
+        currentContentType: ContentType
+    ): void {
+        const currentIndex = this.contentPrioritization.order.indexOf(currentContentType);
+        if (currentIndex === -1) return;
+
+        // Clear current and all remaining content types
+        for (let i = currentIndex; i < this.contentPrioritization.order.length; i++) {
+            const contentType = this.contentPrioritization.order[i];
+            switch (contentType) {
+                case 'diff':
+                    components.diffText = '';
+                    break;
+                case 'embedding':
+                    components.embeddingContext = '';
+                    break;
+                case 'lsp-reference':
+                    components.lspReferenceContext = '';
+                    break;
+                case 'lsp-definition':
+                    components.lspDefinitionContext = '';
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Ensure components have separated context fields, converting from legacy format if needed
+     * @param components Components to normalize
+     * @returns Components with separated context fields populated
+     */
+    private ensureSeparatedContextFields(components: TokenComponents): TokenComponents {
+        const normalized: TokenComponents = { ...components };
+
+        // If we have contextSnippets, use them to populate separated fields
+        if (components.contextSnippets && components.contextSnippets.length > 0) {
+            const separated = this.separateContextByType(components.contextSnippets);
+            normalized.embeddingContext = separated.embeddingContext;
+            normalized.lspReferenceContext = separated.lspReferenceContext;
+            normalized.lspDefinitionContext = separated.lspDefinitionContext;
+        }
+        // Otherwise ensure all fields are defined as empty strings
+        else {
+            normalized.embeddingContext = normalized.embeddingContext || '';
+            normalized.lspReferenceContext = normalized.lspReferenceContext || '';
+            normalized.lspDefinitionContext = normalized.lspDefinitionContext || '';
+        }
+
+        return normalized;
+    }
+
+    /**
+     * Separate context snippets by type for waterfall truncation
+     * @param snippets Original context snippets
+     * @returns Separated context strings by type
+     */
+    private separateContextByType(snippets: ContextSnippet[]): {
+        embeddingContext: string;
+        lspReferenceContext: string;
+        lspDefinitionContext: string;
+    } {
+        const embeddingSnippets = snippets.filter(s => s.type === 'embedding');
+        const lspReferenceSnippets = snippets.filter(s => s.type === 'lsp-reference');
+        const lspDefinitionSnippets = snippets.filter(s => s.type === 'lsp-definition');
+
+        return {
+            embeddingContext: this.formatContextSnippetsToString(embeddingSnippets, false),
+            lspReferenceContext: this.formatContextSnippetsToString(lspReferenceSnippets, false),
+            lspDefinitionContext: this.formatContextSnippetsToString(lspDefinitionSnippets, false)
+        };
+    }
+
+    /**
+     * Recombine separated context fields into a single context string
+     * @param components Components with separated context fields
+     * @returns Combined context string
+     */
+    private recombineContextFields(components: TokenComponents): string {
+        const contextParts = [];
+        if (components.embeddingContext && components.embeddingContext.trim()) {
+            contextParts.push(components.embeddingContext.trim());
+        }
+        if (components.lspReferenceContext && components.lspReferenceContext.trim()) {
+            contextParts.push(components.lspReferenceContext.trim());
+        }
+        if (components.lspDefinitionContext && components.lspDefinitionContext.trim()) {
+            contextParts.push(components.lspDefinitionContext.trim());
+        }
+        return contextParts.join('\n\n');
+    }
+
+    /**
+     * Calculate tokens for fixed (non-truncatable) components
+     * @param components Token components to analyze
+     * @returns Token count for fixed components
+     */
+    private async calculateFixedTokens(components: TokenComponents): Promise<number> {
+        await this.updateModelInfo();
+        if (!this.currentModel) return 0;
+
+        let fixedTokens = 0;
+
+        // System prompt is fixed
+        if (components.systemPrompt) {
+            fixedTokens += await this.currentModel.countTokens(components.systemPrompt);
+        }
+
+        // User and assistant messages are fixed
+        if (components.userMessages) {
+            for (const message of components.userMessages) {
+                fixedTokens += await this.currentModel.countTokens(message);
+            }
+        }
+        if (components.assistantMessages) {
+            for (const message of components.assistantMessages) {
+                fixedTokens += await this.currentModel.countTokens(message);
+            }
+        }
+
+        // Response prefill is fixed
+        if (components.responsePrefill) {
+            fixedTokens += await this.currentModel.countTokens(components.responsePrefill);
+        }
+
+        // Diff structure tokens (if specified instead of diffText)
+        if (components.diffStructureTokens && !components.diffText) {
+            fixedTokens += components.diffStructureTokens;
+        }
+
+        // Message overhead and formatting overhead are fixed
+        const messageCount = (components.systemPrompt ? 1 : 0) +
+            (components.userMessages?.length || 0) +
+            (components.assistantMessages?.length || 0) +
+            (components.responsePrefill ? 1 : 0);
+        fixedTokens += messageCount * TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
+        fixedTokens += TokenManagerService.FORMATTING_OVERHEAD;
+
+        return fixedTokens;
     }
 
     /**
@@ -229,8 +498,15 @@ export class TokenManagerService {
         if (components.diffText) {
             totalTokens += await this.currentModel.countTokens(components.diffText);
         }
-        if (components.context) {
-            totalTokens += await this.currentModel.countTokens(components.context);
+        // Calculate context tokens from separated fields
+        if (components.embeddingContext) {
+            totalTokens += await this.currentModel.countTokens(components.embeddingContext);
+        }
+        if (components.lspReferenceContext) {
+            totalTokens += await this.currentModel.countTokens(components.lspReferenceContext);
+        }
+        if (components.lspDefinitionContext) {
+            totalTokens += await this.currentModel.countTokens(components.lspDefinitionContext);
         }
         // Calculate message content and overhead separately
         let messageCount = 0;
@@ -250,12 +526,12 @@ export class TokenManagerService {
             totalTokens += await this.currentModel.countTokens(components.responsePrefill);
             messageCount++;
         }
-        
+
         // Add system prompt to message count if present
         if (components.systemPrompt) {
             messageCount++;
         }
-        
+
         // Add message overhead
         totalTokens += messageCount * TokenManagerService.TOKEN_OVERHEAD_PER_MESSAGE;
         if (components.diffStructureTokens) {
@@ -278,14 +554,19 @@ export class TokenManagerService {
         }
 
         const currentTokens = await this.currentModel.countTokens(content);
-        if (tokensToRemove >= currentTokens) {
-            // Drop entirely if truncation would remove everything
+        const targetTokens = currentTokens - tokensToRemove;
+
+        // Calculate tokens needed for truncation message
+        const truncationMessageTokens = await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGES.PARTIAL);
+        const availableTokensForContent = targetTokens - truncationMessageTokens;
+
+        if (availableTokensForContent <= 0) {
+            // Not enough space even for truncation message
             return { content: '', wasTruncated: true };
         }
 
-        const targetTokens = currentTokens - tokensToRemove;
-        const charsPerToken = 4.0; // Estimation
-        const targetChars = Math.floor(targetTokens * charsPerToken);
+        const charsPerToken = TokenManagerService.CHARS_PER_TOKEN_ESTIMATE;
+        const targetChars = Math.floor(availableTokensForContent * charsPerToken);
 
         if (targetChars <= 0) {
             return { content: '', wasTruncated: true };
@@ -299,7 +580,24 @@ export class TokenManagerService {
             truncatedContent = truncatedContent.substring(0, lastNewline);
         }
 
-        truncatedContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+        truncatedContent += TokenManagerService.TRUNCATION_MESSAGES.PARTIAL;
+
+        // Verify final result fits within target
+        const finalTokens = await this.currentModel.countTokens(truncatedContent);
+        if (finalTokens > targetTokens) {
+            // Still too large, try with smaller content
+            const adjustedChars = Math.max(0, targetChars - Math.ceil((finalTokens - targetTokens) * charsPerToken));
+            if (adjustedChars <= 0) {
+                return { content: '', wasTruncated: true };
+            }
+
+            truncatedContent = content.substring(0, adjustedChars);
+            const lastNewline2 = truncatedContent.lastIndexOf('\n');
+            if (lastNewline2 > -1) {
+                truncatedContent = truncatedContent.substring(0, lastNewline2);
+            }
+            truncatedContent += TokenManagerService.TRUNCATION_MESSAGES.PARTIAL;
+        }
 
         return { content: truncatedContent, wasTruncated: true };
     }
@@ -342,15 +640,8 @@ export class TokenManagerService {
     private prioritizeSnippets(snippets: ContextSnippet[]): ContextSnippet[] {
         return [...snippets].sort((a, b) => {
             const typePriority = (type: ContextSnippet['type']): number => {
-                // Map context types to prioritization order
-                const typeMap: Record<ContextSnippet['type'], string> = {
-                    'embedding': 'embeddings',
-                    'lsp-reference': 'lsp-references',
-                    'lsp-definition': 'lsp-definitions'
-                };
-
-                const mappedType = typeMap[type];
-                const index = this.contentPrioritization.order.indexOf(mappedType as any);
+                // Map context snippet types directly to prioritization order
+                const index = this.contentPrioritization.order.indexOf(type);
                 return index === -1 ? 0 : this.contentPrioritization.order.length - index;
             };
 
@@ -397,9 +688,9 @@ export class TokenManagerService {
                 if (!this.currentModel) {
                     break;
                 }
-                const partialTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.PARTIAL_TRUNCATION_MESSAGE);
-                const MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT = 10; // Minimum actual content tokens we want to try for
-                const safetyBufferForPartialCalc = 5; // Buffer for token calculation inaccuracies
+                const partialTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGES.PARTIAL);
+                const MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT = TokenManagerService.MIN_CONTENT_TOKENS_FOR_PARTIAL;
+                const safetyBufferForPartialCalc = TokenManagerService.SAFETY_BUFFER_FOR_PARTIAL;
 
                 // Attempt partial truncation if:
                 // 1. There's enough space for the truncation message and some minimal content.
@@ -411,7 +702,7 @@ export class TokenManagerService {
                         // let charsPerTokenEstimate = 3.5; // General estimate
                         // if (modelFamily.toLowerCase().includes('claude')) charsPerTokenEstimate = 4.5;
                         // else if (modelFamily.toLowerCase().includes('gemini')) charsPerTokenEstimate = 4.0;
-                        const charsPerTokenEstimate = 4.0; // To align with mock countTokens (ceil(len/4))
+                        const charsPerTokenEstimate = TokenManagerService.CHARS_PER_TOKEN_ESTIMATE;
 
                         // Target tokens for the content part of the partial snippet
                         const targetContentTokens = remainingTokensForPartial - partialTruncMsgTokens - safetyBufferForPartialCalc;
@@ -453,7 +744,7 @@ export class TokenManagerService {
                                         }
                                     }
                                 }
-                                partialContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+                                partialContent += TokenManagerService.TRUNCATION_MESSAGES.PARTIAL;
 
                                 if (!this.currentModel) {
                                     break;
@@ -476,13 +767,13 @@ export class TokenManagerService {
         // If no snippets fit at all (not even partially from the main loop),
         // and there's enough space for the main truncation message plus some minimal content,
         // try to add a "tiny" piece of the most relevant snippet.
-        const MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT = 10;
+        const MIN_CONTENT_TOKENS_FOR_TINY_ATTEMPT = TokenManagerService.MIN_CONTENT_TOKENS_FOR_PARTIAL;
         // For tiny content, we still use PARTIAL_TRUNCATION_MESSAGE as it's shorter and indicates partial nature.
         if (!this.currentModel) {
             return { optimizedSnippets: selectedSnippets, wasTruncated };
         }
-        const partialMsgTokensForTiny = await this.currentModel.countTokens(TokenManagerService.PARTIAL_TRUNCATION_MESSAGE);
-        const safetyBufferForTinyCalc = 5; // Safety buffer for token calculation of content part
+        const partialMsgTokensForTiny = await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGES.PARTIAL);
+        const safetyBufferForTinyCalc = TokenManagerService.SAFETY_BUFFER_FOR_PARTIAL;
 
         // If no snippets fit (not even partially from main loop), and there's enough space for
         // the partial truncation message, some minimal content, and a safety buffer,
@@ -494,7 +785,7 @@ export class TokenManagerService {
             // Calculate available characters for the tiny content part
             // Aim to use space left after accounting for the partial message and safety buffer
             const targetTinyContentTokens = availableTokens - partialMsgTokensForTiny - safetyBufferForTinyCalc;
-            const charsPerTokenEstimateForTiny = 4.0; // To align with mock countTokens
+            const charsPerTokenEstimateForTiny = TokenManagerService.CHARS_PER_TOKEN_ESTIMATE;
 
             if (targetTinyContentTokens > 0) {
                 const maxTinyChars = Math.max(0, Math.floor(targetTinyContentTokens * charsPerTokenEstimateForTiny));
@@ -513,7 +804,7 @@ export class TokenManagerService {
                             tinyContent += `\n${codeBlockEnd}`;
                         }
                     }
-                    tinyContent += TokenManagerService.PARTIAL_TRUNCATION_MESSAGE;
+                    tinyContent += TokenManagerService.TRUNCATION_MESSAGES.PARTIAL;
                     if (!this.currentModel) {
                         return { optimizedSnippets: selectedSnippets, wasTruncated };
                     }
@@ -531,6 +822,94 @@ export class TokenManagerService {
 
         Log.info(`Context optimization: ${selectedSnippets.length} of ${sortedSnippets.length} snippets selected. Tokens used: ${currentTokens} / ${availableTokens}. Truncated: ${wasTruncated}`);
         return { optimizedSnippets: selectedSnippets, wasTruncated };
+    }
+
+    /**
+     * Attempts to partially include a snippet that exceeds the remaining token limit
+     * @param snippet The snippet to attempt partial inclusion
+     * @param remainingTokens Available tokens for the snippet
+     * @returns Updated snippet with partial content or null if not possible
+     */
+    private async attemptPartialSnippetInclusion(
+        snippet: ContextSnippet,
+        remainingTokens: number
+    ): Promise<ContextSnippet | null> {
+        if (!this.currentModel) {
+            return null;
+        }
+
+        const partialTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGES.PARTIAL);
+        const MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT = TokenManagerService.MIN_CONTENT_TOKENS_FOR_PARTIAL;
+        const safetyBufferForPartialCalc = TokenManagerService.SAFETY_BUFFER_FOR_PARTIAL;
+
+        // Check if there's enough space for meaningful partial content
+        if (remainingTokens <= (partialTruncMsgTokens + MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT)) {
+            return null;
+        }
+
+        try {
+            const charsPerTokenEstimate = TokenManagerService.CHARS_PER_TOKEN_ESTIMATE;
+            const targetContentTokens = remainingTokens - partialTruncMsgTokens - safetyBufferForPartialCalc;
+
+            if (targetContentTokens <= 0) {
+                return null;
+            }
+
+            const maxChars = Math.max(0, Math.floor(targetContentTokens * charsPerTokenEstimate));
+            if (maxChars <= 0) {
+                return null;
+            }
+
+            let partialContent = snippet.content.substring(0, maxChars);
+
+            // Ensure markdown code blocks are properly closed
+            partialContent = this.ensureCodeBlocksClosed(partialContent, snippet.content);
+            partialContent += TokenManagerService.TRUNCATION_MESSAGES.PARTIAL;
+
+            const partialSnippetTokens = await this.currentModel.countTokens(partialContent);
+            if (partialSnippetTokens <= remainingTokens) {
+                return { ...snippet, content: partialContent, id: `${snippet.id}-partial` };
+            }
+        } catch (e) {
+            Log.warn("Error during partial snippet truncation:", e);
+        }
+
+        return null;
+    }
+
+    /**
+     * Ensures that markdown code blocks are properly closed in truncated content
+     * @param partialContent The truncated content
+     * @param originalContent The original full content for reference
+     * @returns Content with properly closed code blocks
+     */
+    private ensureCodeBlocksClosed(partialContent: string, originalContent: string): string {
+        const codeBlockStartRegex = /```[\w]*\n/g;
+        const codeBlockEnd = '\n```';
+        let lastCodeBlockStart = -1;
+        let match;
+
+        while ((match = codeBlockStartRegex.exec(originalContent)) !== null) {
+            if (match.index < partialContent.length) {
+                lastCodeBlockStart = match.index;
+            } else {
+                break;
+            }
+        }
+
+        if (lastCodeBlockStart !== -1) {
+            const lastCodeBlockEndInPartial = partialContent.lastIndexOf(codeBlockEnd);
+            // If a code block was opened and not closed within the partial content
+            if (lastCodeBlockStart > (lastCodeBlockEndInPartial === -1 ? -1 : lastCodeBlockEndInPartial)) {
+                // Check if the original snippet had a closing tag after the partial content cut-off
+                const originalClosingTagIndex = originalContent.indexOf(codeBlockEnd, lastCodeBlockStart);
+                if (originalClosingTagIndex === -1 || originalClosingTagIndex > partialContent.length) {
+                    partialContent += codeBlockEnd;
+                }
+            }
+        }
+
+        return partialContent;
     }
 
     /**
@@ -566,9 +945,9 @@ export class TokenManagerService {
         let result = parts.join('\n\n').trim();
 
         if (wasTruncated && snippets.length < 1 && result.length === 0) { // If all snippets were too large
-            result += TokenManagerService.TRUNCATION_MESSAGE.replace("Some information might be missing", "All context snippets were too large to fit");
+            result += TokenManagerService.TRUNCATION_MESSAGES.CONTEXT.replace("Some information might be missing", "All context snippets were too large to fit");
         } else if (wasTruncated) {
-            result += TokenManagerService.TRUNCATION_MESSAGE;
+            result += TokenManagerService.TRUNCATION_MESSAGES.CONTEXT;
         }
 
         if (result.length === 0 && !wasTruncated && snippets.length === 0) {

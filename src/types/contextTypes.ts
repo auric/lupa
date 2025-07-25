@@ -1,6 +1,10 @@
+// Type-safe content type definitions
+export type ContextSnippetType = 'lsp-definition' | 'lsp-reference' | 'embedding';
+export type ContentType = 'diff' | ContextSnippetType;
+
 export interface ContextSnippet {
     id: string; // Unique ID, e.g., filePath:startLine:type or hash of content
-    type: 'lsp-definition' | 'lsp-reference' | 'embedding';
+    type: ContextSnippetType;
     content: string; // The formatted markdown snippet itself
     relevanceScore: number; // Higher is more relevant. e.g., LSP defs=1.0, LSP refs=0.9, embeddings=0.0-0.8
     filePath?: string; // For logging or more granular pruning
