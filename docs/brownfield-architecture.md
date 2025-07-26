@@ -96,12 +96,94 @@ project-root/
 
 ## Technical Debt and Known Issues
 
+### Critical: TokenManagerService Refactoring Required
+
+⚠️ **High Priority Technical Debt - Violates SOLID Principles**
+
+The `TokenManagerService` has grown to 1100+ lines and violates multiple SOLID principles, requiring comprehensive refactoring:
+
+#### SOLID Principle Violations
+
+1. **Single Responsibility Principle (SRP)**:
+
+   - Handles token calculation, content truncation, context optimization, formatting, and deduplication
+   - Should be split into focused services: `ITokenCalculator`, `IContentTruncator`, `IContextOptimizer`
+
+2. **Open/Closed Principle (OCP)**:
+
+   - Hard-coded truncation strategies prevent adding new algorithms
+   - Fixed content prioritization should use Strategy pattern
+   - Needs `ITruncationStrategy` interface with multiple implementations
+
+3. **Dependency Inversion Principle (DIP)**:
+   - Direct dependency on concrete `CopilotModelManager` instead of interfaces
+   - Hard-coded model manager usage violates dependency inversion
+
+#### TypeScript Best Practice Issues
+
+1. **Type Safety Issues**:
+
+   - Uses `any` types instead of strongly typed `TokenAllocation` interface
+   - Missing union types for better type safety (`string | undefined` vs `string?`)
+   - Magic numbers as constants instead of configurable injection
+
+2. **Code Quality Issues**:
+   - Large methods (`optimizeContext()` 200+ lines, deep nesting 3-4 levels)
+   - Missing error types (should have `ChunkingError`, `EmbeddingError`, `PartialTruncationError`)
+   - Mutable state in services instead of immutable patterns
+
+#### Recommended Refactoring Strategy
+
+**Phase 1: Interface Extraction**
+
+```typescript
+interface ITokenCalculator {
+  calculateTokens(text: string): Promise<number>;
+  calculateAllocation(components: TokenComponents): Promise<TokenAllocation>;
+}
+
+interface IContentTruncator {
+  performWaterfallTruncation(
+    components: TokenComponents
+  ): Promise<TruncationResult>;
+}
+
+interface IContextOptimizer {
+  optimizeContext(
+    snippets: ContextSnippet[],
+    limit: number
+  ): Promise<OptimizationResult>;
+}
+```
+
+**Phase 2: Strategy Pattern Implementation**
+
+```typescript
+interface ITruncationStrategy {
+  truncate(content: string, targetTokens: number): Promise<TruncationResult>;
+}
+
+interface IContentPrioritizationStrategy {
+  prioritize(snippets: ContextSnippet[]): ContextSnippet[];
+}
+```
+
+**Phase 3: Configuration Injection**
+
+```typescript
+interface ITokenManagerConfiguration {
+  readonly tokenOverheadPerMessage: number;
+  readonly safetyMarginRatio: number;
+  readonly minContentTokensForPartial: number;
+  readonly charsPerTokenEstimate: number;
+}
+```
+
 ### Known Chunking Issues
 
 The current structure-aware chunking mechanism, while powerful, has known issues that need to be addressed:
 
-1.  **Incorrect Chunk Boundaries**: In C++ and similar languages, the chunker sometimes incorrectly creates chunks that end with trailing `}}` symbols. This happens when it misinterprets the end of a nested function or class definition, resulting in syntactically incomplete or awkward chunks.
-2.  **Split Comments**: A block comment or a series of single-line comments that document a function or class can sometimes be split, with the first part of the comment ending up in the preceding chunk and the rest in the chunk with the code it describes. This diminishes the quality of context.
+1.  **Split Comments**: A block comment or a series of single-line comments that document a function or class can sometimes be split, with the first part of the comment ending up in the preceding chunk and the rest in the chunk with the code it describes. This diminishes the quality of context.
 
 ### Worker Thread Limitations
 
