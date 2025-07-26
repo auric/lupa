@@ -275,6 +275,69 @@ The IndexingService follows Single Responsibility Principle with these key impro
 - **Simplified Testing**: Direct method calls instead of complex generator patterns make testing more straightforward
 - **Clear Separation**: File processing logic is separated from batch orchestration, which is handled by IndexingManager
 
+### TokenManagerService Architecture & Waterfall Truncation
+
+The TokenManagerService manages token allocation and implements sophisticated waterfall truncation logic:
+
+#### Core Waterfall Truncation Logic
+
+- **Priority-Based Allocation**: Content types are processed in strict priority order: `diff → embedding → lsp-reference → lsp-definition`
+- **Full Allocation Strategy**: Higher-priority content receives full token allocation before lower-priority content gets remaining tokens
+- **Separate Context Fields**: Individual truncation of different context types (`embeddingContext`, `lspReferenceContext`, `lspDefinitionContext`)
+- **Token Budget Management**: Precise calculation of fixed overhead vs. available content tokens
+- **Graceful Degradation**: Content that cannot fit even with truncation is removed entirely
+
+#### Waterfall Algorithm Steps
+
+1. **Fixed Token Calculation**: Calculate non-truncatable tokens (system prompt, message overhead, formatting)
+2. **Available Budget**: `targetTokens - fixedTokens = availableTokensForContent`
+3. **Priority Processing**: Process each content type in configured priority order
+4. **Full Allocation Attempt**: Each content type tries to use its full token requirement
+5. **Remaining Token Allocation**: If content exceeds remaining tokens, truncate to fit exactly
+6. **Removal Fallback**: If truncation isn't viable, remove content entirely
+
+#### Current Technical Debt - Requires Refactoring
+
+⚠️ **SOLID Principle Violations**:
+- **Single Responsibility**: 1100+ lines handling token calculation, truncation, optimization, formatting, and deduplication
+- **Open/Closed**: Hard-coded truncation strategies prevent adding new algorithms without modification
+- **Dependency Inversion**: Direct dependency on concrete `CopilotModelManager` instead of interfaces
+
+⚠️ **TypeScript Best Practice Issues**:
+- Uses `any` types instead of strongly typed interfaces
+- Magic numbers hard-coded instead of configurable
+- Large methods (200+ lines) with deep nesting
+- Missing configuration injection patterns
+
+#### Recommended Refactoring Architecture
+
+```typescript
+// Separate interfaces for focused responsibilities
+interface ITokenCalculator {
+    calculateTokens(text: string): Promise<number>;
+    calculateAllocation(components: TokenComponents): Promise<TokenAllocation>;
+}
+
+interface IContentTruncator {
+    truncateContent(content: string, targetTokens: number): Promise<TruncationResult>;
+    performWaterfallTruncation(components: TokenComponents): Promise<TruncationResult>;
+}
+
+interface IContextOptimizer {
+    optimizeContext(snippets: ContextSnippet[], limit: number): Promise<OptimizationResult>;
+}
+
+interface ITruncationStrategy {
+    truncate(content: string, targetTokens: number): Promise<TruncationResult>;
+}
+
+interface ITokenManagerConfiguration {
+    readonly tokenOverheadPerMessage: number;
+    readonly safetyMarginRatio: number;
+    readonly truncationStrategies: ITruncationStrategy[];
+}
+```
+
 ### Status Bar Architecture
 
 - **Contextual Progress**: Status indicators appear only during active operations
@@ -315,7 +378,7 @@ The BMAD system provides structured prompts, templates, and workflows to guide A
 - **Templates**: `.bmad-core/templates/` - Document templates with markup language rules
 - **Tasks**: `.bmad-core/tasks/` - Repeatable action instructions
 - **Workflows**: `.bmad-core/workflows/` - Development sequence definitions
-- **Checklists**: `.bmad-core/checklists/` - Quality assurance validation
+- **Checklists**: `.bmad-core/checklists/` - Quality assurance validation (e.g., `story-dod-checklist.md`)
 - **Data**: `.bmad-core/data/` - Knowledge base and technical preferences
 - **Configuration**: `.bmad-core/core-config.yaml` - BMAD behavior settings
 
