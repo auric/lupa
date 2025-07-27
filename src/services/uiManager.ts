@@ -86,9 +86,22 @@ export class UIManager {
     }
 
     /**
+     * Remove XML output tags from AI response before displaying to user
+     * @param analysis The analysis text containing XML tags
+     * @returns Cleaned analysis text without XML tags
+     */
+    private stripOutputTags(analysis: string): string {
+        // Strip XML-style tags like <suggestion_security>, <example_fix>, etc.
+        return analysis.replace(/<\/?(suggestion_\w+|example_fix|explanation)(\s[^>]*)?>/g, '');
+    }
+
+    /**
      * Generate PR analysis with HTML that loads React app
      */
     public generatePRAnalysisHtml(title: string, diffText: string, context: string, analysis: string, panel: vscode.WebviewPanel): string {
+        // Strip output tags before sending to frontend
+        const cleanedAnalysis = this.stripOutputTags(analysis);
+
         let titleTruncated = title;
         if (title.length > 100) {
             titleTruncated = title.substring(0, 97) + '...';
@@ -142,13 +155,13 @@ export class UIManager {
                     }
                     return null;
                 })();
-                
+
                 // Inject analysis data into window object
                 window.analysisData = {
                     title: ${JSON.stringify(titleTruncated)},
                     diffText: ${JSON.stringify(diffText)},
                     context: ${JSON.stringify(context)},
-                    analysis: ${JSON.stringify(analysis)}
+                    analysis: ${JSON.stringify(cleanedAnalysis)}
                 };
 
                 // Inject initial theme data

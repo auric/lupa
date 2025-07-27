@@ -254,4 +254,54 @@ describe('UIManager', () => {
             expect(vscode.window.onDidChangeActiveColorTheme).toHaveBeenCalled();
         });
     });
+
+    describe('stripOutputTags', () => {
+        it('should remove various XML output tags', () => {
+            const analysis = `<suggestion_security>Security issue</suggestion_security>
+<example_fix>Fixed code</example_fix>
+<explanation>Detailed explanation</explanation>`;
+
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+
+            expect(cleanedAnalysis).toBe('Security issue\nFixed code\nDetailed explanation');
+        });
+
+        it('should handle inline tags', () => {
+            const analysis = 'This is <suggestion_performance>inline performance issue</suggestion_performance> text.';
+
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+
+            expect(cleanedAnalysis).toBe('This is inline performance issue text.');
+        });
+
+        it('should handle tags with attributes', () => {
+            const analysis = '<suggestion_security severity="high">Critical issue</suggestion_security>';
+
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+
+            expect(cleanedAnalysis).toBe('Critical issue');
+        });
+
+        it('should preserve content without tags', () => {
+            const analysis = 'Plain text without any tags.';
+
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+
+            expect(cleanedAnalysis).toBe(analysis);
+        });
+
+        it('should integrate stripOutputTags in generatePRAnalysisHtml', () => {
+            const mockPanel = {
+                webview: {
+                    asWebviewUri: vi.fn().mockImplementation((uri) => uri)
+                }
+            };
+            const analysis = '<suggestion_security>Security issue</suggestion_security>';
+
+            const html = uiManager.generatePRAnalysisHtml('Test', 'diff', 'context', analysis, mockPanel);
+
+            expect(html).toContain('Security issue');
+            expect(html).not.toContain('<suggestion_security>');
+        });
+    });
 });
