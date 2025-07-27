@@ -173,7 +173,7 @@ export class AnalysisProvider implements vscode.Disposable {
             const messages = [
                 vscode.LanguageModelChatMessage.Assistant(systemPrompt),
                 vscode.LanguageModelChatMessage.User(finalUserPromptContent),
-                //vscode.LanguageModelChatMessage.Assistant(responsePrefill)
+                vscode.LanguageModelChatMessage.Assistant(responsePrefill)
             ];
 
             // Final validation - calculate actual tokens that will be sent to model
