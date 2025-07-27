@@ -157,7 +157,7 @@ export class AnalysisProvider implements vscode.Disposable {
             Log.info(`Context optimized: ${optimizedSnippets.length} snippets selected. Truncated: ${wasTruncated}`);
 
             // This string is for returning to the UI/caller, representing the context that was considered.
-            let finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsForDisplay(optimizedSnippets, wasTruncated);
+            let finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsToString(optimizedSnippets, wasTruncated);
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
 
@@ -187,47 +187,21 @@ export class AnalysisProvider implements vscode.Disposable {
             if (finalPromptTokens > allocation.totalAvailableTokens) {
                 Log.warn(`Final message exceeded token limit: ${finalPromptTokens} > ${allocation.totalAvailableTokens}. Applying waterfall truncation.`);
 
-                // Apply waterfall truncation to ensure we fit within limits
-                const truncationComponents = {
+                const truncationResult = await this.applyWaterfallTruncation(
                     systemPrompt,
-                    diffText: diffText, // Use original diff text for truncation
-                    contextSnippets: optimizedSnippets, // Pass original snippets for type-aware truncation
-                    responsePrefill
-                };
-
-                const { truncatedComponents, wasTruncated: componentsTruncated } = await this.tokenManager.performProportionalTruncation(
-                    truncationComponents,
+                    diffText,
+                    parsedDiff,
+                    optimizedSnippets,
+                    responsePrefill,
                     allocation.totalAvailableTokens
                 );
 
-                if (componentsTruncated) {
-                    Log.info('Applied waterfall truncation to fit within token limits');
+                if (truncationResult.wasTruncated) {
+                    // Update messages and return values with truncated content
+                    messages[1] = vscode.LanguageModelChatMessage.User(truncationResult.userPromptContent);
+                    finalOptimizedContextStringForReturn = truncationResult.contextString;
 
-                    // Combine the separate context fields for display
-                    const combinedTruncatedContext = this.combineContextFields(truncatedComponents);
-
-                    // Re-generate user prompt with truncated context
-                    const truncatedUserPromptContent = this.promptGenerator.generateUserPrompt(
-                        truncatedComponents.diffText || diffText,
-                        parsedDiff,
-                        combinedTruncatedContext,
-                        combinedTruncatedContext.length > 0
-                    );
-
-                    // Update messages with truncated content
-                    messages[1] = vscode.LanguageModelChatMessage.User(truncatedUserPromptContent);
-
-                    // Update return context to reflect truncation
-                    finalOptimizedContextStringForReturn = combinedTruncatedContext;
-
-                    // Verify final tokens after truncation
-                    const finalTruncatedTokens = await this.tokenManager.calculateCompleteMessageTokens(
-                        truncatedComponents.systemPrompt || systemPrompt,
-                        truncatedUserPromptContent,
-                        truncatedComponents.responsePrefill || responsePrefill
-                    );
-
-                    Log.info(`After waterfall truncation: ${finalTruncatedTokens} / ${allocation.totalAvailableTokens} tokens`);
+                    Log.info(`After waterfall truncation: ${truncationResult.finalTokens} / ${allocation.totalAvailableTokens} tokens`);
                 }
             }
 
@@ -251,158 +225,7 @@ export class AnalysisProvider implements vscode.Disposable {
         }
     }
 
-    /**
-     * Prepares and optimizes context for analysis within token limits
-     * @param allContextSnippets All available context snippets
-     * @param mode Analysis mode
-     * @param diffText Original diff text
-     * @param parsedDiff Parsed diff structure
-     * @returns Optimized context components and allocation details
-     */
-    private async prepareOptimizedContext(
-        allContextSnippets: ContextSnippet[],
-        mode: AnalysisMode,
-        diffText: string,
-        parsedDiff: DiffHunk[]
-    ): Promise<{
-        optimizedSnippets: ContextSnippet[];
-        optimizedContextString: string;
-        allocation: any;
-        wasTruncated: boolean;
-    }> {
-        const systemPrompt = this.tokenManager.getSystemPromptForMode(mode);
-        const responsePrefill = this.tokenManager.getResponsePrefill();
 
-        // Format all initially retrieved snippets for token budget calculation
-        const preliminaryContextString = this.tokenManager.formatContextSnippetsToString(allContextSnippets, false);
-
-        // Calculate user prompt structure tokens
-        const userPromptStructureTokens = await this.calculateUserPromptStructureTokens(diffText, parsedDiff);
-
-        // Prepare token components for calculation
-        const tokenComponents = {
-            systemPrompt,
-            diffStructureTokens: userPromptStructureTokens,
-            embeddingContext: preliminaryContextString,
-            lspReferenceContext: '',
-            lspDefinitionContext: '',
-            responsePrefill,
-        };
-
-        const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
-
-        Log.info(`Token allocation (pre-optimization): ${JSON.stringify({
-            systemPrompt: allocation.systemPromptTokens,
-            userPromptStructure: allocation.diffTextTokens,
-            contextPotential: allocation.contextTokens,
-            availableForLLM: allocation.totalAvailableTokens,
-            totalRequiredPotential: allocation.totalRequiredTokens,
-            budgetForContextSnippets: allocation.contextAllocationTokens,
-            fitsPotential: allocation.fitsWithinLimit
-        })}`);
-
-        // Optimize context snippets within token budget
-        const { optimizedSnippets, wasTruncated } = await this.tokenManager.optimizeContext(
-            allContextSnippets,
-            allocation.contextAllocationTokens
-        );
-
-        Log.info(`Context optimized: ${optimizedSnippets.length} snippets selected. Truncated: ${wasTruncated}`);
-
-        const optimizedContextString = this.tokenManager.formatContextSnippetsForDisplay(optimizedSnippets, wasTruncated);
-
-        return {
-            optimizedSnippets,
-            optimizedContextString,
-            allocation,
-            wasTruncated
-        };
-    }
-
-    /**
-     * Validates final token usage and applies waterfall truncation if needed
-     * @param systemPrompt System prompt content
-     * @param userPromptContent User prompt content  
-     * @param responsePrefill Response prefill content
-     * @param allocation Token allocation details
-     * @param optimizedSnippets Optimized context snippets
-     * @param diffText Original diff text
-     * @param parsedDiff Parsed diff structure
-     * @returns Final components and truncation status
-     */
-    private async validateAndTruncateIfNeeded(
-        systemPrompt: string,
-        userPromptContent: string,
-        responsePrefill: string,
-        allocation: any,
-        optimizedSnippets: ContextSnippet[],
-        diffText: string,
-        parsedDiff: DiffHunk[]
-    ): Promise<{
-        finalUserPrompt: string;
-        finalContextString: string;
-        messages: vscode.LanguageModelChatMessage[];
-    }> {
-        // Validate final token usage
-        const finalPromptTokens = await this.tokenManager.calculateCompleteMessageTokens(
-            systemPrompt,
-            userPromptContent,
-            responsePrefill
-        );
-
-        Log.info(`Final message tokens: ${finalPromptTokens} / ${allocation.totalAvailableTokens} (includes all message overhead)`);
-
-        let finalUserPrompt = userPromptContent;
-        let finalContextString = this.tokenManager.formatContextSnippetsForDisplay(optimizedSnippets, false);
-
-        if (finalPromptTokens > allocation.totalAvailableTokens) {
-            Log.warn(`Final message exceeded token limit: ${finalPromptTokens} > ${allocation.totalAvailableTokens}. Applying waterfall truncation.`);
-
-            // Apply waterfall truncation
-            const truncationComponents = {
-                systemPrompt,
-                diffText: diffText,
-                contextSnippets: optimizedSnippets,
-                responsePrefill
-            };
-
-            const { truncatedComponents, wasTruncated: componentsTruncated } = await this.tokenManager.performProportionalTruncation(
-                truncationComponents,
-                allocation.totalAvailableTokens
-            );
-
-            if (componentsTruncated) {
-                Log.info('Applied waterfall truncation to fit within token limits');
-
-                // Combine truncated context fields for display
-                finalContextString = this.combineContextFields(truncatedComponents);
-
-                // Re-generate user prompt with truncated context
-                finalUserPrompt = this.promptGenerator.generateUserPrompt(
-                    truncatedComponents.diffText || diffText,
-                    parsedDiff,
-                    finalContextString,
-                    finalContextString.length > 0
-                );
-
-                // Verify final tokens after truncation
-                const finalTruncatedTokens = await this.tokenManager.calculateCompleteMessageTokens(
-                    truncatedComponents.systemPrompt || systemPrompt,
-                    finalUserPrompt,
-                    truncatedComponents.responsePrefill || responsePrefill
-                );
-
-                Log.info(`After waterfall truncation: ${finalTruncatedTokens} / ${allocation.totalAvailableTokens} tokens`);
-            }
-        }
-
-        const messages = [
-            vscode.LanguageModelChatMessage.Assistant(systemPrompt),
-            vscode.LanguageModelChatMessage.User(finalUserPrompt),
-        ];
-
-        return { finalUserPrompt, finalContextString, messages };
-    }
 
     private async calculateUserPromptStructureTokens(diffText: string, parsedDiff: DiffHunk[]): Promise<number> {
         // Use the PromptGenerator to calculate structure tokens
@@ -419,6 +242,136 @@ export class AnalysisProvider implements vscode.Disposable {
             structureInfo.contextPlaceholderTokens;
 
         return totalStructureTokens;
+    }
+
+    /**
+     * Apply waterfall truncation with modular error handling
+     * @param systemPrompt System prompt content
+     * @param diffText Original diff text
+     * @param parsedDiff Parsed diff structure
+     * @param optimizedSnippets Context snippets to include
+     * @param responsePrefill Response prefill content
+     * @param targetTokens Target token limit
+     * @returns Truncation result with updated content
+     */
+    private async applyWaterfallTruncation(
+        systemPrompt: string,
+        diffText: string,
+        parsedDiff: DiffHunk[],
+        optimizedSnippets: ContextSnippet[],
+        responsePrefill: string,
+        targetTokens: number
+    ): Promise<{
+        wasTruncated: boolean;
+        userPromptContent: string;
+        contextString: string;
+        finalTokens: number;
+    }> {
+        // Prepare truncation components with proper type separation
+        const truncationComponents = this.prepareTruncationComponents(
+            systemPrompt,
+            diffText,
+            optimizedSnippets,
+            responsePrefill
+        );
+
+        // Perform the actual truncation
+        const { truncatedComponents, wasTruncated } = await this.tokenManager.performProportionalTruncation(
+            truncationComponents,
+            targetTokens
+        );
+
+        if (!wasTruncated) {
+            return {
+                wasTruncated: false,
+                userPromptContent: '',
+                contextString: '',
+                finalTokens: 0
+            };
+        }
+
+        // Generate new content from truncated components
+        return await this.generateContentFromTruncatedComponents(
+            truncatedComponents,
+            diffText,
+            parsedDiff,
+            systemPrompt,
+            responsePrefill,
+            targetTokens
+        );
+    }
+
+    /**
+     * Prepare components for truncation with proper type separation
+     * @param systemPrompt System prompt content
+     * @param diffText Original diff text
+     * @param optimizedSnippets Context snippets
+     * @param responsePrefill Response prefill content
+     * @returns Prepared token components
+     */
+    private prepareTruncationComponents(
+        systemPrompt: string,
+        diffText: string,
+        optimizedSnippets: ContextSnippet[],
+        responsePrefill: string
+    ): TokenComponents {
+        return {
+            systemPrompt,
+            diffText: diffText, // Use original diff text for truncation
+            contextSnippets: optimizedSnippets, // Pass original snippets for type-aware truncation
+            responsePrefill
+        };
+    }
+
+    /**
+     * Generate new content from truncated components
+     * @param truncatedComponents Truncated token components
+     * @param originalDiffText Original diff text (fallback)
+     * @param parsedDiff Parsed diff structure
+     * @param originalSystemPrompt Original system prompt (fallback)
+     * @param originalResponsePrefill Original response prefill (fallback)
+     * @param targetTokens Target token limit for verification
+     * @returns Generated content and token count
+     */
+    private async generateContentFromTruncatedComponents(
+        truncatedComponents: TokenComponents,
+        originalDiffText: string,
+        parsedDiff: DiffHunk[],
+        originalSystemPrompt: string,
+        originalResponsePrefill: string,
+        targetTokens: number
+    ): Promise<{
+        wasTruncated: boolean;
+        userPromptContent: string;
+        contextString: string;
+        finalTokens: number;
+    }> {
+        Log.info('Applied waterfall truncation to fit within token limits');
+
+        // Combine the separate context fields for display
+        const combinedTruncatedContext = this.combineContextFields(truncatedComponents);
+
+        // Re-generate user prompt with truncated context
+        const truncatedUserPromptContent = this.promptGenerator.generateUserPrompt(
+            truncatedComponents.diffText || originalDiffText,
+            parsedDiff,
+            combinedTruncatedContext,
+            combinedTruncatedContext.length > 0
+        );
+
+        // Verify final tokens after truncation
+        const finalTruncatedTokens = await this.tokenManager.calculateCompleteMessageTokens(
+            truncatedComponents.systemPrompt || originalSystemPrompt,
+            truncatedUserPromptContent,
+            truncatedComponents.responsePrefill || originalResponsePrefill
+        );
+
+        return {
+            wasTruncated: true,
+            userPromptContent: truncatedUserPromptContent,
+            contextString: combinedTruncatedContext,
+            finalTokens: finalTruncatedTokens
+        };
     }
 
     /**

@@ -384,8 +384,8 @@ describe('AnalysisProvider', () => {
 
 
         expect(result.analysis).toBe("Mocked LLM analysis result.");
-        expect(mockTokenManagerInstance.formatContextSnippetsForDisplay).toHaveBeenCalledWith(optimizedSnippetsFromManager, true);
-        expect(result.context).toBe("Long snippet 1 DEF");
+        expect(mockTokenManagerInstance.formatContextSnippetsToString).toHaveBeenCalledWith(optimizedSnippetsFromManager, true);
+        expect(result.context).toBe("Long snippet 1 DEF [Truncated]");
     });
 
     it('should handle cancellation during context retrieval', async () => {
@@ -832,7 +832,7 @@ Structure your response using XML tags for different types of feedback:
         );
 
         // Verify that formatContextSnippetsForDisplay was called with prioritized snippets
-        expect(mockTokenManagerInstance.formatContextSnippetsForDisplay).toHaveBeenCalledWith(
+        expect(mockTokenManagerInstance.formatContextSnippetsToString).toHaveBeenCalledWith(
             prioritizedSnippets,
             false
         );

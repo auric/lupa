@@ -291,7 +291,7 @@ private async analyzeWithLanguageModel(
             allocation.contextAllocationTokens
         );
 
-        const finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsForDisplay(optimizedSnippets, wasTruncated);
+        const finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsToString(optimizedSnippets, wasTruncated);
 
         return { analysis: responseText, optimizedContext: finalOptimizedContextStringForReturn };
     } catch (error) {

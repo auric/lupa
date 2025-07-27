@@ -240,88 +240,284 @@ export class TokenManagerService {
             return { truncatedComponents: truncatedComponents, wasTruncated: false };
         }
 
-        // Apply TRUE waterfall allocation based on priority order
-        // Higher priority content gets allocated first, lower priority gets remaining space
-        let remainingTokens = availableTokensForContent;
+        // Apply waterfall allocation based on priority order
+        const waterfallResult = await this.applyWaterfallAllocation(
+            truncatedComponents,
+            availableTokensForContent,
+            { diff: diffTokens, embedding: embeddingTokens, 'lsp-reference': lspRefTokens, 'lsp-definition': lspDefTokens }
+        );
+        wasTruncated = waterfallResult.wasTruncated;
+
+        // Return the truncated components with separate context fields
+        return { truncatedComponents: truncatedComponents, wasTruncated };
+    }
+
+    /**
+     * Apply waterfall allocation in priority order with type safety
+     * @param components Components to potentially truncate
+     * @param availableTokens Total tokens available for all content
+     * @param contentTokenCounts Current token usage by content type
+     * @returns Truncation result
+     */
+    private async applyWaterfallAllocation(
+        components: TokenComponents,
+        availableTokens: number,
+        contentTokenCounts: Record<ContentType, number>
+    ): Promise<{ wasTruncated: boolean }> {
+        let remainingTokens = availableTokens;
+        let wasTruncated = false;
 
         // Process content types in priority order (highest first)
         for (const contentType of this.contentPrioritization.order) {
             if (remainingTokens <= 0) {
                 // No tokens left - clear all remaining content types
-                this.clearRemainingContentByType(truncatedComponents, contentType);
+                this.clearRemainingContentByType(components, contentType);
                 wasTruncated = true;
                 break;
             }
 
-            switch (contentType) {
-                case 'diff':
-                    if (truncatedComponents.diffText && diffTokens > 0) {
-                        if (diffTokens <= remainingTokens) {
-                            // Diff fits completely - allocate full space
-                            remainingTokens -= diffTokens;
-                        } else {
-                            // Diff is too large - truncate to fit remaining space
-                            const tokensToRemove = diffTokens - remainingTokens;
-                            const result = await this.truncateContent(truncatedComponents.diffText, tokensToRemove);
-                            truncatedComponents.diffText = result.content;
-                            wasTruncated = wasTruncated || result.wasTruncated;
-                            remainingTokens = 0; // All tokens used by diff
-                        }
-                    }
-                    break;
+            const result = await this.processContentTypeInWaterfall(
+                components,
+                contentType,
+                contentTokenCounts[contentType],
+                remainingTokens
+            );
 
-                case 'embedding':
-                    if (truncatedComponents.embeddingContext && embeddingTokens > 0) {
-                        if (embeddingTokens <= remainingTokens) {
-                            // Embedding context fits completely in remaining space
-                            remainingTokens -= embeddingTokens;
-                        } else {
-                            // Embedding context is too large for remaining space - truncate to fit
-                            const tokensToRemove = embeddingTokens - remainingTokens;
-                            const result = await this.truncateContent(truncatedComponents.embeddingContext, tokensToRemove);
-                            truncatedComponents.embeddingContext = result.content;
-                            wasTruncated = wasTruncated || result.wasTruncated;
-                            remainingTokens = 0; // All remaining tokens used
-                        }
-                    }
-                    break;
+            remainingTokens = result.remainingTokens;
+            wasTruncated = wasTruncated || result.wasTruncated;
+        }
 
-                case 'lsp-reference':
-                    if (truncatedComponents.lspReferenceContext && lspRefTokens > 0) {
-                        if (lspRefTokens <= remainingTokens) {
-                            // LSP reference context fits completely in remaining space
-                            remainingTokens -= lspRefTokens;
-                        } else {
-                            // LSP reference context is too large for remaining space - truncate to fit
-                            const tokensToRemove = lspRefTokens - remainingTokens;
-                            const result = await this.truncateContent(truncatedComponents.lspReferenceContext, tokensToRemove);
-                            truncatedComponents.lspReferenceContext = result.content;
-                            wasTruncated = wasTruncated || result.wasTruncated;
-                            remainingTokens = 0; // All remaining tokens used
-                        }
-                    }
-                    break;
+        return { wasTruncated };
+    }
 
-                case 'lsp-definition':
-                    if (truncatedComponents.lspDefinitionContext && lspDefTokens > 0) {
-                        if (lspDefTokens <= remainingTokens) {
-                            // LSP definition context fits completely in remaining space
-                            remainingTokens -= lspDefTokens;
-                        } else {
-                            // LSP definition context is too large for remaining space - truncate to fit
-                            const tokensToRemove = lspDefTokens - remainingTokens;
-                            const result = await this.truncateContent(truncatedComponents.lspDefinitionContext, tokensToRemove);
-                            truncatedComponents.lspDefinitionContext = result.content;
-                            wasTruncated = wasTruncated || result.wasTruncated;
-                            remainingTokens = 0; // All remaining tokens used
-                        }
+    /**
+     * Process a single content type during waterfall allocation
+     * @param components Components to modify
+     * @param contentType Type of content to process
+     * @param currentTokens Current token usage for this type
+     * @param remainingTokens Available tokens for this and remaining types
+     * @returns Updated token counts and truncation status
+     */
+    private async processContentTypeInWaterfall(
+        components: TokenComponents,
+        contentType: ContentType,
+        currentTokens: number,
+        remainingTokens: number
+    ): Promise<{ remainingTokens: number; wasTruncated: boolean }> {
+        if (currentTokens === 0) {
+            return { remainingTokens, wasTruncated: false };
+        }
+
+        if (currentTokens <= remainingTokens) {
+            // Content fits completely - allocate full space
+            return { remainingTokens: remainingTokens - currentTokens, wasTruncated: false };
+        }
+
+        // Content is too large - truncate to fit remaining space
+        const tokensToRemove = currentTokens - remainingTokens;
+        const truncationResult = await this.truncateContentByType(components, contentType, tokensToRemove);
+
+        return {
+            remainingTokens: 0, // All remaining tokens used
+            wasTruncated: truncationResult.wasTruncated
+        };
+    }
+
+    /**
+     * Truncate content for a specific content type with emergency fallbacks
+     * @param components Components to modify
+     * @param contentType Type of content to truncate
+     * @param tokensToRemove Number of tokens to remove
+     * @returns Truncation result
+     */
+    private async truncateContentByType(
+        components: TokenComponents,
+        contentType: ContentType,
+        tokensToRemove: number
+    ): Promise<{ wasTruncated: boolean }> {
+        switch (contentType) {
+            case 'diff':
+                if (components.diffText) {
+                    const result = await this.truncateDiffWithEmergencyFallback(
+                        components.diffText,
+                        tokensToRemove
+                    );
+                    components.diffText = result.content;
+                    return { wasTruncated: result.wasTruncated };
+                }
+                break;
+
+            case 'embedding':
+                if (components.embeddingContext) {
+                    const result = await this.truncateContent(components.embeddingContext, tokensToRemove);
+                    components.embeddingContext = result.content;
+                    return { wasTruncated: result.wasTruncated };
+                }
+                break;
+
+            case 'lsp-reference':
+                if (components.lspReferenceContext) {
+                    const result = await this.truncateContent(components.lspReferenceContext, tokensToRemove);
+                    components.lspReferenceContext = result.content;
+                    return { wasTruncated: result.wasTruncated };
+                }
+                break;
+
+            case 'lsp-definition':
+                if (components.lspDefinitionContext) {
+                    const result = await this.truncateContent(components.lspDefinitionContext, tokensToRemove);
+                    components.lspDefinitionContext = result.content;
+                    return { wasTruncated: result.wasTruncated };
+                }
+                break;
+
+            default:
+                // Type guard to ensure we handle all ContentType cases
+                const _exhaustiveCheck: never = contentType;
+                return _exhaustiveCheck;
+        }
+
+        return { wasTruncated: false };
+    }
+
+    /**
+     * Truncate diff content with emergency fallbacks for extremely large diffs
+     * @param diffText Diff content to truncate
+     * @param tokensToRemove Number of tokens to remove
+     * @returns Truncation result with emergency handling
+     */
+    private async truncateDiffWithEmergencyFallback(
+        diffText: string,
+        tokensToRemove: number
+    ): Promise<{ content: string, wasTruncated: boolean }> {
+        // Try normal truncation first
+        const normalResult = await this.truncateContent(diffText, tokensToRemove);
+
+        // If normal truncation worked, return it
+        if (normalResult.content.length > 0) {
+            return normalResult;
+        }
+
+        // Emergency fallback: Try to preserve at least the first few hunks
+        Log.warn('Diff content extremely large, applying emergency hunk-based truncation');
+        return await this.emergencyTruncateDiffByHunks(diffText, tokensToRemove);
+    }
+
+    /**
+     * Emergency truncation that preserves diff structure by keeping complete hunks
+     * @param diffText Original diff content
+     * @param tokensToRemove Number of tokens to remove
+     * @returns Emergency truncated diff
+     */
+    private async emergencyTruncateDiffByHunks(
+        diffText: string,
+        tokensToRemove: number
+    ): Promise<{ content: string, wasTruncated: boolean }> {
+        if (!this.currentModel) {
+            return { content: '', wasTruncated: true };
+        }
+
+        const currentTokens = await this.currentModel.countTokens(diffText);
+        const targetTokens = currentTokens - tokensToRemove;
+
+        // If even the target is too small, return a minimal diff summary
+        if (targetTokens < 100) {
+            const summary = this.createMinimalDiffSummary(diffText);
+            return { content: summary, wasTruncated: true };
+        }
+
+        // Split diff into hunks and keep as many complete hunks as possible
+        const lines = diffText.split('\n');
+        const preservedLines: string[] = [];
+        let currentTokenCount = 0;
+        let inHunk = false;
+        let currentHunk: string[] = [];
+
+        for (const line of lines) {
+            const lineTokens = await this.currentModel.countTokens(line + '\n');
+
+            // Check if this line starts a new hunk
+            if (line.startsWith('@@')) {
+                // Finish previous hunk if we were in one
+                if (inHunk && currentHunk.length > 0) {
+                    const hunkTokens = await this.currentModel.countTokens(currentHunk.join('\n'));
+                    if (currentTokenCount + hunkTokens <= targetTokens) {
+                        preservedLines.push(...currentHunk);
+                        currentTokenCount += hunkTokens;
+                        currentHunk = [];
+                    } else {
+                        // Can't fit this hunk, stop here
+                        break;
                     }
-                    break;
+                }
+
+                // Start new hunk
+                inHunk = true;
+                currentHunk = [line];
+            } else if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('+++') || line.startsWith('---')) {
+                // File headers - always include if we have space
+                if (currentTokenCount + lineTokens <= targetTokens) {
+                    preservedLines.push(line);
+                    currentTokenCount += lineTokens;
+                }
+            } else if (inHunk) {
+                // Part of current hunk
+                currentHunk.push(line);
             }
         }
 
-        // Return the truncated components with separate context fields
-        return { truncatedComponents: truncatedComponents, wasTruncated };
+        // Add final hunk if it fits
+        if (currentHunk.length > 0) {
+            const hunkTokens = await this.currentModel.countTokens(currentHunk.join('\n'));
+            if (currentTokenCount + hunkTokens <= targetTokens) {
+                preservedLines.push(...currentHunk);
+            }
+        }
+
+        const result = preservedLines.join('\n');
+        const truncationMessage = '\n\n[Large diff truncated to preserve structural integrity. Some hunks omitted to fit token limits.]';
+
+        return {
+            content: result + truncationMessage,
+            wasTruncated: true
+        };
+    }
+
+    /**
+     * Create a minimal diff summary when even hunk-based truncation isn't possible
+     * @param diffText Original diff content
+     * @returns Minimal summary of the diff
+     */
+    private createMinimalDiffSummary(diffText: string): string {
+        const lines = diffText.split('\n');
+        const fileHeaders = lines.filter(line =>
+            line.startsWith('diff --git') ||
+            line.startsWith('+++') ||
+            line.startsWith('---')
+        );
+
+        // Extract file paths from headers
+        const changedFiles = new Set<string>();
+        for (const header of fileHeaders) {
+            if (header.startsWith('+++') || header.startsWith('---')) {
+                const path = header.substring(4).replace(/^[ab]\//, '');
+                if (path !== '/dev/null') {
+                    changedFiles.add(path);
+                }
+            }
+        }
+
+        const fileList = Array.from(changedFiles).slice(0, 10); // Limit to 10 files
+        const summary = [
+            '[EMERGENCY TRUNCATION: Diff too large for analysis]',
+            '',
+            `Files modified (${changedFiles.size} total${changedFiles.size > 10 ? ', showing first 10' : ''}):`,
+            ...fileList.map(file => `- ${file}`),
+            '',
+            '[Complete diff analysis unavailable due to token limits. Consider analyzing smaller change sets.]'
+        ].join('\n');
+
+        return summary;
     }
 
     /**
@@ -329,8 +525,8 @@ export class TokenManagerService {
      * @param contentType The content type to get priority for
      * @returns Priority weight
      */
-    private getPriorityWeight(contentType: string): number {
-        const index = this.contentPrioritization.order.indexOf(contentType as any);
+    private getPriorityWeight(contentType: ContentType): number {
+        const index = this.contentPrioritization.order.indexOf(contentType);
         if (index === -1) return 1;
         return this.contentPrioritization.order.length - index;
     }
@@ -641,7 +837,8 @@ export class TokenManagerService {
         return [...snippets].sort((a, b) => {
             const typePriority = (type: ContextSnippet['type']): number => {
                 // Map context snippet types directly to prioritization order
-                const index = this.contentPrioritization.order.indexOf(type);
+                // Note: ContentType includes 'diff' but ContextSnippet['type'] is only ContextSnippetType
+                const index = this.contentPrioritization.order.indexOf(type as ContentType);
                 return index === -1 ? 0 : this.contentPrioritization.order.length - index;
             };
 
@@ -824,58 +1021,6 @@ export class TokenManagerService {
         return { optimizedSnippets: selectedSnippets, wasTruncated };
     }
 
-    /**
-     * Attempts to partially include a snippet that exceeds the remaining token limit
-     * @param snippet The snippet to attempt partial inclusion
-     * @param remainingTokens Available tokens for the snippet
-     * @returns Updated snippet with partial content or null if not possible
-     */
-    private async attemptPartialSnippetInclusion(
-        snippet: ContextSnippet,
-        remainingTokens: number
-    ): Promise<ContextSnippet | null> {
-        if (!this.currentModel) {
-            return null;
-        }
-
-        const partialTruncMsgTokens = await this.currentModel.countTokens(TokenManagerService.TRUNCATION_MESSAGES.PARTIAL);
-        const MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT = TokenManagerService.MIN_CONTENT_TOKENS_FOR_PARTIAL;
-        const safetyBufferForPartialCalc = TokenManagerService.SAFETY_BUFFER_FOR_PARTIAL;
-
-        // Check if there's enough space for meaningful partial content
-        if (remainingTokens <= (partialTruncMsgTokens + MIN_CONTENT_TOKENS_FOR_PARTIAL_ATTEMPT)) {
-            return null;
-        }
-
-        try {
-            const charsPerTokenEstimate = TokenManagerService.CHARS_PER_TOKEN_ESTIMATE;
-            const targetContentTokens = remainingTokens - partialTruncMsgTokens - safetyBufferForPartialCalc;
-
-            if (targetContentTokens <= 0) {
-                return null;
-            }
-
-            const maxChars = Math.max(0, Math.floor(targetContentTokens * charsPerTokenEstimate));
-            if (maxChars <= 0) {
-                return null;
-            }
-
-            let partialContent = snippet.content.substring(0, maxChars);
-
-            // Ensure markdown code blocks are properly closed
-            partialContent = this.ensureCodeBlocksClosed(partialContent, snippet.content);
-            partialContent += TokenManagerService.TRUNCATION_MESSAGES.PARTIAL;
-
-            const partialSnippetTokens = await this.currentModel.countTokens(partialContent);
-            if (partialSnippetTokens <= remainingTokens) {
-                return { ...snippet, content: partialContent, id: `${snippet.id}-partial` };
-            }
-        } catch (e) {
-            Log.warn("Error during partial snippet truncation:", e);
-        }
-
-        return null;
-    }
 
     /**
      * Ensures that markdown code blocks are properly closed in truncated content
@@ -990,15 +1135,6 @@ export class TokenManagerService {
         return deduplicatedSnippets;
     }
 
-    /**
-     * Formats context snippets for display
-     * @param snippets The list of ContextSnippet objects to format.
-     * @param wasTruncated Whether to add a truncation message at the end.
-     * @returns A formatted markdown string for display.
-     */
-    public formatContextSnippetsForDisplay(snippets: ContextSnippet[], wasTruncated: boolean = false): string {
-        return this.formatContextSnippetsToString(snippets, wasTruncated);
-    }
 
     /**
      * Get the current model's token limit
