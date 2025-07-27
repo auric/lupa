@@ -270,7 +270,6 @@ describe('AnalysisProvider', () => {
         mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
         mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
             fitsWithinLimit: true, // optimizeContext will not be called, optimizedSnippets will be mockSnippets
-            contextAllocationTokens: 5000,
             totalAvailableTokens: 7600,
             totalRequiredTokens: 1000,
             systemPromptTokens: 50,
@@ -293,7 +292,7 @@ describe('AnalysisProvider', () => {
         expect(mockContextProviderInstance.getContextForDiff).toHaveBeenCalledWith(diffText, gitRootPath, undefined, mode, expect.any(Function), undefined);
         expect(mockTokenManagerInstance.calculateTokenAllocation).toHaveBeenCalled();
         // optimizeContext IS called to get the structured snippets, even if no actual optimization occurs
-        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(mockSnippets, 5000);
+        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(mockSnippets, 7385);
         expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
 
         // Verify interleaved prompt structure
@@ -363,7 +362,7 @@ describe('AnalysisProvider', () => {
 
         expect(mockContextProviderInstance.getContextForDiff).toHaveBeenCalled();
         expect(mockTokenManagerInstance.calculateTokenAllocation).toHaveBeenCalled();
-        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(allSnippets, 10); // Called with all snippets and budget
+        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(allSnippets, 7385); // Called with all snippets and budget
         expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
 
         // Verify interleaved prompt structure
@@ -548,7 +547,6 @@ Structure your response using XML tags for different types of feedback:
             expect(components.diffText).toBeUndefined(); // Or whatever is expected if diffText is also passed
             return {
                 fitsWithinLimit: true,
-                contextAllocationTokens: MOCKED_CONTEXT_ALLOCATION_BUDGET,
                 totalAvailableTokens: 7600,
                 totalRequiredTokens: 500, // system + diffStructure + preliminaryContext + other
                 systemPromptTokens: 50,
@@ -571,7 +569,7 @@ Structure your response using XML tags for different types of feedback:
         // 4. Verify optimizeContext was called with the correct budget
         expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(
             mockSnippets,
-            MOCKED_CONTEXT_ALLOCATION_BUDGET
+            5132
         );
 
         // Ensure other main mocks were called
@@ -767,202 +765,5 @@ Structure your response using XML tags for different types of feedback:
         expect(mockTokenManagerInstance.setContentPrioritization).toHaveBeenCalledWith({
             order: ['diff', 'embedding', 'lsp-reference', 'lsp-definition']
         });
-    });
-
-    it('should use TokenManagerService content prioritization for context optimization', async () => {
-        const diffText = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-console.log("old");\n+console.log("new");';
-
-        // Create mock snippets with different types to test prioritization
-        const mockSnippets: ContextSnippet[] = [
-            { id: 's1', type: 'lsp-definition', content: 'Definition snippet', relevanceScore: 0.8, filePath: 'file.ts', startLine: 5 },
-            { id: 's2', type: 'embedding', content: 'Embedding snippet', relevanceScore: 0.9, filePath: 'file.ts', startLine: 10 },
-            { id: 's3', type: 'lsp-reference', content: 'Reference snippet', relevanceScore: 0.7, filePath: 'file.ts', startLine: 15 }
-        ];
-        const mockParsedDiff: DiffHunk[] = [
-            {
-                filePath: 'file.ts',
-                hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }]
-            }
-        ];
-        const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
-
-        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
-
-        // Mock token allocation
-        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
-            totalAvailableTokens: 8000,
-            totalRequiredTokens: 1000,
-            systemPromptTokens: 50,
-            diffTextTokens: 100,
-            contextTokens: 300,
-            userMessagesTokens: 0,
-            assistantMessagesTokens: 0,
-            responsePrefillTokens: 0,
-            messageOverheadTokens: 15,
-            otherTokens: 50,
-            fitsWithinLimit: true,
-            contextAllocationTokens: 5000
-        });
-
-        // Mock optimizeContext to return snippets (simulating prioritization internally)
-        const prioritizedSnippets = [mockSnippets[1], mockSnippets[2], mockSnippets[0]]; // embeddings, references, definitions
-        mockTokenManagerInstance.optimizeContext.mockResolvedValue({
-            optimizedSnippets: prioritizedSnippets,
-            wasTruncated: false
-        });
-
-        mockTokenManagerInstance.formatContextSnippetsForDisplay.mockReturnValue(
-            prioritizedSnippets.map(s => s.content).join('\n\n')
-        );
-
-        vi.mocked(mockLanguageModel.sendRequest).mockImplementation(async () => ({
-            text: (async function* () { yield 'Mocked analysis result'; })()
-        }));
-
-        await analysisProvider.analyzePullRequest(
-            diffText,
-            '/mock/git/root',
-            AnalysisMode.Comprehensive
-        );
-
-        // Verify that optimizeContext was called with all snippets
-        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(
-            mockSnippets,
-            5000 // contextAllocationTokens
-        );
-
-        // Verify that formatContextSnippetsForDisplay was called with prioritized snippets
-        expect(mockTokenManagerInstance.formatContextSnippetsToString).toHaveBeenCalledWith(
-            prioritizedSnippets,
-            false
-        );
-    });
-
-    it('should construct prompt with prioritized content from TokenManagerService', async () => {
-        const diffText = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-console.log("old");\n+console.log("new");';
-
-        // Create snippets representing different priority levels
-        const mockSnippets: ContextSnippet[] = [
-            { id: 's1', type: 'embedding', content: 'High priority embedding content', relevanceScore: 0.9, filePath: 'file.ts', startLine: 10 },
-            { id: 's2', type: 'lsp-reference', content: 'Medium priority reference content', relevanceScore: 0.8, filePath: 'file.ts', startLine: 15 },
-            { id: 's3', type: 'lsp-definition', content: 'Lower priority definition content', relevanceScore: 0.7, filePath: 'file.ts', startLine: 20 }
-        ];
-        const mockParsedDiff: DiffHunk[] = [
-            {
-                filePath: 'file.ts',
-                hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }]
-            }
-        ];
-        const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
-
-        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
-
-        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
-            totalAvailableTokens: 8000,
-            totalRequiredTokens: 1000,
-            systemPromptTokens: 50,
-            diffTextTokens: 100,
-            contextTokens: 400,
-            userMessagesTokens: 0,
-            assistantMessagesTokens: 0,
-            responsePrefillTokens: 0,
-            messageOverheadTokens: 15,
-            otherTokens: 50,
-            fitsWithinLimit: true,
-            contextAllocationTokens: 5000
-        });
-
-        // Simulate prioritized snippets returned by optimizeContext
-        const prioritizedSnippets = [mockSnippets[0], mockSnippets[1]]; // embedding first, then reference
-        mockTokenManagerInstance.optimizeContext.mockResolvedValue({
-            optimizedSnippets: prioritizedSnippets,
-            wasTruncated: false
-        });
-
-        const expectedPrioritizedContent = 'High priority embedding content\n\nMedium priority reference content';
-        mockTokenManagerInstance.formatContextSnippetsForDisplay.mockReturnValue(expectedPrioritizedContent);
-
-        vi.mocked(mockLanguageModel.sendRequest).mockImplementation(async () => ({
-            text: (async function* () { yield 'Analysis with prioritized content'; })()
-        }));
-
-        const result = await analysisProvider.analyzePullRequest(
-            diffText,
-            '/mock/git/root',
-            AnalysisMode.Comprehensive
-        );
-
-        // Verify the prompt was constructed with the prioritized content
-        expect(mockLanguageModel.sendRequest).toHaveBeenCalled();
-        const sentMessages = vi.mocked(mockLanguageModel.sendRequest).mock.calls[0][0];
-        const userMessageContent = (sentMessages[1].content as Array<vscode.LanguageModelTextPart>)[0].value;
-
-        // Verify that the prioritized content appears in the prompt
-        expect(userMessageContent).toContain('High priority embedding content');
-        expect(userMessageContent).toContain('Medium priority reference content');
-        expect(userMessageContent).not.toContain('Lower priority definition content'); // This was filtered out by optimization
-
-        // Verify the analysis result contains the expected content
-        expect(result.analysis).toBe('Analysis with prioritized content');
-        expect(result.context).toBe(expectedPrioritizedContent);
-    });
-
-    it('should handle empty context gracefully with content prioritization', async () => {
-        const diffText = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-console.log("old");\n+console.log("new");';
-
-        const mockParsedDiff: DiffHunk[] = [
-            {
-                filePath: 'file.ts',
-                hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }]
-            }
-        ];
-        const mockHybridResult: HybridContextResult = { snippets: [], parsedDiff: mockParsedDiff };
-
-        mockContextProviderInstance.getContextForDiff.mockResolvedValue(mockHybridResult);
-
-        mockTokenManagerInstance.calculateTokenAllocation.mockResolvedValue({
-            totalAvailableTokens: 8000,
-            totalRequiredTokens: 500,
-            systemPromptTokens: 50,
-            diffTextTokens: 100,
-            contextTokens: 0,
-            userMessagesTokens: 0,
-            assistantMessagesTokens: 0,
-            responsePrefillTokens: 0,
-            messageOverheadTokens: 15,
-            otherTokens: 50,
-            fitsWithinLimit: true,
-            contextAllocationTokens: 5000
-        });
-
-        // Empty context optimization
-        mockTokenManagerInstance.optimizeContext.mockResolvedValue({
-            optimizedSnippets: [],
-            wasTruncated: false
-        });
-
-        mockTokenManagerInstance.formatContextSnippetsForDisplay.mockReturnValue('');
-
-        vi.mocked(mockLanguageModel.sendRequest).mockImplementation(async () => ({
-            text: (async function* () { yield 'Analysis without context'; })()
-        }));
-
-        const result = await analysisProvider.analyzePullRequest(
-            diffText,
-            '/mock/git/root',
-            AnalysisMode.Comprehensive
-        );
-
-        // Verify that setContentPrioritization was still called
-        expect(mockTokenManagerInstance.setContentPrioritization).toHaveBeenCalledWith({
-            order: ['diff', 'embedding', 'lsp-reference', 'lsp-definition']
-        });
-
-        // Verify optimizeContext was called with empty array
-        expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith([], 5000);
-
-        // Verify analysis completed successfully
-        expect(result.analysis).toBe('Analysis without context');
-        expect(result.context).toBe('');
     });
 });

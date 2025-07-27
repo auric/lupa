@@ -10,7 +10,6 @@ export interface ContextSnippet {
     filePath?: string; // For logging or more granular pruning
     associatedHunkIdentifiers?: string[]; // Identifiers of diff hunks this snippet is primarily associated with
     startLine?: number; // For logging or more granular pruning
-    // tokenCount?: number; // Optional: pre-calculated token count for the content
 }
 
 export interface DiffHunkLine {
@@ -53,7 +52,6 @@ export interface TokenComponents {
  */
 export interface TokenAllocation {
     totalAvailableTokens: number;
-    totalRequiredTokens: number;
     systemPromptTokens: number;
     diffTextTokens: number;
     contextTokens: number; // Tokens of the preliminary formatted string
@@ -62,8 +60,6 @@ export interface TokenAllocation {
     responsePrefillTokens: number; // Tokens for response prefill content
     messageOverheadTokens: number; // Overhead for chat message structure
     otherTokens: number; // Reserved for formatting, metadata, etc.
-    fitsWithinLimit: boolean;
-    contextAllocationTokens: number; // How many tokens can be allocated to context
 }
 
 /**
@@ -93,6 +89,6 @@ export interface OptimizationResult {
  * Result of token component truncation
  */
 export interface TruncatedTokenComponents {
-    truncatedComponents: TokenComponents;
+    components: TokenComponents;
     wasTruncated: boolean;
 }

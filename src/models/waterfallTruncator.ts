@@ -60,7 +60,7 @@ export class WaterfallTruncator {
 
         const currentTokens = await this.calculateComponentTokens(normalizedComponents);
         if (currentTokens <= targetTokens) {
-            return { truncatedComponents: normalizedComponents, wasTruncated: false };
+            return { components: normalizedComponents, wasTruncated: false };
         }
         const truncatedComponents = { ...normalizedComponents };
         let wasTruncated = false;
@@ -75,7 +75,7 @@ export class WaterfallTruncator {
             truncatedComponents.embeddingContext = '';
             truncatedComponents.lspReferenceContext = '';
             truncatedComponents.lspDefinitionContext = '';
-            return { truncatedComponents: truncatedComponents, wasTruncated: true };
+            return { components: truncatedComponents, wasTruncated: true };
         }
 
         // Calculate current content sizes
@@ -94,7 +94,7 @@ export class WaterfallTruncator {
 
         if (totalContentTokens <= availableTokensForContent) {
             // Everything fits - no truncation needed
-            return { truncatedComponents: truncatedComponents, wasTruncated: false };
+            return { components: truncatedComponents, wasTruncated: false };
         }
 
         // Apply waterfall allocation based on priority order
@@ -106,7 +106,7 @@ export class WaterfallTruncator {
         wasTruncated = waterfallResult.wasTruncated;
 
         // Return the truncated components with separate context fields
-        return { truncatedComponents: truncatedComponents, wasTruncated };
+        return { components: truncatedComponents, wasTruncated };
     }
 
     /**

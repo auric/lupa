@@ -286,9 +286,15 @@ private async analyzeWithLanguageModel(
 
         const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
+        // Calculate context allocation tokens
+        const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens + 
+            allocation.userMessagesTokens + allocation.assistantMessagesTokens + 
+            allocation.responsePrefillTokens + allocation.messageOverheadTokens + allocation.otherTokens;
+        const contextAllocationTokens = Math.max(0, allocation.totalAvailableTokens - nonContextTokens);
+
         const { optimizedSnippets, wasTruncated } = await this.tokenManager.optimizeContext(
             allContextSnippets,
-            allocation.contextAllocationTokens
+            contextAllocationTokens
         );
 
         const finalOptimizedContextStringForReturn = this.tokenManager.formatContextSnippetsToString(optimizedSnippets, wasTruncated);

@@ -138,14 +138,24 @@ export class AnalysisProvider implements vscode.Disposable {
 
             const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
+            // Calculate derived values
+            const totalRequiredTokens = allocation.systemPromptTokens + allocation.diffTextTokens + 
+                allocation.contextTokens + allocation.userMessagesTokens + allocation.assistantMessagesTokens + 
+                allocation.responsePrefillTokens + allocation.messageOverheadTokens + allocation.otherTokens;
+            const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens + 
+                allocation.userMessagesTokens + allocation.assistantMessagesTokens + 
+                allocation.responsePrefillTokens + allocation.messageOverheadTokens + allocation.otherTokens;
+            const contextAllocationTokens = Math.max(0, allocation.totalAvailableTokens - nonContextTokens);
+            const fitsWithinLimit = totalRequiredTokens <= allocation.totalAvailableTokens;
+
             Log.info(`Token allocation (pre-optimization): ${JSON.stringify({
                 systemPrompt: allocation.systemPromptTokens,
                 userPromptStructure: allocation.diffTextTokens, // This now reflects user prompt structure tokens
                 contextPotential: allocation.contextTokens, // Based on all potential snippets
                 availableForLLM: allocation.totalAvailableTokens,
-                totalRequiredPotential: allocation.totalRequiredTokens,
-                budgetForContextSnippets: allocation.contextAllocationTokens,
-                fitsPotential: allocation.fitsWithinLimit
+                totalRequiredPotential: totalRequiredTokens,
+                budgetForContextSnippets: contextAllocationTokens,
+                fitsPotential: fitsWithinLimit
             })}`);
 
             if (token?.isCancellationRequested) throw new Error('Operation cancelled by token');
@@ -153,7 +163,7 @@ export class AnalysisProvider implements vscode.Disposable {
             // Optimize the context snippets (includes deduplication internally)
             const { optimizedSnippets, wasTruncated } = await this.tokenManager.optimizeContext(
                 allContextSnippets,
-                allocation.contextAllocationTokens
+                contextAllocationTokens
             );
             Log.info(`Context optimized: ${optimizedSnippets.length} snippets selected. Truncated: ${wasTruncated}`);
 
@@ -277,7 +287,7 @@ export class AnalysisProvider implements vscode.Disposable {
         );
 
         // Perform the actual truncation
-        const { truncatedComponents, wasTruncated } = await this.tokenManager.performProportionalTruncation(
+        const { components: truncatedComponents, wasTruncated } = await this.tokenManager.performProportionalTruncation(
             truncationComponents,
             targetTokens
         );

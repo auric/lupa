@@ -82,16 +82,9 @@ export class TokenCalculator {
         const messageOverheadTokens = messageCount * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
 
         const otherTokens = TokenConstants.FORMATTING_OVERHEAD;
-        const totalRequiredTokens = systemPromptTokens + diffTokens + contextTokens +
-            userMessagesTokens + assistantMessagesTokens + responsePrefillTokens + messageOverheadTokens + otherTokens;
-
-        const nonContextTokens = systemPromptTokens + diffTokens +
-            userMessagesTokens + assistantMessagesTokens + responsePrefillTokens + messageOverheadTokens + otherTokens;
-        const contextAllocation = Math.max(0, safeMaxTokens - nonContextTokens);
 
         return {
             totalAvailableTokens: safeMaxTokens,
-            totalRequiredTokens,
             systemPromptTokens,
             diffTextTokens: diffTokens,
             contextTokens,
@@ -99,9 +92,7 @@ export class TokenCalculator {
             assistantMessagesTokens,
             responsePrefillTokens,
             messageOverheadTokens,
-            otherTokens,
-            fitsWithinLimit: totalRequiredTokens <= safeMaxTokens,
-            contextAllocationTokens: contextAllocation
+            otherTokens
         };
     }
 
