@@ -57,9 +57,6 @@ export class TokenCalculationUtils {
         }
 
         totalTokens += messageCount * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
-        if (components.diffStructureTokens) {
-            totalTokens += components.diffStructureTokens;
-        }
 
         return totalTokens + TokenConstants.FORMATTING_OVERHEAD;
     }
@@ -97,10 +94,7 @@ export class TokenCalculationUtils {
             fixedTokens += await model.countTokens(components.responsePrefill);
         }
 
-        // Diff structure tokens (if specified instead of diffText)
-        if (components.diffStructureTokens && !components.diffText) {
-            fixedTokens += components.diffStructureTokens;
-        }
+        // No fixed diff tokens - diff is always truncatable
 
         // Message overhead and formatting overhead are fixed
         const messageCount = (components.systemPrompt ? 1 : 0) +

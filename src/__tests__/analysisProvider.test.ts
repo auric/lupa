@@ -465,7 +465,7 @@ describe('AnalysisProvider', () => {
         externalCancellationSource.dispose(); // Clean up the source
     });
 
-    it('should correctly calculate and use diffStructureTokens for token allocation', async () => {
+    it('should correctly calculate and use diffText for token allocation', async () => {
         const diffText = 'diff --git a/file1.ts b/file1.ts\n--- a/file1.ts\n+++ b/file1.ts\n@@ -1,2 +1,2 @@\n-old line 1\n-old line 2\n+new line 1\n+new line 2\n';
         const gitRootPath = '/test/repo';
         const mode = AnalysisMode.Comprehensive;
@@ -523,53 +523,44 @@ Structure your response using XML tags for different types of feedback:
         fileContentXmlForCalc += "</changes>\n</file>\n\n";
         fileContentXmlForCalc += "</files_to_review>\n\n";
 
-        const expectedDiffStructure = instructionsXmlForCalc + examplesXmlForCalc + contextXmlPlaceholderForCalc + fileContentXmlForCalc;
+        const MOCKED_DIFF_TEXT_TOKENS = 100; // Tokens for the actual diff text
 
-        const MOCKED_DIFF_STRUCTURE_TOKENS = 2353; // Updated to match new prompt structure size
-        const MOCKED_CONTEXT_ALLOCATION_BUDGET = 1000; // Arbitrary mock value
-
-        // Spy and mock calculateTokens
-        vi.mocked(mockTokenManagerInstance.calculateTokens).mockImplementation(async (text: string) => {
-            // 2. Assert that calculateTokens is called with the enhanced structure
-            expect(text).toContain('<instructions>');
-            expect(text).toContain('step-by-step');
-            expect(text).toContain('<examples>');
-            expect(text).toContain('[CONTEXT_PLACEHOLDER]');
-            expect(text).toContain('<files_to_review>');
-            expect(text).toContain('<path>file1.ts</path>');
-            return MOCKED_DIFF_STRUCTURE_TOKENS;
-        });
-
+        const totalAvailableTokens = 7600; // Mocked total available tokens
+        const systemPromptTokens = 50;
+        const diffTextTokens = MOCKED_DIFF_TEXT_TOKENS;
+        const responsePrefillTokens = 0;
+        const messageOverheadTokens = 15;
+        const otherTokens = 50;
         // Spy and mock calculateTokenAllocation
         vi.mocked(mockTokenManagerInstance.calculateTokenAllocation).mockImplementation(async (components, _analysisMode) => {
-            // 3. Assert that diffStructureTokens is passed correctly
-            expect(components.diffStructureTokens).toBe(MOCKED_DIFF_STRUCTURE_TOKENS);
-            expect(components.diffText).toBeUndefined(); // Or whatever is expected if diffText is also passed
+            // 3. Assert that diffText is passed correctly (no longer using diffStructureTokens)
+            expect(components.diffText).toBe(diffText);
+            expect(components.diffStructureTokens).toBeUndefined(); // Should not be present in unified approach
             return {
                 fitsWithinLimit: true,
-                totalAvailableTokens: 7600,
-                totalRequiredTokens: 500, // system + diffStructure + preliminaryContext + other
-                systemPromptTokens: 50,
-                diffTextTokens: MOCKED_DIFF_STRUCTURE_TOKENS, // This field in result should reflect diffStructureTokens
+                totalAvailableTokens: totalAvailableTokens,
+                systemPromptTokens: systemPromptTokens,
+                diffTextTokens: diffTextTokens, // This field in result should reflect diffText tokens
                 contextTokens: 20, // Mocked preliminary context tokens
                 userMessagesTokens: 0,
                 assistantMessagesTokens: 0,
-                responsePrefillTokens: 0,
-                messageOverheadTokens: 15,
-                otherTokens: 50,
+                responsePrefillTokens: responsePrefillTokens,
+                messageOverheadTokens: messageOverheadTokens,
+                otherTokens: otherTokens,
             };
         });
 
         // Mock optimizeContext to check its budget argument
         mockTokenManagerInstance.optimizeContext.mockResolvedValue({ optimizedSnippets: mockSnippets, wasTruncated: false });
 
-
         await analysisProvider.analyzePullRequest(diffText, gitRootPath, mode);
+
+        const nonContextTokens = systemPromptTokens + diffTextTokens + responsePrefillTokens + messageOverheadTokens + otherTokens;
 
         // 4. Verify optimizeContext was called with the correct budget
         expect(mockTokenManagerInstance.optimizeContext).toHaveBeenCalledWith(
             mockSnippets,
-            5132
+            totalAvailableTokens - nonContextTokens
         );
 
         // Ensure other main mocks were called

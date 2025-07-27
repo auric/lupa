@@ -330,10 +330,9 @@ describe('TokenManagerService', () => {
             expect(contextAllocationTokens).toBe(safeMaxTokens - (expectedSystemTokens + expectedDiffTokens + expectedMessageOverheadTokens + expectedOtherTokens));
         });
 
-        it('should handle diffStructureTokens instead of diffText', async () => {
+        it('should handle missing diffText correctly', async () => {
             const components = {
                 systemPrompt: "System prompt text.", // 4 tokens
-                diffStructureTokens: 25, // Pre-calculated structured diff tokens
                 embeddingContext: "Context text.", // 3 tokens
                 responsePrefill: "Analysis:" // 2 tokens
             };
@@ -351,7 +350,7 @@ describe('TokenManagerService', () => {
             const allocation = await tokenManagerService.calculateTokenAllocation(components, AnalysisMode.Comprehensive);
 
             expect(allocation.systemPromptTokens).toBe(4);
-            expect(allocation.diffTextTokens).toBe(25); // Should use diffStructureTokens
+            expect(allocation.diffTextTokens).toBe(0); // Should be 0 if there is no diffText provided
             expect(allocation.contextTokens).toBe(3);
             expect(allocation.responsePrefillTokens).toBe(2); // Content tokens only
             // Message count: 1 (system prompt) + 0 (no userMessages) + 1 (responsePrefill) = 2
@@ -551,6 +550,7 @@ describe('TokenManagerService', () => {
                 expect(finalDiffTokens).toBeGreaterThan(0);
                 expect(finalDiffTokens).toBeLessThan(500); // Original diff size
             });
+
         });
     });
 });

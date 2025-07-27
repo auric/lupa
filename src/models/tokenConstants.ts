@@ -12,9 +12,6 @@ export class TokenConstants {
     static readonly DEFAULT_MAX_INPUT_TOKENS = 8000;
     static readonly DEFAULT_CACHE_LIFETIME_MS = 5 * 60 * 1000; // 5 minutes
 
-    // Emergency truncation constants
-    static readonly EMERGENCY_MIN_TARGET_TOKENS = 100;
-    static readonly MAX_FILES_IN_EMERGENCY_SUMMARY = 10;
 
     // Truncation constants
     static readonly TRUNCATION_MESSAGES = {

@@ -36,14 +36,13 @@ export interface HybridContextResult {
  */
 export interface TokenComponents {
     systemPrompt?: string;
-    diffText?: string; // Original flat diff, can be used as fallback or for non-interleaved
+    diffText?: string; // Diff content for analysis
     contextSnippets?: ContextSnippet[]; // Original context snippets for type-aware truncation
     embeddingContext?: string; // Context from embedding search
     lspReferenceContext?: string; // Context from LSP references
     lspDefinitionContext?: string; // Context from LSP definitions
     userMessages?: string[];
     assistantMessages?: string[];
-    diffStructureTokens?: number; // Tokens for the diff's structural representation in an interleaved prompt
     responsePrefill?: string; // Response prefill content that will be sent to the model
 }
 

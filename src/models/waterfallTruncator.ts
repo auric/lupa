@@ -171,7 +171,7 @@ export class WaterfallTruncator {
             return { remainingTokens: remainingTokens - currentTokens, wasTruncated: false };
         }
 
-        // Content is too large - truncate to fit remaining space
+        // Content is too large - truncate to fit remaining space (same as other components)
         const tokensToRemove = currentTokens - remainingTokens;
         const truncationResult = await this.truncateContentByType(components, contentType, tokensToRemove);
 
@@ -196,7 +196,7 @@ export class WaterfallTruncator {
         switch (contentType) {
             case 'diff':
                 if (components.diffText) {
-                    const result = await this.truncateDiffWithEmergencyFallback(
+                    const result = await this.truncateDiffContent(
                         components.diffText,
                         tokensToRemove
                     );
@@ -239,143 +239,16 @@ export class WaterfallTruncator {
     }
 
     /**
-     * Truncate diff content with emergency fallbacks for extremely large diffs
+     * Truncate diff content using standard truncation
      * @param diffText Diff content to truncate
      * @param tokensToRemove Number of tokens to remove
-     * @returns Truncation result with emergency handling
+     * @returns Truncation result
      */
-    private async truncateDiffWithEmergencyFallback(
+    private async truncateDiffContent(
         diffText: string,
         tokensToRemove: number
     ): Promise<TruncationResult> {
-        // Try normal truncation first
-        const normalResult = await this.truncateContent(diffText, tokensToRemove);
-
-        // If normal truncation worked, return it
-        if (normalResult.content.length > 0) {
-            return normalResult;
-        }
-
-        // Emergency fallback: Try to preserve at least the first few hunks
-        Log.warn('Diff content extremely large, applying emergency hunk-based truncation');
-        return await this.emergencyTruncateDiffByHunks(diffText, tokensToRemove);
-    }
-
-    /**
-     * Emergency truncation that preserves diff structure by keeping complete hunks
-     * @param diffText Original diff content
-     * @param tokensToRemove Number of tokens to remove
-     * @returns Emergency truncated diff
-     */
-    private async emergencyTruncateDiffByHunks(
-        diffText: string,
-        tokensToRemove: number
-    ): Promise<TruncationResult> {
-        if (!this.currentModel) {
-            return { content: '', wasTruncated: true };
-        }
-
-        const currentTokens = await this.currentModel.countTokens(diffText);
-        const targetTokens = currentTokens - tokensToRemove;
-
-        // If even the target is too small, return a minimal diff summary
-        if (targetTokens < TokenConstants.EMERGENCY_MIN_TARGET_TOKENS) {
-            const summary = this.createMinimalDiffSummary(diffText);
-            return { content: summary, wasTruncated: true };
-        }
-
-        // Split diff into hunks and keep as many complete hunks as possible
-        const lines = diffText.split('\n');
-        const preservedLines: string[] = [];
-        let currentTokenCount = 0;
-        let inHunk = false;
-        let currentHunk: string[] = [];
-
-        for (const line of lines) {
-            const lineTokens = await this.currentModel.countTokens(line + '\n');
-
-            // Check if this line starts a new hunk
-            if (line.startsWith('@@')) {
-                // Finish previous hunk if we were in one
-                if (inHunk && currentHunk.length > 0) {
-                    const hunkTokens = await this.currentModel.countTokens(currentHunk.join('\n'));
-                    if (currentTokenCount + hunkTokens <= targetTokens) {
-                        preservedLines.push(...currentHunk);
-                        currentTokenCount += hunkTokens;
-                        currentHunk = [];
-                    } else {
-                        // Can't fit this hunk, stop here
-                        break;
-                    }
-                }
-
-                // Start new hunk
-                inHunk = true;
-                currentHunk = [line];
-            } else if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('+++') || line.startsWith('---')) {
-                // File headers - always include if we have space
-                if (currentTokenCount + lineTokens <= targetTokens) {
-                    preservedLines.push(line);
-                    currentTokenCount += lineTokens;
-                }
-            } else if (inHunk) {
-                // Part of current hunk
-                currentHunk.push(line);
-            }
-        }
-
-        // Add final hunk if it fits
-        if (currentHunk.length > 0) {
-            const hunkTokens = await this.currentModel.countTokens(currentHunk.join('\n'));
-            if (currentTokenCount + hunkTokens <= targetTokens) {
-                preservedLines.push(...currentHunk);
-            }
-        }
-
-        const result = preservedLines.join('\n');
-        const truncationMessage = '\n\n[Large diff truncated to preserve structural integrity. Some hunks omitted to fit token limits.]';
-
-        return {
-            content: result + truncationMessage,
-            wasTruncated: true
-        };
-    }
-
-    /**
-     * Create a minimal diff summary when even hunk-based truncation isn't possible
-     * @param diffText Original diff content
-     * @returns Minimal summary of the diff
-     */
-    private createMinimalDiffSummary(diffText: string): string {
-        const lines = diffText.split('\n');
-        const fileHeaders = lines.filter(line =>
-            line.startsWith('diff --git') ||
-            line.startsWith('+++') ||
-            line.startsWith('---')
-        );
-
-        // Extract file paths from headers
-        const changedFiles = new Set<string>();
-        for (const header of fileHeaders) {
-            if (header.startsWith('+++') || header.startsWith('---')) {
-                const path = header.substring(4).replace(/^[ab]\//, '');
-                if (path !== '/dev/null') {
-                    changedFiles.add(path);
-                }
-            }
-        }
-
-        const fileList = Array.from(changedFiles).slice(0, TokenConstants.MAX_FILES_IN_EMERGENCY_SUMMARY);
-        const summary = [
-            '[EMERGENCY TRUNCATION: Diff too large for analysis]',
-            '',
-            `Files modified (${changedFiles.size} total${changedFiles.size > TokenConstants.MAX_FILES_IN_EMERGENCY_SUMMARY ? ', showing first ' + TokenConstants.MAX_FILES_IN_EMERGENCY_SUMMARY : ''}):`,
-            ...fileList.map(file => `- ${file}`),
-            '',
-            '[Complete diff analysis unavailable due to token limits. Consider analyzing smaller change sets.]'
-        ].join('\n');
-
-        return summary;
+        return await this.truncateContent(diffText, tokensToRemove);
     }
 
     /**
@@ -440,6 +313,31 @@ export class WaterfallTruncator {
     }
 
     /**
+     * Clear content for a single content type
+     * @param components Components to clear
+     * @param contentType The content type to clear
+     */
+    private clearContentByType(
+        components: TokenComponents,
+        contentType: ContentType
+    ): void {
+        switch (contentType) {
+            case 'diff':
+                components.diffText = '';
+                break;
+            case 'embedding':
+                components.embeddingContext = '';
+                break;
+            case 'lsp-reference':
+                components.lspReferenceContext = '';
+                break;
+            case 'lsp-definition':
+                components.lspDefinitionContext = '';
+                break;
+        }
+    }
+
+    /**
      * Clear content for the current and all remaining lower-priority content types
      * @param components Components to clear
      * @param currentContentType The current content type being processed
@@ -454,20 +352,7 @@ export class WaterfallTruncator {
         // Clear current and all remaining content types
         for (let i = currentIndex; i < this.contentPrioritization.order.length; i++) {
             const contentType = this.contentPrioritization.order[i];
-            switch (contentType) {
-                case 'diff':
-                    components.diffText = '';
-                    break;
-                case 'embedding':
-                    components.embeddingContext = '';
-                    break;
-                case 'lsp-reference':
-                    components.lspReferenceContext = '';
-                    break;
-                case 'lsp-definition':
-                    components.lspDefinitionContext = '';
-                    break;
-            }
+            this.clearContentByType(components, contentType);
         }
     }
 

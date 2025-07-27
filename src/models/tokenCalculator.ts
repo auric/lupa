@@ -36,9 +36,8 @@ export class TokenCalculator {
 
         const systemPromptTokens = components.systemPrompt
             ? await this.currentModel!.countTokens(components.systemPrompt) : 0;
-        const diffTokens = components.diffStructureTokens !== undefined
-            ? components.diffStructureTokens
-            : (components.diffText ? await this.currentModel!.countTokens(components.diffText) : 0);
+        const diffTokens = components.diffText
+            ? await this.currentModel!.countTokens(components.diffText) : 0;
 
         // Calculate context tokens from separated fields
         let contextTokens = 0;

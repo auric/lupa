@@ -123,15 +123,13 @@ export class AnalysisProvider implements vscode.Disposable {
             // Format all initially retrieved snippets into a preliminary string for token budget calculation
             const preliminaryContextStringForAllSnippets = this.tokenManager.formatContextSnippetsToString(allContextSnippets, false);
 
-            // Calculate user prompt structure tokens (using prompt generator)
-            const userPromptStructureTokens = await this.calculateUserPromptStructureTokens(diffText, parsedDiff);
+            // No longer need to calculate separate structure tokens - using diffText directly
 
             // For initial token calculation, treat all context as embedding context
             const tokenComponents = {
                 systemPrompt,
-                diffText: undefined,
+                diffText: diffText, // Use actual diff text for token calculation
                 contextSnippets: undefined,
-                diffStructureTokens: userPromptStructureTokens, // Use calculated user prompt structure tokens
                 embeddingContext: preliminaryContextStringForAllSnippets, // Full potential context for optimizeContext to choose from
                 lspReferenceContext: '',
                 lspDefinitionContext: '',
@@ -242,22 +240,6 @@ export class AnalysisProvider implements vscode.Disposable {
 
 
 
-    private async calculateUserPromptStructureTokens(diffText: string, parsedDiff: DiffHunk[]): Promise<number> {
-        // Use the PromptGenerator to calculate structure tokens
-        const structureInfo = this.promptGenerator.calculatePromptStructureTokens(
-            diffText,
-            parsedDiff,
-            "[CONTEXT_PLACEHOLDER]"
-        );
-
-        // Return the total estimated tokens for the prompt structure
-        const totalStructureTokens = structureInfo.examplesTokens +
-            structureInfo.fileContentTokens +
-            structureInfo.instructionsTokens +
-            structureInfo.contextPlaceholderTokens;
-
-        return totalStructureTokens;
-    }
 
     /**
      * Apply waterfall truncation with modular error handling
@@ -339,7 +321,6 @@ export class AnalysisProvider implements vscode.Disposable {
             lspDefinitionContext: undefined,
             userMessages: undefined,
             assistantMessages: undefined,
-            diffStructureTokens: undefined,
             responsePrefill
         };
     }
