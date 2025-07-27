@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { TokenManagerService, ContentPrioritization } from '../services/tokenManagerService';
+import { TokenManagerService } from '../services/tokenManagerService';
+import type { ContentPrioritization } from '../types/contextTypes';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { ContextSnippet } from '../types/contextTypes';
 import { AnalysisMode } from '../types/modelTypes';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { PromptGenerator } from '../services/promptGenerator';
+import { TokenConstants } from '../models/tokenConstants';
 
 vi.mock('vscode');
 vi.mock('../models/copilotModelManager');
@@ -356,7 +358,7 @@ describe('TokenManagerService', () => {
             const expectedMessageOverheadTokens = 1 * 5; // TOKEN_OVERHEAD_PER_MESSAGE
             const expectedTotalRequired = expectedSystemTokens + expectedDiffTokens + expectedContextTokens + expectedMessageOverheadTokens + expectedOtherTokens; // 4+3+3+5+50 = 65
 
-            const safeMaxTokens = Math.floor(8000 * TokenManagerService['SAFETY_MARGIN_RATIO']); // 7600
+            const safeMaxTokens = Math.floor(8000 * TokenConstants.SAFETY_MARGIN_RATIO); // 7600
 
             expect(allocation.systemPromptTokens).toBe(expectedSystemTokens);
             expect(allocation.diffTextTokens).toBe(expectedDiffTokens);
@@ -395,13 +397,13 @@ describe('TokenManagerService', () => {
             const expectedContextTokens = 3;
             const expectedResponsePrefillTokens = 7; // Content tokens only, no overhead
             // Message count: 1 (system prompt) + 0 (no userMessages) + 1 (responsePrefill) = 2
-            const expectedMessageOverheadTokens = 2 * TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']; // 2 messages * 5 = 10
-            const expectedOtherTokens = TokenManagerService['FORMATTING_OVERHEAD']; // 50
+            const expectedMessageOverheadTokens = 2 * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE; // 2 messages * 5 = 10
+            const expectedOtherTokens = TokenConstants.FORMATTING_OVERHEAD; // 50
 
             const expectedTotalRequired = expectedSystemTokens + expectedDiffTokens + expectedContextTokens +
                 expectedResponsePrefillTokens + expectedMessageOverheadTokens + expectedOtherTokens; // 4+3+3+7+10+50 = 77
 
-            const safeMaxTokens = Math.floor(8000 * TokenManagerService['SAFETY_MARGIN_RATIO']); // 7600
+            const safeMaxTokens = Math.floor(8000 * TokenConstants.SAFETY_MARGIN_RATIO); // 7600
 
             expect(allocation.systemPromptTokens).toBe(expectedSystemTokens);
             expect(allocation.diffTextTokens).toBe(expectedDiffTokens);
@@ -442,7 +444,7 @@ describe('TokenManagerService', () => {
             expect(allocation.contextTokens).toBe(3);
             expect(allocation.responsePrefillTokens).toBe(2); // Content tokens only
             // Message count: 1 (system prompt) + 0 (no userMessages) + 1 (responsePrefill) = 2
-            expect(allocation.messageOverheadTokens).toBe(2 * TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']);
+            expect(allocation.messageOverheadTokens).toBe(2 * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE);
         });
 
         it('should calculate correct message count for overhead calculation', async () => {
@@ -458,7 +460,7 @@ describe('TokenManagerService', () => {
             const allocation = await tokenManagerService.calculateTokenAllocation(components, AnalysisMode.Comprehensive);
 
             // Message count: 1 (system prompt) + 0 (no userMessages) + 0 (no responsePrefill) = 1
-            const expectedMessageOverhead = 1 * TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE'];
+            const expectedMessageOverhead = 1 * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
             expect(allocation.messageOverheadTokens).toBe(expectedMessageOverhead);
         });
     });
@@ -488,9 +490,9 @@ describe('TokenManagerService', () => {
 
             // Expected: (6 + 5) + (12 + 5) + (8 + 5) = 11 + 17 + 13 = 41
             const expectedTotal =
-                (6 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']) + // System message
-                (12 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']) + // User message
-                (8 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']); // Assistant prefill message
+                (6 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE) + // System message
+                (12 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE) + // User message
+                (8 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE); // Assistant prefill message
 
             expect(totalTokens).toBe(expectedTotal);
         });
@@ -515,8 +517,8 @@ describe('TokenManagerService', () => {
 
             // Expected: (6 + 5) + (5 + 5) = 11 + 10 = 21
             const expectedTotal =
-                (6 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']) + // System message
-                (5 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']); // User message
+                (6 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE) + // System message
+                (5 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE); // User message
 
             expect(totalTokens).toBe(expectedTotal);
         });
@@ -533,7 +535,7 @@ describe('TokenManagerService', () => {
             // Result shows 10, so empty string responsePrefill must not be adding overhead
             // This means either: 1) empty string is falsy in the if check, or 2) there's different logic
             // Given the actual behavior: (0 + 5) + (0 + 5) = 10 (system + user only)
-            const expectedTotal = 2 * (0 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']); // system + user only
+            const expectedTotal = 2 * (0 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE); // system + user only
             expect(totalTokens).toBe(expectedTotal);
         });
 
@@ -573,9 +575,9 @@ describe('TokenManagerService', () => {
             // completeTokens includes: system + user + responsePrefill (all with message overhead)
 
             const expectedCompleteTokens =
-                (4 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']) + // System
-                (8 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']) + // User (diff)
-                (3 + TokenManagerService['TOKEN_OVERHEAD_PER_MESSAGE']); // Response prefill
+                (4 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE) + // System
+                (8 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE) + // User (diff)
+                (3 + TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE); // Response prefill
 
             expect(completeTokens).toBe(expectedCompleteTokens);
 

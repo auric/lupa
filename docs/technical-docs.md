@@ -71,8 +71,9 @@ The overall architecture consists of these primary layers:
 ### 1.2 Service Initialization (Phase-Based)
 
 The ServiceManager initializes services in four phases to resolve dependencies:
+
 1. **Foundation**: Settings, logging, UI, Git services
-2. **Core**: Model management and database services  
+2. **Core**: Model management and database services
 3. **Complex**: Indexing services (uses null injection then setter injection for circular dependencies)
 4. **High-Level**: Context and analysis providers
 
@@ -93,8 +94,9 @@ The ServiceManager initializes services in four phases to resolve dependencies:
 #### 1.2.4 Context Retrieval (Hybrid LSP + Embedding)
 
 Combines LSP structural queries with semantic embedding search:
+
 1. **Symbol Extraction**: Parse diff to identify key symbols and generate embedding queries
-2. **LSP Search**: Query language server for symbol definitions and references  
+2. **LSP Search**: Query language server for symbol definitions and references
 3. **Embedding Search**: Use HNSWlib ANN index to find semantically similar code
 4. **Context Optimization**: TokenManagerService applies waterfall truncation to fit token limits
 
@@ -119,7 +121,7 @@ The system consists of coordinators, services, and data layers with clear separa
 ### 2.2 Indexing System
 
 - **IndexingService**: Processes individual files using `processFile()` method, delegates to chunking and embedding services
-- **IndexingManager**: Orchestrates batch processing, model selection, and database persistence  
+- **IndexingManager**: Orchestrates batch processing, model selection, and database persistence
 - **EmbeddingDatabaseAdapter**: Bridges indexing results with storage and search capabilities
 
 ### 2.3 Vector Database System
@@ -130,7 +132,11 @@ The system consists of coordinators, services, and data layers with clear separa
 ### 2.4 Context System
 
 - **ContextProvider**: Orchestrates hybrid LSP + embedding context retrieval, parses diffs, extracts symbols
-- **TokenManagerService**: Manages token allocation, implements waterfall truncation, optimizes context to fit model limits
+- **TokenManagerService**: Refactored coordinator that delegates to specialized classes:
+  - **TokenCalculator** (`src/models/tokenCalculator.ts`): Token allocation calculations and component counting
+  - **WaterfallTruncator** (`src/models/waterfallTruncator.ts`): Waterfall truncation algorithms with priority-based allocation
+  - **ContextOptimizer** (`src/models/contextOptimizer.ts`): Snippet selection, deduplication, and optimization
+  - **TokenConstants** (`src/models/tokenConstants.ts`): Centralized configuration constants
 
 ### 2.5 Analysis System
 
@@ -157,7 +163,7 @@ The system consists of coordinators, services, and data layers with clear separa
 ### 3.1 Embedding Generation
 
 1. **File Selection**: Identify and filter files based on language support and patterns
-2. **Structure-Aware Chunking**: Use Tree-sitter to parse code into coherent chunks at function/class boundaries  
+2. **Structure-Aware Chunking**: Use Tree-sitter to parse code into coherent chunks at function/class boundaries
 3. **Parallel Embedding**: Generate embeddings in worker threads using Hugging Face models
 4. **Storage**: Store results in hybrid SQLite + HNSWlib database
 
@@ -177,12 +183,14 @@ The token management process ensures the final prompt respects the language mode
 The system implements a **true waterfall allocation strategy** where higher-priority content receives full token allocation before lower-priority content gets remaining tokens. This ensures that the most critical information (typically diff content) is preserved even under severe token constraints.
 
 **Priority Order (Default)**:
+
 1. `diff` - Code changes being analyzed (highest priority)
-2. `embedding` - Semantically similar code context  
+2. `embedding` - Semantically similar code context
 3. `lsp-reference` - Symbol usage locations
 4. `lsp-definition` - Symbol definition locations (lowest priority)
 
 **Key Principles**:
+
 - **Full Allocation First**: Each content type attempts to use its complete token requirement
 - **Remaining Token Distribution**: If content exceeds available tokens, it's truncated to fit exactly
 - **Graceful Degradation**: Content that cannot fit even with truncation is removed entirely
@@ -246,7 +254,7 @@ This approach ensures that the budget calculation for context snippets correctly
 
 1. **Mode Selection**: Configure analysis mode and system prompt
 2. **Context Retrieval**: Extract and optimize context using waterfall truncation
-3. **Model Interaction**: Send structured prompt to language model  
+3. **Model Interaction**: Send structured prompt to language model
 4. **Result Presentation**: Display analysis in React webview with navigation
 
 ## 4. Core Data Structures
@@ -254,7 +262,7 @@ This approach ensures that the budget calculation for context snippets correctly
 ### 4.1 Database Schema (Hybrid SQLite + HNSWlib)
 
 - **Files Table**: File metadata (id, path, hash, language, indexing status)
-- **Chunks Table**: Code chunk content and offsets within files  
+- **Chunks Table**: Code chunk content and offsets within files
 - **Embeddings Table**: Metadata mapping chunk IDs to HNSWlib numerical labels
 - **HNSWlib ANN Index**: Actual embedding vectors for efficient similarity search
 

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ContextProvider } from './contextProvider';
-import { TokenManagerService, ContentPrioritization, TokenComponents } from './tokenManagerService';
+import { TokenManagerService } from './tokenManagerService';
+import type { ContentPrioritization, TokenComponents } from '../types/contextTypes';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
 import type {

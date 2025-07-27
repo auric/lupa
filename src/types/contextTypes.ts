@@ -31,3 +31,68 @@ export interface HybridContextResult {
     snippets: ContextSnippet[];
     parsedDiff: DiffHunk[];
 }
+
+/**
+ * Components of an analysis that consume tokens
+ */
+export interface TokenComponents {
+    systemPrompt?: string;
+    diffText?: string; // Original flat diff, can be used as fallback or for non-interleaved
+    contextSnippets?: ContextSnippet[]; // Original context snippets for type-aware truncation
+    embeddingContext?: string; // Context from embedding search
+    lspReferenceContext?: string; // Context from LSP references
+    lspDefinitionContext?: string; // Context from LSP definitions
+    userMessages?: string[];
+    assistantMessages?: string[];
+    diffStructureTokens?: number; // Tokens for the diff's structural representation in an interleaved prompt
+    responsePrefill?: string; // Response prefill content that will be sent to the model
+}
+
+/**
+ * Result of token allocation calculation
+ */
+export interface TokenAllocation {
+    totalAvailableTokens: number;
+    totalRequiredTokens: number;
+    systemPromptTokens: number;
+    diffTextTokens: number;
+    contextTokens: number; // Tokens of the preliminary formatted string
+    userMessagesTokens: number;
+    assistantMessagesTokens: number;
+    responsePrefillTokens: number; // Tokens for response prefill content
+    messageOverheadTokens: number; // Overhead for chat message structure
+    otherTokens: number; // Reserved for formatting, metadata, etc.
+    fitsWithinLimit: boolean;
+    contextAllocationTokens: number; // How many tokens can be allocated to context
+}
+
+/**
+ * Content prioritization order configuration
+ */
+export interface ContentPrioritization {
+    order: ContentType[];
+}
+
+/**
+ * Result of truncation operations
+ */
+export interface TruncationResult {
+    content: string;
+    wasTruncated: boolean;
+}
+
+/**
+ * Result of context optimization
+ */
+export interface OptimizationResult {
+    optimizedSnippets: ContextSnippet[];
+    wasTruncated: boolean;
+}
+
+/**
+ * Result of token component truncation
+ */
+export interface TruncatedTokenComponents {
+    truncatedComponents: TokenComponents;
+    wasTruncated: boolean;
+}

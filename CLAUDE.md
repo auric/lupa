@@ -84,7 +84,11 @@ The extension follows a layered, service-oriented architecture with clear separa
 
 - **`AnalysisProvider`** (`src/services/analysisProvider.ts`) - Manages code analysis using Copilot models
 - **`CopilotModelManager`** (`src/models/copilotModelManager.ts`) - Interfaces with VS Code's Language Model API (implements vscode.Disposable)
-- **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Optimizes context to fit token limits
+- **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Refactored coordinator delegating to specialized token management classes:
+  - **`TokenCalculator`** (`src/models/tokenCalculator.ts`) - Token allocation calculations
+  - **`WaterfallTruncator`** (`src/models/waterfallTruncator.ts`) - Advanced truncation algorithms
+  - **`ContextOptimizer`** (`src/models/contextOptimizer.ts`) - Snippet selection and optimization
+  - **`TokenConstants`** (`src/models/tokenConstants.ts`) - Configuration constants
 - **`ContextProvider`** (`src/services/contextProvider.ts`) - Singleton service that combines LSP queries with semantic similarity search
 
 ### Git Integration
@@ -277,7 +281,7 @@ The IndexingService follows Single Responsibility Principle with these key impro
 
 ### TokenManagerService Architecture & Waterfall Truncation
 
-The TokenManagerService manages token allocation and implements sophisticated waterfall truncation logic:
+The TokenManagerService has been refactored into a coordinator pattern with specialized classes (TokenCalculator, WaterfallTruncator, ContextOptimizer, TokenConstants) while maintaining the same public API. The system manages token allocation and implements sophisticated waterfall truncation logic:
 
 #### Core Waterfall Truncation Logic
 
@@ -295,48 +299,6 @@ The TokenManagerService manages token allocation and implements sophisticated wa
 4. **Full Allocation Attempt**: Each content type tries to use its full token requirement
 5. **Remaining Token Allocation**: If content exceeds remaining tokens, truncate to fit exactly
 6. **Removal Fallback**: If truncation isn't viable, remove content entirely
-
-#### Current Technical Debt - Requires Refactoring
-
-⚠️ **SOLID Principle Violations**:
-- **Single Responsibility**: 1100+ lines handling token calculation, truncation, optimization, formatting, and deduplication
-- **Open/Closed**: Hard-coded truncation strategies prevent adding new algorithms without modification
-- **Dependency Inversion**: Direct dependency on concrete `CopilotModelManager` instead of interfaces
-
-⚠️ **TypeScript Best Practice Issues**:
-- Uses `any` types instead of strongly typed interfaces
-- Magic numbers hard-coded instead of configurable
-- Large methods (200+ lines) with deep nesting
-- Missing configuration injection patterns
-
-#### Recommended Refactoring Architecture
-
-```typescript
-// Separate interfaces for focused responsibilities
-interface ITokenCalculator {
-    calculateTokens(text: string): Promise<number>;
-    calculateAllocation(components: TokenComponents): Promise<TokenAllocation>;
-}
-
-interface IContentTruncator {
-    truncateContent(content: string, targetTokens: number): Promise<TruncationResult>;
-    performWaterfallTruncation(components: TokenComponents): Promise<TruncationResult>;
-}
-
-interface IContextOptimizer {
-    optimizeContext(snippets: ContextSnippet[], limit: number): Promise<OptimizationResult>;
-}
-
-interface ITruncationStrategy {
-    truncate(content: string, targetTokens: number): Promise<TruncationResult>;
-}
-
-interface ITokenManagerConfiguration {
-    readonly tokenOverheadPerMessage: number;
-    readonly safetyMarginRatio: number;
-    readonly truncationStrategies: ITruncationStrategy[];
-}
-```
 
 ### Status Bar Architecture
 
