@@ -6,6 +6,7 @@ import type {
 import type { AnalysisMode } from '../types/modelTypes';
 import { CopilotModelManager } from './copilotModelManager';
 import { TokenConstants } from './tokenConstants';
+import { TokenCalculationUtils } from './tokenCalculationUtils';
 import { Log } from '../services/loggingService';
 
 /**
@@ -30,7 +31,7 @@ export class TokenCalculator {
     ): Promise<TokenAllocation> {
         await this.updateModelInfo();
 
-        const maxInputTokens = this.modelDetails?.maxInputTokens || 8000;
+        const maxInputTokens = this.modelDetails?.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
         const safeMaxTokens = Math.floor(maxInputTokens * TokenConstants.SAFETY_MARGIN_RATIO);
 
         const systemPromptTokens = components.systemPrompt
@@ -103,58 +104,7 @@ export class TokenCalculator {
      */
     async calculateComponentTokens(components: TokenComponents): Promise<number> {
         await this.updateModelInfo();
-        if (!this.currentModel) return 0;
-
-        let totalTokens = 0;
-
-        if (components.systemPrompt) {
-            totalTokens += await this.currentModel.countTokens(components.systemPrompt);
-        }
-        if (components.diffText) {
-            totalTokens += await this.currentModel.countTokens(components.diffText);
-        }
-        // Calculate context tokens from separated fields
-        if (components.embeddingContext) {
-            totalTokens += await this.currentModel.countTokens(components.embeddingContext);
-        }
-        if (components.lspReferenceContext) {
-            totalTokens += await this.currentModel.countTokens(components.lspReferenceContext);
-        }
-        if (components.lspDefinitionContext) {
-            totalTokens += await this.currentModel.countTokens(components.lspDefinitionContext);
-        }
-
-        // Calculate message content and overhead separately
-        let messageCount = 0;
-        if (components.userMessages) {
-            for (const message of components.userMessages) {
-                totalTokens += await this.currentModel.countTokens(message);
-                messageCount++;
-            }
-        }
-        if (components.assistantMessages) {
-            for (const message of components.assistantMessages) {
-                totalTokens += await this.currentModel.countTokens(message);
-                messageCount++;
-            }
-        }
-        if (components.responsePrefill) {
-            totalTokens += await this.currentModel.countTokens(components.responsePrefill);
-            messageCount++;
-        }
-
-        // Add system prompt to message count if present
-        if (components.systemPrompt) {
-            messageCount++;
-        }
-
-        // Add message overhead
-        totalTokens += messageCount * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
-        if (components.diffStructureTokens) {
-            totalTokens += components.diffStructureTokens;
-        }
-
-        return totalTokens + TokenConstants.FORMATTING_OVERHEAD;
+        return TokenCalculationUtils.calculateComponentTokens(components, this.currentModel!);
     }
 
     /**
@@ -164,46 +114,7 @@ export class TokenCalculator {
      */
     async calculateFixedTokens(components: TokenComponents): Promise<number> {
         await this.updateModelInfo();
-        if (!this.currentModel) return 0;
-
-        let fixedTokens = 0;
-
-        // System prompt is fixed
-        if (components.systemPrompt) {
-            fixedTokens += await this.currentModel.countTokens(components.systemPrompt);
-        }
-
-        // User and assistant messages are fixed
-        if (components.userMessages) {
-            for (const message of components.userMessages) {
-                fixedTokens += await this.currentModel.countTokens(message);
-            }
-        }
-        if (components.assistantMessages) {
-            for (const message of components.assistantMessages) {
-                fixedTokens += await this.currentModel.countTokens(message);
-            }
-        }
-
-        // Response prefill is fixed
-        if (components.responsePrefill) {
-            fixedTokens += await this.currentModel.countTokens(components.responsePrefill);
-        }
-
-        // Diff structure tokens (if specified instead of diffText)
-        if (components.diffStructureTokens && !components.diffText) {
-            fixedTokens += components.diffStructureTokens;
-        }
-
-        // Message overhead and formatting overhead are fixed
-        const messageCount = (components.systemPrompt ? 1 : 0) +
-            (components.userMessages?.length || 0) +
-            (components.assistantMessages?.length || 0) +
-            (components.responsePrefill ? 1 : 0);
-        fixedTokens += messageCount * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
-        fixedTokens += TokenConstants.FORMATTING_OVERHEAD;
-
-        return fixedTokens;
+        return TokenCalculationUtils.calculateFixedTokens(components, this.currentModel!);
     }
 
     /**
@@ -242,7 +153,7 @@ export class TokenCalculator {
      */
     async getModelTokenLimit(): Promise<number> {
         await this.updateModelInfo();
-        return this.modelDetails?.maxInputTokens || 8000;
+        return this.modelDetails?.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
     }
 
     /**
@@ -281,14 +192,14 @@ export class TokenCalculator {
                     Log.warn(`Could not find model details for ${currentModelId}, using defaults`);
                     this.modelDetails = {
                         family: 'unknown',
-                        maxInputTokens: 8000
+                        maxInputTokens: TokenConstants.DEFAULT_MAX_INPUT_TOKENS
                     };
                 }
             } catch (error) {
                 Log.error('Error getting model info:', error);
                 this.modelDetails = {
                     family: 'unknown',
-                    maxInputTokens: 8000
+                    maxInputTokens: TokenConstants.DEFAULT_MAX_INPUT_TOKENS
                 };
             }
         }

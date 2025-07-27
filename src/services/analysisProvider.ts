@@ -129,10 +129,14 @@ export class AnalysisProvider implements vscode.Disposable {
             // For initial token calculation, treat all context as embedding context
             const tokenComponents = {
                 systemPrompt,
+                diffText: undefined,
+                contextSnippets: undefined,
                 diffStructureTokens: userPromptStructureTokens, // Use calculated user prompt structure tokens
                 embeddingContext: preliminaryContextStringForAllSnippets, // Full potential context for optimizeContext to choose from
                 lspReferenceContext: '',
                 lspDefinitionContext: '',
+                userMessages: undefined,
+                assistantMessages: undefined,
                 responsePrefill, // Include response prefill in token calculation
             };
 
@@ -330,6 +334,12 @@ export class AnalysisProvider implements vscode.Disposable {
             systemPrompt,
             diffText: diffText, // Use original diff text for truncation
             contextSnippets: optimizedSnippets, // Pass original snippets for type-aware truncation
+            embeddingContext: undefined,
+            lspReferenceContext: undefined,
+            lspDefinitionContext: undefined,
+            userMessages: undefined,
+            assistantMessages: undefined,
+            diffStructureTokens: undefined,
             responsePrefill
         };
     }

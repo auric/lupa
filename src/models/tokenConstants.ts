@@ -8,6 +8,14 @@ export class TokenConstants {
     static readonly FORMATTING_OVERHEAD = 50;
     static readonly SAFETY_MARGIN_RATIO = 0.95; // 5% safety margin
 
+    // Model defaults
+    static readonly DEFAULT_MAX_INPUT_TOKENS = 8000;
+    static readonly DEFAULT_CACHE_LIFETIME_MS = 5 * 60 * 1000; // 5 minutes
+
+    // Emergency truncation constants
+    static readonly EMERGENCY_MIN_TARGET_TOKENS = 100;
+    static readonly MAX_FILES_IN_EMERGENCY_SUMMARY = 10;
+
     // Truncation constants
     static readonly TRUNCATION_MESSAGES = {
         CONTEXT: '\n\n[Context truncated to fit token limit. Some information might be missing.]',

@@ -295,7 +295,7 @@ describe('UIManager', () => {
                 webview: {
                     asWebviewUri: vi.fn().mockImplementation((uri) => uri)
                 }
-            };
+            } as any;
             const analysis = '<suggestion_security>Security issue</suggestion_security>';
 
             const html = uiManager.generatePRAnalysisHtml('Test', 'diff', 'context', analysis, mockPanel);

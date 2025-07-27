@@ -9,6 +9,7 @@ import type {
 } from '../types/contextTypes';
 import { CopilotModelManager } from './copilotModelManager';
 import { TokenConstants } from './tokenConstants';
+import { TokenCalculationUtils } from './tokenCalculationUtils';
 import { Log } from '../services/loggingService';
 
 /**
@@ -278,7 +279,7 @@ export class WaterfallTruncator {
         const targetTokens = currentTokens - tokensToRemove;
 
         // If even the target is too small, return a minimal diff summary
-        if (targetTokens < 100) {
+        if (targetTokens < TokenConstants.EMERGENCY_MIN_TARGET_TOKENS) {
             const summary = this.createMinimalDiffSummary(diffText);
             return { content: summary, wasTruncated: true };
         }
@@ -364,11 +365,11 @@ export class WaterfallTruncator {
             }
         }
 
-        const fileList = Array.from(changedFiles).slice(0, 10); // Limit to 10 files
+        const fileList = Array.from(changedFiles).slice(0, TokenConstants.MAX_FILES_IN_EMERGENCY_SUMMARY);
         const summary = [
             '[EMERGENCY TRUNCATION: Diff too large for analysis]',
             '',
-            `Files modified (${changedFiles.size} total${changedFiles.size > 10 ? ', showing first 10' : ''}):`,
+            `Files modified (${changedFiles.size} total${changedFiles.size > TokenConstants.MAX_FILES_IN_EMERGENCY_SUMMARY ? ', showing first ' + TokenConstants.MAX_FILES_IN_EMERGENCY_SUMMARY : ''}):`,
             ...fileList.map(file => `- ${file}`),
             '',
             '[Complete diff analysis unavailable due to token limits. Consider analyzing smaller change sets.]'
@@ -564,93 +565,12 @@ export class WaterfallTruncator {
     // Helper methods that are duplicated across classes - could be extracted to utility
     private async calculateComponentTokens(components: TokenComponents): Promise<number> {
         await this.updateModelInfo();
-        if (!this.currentModel) return 0;
-
-        let totalTokens = 0;
-
-        if (components.systemPrompt) {
-            totalTokens += await this.currentModel.countTokens(components.systemPrompt);
-        }
-        if (components.diffText) {
-            totalTokens += await this.currentModel.countTokens(components.diffText);
-        }
-        if (components.embeddingContext) {
-            totalTokens += await this.currentModel.countTokens(components.embeddingContext);
-        }
-        if (components.lspReferenceContext) {
-            totalTokens += await this.currentModel.countTokens(components.lspReferenceContext);
-        }
-        if (components.lspDefinitionContext) {
-            totalTokens += await this.currentModel.countTokens(components.lspDefinitionContext);
-        }
-
-        let messageCount = 0;
-        if (components.userMessages) {
-            for (const message of components.userMessages) {
-                totalTokens += await this.currentModel.countTokens(message);
-                messageCount++;
-            }
-        }
-        if (components.assistantMessages) {
-            for (const message of components.assistantMessages) {
-                totalTokens += await this.currentModel.countTokens(message);
-                messageCount++;
-            }
-        }
-        if (components.responsePrefill) {
-            totalTokens += await this.currentModel.countTokens(components.responsePrefill);
-            messageCount++;
-        }
-
-        if (components.systemPrompt) {
-            messageCount++;
-        }
-
-        totalTokens += messageCount * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
-        if (components.diffStructureTokens) {
-            totalTokens += components.diffStructureTokens;
-        }
-
-        return totalTokens + TokenConstants.FORMATTING_OVERHEAD;
+        return TokenCalculationUtils.calculateComponentTokens(components, this.currentModel!);
     }
 
     private async calculateFixedTokens(components: TokenComponents): Promise<number> {
         await this.updateModelInfo();
-        if (!this.currentModel) return 0;
-
-        let fixedTokens = 0;
-
-        if (components.systemPrompt) {
-            fixedTokens += await this.currentModel.countTokens(components.systemPrompt);
-        }
-
-        if (components.userMessages) {
-            for (const message of components.userMessages) {
-                fixedTokens += await this.currentModel.countTokens(message);
-            }
-        }
-        if (components.assistantMessages) {
-            for (const message of components.assistantMessages) {
-                fixedTokens += await this.currentModel.countTokens(message);
-            }
-        }
-
-        if (components.responsePrefill) {
-            fixedTokens += await this.currentModel.countTokens(components.responsePrefill);
-        }
-
-        if (components.diffStructureTokens && !components.diffText) {
-            fixedTokens += components.diffStructureTokens;
-        }
-
-        const messageCount = (components.systemPrompt ? 1 : 0) +
-            (components.userMessages?.length || 0) +
-            (components.assistantMessages?.length || 0) +
-            (components.responsePrefill ? 1 : 0);
-        fixedTokens += messageCount * TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
-        fixedTokens += TokenConstants.FORMATTING_OVERHEAD;
-
-        return fixedTokens;
+        return TokenCalculationUtils.calculateFixedTokens(components, this.currentModel!);
     }
 
     private async updateModelInfo(): Promise<void> {

@@ -7,8 +7,8 @@ export interface ContextSnippet {
     type: ContextSnippetType;
     content: string; // The formatted markdown snippet itself
     relevanceScore: number; // Higher is more relevant. e.g., LSP defs=1.0, LSP refs=0.9, embeddings=0.0-0.8
-    filePath?: string; // For logging or more granular pruning
     associatedHunkIdentifiers?: string[]; // Identifiers of diff hunks this snippet is primarily associated with
+    filePath?: string; // For logging or more granular pruning
     startLine?: number; // For logging or more granular pruning
 }
 
