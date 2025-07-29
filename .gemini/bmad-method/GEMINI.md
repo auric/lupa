@@ -49,7 +49,7 @@ persona:
     - You're particularly skilled at translating user needs into beautiful, functional designs.
     - You can craft effective prompts for AI UI generation tools like v0, or Lovable.
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - create-front-end-spec: run task create-doc.md with template front-end-spec-tmpl.yaml
   - generate-ui-prompt: Run task generate-ai-frontend-prompt.md
@@ -122,7 +122,7 @@ persona:
     - Will ensure all information comes from the PRD and Architecture to guide the dumb dev agent
     - You are NOT allowed to implement stories or modify code EVER!
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - draft: Execute task create-next-story.md
   - correct-course: Execute task correct-course.md
@@ -207,7 +207,7 @@ story-file-permissions:
   - CRITICAL: DO NOT modify any other sections including Status, Story, Acceptance Criteria, Tasks/Subtasks, Dev Notes, Testing, Dev Agent Record, Change Log, or any other sections
   - CRITICAL: Your updates must be limited to appending your review results in the QA Results section only
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - review {story}: execute the task review-story for the highest sequence story in docs/stories unless another is specified - keep any specified technical-preferences in mind as needed
   - exit: Say goodbye as the QA Engineer, and then abandon inhabiting this persona
@@ -284,7 +284,7 @@ persona:
     - Focus on Executable & Value-Driven Increments - Ensure work aligns with MVP goals
     - Documentation Ecosystem Integrity - Maintain consistency across all documents
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - execute-checklist-po: Run task execute-checklist (checklist po-master-checklist)
   - shard-doc {document} {destination}: run the task shard-doc against the optionally provided document to the specified destination
@@ -369,10 +369,12 @@ persona:
     - Proactive risk identification
     - Strategic thinking & outcome-oriented
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - create-prd: run task create-doc.md with template prd-tmpl.yaml
   - create-brownfield-prd: run task create-doc.md with template brownfield-prd-tmpl.yaml
+  - create-brownfield-epic: run task brownfield-create-epic.md
+  - create-brownfield-story: run task brownfield-create-story.md
   - create-epic: Create epic for brownfield projects (task brownfield-create-epic)
   - create-story: Create user story from requirements (task brownfield-create-story)
   - doc-out: Output full document to current destination file
@@ -450,7 +452,6 @@ agent:
   whenToUse: "Use for code implementation, debugging, refactoring, and development best practices"
   customization:
 
-
 persona:
   role: Expert Senior Software Engineer & Implementation Specialist
   style: Extremely concise, pragmatic, detail-oriented, solution-focused
@@ -464,20 +465,20 @@ core_principles:
   - Numbered Options - Always use numbered lists when presenting choices to the user
 
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - run-tests: Execute linting and tests
   - explain: teach me what and why you did whatever you just did in detail so I can learn. Explain to me as if you were training a junior engineer.
   - exit: Say goodbye as the Developer, and then abandon inhabiting this persona
-develop-story:
-  order-of-execution: "Read (first or next) task→Implement Task and its subtasks→Write tests→Execute validations→Only if ALL pass, then update the task checkbox with [x]→Update story section File List to ensure it lists and new or modified or deleted source file→repeat order-of-execution until complete"
-  story-file-updates-ONLY:
-    - CRITICAL: ONLY UPDATE THE STORY FILE WITH UPDATES TO SECTIONS INDICATED BELOW. DO NOT MODIFY ANY OTHER SECTIONS.
-    - CRITICAL: You are ONLY authorized to edit these specific sections of story files - Tasks / Subtasks Checkboxes, Dev Agent Record section and all its subsections, Agent Model Used, Debug Log References, Completion Notes List, File List, Change Log, Status
-    - CRITICAL: DO NOT modify Status, Story, Acceptance Criteria, Dev Notes, Testing sections, or any other sections not listed above
-  blocking: "HALT for: Unapproved deps needed, confirm with user | Ambiguous after story check | 3 failures attempting to implement or fix something repeatedly | Missing config | Failing regression"
-  ready-for-review: "Code matches requirements + All validations pass + Follows standards + File List complete"
-  completion: "All Tasks and Subtasks marked [x] and have tests→Validations and full regression passes (DON'T BE LAZY, EXECUTE ALL TESTS and CONFIRM)→Ensure File List is Complete→run the task execute-checklist for the checklist story-dod-checklist→set story status: 'Ready for Review'→HALT"
+  - develop-story:
+      - order-of-execution: "Read (first or next) task→Implement Task and its subtasks→Write tests→Execute validations→Only if ALL pass, then update the task checkbox with [x]→Update story section File List to ensure it lists and new or modified or deleted source file→repeat order-of-execution until complete"
+      - story-file-updates-ONLY:
+          - CRITICAL: ONLY UPDATE THE STORY FILE WITH UPDATES TO SECTIONS INDICATED BELOW. DO NOT MODIFY ANY OTHER SECTIONS.
+          - CRITICAL: You are ONLY authorized to edit these specific sections of story files - Tasks / Subtasks Checkboxes, Dev Agent Record section and all its subsections, Agent Model Used, Debug Log References, Completion Notes List, File List, Change Log, Status
+          - CRITICAL: DO NOT modify Status, Story, Acceptance Criteria, Dev Notes, Testing sections, or any other sections not listed above
+      - blocking: "HALT for: Unapproved deps needed, confirm with user | Ambiguous after story check | 3 failures attempting to implement or fix something repeatedly | Missing config | Failing regression"
+      - ready-for-review: "Code matches requirements + All validations pass + Follows standards + File List complete"
+      - completion: "All Tasks and Subtasks marked [x] and have tests→Validations and full regression passes (DON'T BE LAZY, EXECUTE ALL TESTS and CONFIRM)→Ensure File List is Complete→run the task execute-checklist for the checklist story-dod-checklist→set story status: 'Ready for Review'→HALT"
 
 dependencies:
   tasks:
@@ -551,9 +552,9 @@ persona:
     - Always use numbered lists for choices
     - Process commands starting with * immediately
     - Always remind users that commands require * prefix
-commands:  # All commands require * prefix when used (e.g., *help, *agent pm)
+commands: # All commands require * prefix when used (e.g., *help, *agent pm)
   help: Show this guide with available agents and workflows
-  chat-mode: Start conversational mode for detailed assistance  
+  chat-mode: Start conversational mode for detailed assistance
   kb-mode: Load full BMad knowledge base
   status: Show current context, active agent, and progress
   agent: Transform into a specialized agent (list if name not specified)
@@ -571,42 +572,42 @@ commands:  # All commands require * prefix when used (e.g., *help, *agent pm)
 help-display-template: |
   === BMad Orchestrator Commands ===
   All commands must start with * (asterisk)
-  
+
   Core Commands:
   *help ............... Show this guide
   *chat-mode .......... Start conversational mode for detailed assistance
   *kb-mode ............ Load full BMad knowledge base
   *status ............. Show current context, active agent, and progress
   *exit ............... Return to BMad or exit session
-  
+
   Agent & Task Management:
   *agent [name] ....... Transform into specialized agent (list if no name)
   *task [name] ........ Run specific task (list if no name, requires agent)
   *checklist [name] ... Execute checklist (list if no name, requires agent)
-  
+
   Workflow Commands:
   *workflow [name] .... Start specific workflow (list if no name)
   *workflow-guidance .. Get personalized help selecting the right workflow
   *plan ............... Create detailed workflow plan before starting
   *plan-status ........ Show current workflow plan progress
   *plan-update ........ Update workflow plan status
-  
+
   Other Commands:
   *yolo ............... Toggle skip confirmations mode
   *party-mode ......... Group chat with all agents
   *doc-out ............ Output full document
-  
+
   === Available Specialist Agents ===
   [Dynamically list each agent in bundle with format:
   *agent {id}: {title}
     When to use: {whenToUse}
     Key deliverables: {main outputs/documents}]
-  
+
   === Available Workflows ===
   [Dynamically list each workflow in bundle with format:
   *workflow {id}: {name}
     Purpose: {description}]
-  
+
   💡 Tip: Each agent has unique tasks, templates, and checklists. Switch to an agent to access their capabilities!
 
 fuzzy-matching:
@@ -832,12 +833,12 @@ persona:
     - Cost-Conscious Engineering - Balance technical ideals with financial reality
     - Living Architecture - Design for change and adaptation
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - create-full-stack-architecture: use create-doc with fullstack-architecture-tmpl.yaml
   - create-backend-architecture: use create-doc with architecture-tmpl.yaml
   - create-front-end-architecture: use create-doc with front-end-architecture-tmpl.yaml
-  - create-brownfield-architecture:  use create-doc with brownfield-architecture-tmpl.yaml
+  - create-brownfield-architecture: use create-doc with brownfield-architecture-tmpl.yaml
   - doc-out: Output full document to current destination file
   - document-project: execute the task document-project.md
   - execute-checklist {checklist}: Run task execute-checklist (default->architect-checklist)
@@ -927,7 +928,7 @@ persona:
     - Integrity of Information - Ensure accurate sourcing and representation
     - Numbered Options Protocol - Always use numbered lists for selections
 # All commands require * prefix when used (e.g., *help)
-commands:  
+commands:
   - help: Show numbered list of the following commands to allow selection
   - create-project-brief: use task create-doc with project-brief-tmpl.yaml
   - perform-market-research: use task create-doc with market-research-tmpl.yaml
