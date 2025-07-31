@@ -538,13 +538,13 @@ diff --git a/src/file1.ts b/src/file1.ts
 
         // Test cancellation after symbol extraction but before LSP/embedding
         cancellationTokenSource.cancel(); // Cancel immediately
-        await expect(contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive, undefined, undefined, cancellationTokenSource.token))
+        await expect(contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive, undefined, cancellationTokenSource.token))
             .rejects.toThrow('Operation cancelled'); // This will be caught by the first check in getContextForDiff
 
 
         // Test cancellation during LSP (more involved to set up precisely, relying on internal checks)
         const cts2 = new vscode.CancellationTokenSource();
-        const lspPromise = contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive, undefined, undefined, cts2.token);
+        const lspPromise = contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive, undefined, cts2.token);
         setTimeout(() => cts2.cancel(), 5); // Cancel during the "LSP calls"
         // This error is thrown by a check in getContextForDiff *after* Promise.allSettled for LSP calls
         await expect(lspPromise).rejects.toThrow('Operation cancelled');
@@ -553,7 +553,7 @@ diff --git a/src/file1.ts b/src/file1.ts
         // Test cancellation during embedding
         const cts3 = new vscode.CancellationTokenSource();
         vi.spyOn(vscode.commands, 'executeCommand').mockResolvedValue([]); // Ensure LSP part finishes quickly
-        const embeddingPromise = contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive, undefined, undefined, cts3.token);
+        const embeddingPromise = contextProvider.getContextForDiff(diff, gitRootPath, undefined, AnalysisMode.Comprehensive, undefined, cts3.token);
         setTimeout(() => cts3.cancel(), 5); // Cancel at 5ms (mock's internal delay is 10ms)
         // This error is thrown by a check in getContextForDiff *after* Promise.allSettled for embedding search
         await expect(embeddingPromise).rejects.toThrow('Operation cancelled');

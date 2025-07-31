@@ -84,7 +84,11 @@ The extension follows a layered, service-oriented architecture with clear separa
 
 - **`AnalysisProvider`** (`src/services/analysisProvider.ts`) - Manages code analysis using Copilot models
 - **`CopilotModelManager`** (`src/models/copilotModelManager.ts`) - Interfaces with VS Code's Language Model API (implements vscode.Disposable)
-- **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Optimizes context to fit token limits
+- **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Refactored coordinator delegating to specialized token management classes:
+  - **`TokenCalculator`** (`src/models/tokenCalculator.ts`) - Token allocation calculations
+  - **`WaterfallTruncator`** (`src/models/waterfallTruncator.ts`) - Advanced truncation algorithms
+  - **`ContextOptimizer`** (`src/models/contextOptimizer.ts`) - Snippet selection and optimization
+  - **`TokenConstants`** (`src/models/tokenConstants.ts`) - Configuration constants
 - **`ContextProvider`** (`src/services/contextProvider.ts`) - Singleton service that combines LSP queries with semantic similarity search
 
 ### Git Integration
@@ -275,6 +279,27 @@ The IndexingService follows Single Responsibility Principle with these key impro
 - **Simplified Testing**: Direct method calls instead of complex generator patterns make testing more straightforward
 - **Clear Separation**: File processing logic is separated from batch orchestration, which is handled by IndexingManager
 
+### TokenManagerService Architecture & Waterfall Truncation
+
+The TokenManagerService has been refactored into a coordinator pattern with specialized classes (TokenCalculator, WaterfallTruncator, ContextOptimizer, TokenConstants) while maintaining the same public API. The system manages token allocation and implements sophisticated waterfall truncation logic:
+
+#### Core Waterfall Truncation Logic
+
+- **Priority-Based Allocation**: Content types are processed in strict priority order: `diff → embedding → lsp-reference → lsp-definition`
+- **Full Allocation Strategy**: Higher-priority content receives full token allocation before lower-priority content gets remaining tokens
+- **Separate Context Fields**: Individual truncation of different context types (`embeddingContext`, `lspReferenceContext`, `lspDefinitionContext`)
+- **Token Budget Management**: Precise calculation of fixed overhead vs. available content tokens
+- **Graceful Degradation**: Content that cannot fit even with truncation is removed entirely
+
+#### Waterfall Algorithm Steps
+
+1. **Fixed Token Calculation**: Calculate non-truncatable tokens (system prompt, message overhead, formatting)
+2. **Available Budget**: `targetTokens - fixedTokens = availableTokensForContent`
+3. **Priority Processing**: Process each content type in configured priority order
+4. **Full Allocation Attempt**: Each content type tries to use its full token requirement
+5. **Remaining Token Allocation**: If content exceeds remaining tokens, truncate to fit exactly
+6. **Removal Fallback**: If truncation isn't viable, remove content entirely
+
 ### Status Bar Architecture
 
 - **Contextual Progress**: Status indicators appear only during active operations
@@ -315,7 +340,7 @@ The BMAD system provides structured prompts, templates, and workflows to guide A
 - **Templates**: `.bmad-core/templates/` - Document templates with markup language rules
 - **Tasks**: `.bmad-core/tasks/` - Repeatable action instructions
 - **Workflows**: `.bmad-core/workflows/` - Development sequence definitions
-- **Checklists**: `.bmad-core/checklists/` - Quality assurance validation
+- **Checklists**: `.bmad-core/checklists/` - Quality assurance validation (e.g., `story-dod-checklist.md`)
 - **Data**: `.bmad-core/data/` - Knowledge base and technical preferences
 - **Configuration**: `.bmad-core/core-config.yaml` - BMAD behavior settings
 

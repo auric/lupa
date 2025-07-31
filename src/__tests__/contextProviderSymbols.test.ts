@@ -5,7 +5,8 @@ import { ContextProvider, DiffSymbolInfo } from '../services/contextProvider';
 import { EmbeddingDatabaseAdapter } from '../services/embeddingDatabaseAdapter';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { CodeAnalysisService, CodeAnalysisServiceInitializer } from '../services/codeAnalysisService';
-import { TokenManagerService, TokenAllocation } from '../services/tokenManagerService';
+import { TokenManagerService } from '../services/tokenManagerService';
+import type { TokenAllocation } from '../types/contextTypes';
 import { AnalysisMode } from '../types/modelTypes';
 
 // Mock dependencies

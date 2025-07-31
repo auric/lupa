@@ -309,7 +309,6 @@ export class ContextProvider implements vscode.Disposable {
      * @param gitRootPath The root path of the git repository
      * @param options Optional search options
      * @param analysisMode Analysis mode that determines relevance strategy
-     * @param _systemPrompt Optional system prompt (now handled by AnalysisProvider/TokenManager)
      * @param progressCallback Optional callback for progress updates
      * @param token Optional cancellation token
      * @returns A promise resolving to a HybridContextResult object.
@@ -319,7 +318,6 @@ export class ContextProvider implements vscode.Disposable {
         gitRootPath: string,
         options?: SimilaritySearchOptions,
         analysisMode: AnalysisMode = AnalysisMode.Comprehensive,
-        _systemPrompt?: string, // No longer used here for optimization logic
         progressCallback?: (processed: number, total: number) => void,
         token?: vscode.CancellationToken
     ): Promise<HybridContextResult> {
@@ -449,7 +447,10 @@ export class ContextProvider implements vscode.Disposable {
                         id: 'no-context-found',
                         type: 'embedding',
                         content: 'No relevant context could be found in the codebase. Analysis will be based solely on the changes in the PR.',
-                        relevanceScore: 0 // Lowest priority for no-context placeholder
+                        relevanceScore: 0, // Lowest priority for no-context placeholder
+                        filePath: undefined,
+                        associatedHunkIdentifiers: undefined,
+                        startLine: undefined
                     });
                 }
             }
@@ -465,7 +466,10 @@ export class ContextProvider implements vscode.Disposable {
                     id: 'error-context',
                     type: 'embedding',
                     content: 'Error retrieving context: ' + (error instanceof Error ? error.message : String(error)),
-                    relevanceScore: 0 // Lowest priority for error context
+                    relevanceScore: 0, // Lowest priority for error context
+                    filePath: undefined,
+                    associatedHunkIdentifiers: undefined,
+                    startLine: undefined
                 }],
                 parsedDiff: parsedDiffFileHunks // Return parsed diff even on error
             };
@@ -680,6 +684,7 @@ export class ContextProvider implements vscode.Disposable {
                             content: formattedContent,
                             relevanceScore: embResult.score * 0.5, // Lower priority for fallback embeddings, scaled by original score
                             filePath: embResult.filePath,
+                            associatedHunkIdentifiers: undefined,
                             startLine: embResult.startOffset
                         });
                     });
@@ -692,7 +697,10 @@ export class ContextProvider implements vscode.Disposable {
                 id: 'no-fallback-context',
                 type: 'embedding',
                 content: 'No directly relevant context could be found in the codebase via primary or fallback methods. Analysis will be based solely on the changes in the PR.',
-                relevanceScore: 0 // Lowest priority for no-fallback placeholder
+                relevanceScore: 0, // Lowest priority for no-fallback placeholder
+                filePath: undefined,
+                associatedHunkIdentifiers: undefined,
+                startLine: undefined
             });
             return fallbackSnippets;
 
@@ -702,7 +710,10 @@ export class ContextProvider implements vscode.Disposable {
                 id: 'error-fallback-context',
                 type: 'embedding',
                 content: 'Error retrieving fallback context: ' + (error instanceof Error ? error.message : String(error)),
-                relevanceScore: 0 // Lowest priority for error in fallback
+                relevanceScore: 0, // Lowest priority for error in fallback
+                filePath: undefined,
+                associatedHunkIdentifiers: undefined,
+                startLine: undefined
             });
             return fallbackSnippets;
         }

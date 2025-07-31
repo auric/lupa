@@ -17,9 +17,10 @@ import { GitOperationsManager } from './gitOperationsManager';
 import { IndexingService } from './indexingService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
+import { PromptGenerator } from './promptGenerator';
+import { TokenManagerService } from './tokenManagerService';
 import { AnalysisProvider } from './analysisProvider';
 import { IndexingManager } from './indexingManager';
-import { IEmbeddingStorage } from '../interfaces/embeddingStorage';
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
 
@@ -47,18 +48,10 @@ export interface IServiceRegistry {
     indexingService: IndexingService;
     embeddingDatabaseAdapter: EmbeddingDatabaseAdapter;
     contextProvider: ContextProvider;
+    promptGenerator: PromptGenerator;
+    tokenManager: TokenManagerService;
     analysisProvider: AnalysisProvider;
     indexingManager: IndexingManager;
-}
-
-/**
- * Service lifecycle phases for proper initialization ordering
- */
-enum ServicePhase {
-    Foundation = 1,
-    Core = 2,
-    Complex = 3,
-    High = 4
 }
 
 /**
@@ -219,10 +212,16 @@ export class ServiceManager implements vscode.Disposable {
             this.services.codeAnalysis!
         );
 
-        // Analysis provider
+        this.services.promptGenerator = new PromptGenerator();
+        this.services.tokenManager = new TokenManagerService(
+            this.services.copilotModelManager!,
+            this.services.promptGenerator
+        );
         this.services.analysisProvider = new AnalysisProvider(
             this.services.contextProvider,
-            this.services.copilotModelManager!
+            this.services.copilotModelManager!,
+            this.services.tokenManager,
+            this.services.promptGenerator
         );
     }
 
@@ -234,6 +233,8 @@ export class ServiceManager implements vscode.Disposable {
 
         const servicesToDispose = [
             this.services.analysisProvider,
+            this.services.tokenManager,
+            this.services.promptGenerator,
             this.services.contextProvider,
             this.services.embeddingDatabaseAdapter,
             this.services.indexingManager,
@@ -268,10 +269,10 @@ export class ServiceManager implements vscode.Disposable {
         }
 
         const previousModel = this.services.indexingManager!.getSelectedModel();
-        
+
         // Update workspace settings
         this.services.workspaceSettings!.setSelectedEmbeddingModel(newSelectedModelEnumValue);
-        
+
         // Determine the actual model that will be used after selection
         const actualNewModelInfo = this.services.embeddingModelSelection!.selectOptimalModel();
         const actualNewModelName = actualNewModelInfo.modelInfo.name;

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { Log } from '../services/loggingService';
+import { TokenConstants } from './tokenConstants';
 
 /**
  * Model information
@@ -36,7 +37,7 @@ export class CopilotModelManager implements vscode.Disposable {
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelCache: ModelDetail[] | null = null;
     private lastModelRefresh: number = 0;
-    private readonly cacheLifetimeMs = 5 * 60 * 1000; // 5 minutes
+    private readonly cacheLifetimeMs = TokenConstants.DEFAULT_CACHE_LIFETIME_MS;
 
     /**
      * Create a new model manager
@@ -102,17 +103,13 @@ export class CopilotModelManager implements vscode.Disposable {
                 }
             }
 
-            const selector: any = {
-                vendor: 'copilot'
+            const selector: vscode.LanguageModelChatSelector = {
+                vendor: 'copilot',
+                ...options
             };
 
-            // Add family and version if specified
-            if (options?.family) {
-                selector.family = options.family;
-
-                if (options.version) {
-                    selector.version = options.version;
-                }
+            if (!options) {
+                selector.id = 'gpt-4.1';
             }
 
             const models = await vscode.lm.selectChatModels(selector);

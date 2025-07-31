@@ -100,8 +100,7 @@ project-root/
 
 The current structure-aware chunking mechanism, while powerful, has known issues that need to be addressed:
 
-1.  **Incorrect Chunk Boundaries**: In C++ and similar languages, the chunker sometimes incorrectly creates chunks that end with trailing `}}` symbols. This happens when it misinterprets the end of a nested function or class definition, resulting in syntactically incomplete or awkward chunks.
-2.  **Split Comments**: A block comment or a series of single-line comments that document a function or class can sometimes be split, with the first part of the comment ending up in the preceding chunk and the rest in the chunk with the code it describes. This diminishes the quality of context.
+1.  **Split Comments**: A block comment or a series of single-line comments that document a function or class can sometimes be split, with the first part of the comment ending up in the preceding chunk and the rest in the chunk with the code it describes. This diminishes the quality of context.
 
 ### Worker Thread Limitations
 
