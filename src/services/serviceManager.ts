@@ -31,6 +31,7 @@ import { FindSymbolTool } from '../tools/findSymbolTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { ListDirTool } from '../tools/listDirTool';
 import { FindFileTool } from '../tools/findFileTool';
+import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
@@ -278,6 +279,10 @@ export class ServiceManager implements vscode.Disposable {
             // Register the FindFileTool (Find File functionality)
             const findFileTool = new FindFileTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(findFileTool);
+
+            // Register the GetSymbolsOverviewTool (Get Symbols Overview functionality)
+            const getSymbolsOverviewTool = new GetSymbolsOverviewTool(this.services.gitOperations!);
+            this.services.toolRegistry!.registerTool(getSymbolsOverviewTool);
 
             Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
         } catch (error) {
