@@ -50,14 +50,14 @@ export class ContextProvider implements vscode.Disposable {
         context: vscode.ExtensionContext,
         embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
         modelManager: CopilotModelManager,
-        codeAnalysisService: CodeAnalysisService
+        codeAnalysisService: CodeAnalysisService,
     ): ContextProvider {
         if (!this.instance ||
             this.instance.embeddingDatabaseAdapter !== embeddingDatabaseAdapter ||
             this.instance.modelManager !== modelManager ||
             this.instance.codeAnalysisService !== codeAnalysisService
         ) {
-            this.instance = new ContextProvider(context, embeddingDatabaseAdapter, modelManager, codeAnalysisService); // Passed to constructor
+            this.instance = new ContextProvider(context, embeddingDatabaseAdapter, modelManager, codeAnalysisService);
         }
         return this.instance;
     }

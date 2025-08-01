@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ContextProvider } from './contextProvider';
 import { TokenManagerService } from './tokenManagerService';
-import type { ContentPrioritization, TokenComponents } from '../types/contextTypes';
+import type { TokenComponents } from '../types/contextTypes';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { AnalysisMode } from '../types/modelTypes';
 import type {
@@ -10,7 +10,7 @@ import type {
     HybridContextResult
 } from '../types/contextTypes';
 import { Log } from './loggingService';
-import { PromptGenerator } from './promptGenerator';
+import { PromptGenerator } from '../models/promptGenerator';
 
 /**
  * AnalysisProvider handles the core analysis logic using language models
@@ -141,11 +141,11 @@ export class AnalysisProvider implements vscode.Disposable {
             const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
             // Calculate derived values
-            const totalRequiredTokens = allocation.systemPromptTokens + allocation.diffTextTokens + 
-                allocation.contextTokens + allocation.userMessagesTokens + allocation.assistantMessagesTokens + 
+            const totalRequiredTokens = allocation.systemPromptTokens + allocation.diffTextTokens +
+                allocation.contextTokens + allocation.userMessagesTokens + allocation.assistantMessagesTokens +
                 allocation.responsePrefillTokens + allocation.messageOverheadTokens + allocation.otherTokens;
-            const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens + 
-                allocation.userMessagesTokens + allocation.assistantMessagesTokens + 
+            const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens +
+                allocation.userMessagesTokens + allocation.assistantMessagesTokens +
                 allocation.responsePrefillTokens + allocation.messageOverheadTokens + allocation.otherTokens;
             const contextAllocationTokens = Math.max(0, allocation.totalAvailableTokens - nonContextTokens);
             const fitsWithinLimit = totalRequiredTokens <= allocation.totalAvailableTokens;

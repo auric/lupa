@@ -203,7 +203,7 @@ export class PromptGenerator {
      * Generate focused system prompt (role definition only)
      * Following Anthropic guideline: "Place the role definition in the system parameter"
      */
-    public getSystemPrompt(mode: AnalysisMode): string {
+    public getSystemPrompt(): string {
         return `You are an Expert Senior Software Engineer specializing in comprehensive code review and security analysis. You have extensive experience in:
 
 - Security vulnerability identification and mitigation strategies
@@ -213,6 +213,21 @@ export class PromptGenerator {
 - Technical mentorship and actionable feedback delivery
 
 Your expertise spans all major programming languages and frameworks. You provide thorough, structured, actionable feedback that helps development teams build robust, secure, maintainable software.`;
+    }
+
+    /**
+     * Generate tool information section for system prompt
+     * Used when tool-calling approach is enabled
+     */
+    public getToolInformation(): string {
+        return `
+
+You have access to tools that can help you gather information about the codebase:
+
+Available tools:
+- find_symbol: Find the definition of a code symbol by name, including its full source code and location information
+
+Use these tools proactively to understand the context of any functions, classes, variables, or other symbols mentioned in the diff. This will help you provide more accurate and detailed analysis.`;
     }
 
     /**

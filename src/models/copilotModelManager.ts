@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { Log } from '../services/loggingService';
 import { TokenConstants } from './tokenConstants';
+import { ToolCallRequest, ToolCallResponse, ToolCall } from '../types/modelTypes';
 
 /**
  * Model information
@@ -247,6 +248,88 @@ export class CopilotModelManager implements vscode.Disposable {
             .replace(/^- \*\*(.*)\*\*/gm, '<div class="model-item"><strong>$1</strong></div>')
             .replace(/^  - (.*$)/gm, '<div class="model-detail">$1</div>')
             .replace(/\n/gm, '<br>');
+    }
+
+    /**
+     * Send a request to the language model with tool-calling support
+     */
+    async sendRequest(request: ToolCallRequest): Promise<ToolCallResponse> {
+        try {
+            const model = await this.getCurrentModel();
+
+            // Convert our ToolCallMessage format to vscode.LanguageModelChatMessage format
+            const messages: vscode.LanguageModelChatMessage[] = [];
+
+            for (const msg of request.messages) {
+                if (msg.role === 'system') {
+                    messages.push(vscode.LanguageModelChatMessage.Assistant(msg.content || ''));
+                } else if (msg.role === 'user') {
+                    messages.push(vscode.LanguageModelChatMessage.User(msg.content || ''));
+                } else if (msg.role === 'assistant') {
+                    const content: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
+
+                    // Add text content if present
+                    if (msg.content) {
+                        content.push(new vscode.LanguageModelTextPart(msg.content));
+                    }
+
+                    // Add tool calls if present
+                    if (msg.toolCalls) {
+                        for (const toolCall of msg.toolCalls) {
+                            const input = JSON.parse(toolCall.function.arguments);
+                            content.push(new vscode.LanguageModelToolCallPart(
+                                toolCall.id,
+                                toolCall.function.name,
+                                input
+                            ));
+                        }
+                    }
+
+                    messages.push(vscode.LanguageModelChatMessage.Assistant(content));
+                } else if (msg.role === 'tool') {
+                    // Tool responses become user messages with LanguageModelToolResultPart
+                    const toolResultContent = [new vscode.LanguageModelTextPart(msg.content || '')];
+                    const toolResult = new vscode.LanguageModelToolResultPart(msg.toolCallId || '', toolResultContent);
+                    messages.push(vscode.LanguageModelChatMessage.User([toolResult]));
+                }
+            }
+
+            // Create request options with tools if provided
+            const options: vscode.LanguageModelChatRequestOptions = {
+                tools: request.tools || []
+            };
+
+            // Send the request
+            const response = await model.sendRequest(messages, options);
+
+            // Parse the response stream for both text and tool calls
+            let responseText = '';
+            const toolCalls: ToolCall[] = [];
+
+            for await (const chunk of response.stream) {
+                if (chunk instanceof vscode.LanguageModelTextPart) {
+                    responseText += chunk.value;
+                } else if (chunk instanceof vscode.LanguageModelToolCallPart) {
+                    // Parse tool call from response
+                    toolCalls.push({
+                        id: chunk.callId,
+                        function: {
+                            name: chunk.name,
+                            arguments: JSON.stringify(chunk.input)
+                        }
+                    });
+                }
+            }
+
+            return {
+                content: responseText || null,
+                toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+            };
+
+        } catch (error) {
+            Log.error('Error in sendRequest:', error);
+            throw error;
+        }
     }
 
     /**

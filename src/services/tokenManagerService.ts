@@ -8,7 +8,7 @@ import type {
     TruncatedTokenComponents,
     OptimizationResult
 } from '../types/contextTypes';
-import { PromptGenerator } from './promptGenerator';
+import { PromptGenerator } from '../models/promptGenerator';
 import { TokenCalculator } from '../models/tokenCalculator';
 import { WaterfallTruncator } from '../models/waterfallTruncator';
 import { ContextOptimizer } from '../models/contextOptimizer';
@@ -145,7 +145,7 @@ export class TokenManagerService {
      * @returns System prompt text
      */
     getSystemPromptForMode(mode: AnalysisMode): string {
-        return this.promptGenerator.getSystemPrompt(mode);
+        return this.promptGenerator.getSystemPrompt();
     }
 
     /**

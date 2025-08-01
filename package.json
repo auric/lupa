@@ -106,7 +106,8 @@
         "tailwindcss": "^4.1.11",
         "tinypool": "^1.1.0",
         "uuid": "^11.1.0",
-        "web-tree-sitter": "^0.25.5"
+        "web-tree-sitter": "^0.25.5",
+        "zod": "^4.0.14"
     },
     "devDependencies": {
         "@tailwindcss/typography": "^0.5.16",

@@ -89,6 +89,10 @@ project-root/
   - `IndexingManager`: Orchestrates the workspace indexing process, deciding which files to process.
   - `IndexingService`: The core processor for a _single file_. It orchestrates `CodeChunkingService` and `EmbeddingGenerationService`.
   - `EmbeddingDatabaseAdapter`: Acts as a bridge to the database. It's used by `IndexingManager` to store results and by `ContextProvider` to retrieve context. It also uses `IndexingService` directly to generate embeddings for on-the-fly search queries.
+  - `ConversationManager`: Manages the history of the conversation with the LLM, including user, assistant, and tool messages.
+  - `ToolExecutor`: Executes tools requested by the LLM, validating requests and running tools in parallel.
+  - `ToolRegistry`: Holds a registry of all available tools that can be called by the LLM.
+- **Tools Layer (`src/tools/`)**: Contains the individual tools that the LLM can call, such as `FindSymbolTool`.
 - **Data Layer (`src/services/vectorDatabaseService.ts`)**: Handles all persistence. This is a hybrid system using SQLite for structured metadata and HNSWlib for the vector index, ensuring both data integrity and fast search performance.
 - **Worker Layer (`src/workers/`)**: Executes CPU-intensive tasks in isolated processes.
   - `EmbeddingGenerationService`: This service uses `Tinypool` to manage a pool of `child_process` workers. It is designed for high-throughput embedding generation by sending **each code chunk to a separate process** for embedding. This parallelism significantly speeds up indexing.

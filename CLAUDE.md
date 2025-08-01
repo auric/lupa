@@ -80,16 +80,18 @@ The extension follows a layered, service-oriented architecture with clear separa
 - **`EmbeddingDatabaseAdapter`** (`src/services/embeddingDatabaseAdapter.ts`) - Bridges indexing and storage systems with singleton pattern
 - **`VectorDatabaseService`** (`src/services/vectorDatabaseService.ts`) - Manages SQLite metadata and HNSWlib vector index
 
-### Analysis System
+### Analysis System (with Tool-Calling)
 
-- **`AnalysisProvider`** (`src/services/analysisProvider.ts`) - Manages code analysis using Copilot models
-- **`CopilotModelManager`** (`src/models/copilotModelManager.ts`) - Interfaces with VS Code's Language Model API (implements vscode.Disposable)
-- **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Refactored coordinator delegating to specialized token management classes:
-  - **`TokenCalculator`** (`src/models/tokenCalculator.ts`) - Token allocation calculations
-  - **`WaterfallTruncator`** (`src/models/waterfallTruncator.ts`) - Advanced truncation algorithms
-  - **`ContextOptimizer`** (`src/models/contextOptimizer.ts`) - Snippet selection and optimization
-  - **`TokenConstants`** (`src/models/tokenConstants.ts`) - Configuration constants
-- **`ContextProvider`** (`src/services/contextProvider.ts`) - Singleton service that combines LSP queries with semantic similarity search
+- **`AnalysisOrchestrator`** (`src/coordinators/analysisOrchestrator.ts`) - Coordinates the complete PR analysis workflow, choosing between tool-calling and legacy approaches based on user settings.
+- **`ToolCallingAnalysisProvider`** (`src/services/toolCallingAnalysisProvider.ts`) - Manages the conversational tool-calling loop with the LLM, including conversation management and tool execution.
+- **`AnalysisProvider`** (`src/services/analysisProvider.ts`) - Legacy analysis provider using embedding-based context retrieval, available as fallback.
+- **`ConversationManager`** (`src/models/conversationManager.ts`) - Manages the multi-turn conversation history with the LLM.
+- **`ToolExecutor`** (`src/models/toolExecutor.ts`) - Executes tool calls requested by the LLM in parallel.
+- **`ToolRegistry`** (`src/models/toolRegistry.ts`) - Holds a registry of all available tools.
+- **Tools** (`src/tools/`) - Individual tools the LLM can call, such as `FindSymbolTool` to get code definitions with advanced symbol range expansion.
+- **`CopilotModelManager`** (`src/models/copilotModelManager.ts`) - Interfaces with VS Code's Language Model API.
+- **`ContextProvider`** (`src/services/contextProvider.ts`) - Provides context for legacy embedding-based approach.
+- **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Optimizes context to fit model limits.
 
 ### Git Integration
 
@@ -126,15 +128,24 @@ The extension follows a layered, service-oriented architecture with clear separa
 1. **Phase 1 - Foundation**: `WorkspaceSettingsService`, `ResourceDetectionService`, `LoggingService`, `StatusBarService`, `UIManager`, `GitOperationsManager`
 2. **Phase 2 - Core**: `EmbeddingModelSelectionService`, `CopilotModelManager`, `VectorDatabaseService`
 3. **Phase 3 - Complex**: `IndexingManager` → `IndexingService` → `EmbeddingDatabaseAdapter` (breaks circular dependency via null injection then setter injection)
-4. **Phase 4 - High-Level**: `ContextProvider`, `AnalysisProvider`
+4. **Phase 4 - High-Level**: `ContextProvider`, `AnalysisProvider`, `ToolCallingAnalysisProvider` (tool-calling services)
 
 ### Analysis Workflow
 
-1. **Indexing**: Files are processed individually by `IndexingService.processFile()` which uses `CodeChunkingService` for structure-aware chunking, then `EmbeddingGenerationService` generates embeddings in parallel using worker threads. The `IndexingManager` orchestrates multiple single-file calls for batch processing.
+#### Tool-Calling Approach (Default)
+
+1. **Analysis Initiation**: `AnalysisOrchestrator` checks `WorkspaceSettingsService.isEmbeddingLspAlgorithmEnabled()` and uses `ToolCallingAnalysisProvider` by default.
+2. **Conversational Loop**: LLM dynamically requests context using tools like `FindSymbolTool` through multi-turn conversation managed by `ConversationManager`.
+3. **Tool Execution**: `ToolExecutor` runs requested tools in parallel via VS Code LSP APIs, with results fed back to the LLM.
+4. **Response Generation**: LLM provides final analysis after gathering necessary context through tool calls.
+
+#### Legacy Embedding Approach (Fallback)
+
+1. **Indexing**: Files are processed individually by `IndexingService.processFile()` which uses `CodeChunkingService` for structure-aware chunking, then `EmbeddingGenerationService` generates embeddings in parallel using worker threads.
 2. **Storage**: Embeddings and metadata are stored via `VectorDatabaseService` (SQLite + HNSWlib)
-3. **Analysis**: When analyzing PRs, `ContextProvider` combines LSP queries and embedding search to find relevant context
-4. **Optimization**: `TokenManagerService` optimizes context to fit model limits
-5. **Generation**: `AnalysisProvider` sends the optimized prompt to Copilot models via `CopilotModelManager`
+3. **Pre-Context Retrieval**: When `enableEmbeddingLspAlgorithm: true`, `ContextProvider` combines LSP queries and embedding search to find relevant context upfront.
+4. **Optimization**: `TokenManagerService` optimizes context to fit model limits using waterfall truncation.
+5. **Analysis**: `AnalysisProvider` sends the optimized prompt with pre-retrieved context to Copilot models via `CopilotModelManager`.
 
 ## Key File Locations
 

@@ -17,10 +17,18 @@ import { GitOperationsManager } from './gitOperationsManager';
 import { IndexingService } from './indexingService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
-import { PromptGenerator } from './promptGenerator';
+import { PromptGenerator } from '../models/promptGenerator';
 import { TokenManagerService } from './tokenManagerService';
 import { AnalysisProvider } from './analysisProvider';
 import { IndexingManager } from './indexingManager';
+
+// Tool-calling services
+import { ToolRegistry } from '../models/toolRegistry';
+import { ToolExecutor } from '../models/toolExecutor';
+import { ConversationManager } from '../models/conversationManager';
+import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
+import { FindSymbolTool } from '../tools/findSymbolTool';
+
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
 
@@ -34,21 +42,29 @@ export interface IServiceRegistry {
     logging: LoggingService;
     statusBar: StatusBarService;
 
-    // Model services
+    // Embeddings services
     embeddingModelSelection: EmbeddingModelSelectionService;
     vectorDatabase: VectorDatabaseService;
-    copilotModelManager: CopilotModelManager;
     codeAnalysis: CodeAnalysisService;
+
+    // LLM services
+    copilotModelManager: CopilotModelManager;
+    promptGenerator: PromptGenerator;
 
     // UI and Git services
     uiManager: UIManager;
     gitOperations: GitOperationsManager;
 
+    // Tool-calling services
+    toolRegistry: ToolRegistry;
+    toolExecutor: ToolExecutor;
+    conversationManager: ConversationManager;
+    toolCallingAnalysisProvider: ToolCallingAnalysisProvider;
+
     // Complex services
     indexingService: IndexingService;
     embeddingDatabaseAdapter: EmbeddingDatabaseAdapter;
     contextProvider: ContextProvider;
-    promptGenerator: PromptGenerator;
     tokenManager: TokenManagerService;
     analysisProvider: AnalysisProvider;
     indexingManager: IndexingManager;
@@ -147,6 +163,7 @@ export class ServiceManager implements vscode.Disposable {
 
         // Language model manager
         this.services.copilotModelManager = new CopilotModelManager(this.services.workspaceSettings!);
+        this.services.promptGenerator = new PromptGenerator();
 
         // Vector database service
         this.services.vectorDatabase = VectorDatabaseService.getInstance(this.context);
@@ -212,17 +229,45 @@ export class ServiceManager implements vscode.Disposable {
             this.services.codeAnalysis!
         );
 
-        this.services.promptGenerator = new PromptGenerator();
+        // Initialize tool-calling services
+        this.services.toolRegistry = new ToolRegistry();
+        this.services.toolExecutor = new ToolExecutor(this.services.toolRegistry);
+        this.services.conversationManager = new ConversationManager();
+        this.services.toolCallingAnalysisProvider = new ToolCallingAnalysisProvider(
+            this.services.conversationManager,
+            this.services.toolExecutor,
+            this.services.copilotModelManager!,
+            this.services.promptGenerator!
+        );
+
+        // Register available tools
+        this.initializeTools();
+
         this.services.tokenManager = new TokenManagerService(
             this.services.copilotModelManager!,
-            this.services.promptGenerator
+            this.services.promptGenerator!
         );
         this.services.analysisProvider = new AnalysisProvider(
             this.services.contextProvider,
             this.services.copilotModelManager!,
             this.services.tokenManager,
-            this.services.promptGenerator
+            this.services.promptGenerator!
         );
+    }
+
+    /**
+     * Initialize and register available tools for the LLM
+     */
+    private initializeTools(): void {
+        try {
+            // Register the FindSymbolTool (Get Definition functionality)
+            const findSymbolTool = new FindSymbolTool();
+            this.services.toolRegistry!.registerTool(findSymbolTool);
+
+            Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
+        } catch (error) {
+            Log.error(`Failed to initialize tools: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 
     /**
@@ -235,6 +280,10 @@ export class ServiceManager implements vscode.Disposable {
             this.services.analysisProvider,
             this.services.tokenManager,
             this.services.promptGenerator,
+            this.services.toolCallingAnalysisProvider,
+            this.services.conversationManager,
+            this.services.toolExecutor,
+            this.services.toolRegistry,
             this.services.contextProvider,
             this.services.embeddingDatabaseAdapter,
             this.services.indexingManager,

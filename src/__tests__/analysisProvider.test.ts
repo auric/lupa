@@ -7,7 +7,7 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { AnalysisMode } from '../types/modelTypes';
 import { ContextSnippet, DiffHunk, HybridContextResult } from '../types/contextTypes';
 import { TokenManagerService } from '../services/tokenManagerService';
-import { PromptGenerator } from '../services/promptGenerator';
+import { PromptGenerator } from '../models/promptGenerator';
 
 // Mock vscode
 vi.mock('vscode', async () => {

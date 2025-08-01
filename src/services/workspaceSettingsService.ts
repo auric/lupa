@@ -29,6 +29,12 @@ export interface WorkspaceSettings {
     preferredModelVersion?: string;
 
     /**
+     * Enable embedding-based LSP algorithm (legacy approach)
+     * When false (default), uses new tool-calling approach for context retrieval
+     */
+    enableEmbeddingLspAlgorithm?: boolean;
+
+    /**
      * Other workspace-specific settings can be added here
      */
     [key: string]: any;
@@ -253,6 +259,23 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      */
     public updateLastIndexingTimestamp(): void {
         this.settings.lastIndexingTimestamp = Date.now();
+        this.debouncedSaveSettings();
+    }
+
+    /**
+     * Get whether embedding-based LSP algorithm is enabled
+     * @returns true if enabled, false (default) if disabled
+     */
+    public isEmbeddingLspAlgorithmEnabled(): boolean {
+        return this.settings.enableEmbeddingLspAlgorithm || false;
+    }
+
+    /**
+     * Set whether embedding-based LSP algorithm is enabled
+     * @param enabled Whether to enable the embedding LSP algorithm
+     */
+    public setEmbeddingLspAlgorithmEnabled(enabled: boolean): void {
+        this.settings.enableEmbeddingLspAlgorithm = enabled;
         this.debouncedSaveSettings();
     }
 

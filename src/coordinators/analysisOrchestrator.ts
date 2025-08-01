@@ -15,6 +15,9 @@ export class AnalysisOrchestrator implements vscode.Disposable {
     /**
      * Orchestrate the complete PR analysis workflow
      */
+    /**
+     * Orchestrate the complete PR analysis workflow
+     */
     public async analyzePR(): Promise<void> {
         const statusId = 'pr-analysis';
 
@@ -54,29 +57,51 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 return;
             }
 
+            // Check if legacy embedding LSP algorithm is enabled
+            const useEmbeddingLspAlgorithm = this.services.workspaceSettings.isEmbeddingLspAlgorithmEnabled();
+
             // Perform the analysis with progress reporting
             await this.services.uiManager.showAnalysisProgress('PR Analyzer', async (progress, token) => {
                 // Initial setup - 5%
                 progress.report({ message: 'Initializing analysis...', increment: 5 });
 
-                // Step 1: Run the analysis with detailed progress reporting - 85% total
-                const { analysis, context } = await this.services.analysisProvider.analyzePullRequest(
-                    diffText,
-                    gitRootPath,
-                    analysisMode,
-                    (message, increment) => {
-                        // Only update the message if no increment is specified
-                        if (increment) {
-                            // Use a very conservative scaling factor to ensure progress
-                            // never gets ahead of actual completion
-                            const scaledIncrement = Math.min(increment * 0.2, 1);
-                            progress.report({ message, increment: scaledIncrement });
-                        } else {
-                            progress.report({ message });
-                        }
-                    },
-                    token
-                );
+                let analysis: string;
+                let context: string;
+
+                if (useEmbeddingLspAlgorithm) {
+                    // Use legacy embedding-based LSP algorithm
+                    progress.report({ message: 'Using legacy embedding-based analysis...', increment: 10 });
+                    
+                    const result = await this.services.analysisProvider.analyzePullRequest(
+                        diffText,
+                        gitRootPath,
+                        analysisMode,
+                        (message, increment) => {
+                            // Only update the message if no increment is specified
+                            if (increment) {
+                                // Use a very conservative scaling factor to ensure progress
+                                // never gets ahead of actual completion
+                                const scaledIncrement = Math.min(increment * 0.2, 1);
+                                progress.report({ message, increment: scaledIncrement });
+                            } else {
+                                progress.report({ message });
+                            }
+                        },
+                        token
+                    );
+                    
+                    analysis = result.analysis;
+                    context = result.context;
+                } else {
+                    // Use new tool-calling approach
+                    progress.report({ message: 'Using new tool-calling analysis...', increment: 10 });
+                    
+                    analysis = await this.services.toolCallingAnalysisProvider.analyze(diffText);
+                    // For tool-calling approach, context is retrieved dynamically during conversation
+                    context = 'Context retrieved dynamically via tool calls during analysis.';
+                    
+                    progress.report({ message: 'Tool-calling analysis completed', increment: 70 });
+                }
 
                 // Step 2: Display the results - 10% remaining
                 progress.report({ message: 'Preparing analysis results...', increment: 5 });
