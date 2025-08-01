@@ -68,8 +68,8 @@ describe('DefinitionFormatter', () => {
                 true
             );
 
-            expect(result).toContain('<file>src/file&lt;with&gt;special&amp;chars&quot;test&#x27;.ts</file>');
-            expect(result).toContain('<symbol_name>symbol&lt;with&gt;&amp;special&quot;chars&#x27;</symbol_name>');
+            expect(result).toContain('<file>src/file&lt;with&gt;special&amp;chars&quot;test&apos;.ts</file>');
+            expect(result).toContain('<symbol_name>symbol&lt;with&gt;&amp;special&quot;chars&apos;</symbol_name>');
             expect(result).toContain('const test = "value & other";');
         });
     });
@@ -136,7 +136,7 @@ describe('DefinitionFormatter', () => {
 
         it('should escape XML characters in symbol name', () => {
             const result = formatter.formatNotFoundMessage('Symbol<with>&special"chars\'');
-            expect(result).toBe("Symbol 'Symbol&lt;with&gt;&amp;special&quot;chars&#x27;' not found");
+            expect(result).toBe("Symbol 'Symbol&lt;with&gt;&amp;special&quot;chars&apos;' not found");
         });
     });
 });

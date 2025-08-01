@@ -28,6 +28,7 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
 import { FindSymbolTool } from '../tools/findSymbolTool';
+import { FindUsagesTool } from '../tools/findUsagesTool';
 
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
@@ -263,6 +264,10 @@ export class ServiceManager implements vscode.Disposable {
             // Register the FindSymbolTool (Get Definition functionality)
             const findSymbolTool = new FindSymbolTool();
             this.services.toolRegistry!.registerTool(findSymbolTool);
+
+            // Register the FindUsagesTool (Find Usages functionality)
+            const findUsagesTool = new FindUsagesTool();
+            this.services.toolRegistry!.registerTool(findUsagesTool);
 
             Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
         } catch (error) {

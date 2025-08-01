@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { XmlUtils } from './xmlUtils';
 
 /**
  * Utility class for formatting symbol definitions into structured XML output
@@ -29,8 +30,8 @@ export class DefinitionFormatter {
 
     const xmlParts = [
       '<symbol_definition>',
-      `  <file>${this.escapeXml(filePath)}</file>`,
-      `  <symbol_name>${this.escapeXml(symbolName)}</symbol_name>`,
+      `  <file>${XmlUtils.escapeXml(filePath)}</file>`,
+      `  <symbol_name>${XmlUtils.escapeXml(symbolName)}</symbol_name>`,
       `  <location>`,
       `    <start_line>${startLine}</start_line>`,
       `    <start_character>${startCharacter}</start_character>`,
@@ -73,15 +74,15 @@ export class DefinitionFormatter {
 
     return [
       '<symbol_definition>',
-      `  <file>${this.escapeXml(filePath)}</file>`,
-      `  <symbol_name>${this.escapeXml(symbolName)}</symbol_name>`,
+      `  <file>${XmlUtils.escapeXml(filePath)}</file>`,
+      `  <symbol_name>${XmlUtils.escapeXml(symbolName)}</symbol_name>`,
       `  <location>`,
       `    <start_line>${startLine}</start_line>`,
       `    <start_character>${startCharacter}</start_character>`,
       `    <end_line>${endLine}</end_line>`,
       `    <end_character>${endCharacter}</end_character>`,
       `  </location>`,
-      `  <error>Could not read file content: ${this.escapeXml(errorMessage)}</error>`,
+      `  <error>Could not read file content: ${XmlUtils.escapeXml(errorMessage)}</error>`,
       '</symbol_definition>'
     ].join('\n');
   }
@@ -92,20 +93,7 @@ export class DefinitionFormatter {
    * @returns Formatted error message
    */
   formatNotFoundMessage(symbolName: string): string {
-    return `Symbol '${this.escapeXml(symbolName)}' not found`;
+    return `Symbol '${XmlUtils.escapeXml(symbolName)}' not found`;
   }
 
-  /**
-   * Escape special XML characters to prevent parsing issues
-   * @param text The text to escape
-   * @returns XML-escaped text
-   */
-  private escapeXml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#x27;');
-  }
 }
