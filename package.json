@@ -91,6 +91,7 @@
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "hnswlib-node": "^3.0.0",
+        "ignore": "^7.0.5",
         "lucide-react": "^0.525.0",
         "ml-distance": "^4.0.1",
         "onnxruntime-node": "^1.21.0",

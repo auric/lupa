@@ -29,6 +29,7 @@ import { ConversationManager } from '../models/conversationManager';
 import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
+import { ListDirTool } from '../tools/listDirTool';
 
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
@@ -268,6 +269,10 @@ export class ServiceManager implements vscode.Disposable {
             // Register the FindUsagesTool (Find Usages functionality)
             const findUsagesTool = new FindUsagesTool();
             this.services.toolRegistry!.registerTool(findUsagesTool);
+
+            // Register the ListDirTool (List Directory functionality)
+            const listDirTool = new ListDirTool(this.services.gitOperations!);
+            this.services.toolRegistry!.registerTool(listDirTool);
 
             Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
         } catch (error) {
