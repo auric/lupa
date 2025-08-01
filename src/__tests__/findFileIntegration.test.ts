@@ -165,7 +165,7 @@ describe('FindFileTool Integration Tests', () => {
 
             // Execute tool call through the ToolExecutor
             const toolCallResults = await toolExecutor.executeTools([{
-                toolName: mockToolCall.call.name,
+                name: mockToolCall.call.name,
                 args: mockToolCall.call.arguments
             }]);
 
@@ -175,7 +175,7 @@ describe('FindFileTool Integration Tests', () => {
 
             // Verify results are properly formatted
             expect(toolCallResults).toHaveLength(1);
-            expect(toolCallResults[0].toolName).toBe('find_file');
+            expect(toolCallResults[0].name).toBe('find_file');
             expect(toolCallResults[0].success).toBe(true);
             expect(toolCallResults[0].result).toEqual([
                 'components/components/Button.tsx',
@@ -211,7 +211,7 @@ describe('FindFileTool Integration Tests', () => {
             };
 
             const toolCallResults = await toolExecutor.executeTools([{
-                toolName: mockToolCall.call.name,
+                name: mockToolCall.call.name,
                 args: mockToolCall.call.arguments
             }]);
 
@@ -251,7 +251,7 @@ describe('FindFileTool Integration Tests', () => {
             };
 
             const toolCallResults = await toolExecutor.executeTools([{
-                toolName: mockToolCall.call.name,
+                name: mockToolCall.call.name,
                 args: mockToolCall.call.arguments
             }]);
 
@@ -292,11 +292,11 @@ describe('FindFileTool Integration Tests', () => {
             };
 
             const toolCallResults = await toolExecutor.executeTools([{
-                toolName: mockToolCall.call.name,
+                name: mockToolCall.call.name,
                 args: mockToolCall.call.arguments
             }]);
 
-            expect(toolCallResults[0].toolName).toBe('find_file');
+            expect(toolCallResults[0].name).toBe('find_file');
             expect(toolCallResults[0].success).toBe(true);
             expect(toolCallResults[0].result).toEqual([
                 'Error finding files: Failed to find files matching \'*.js\' in \'restricted\': Permission denied'
@@ -326,11 +326,11 @@ describe('FindFileTool Integration Tests', () => {
             };
 
             const toolCallResults = await toolExecutor.executeTools([{
-                toolName: mockToolCall.call.name,
+                name: mockToolCall.call.name,
                 args: mockToolCall.call.arguments
             }]);
 
-            expect(toolCallResults[0].toolName).toBe('find_file');
+            expect(toolCallResults[0].name).toBe('find_file');
             expect(toolCallResults[0].success).toBe(true);
             expect(toolCallResults[0].result[0]).toContain('Error finding files:');
         });
@@ -361,7 +361,7 @@ describe('FindFileTool Integration Tests', () => {
             };
 
             const toolCallResults = await toolExecutor.executeTools([{
-                toolName: mockToolCall.call.name,
+                name: mockToolCall.call.name,
                 args: mockToolCall.call.arguments
             }]);
 

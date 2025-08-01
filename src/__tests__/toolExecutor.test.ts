@@ -85,7 +85,7 @@ describe('ToolExecutor', () => {
       const result = await toolExecutor.executeTool('success_tool', { message: 'test' });
 
       expect(result.success).toBe(true);
-      expect(result.toolName).toBe('success_tool');
+      expect(result.name).toBe('success_tool');
       expect(result.result).toBe('Success: test');
       expect(result.error).toBeUndefined();
     });
@@ -94,7 +94,7 @@ describe('ToolExecutor', () => {
       const result = await toolExecutor.executeTool('non_existent_tool', { input: 'test' });
 
       expect(result.success).toBe(false);
-      expect(result.toolName).toBe('non_existent_tool');
+      expect(result.name).toBe('non_existent_tool');
       expect(result.error).toBe("Tool 'non_existent_tool' not found in registry");
       expect(result.result).toBeUndefined();
     });
@@ -103,7 +103,7 @@ describe('ToolExecutor', () => {
       const result = await toolExecutor.executeTool('error_tool', { input: 'test' });
 
       expect(result.success).toBe(false);
-      expect(result.toolName).toBe('error_tool');
+      expect(result.name).toBe('error_tool');
       expect(result.error).toBe('Simulated tool error');
       expect(result.result).toBeUndefined();
     });
@@ -112,8 +112,8 @@ describe('ToolExecutor', () => {
   describe('Multiple Tools Execution (Parallel)', () => {
     it('should execute multiple tools in parallel', async () => {
       const requests: ToolExecutionRequest[] = [
-        { toolName: 'success_tool', args: { message: 'first' } },
-        { toolName: 'success_tool', args: { message: 'second' } }
+        { name: 'success_tool', args: { message: 'first' } },
+        { name: 'success_tool', args: { message: 'second' } }
       ];
 
       const results = await toolExecutor.executeTools(requests);
@@ -127,9 +127,9 @@ describe('ToolExecutor', () => {
 
     it('should handle mixed success and failure in parallel execution', async () => {
       const requests: ToolExecutionRequest[] = [
-        { toolName: 'success_tool', args: { message: 'test' } },
-        { toolName: 'error_tool', args: { input: 'test' } },
-        { toolName: 'non_existent_tool', args: { any: 'value' } }
+        { name: 'success_tool', args: { message: 'test' } },
+        { name: 'error_tool', args: { input: 'test' } },
+        { name: 'non_existent_tool', args: { any: 'value' } }
       ];
 
       const results = await toolExecutor.executeTools(requests);
@@ -150,9 +150,9 @@ describe('ToolExecutor', () => {
     it('should execute tools truly in parallel', async () => {
       const startTime = Date.now();
       const requests: ToolExecutionRequest[] = [
-        { toolName: 'delay_tool', args: { delay: 100 } },
-        { toolName: 'delay_tool', args: { delay: 100 } },
-        { toolName: 'delay_tool', args: { delay: 100 } }
+        { name: 'delay_tool', args: { delay: 100 } },
+        { name: 'delay_tool', args: { delay: 100 } },
+        { name: 'delay_tool', args: { delay: 100 } }
       ];
 
       const results = await toolExecutor.executeTools(requests);
@@ -170,8 +170,8 @@ describe('ToolExecutor', () => {
   describe('Sequential Tool Execution', () => {
     it('should execute tools sequentially', async () => {
       const requests: ToolExecutionRequest[] = [
-        { toolName: 'success_tool', args: { message: 'first' } },
-        { toolName: 'success_tool', args: { message: 'second' } }
+        { name: 'success_tool', args: { message: 'first' } },
+        { name: 'success_tool', args: { message: 'second' } }
       ];
 
       const results = await toolExecutor.executeToolsSequentially(requests);
@@ -185,9 +185,9 @@ describe('ToolExecutor', () => {
 
     it('should continue execution even when one tool fails', async () => {
       const requests: ToolExecutionRequest[] = [
-        { toolName: 'success_tool', args: { message: 'test' } },
-        { toolName: 'error_tool', args: { input: 'test' } },
-        { toolName: 'success_tool', args: { message: 'after_error' } }
+        { name: 'success_tool', args: { message: 'test' } },
+        { name: 'error_tool', args: { input: 'test' } },
+        { name: 'success_tool', args: { message: 'after_error' } }
       ];
 
       const results = await toolExecutor.executeToolsSequentially(requests);
@@ -202,9 +202,9 @@ describe('ToolExecutor', () => {
     it('should execute tools truly sequentially', async () => {
       const startTime = Date.now();
       const requests: ToolExecutionRequest[] = [
-        { toolName: 'delay_tool', args: { delay: 50 } },
-        { toolName: 'delay_tool', args: { delay: 50 } },
-        { toolName: 'delay_tool', args: { delay: 50 } }
+        { name: 'delay_tool', args: { delay: 50 } },
+        { name: 'delay_tool', args: { delay: 50 } },
+        { name: 'delay_tool', args: { delay: 50 } }
       ];
 
       const results = await toolExecutor.executeToolsSequentially(requests);

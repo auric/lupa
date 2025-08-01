@@ -176,7 +176,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             // Execute through tool executor
             const toolCalls = [
                 {
-                    toolName: 'get_symbols_overview',
+                    name: 'get_symbols_overview',
                     args: { path: 'src' }
                 }
             ];
@@ -238,7 +238,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
 
             const toolCalls = [
                 {
-                    toolName: 'get_symbols_overview',
+                    name: 'get_symbols_overview',
                     args: { path: 'src/calculator.ts' }
                 }
             ];
@@ -261,7 +261,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
 
             const toolCalls = [
                 {
-                    toolName: 'get_symbols_overview',
+                    name: 'get_symbols_overview',
                     args: { path: 'nonexistent/file.ts' }
                 }
             ];
@@ -278,7 +278,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
         it('should handle invalid tool arguments', async () => {
             const toolCalls = [
                 {
-                    toolName: 'get_symbols_overview',
+                    name: 'get_symbols_overview',
                     args: { path: '' } // Empty path should fail validation
                 }
             ];

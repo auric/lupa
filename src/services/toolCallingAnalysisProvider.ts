@@ -142,7 +142,7 @@ export class ToolCallingAnalysisProvider {
       }
 
       return {
-        toolName: call.function.name,
+        name: call.function.name,
         args: parsedArgs
       };
     });
@@ -165,7 +165,7 @@ export class ToolCallingAnalysisProvider {
             ? result.result
             : JSON.stringify(result.result, null, 2);
       } else {
-        content = `Error executing tool '${result.toolName}': ${result.error}`;
+        content = `Error executing tool '${result.name}': ${result.error}`;
       }
 
       this.conversationManager.addToolMessage(toolCallId, content);

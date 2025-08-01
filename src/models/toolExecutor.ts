@@ -5,7 +5,7 @@ import { ITool } from '../tools/ITool';
  * Interface for tool execution requests
  */
 export interface ToolExecutionRequest {
-  toolName: string;
+  name: string;
   args: any;
 }
 
@@ -13,7 +13,7 @@ export interface ToolExecutionRequest {
  * Interface for tool execution results
  */
 export interface ToolExecutionResult {
-  toolName: string;
+  name: string;
   success: boolean;
   result?: any;
   error?: string;
@@ -28,32 +28,32 @@ export class ToolExecutor {
 
   /**
    * Execute a single tool with the provided arguments.
-   * @param toolName The name of the tool to execute
+   * @param name The name of the tool to execute
    * @param args The arguments to pass to the tool
    * @returns Promise resolving to the tool execution result
    */
-  async executeTool(toolName: string, args: any): Promise<ToolExecutionResult> {
+  async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
     try {
-      const tool = this.toolRegistry.getTool(toolName);
+      const tool = this.toolRegistry.getTool(name);
 
       if (!tool) {
         return {
-          toolName,
+          name,
           success: false,
-          error: `Tool '${toolName}' not found in registry`
+          error: `Tool '${name}' not found in registry`
         };
       }
 
       const result = await tool.execute(args);
 
       return {
-        toolName,
+        name,
         success: true,
         result
       };
     } catch (error) {
       return {
-        toolName,
+        name,
         success: false,
         error: error instanceof Error ? error.message : String(error)
       };
@@ -72,7 +72,7 @@ export class ToolExecutor {
 
     // Execute all tools in parallel using Promise.all
     const executionPromises = requests.map(request =>
-      this.executeTool(request.toolName, request.args)
+      this.executeTool(request.name, request.args)
     );
 
     try {
@@ -95,7 +95,7 @@ export class ToolExecutor {
     const results: ToolExecutionResult[] = [];
 
     for (const request of requests) {
-      const result = await this.executeTool(request.toolName, request.args);
+      const result = await this.executeTool(request.name, request.args);
       results.push(result);
 
       // If a tool fails and it's critical, you could break here
@@ -115,11 +115,11 @@ export class ToolExecutor {
 
   /**
    * Check if a tool is available for execution.
-   * @param toolName The name of the tool to check
+   * @param name The name of the tool to check
    * @returns True if the tool is available, false otherwise
    */
-  isToolAvailable(toolName: string): boolean {
-    return this.toolRegistry.hasTool(toolName);
+  isToolAvailable(name: string): boolean {
+    return this.toolRegistry.hasTool(name);
   }
 
   public dispose(): void {
