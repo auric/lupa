@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import ignore from 'ignore'
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { PathSanitizer } from '../utils/pathSanitizer';
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -27,7 +28,7 @@ export class ListDirTool extends BaseTool {
       const { relativePath, recursive } = args;
 
       // Sanitize the relative path to prevent directory traversal attacks
-      const sanitizedPath = this.sanitizePath(relativePath);
+      const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
 
       // List directory contents with ignore pattern support
       const result = await this.callListDir(sanitizedPath, recursive);
@@ -40,65 +41,6 @@ export class ListDirTool extends BaseTool {
     }
   }
 
-  /**
-   * Sanitizes the relative path to prevent directory traversal attacks
-   * Handles Windows absolute paths and UNC paths by rejecting them
-   */
-  private sanitizePath(relativePath: string): string {
-    const trimmedPath = relativePath.trim();
-    
-    // Check for Windows absolute paths and UNC paths (these should be rejected as they're not relative)
-    if (this.isAbsolutePath(trimmedPath)) {
-      throw new Error('Invalid path: Absolute paths are not allowed, only relative paths');
-    }
-
-    // Normalize path separators to forward slashes for consistent handling
-    const normalizedPath = path.posix.normalize(trimmedPath.replace(/\\/g, '/'));
-
-    // Check for directory traversal attempts
-    if (normalizedPath.startsWith('..') || normalizedPath.startsWith('/')) {
-      throw new Error('Invalid path: Directory traversal detected');
-    }
-
-    // Check if normalized path contains directory traversal sequences
-    if (normalizedPath.includes('../')) {
-      throw new Error('Invalid path: Directory traversal detected');
-    }
-
-    return normalizedPath === '' ? '.' : normalizedPath;
-  }
-
-  /**
-   * Checks if a path is an absolute path (Windows or Unix style)
-   */
-  private isAbsolutePath(inputPath: string): boolean {
-    // Windows drive letter (C:, D:, etc.)
-    if (/^[A-Za-z]:/.test(inputPath)) {
-      return true;
-    }
-
-    // UNC paths (\\server\share or \\?\UNC\server\share)
-    if (inputPath.startsWith('\\\\')) {
-      return true;
-    }
-
-    // Extended-length path prefix (\\?\C:\ or \\?\UNC\)
-    if (inputPath.startsWith('\\\\?\\')) {
-      return true;
-    }
-
-    // Device path prefix (\\.\)
-    if (inputPath.startsWith('\\\\.\\')) {
-      return true;
-    }
-
-    // Unix absolute path
-    if (inputPath.startsWith('/')) {
-      return true;
-    }
-
-    return false;
-  }
 
   /**
    * Lists directory contents respecting .gitignore and other ignore files
