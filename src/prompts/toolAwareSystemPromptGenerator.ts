@@ -135,6 +135,7 @@ You have access to powerful tools that help you understand the codebase deeply. 
 - **get_symbols_overview**: To understand the high-level structure of files or directories before diving into specifics.
 - **list_directory**: To explore project organization and discover related files or modules.
 - **find_file**: To locate specific files by name or pattern (e.g., tests, configs, related components).
+- **get_hover**: Last resort for quick type information when other tools don't provide sufficient context for a specific position.
 
 **Analysis Strategy:**
 1. **Start Broad**: Use \`get_symbols_overview\` to understand the context
