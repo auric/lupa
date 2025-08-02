@@ -32,6 +32,7 @@ import { FindUsagesTool } from '../tools/findUsagesTool';
 import { ListDirTool } from '../tools/listDirTool';
 import { FindFileTool } from '../tools/findFileTool';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
+import { SearchForPatternTool } from '../tools/searchForPatternTool';
 
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
@@ -283,6 +284,10 @@ export class ServiceManager implements vscode.Disposable {
             // Register the GetSymbolsOverviewTool (Get Symbols Overview functionality)
             const getSymbolsOverviewTool = new GetSymbolsOverviewTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(getSymbolsOverviewTool);
+
+            // Register the SearchForPatternTool (Search for Pattern functionality)
+            const searchForPatternTool = new SearchForPatternTool(this.services.gitOperations!);
+            this.services.toolRegistry!.registerTool(searchForPatternTool);
 
             Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
         } catch (error) {
