@@ -40,7 +40,9 @@ const mockCopilotModelManager = {
 
 const mockPromptGenerator = {
     getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: list_directory')
+    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: list_directory'),
+    generateToolAwareSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer with access to tools: list_directory'),
+    generateToolCallingUserPrompt: vi.fn().mockReturnValue('<files_to_review>Sample diff content</files_to_review>')
 };
 
 describe('ListDirTool Integration Tests', () => {
@@ -140,7 +142,7 @@ describe('ListDirTool Integration Tests', () => {
 
             // Check that the tool response is in the history
             const toolResponseMessage = history.find(msg =>
-                msg.role === 'user' &&
+                msg.role === 'tool' &&
                 msg.content &&
                 typeof msg.content === 'string' &&
                 msg.content.includes('src/')

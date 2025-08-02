@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vite
 import * as vscode from 'vscode'; // Import the mocked vscode
 import * as path from 'path';
 import { ContextProvider, DiffSymbolInfo } from '../services/contextProvider';
+import { DiffUtils } from '../utils/diffUtils';
 import { EmbeddingDatabaseAdapter } from '../services/embeddingDatabaseAdapter';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { CodeAnalysisService, CodeAnalysisServiceInitializer } from '../services/codeAnalysisService';
@@ -123,8 +124,8 @@ describe('ContextProvider Symbol Identification', () => {
 
     // Helper function to access private method for testing
     async function testExtractSymbolsAndQueries(diff: string): Promise<{ embeddingQueries: string[]; symbols: DiffSymbolInfo[] }> {
-        // @ts-ignore - Accessing private method for testing
-        const diffHunks = contextProvider.parseDiff(diff);
+        // Use DiffUtils instead of contextProvider.parseDiff
+        const diffHunks = DiffUtils.parseDiff(diff);
         // @ts-ignore - Accessing private method for testing
         const result = await contextProvider.extractMeaningfulChunksAndSymbols(diff, diffHunks, workspaceRoot);
         return result;

@@ -15,6 +15,7 @@ import {
     type HybridContextResult
 } from '../types/contextTypes';
 import { getLanguageForExtension, type SupportedLanguage } from '../types/types';
+import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 import { quickHash } from '../lib/hashUtils';
 
@@ -78,9 +79,6 @@ export class ContextProvider implements vscode.Disposable {
      * @param hunkData An object containing hunk information, typically `newStart` line.
      * @returns A string identifier for the hunk.
      */
-    private getHunkIdentifier(filePath: string, hunkData: { newStart: number }): string {
-        return `${filePath}:${hunkData.newStart}`;
-    }
 
     /**
      * Extract meaningful code chunks and identify symbols from PR diff.
@@ -265,43 +263,6 @@ export class ContextProvider implements vscode.Disposable {
         return { embeddingQueries: finalEmbeddingQueries, symbols: identifiedSymbols };
     }
 
-    private parseDiff(diff: string): DiffHunk[] {
-        const files: DiffHunk[] = [];
-        const lines = diff.split('\n');
-        let currentFile: DiffHunk | null = null;
-        let currentHunk: DiffHunkLine | null = null;
-
-        for (const line of lines) {
-            const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-            if (fileMatch) {
-                currentFile = { filePath: fileMatch[2], hunks: [] };
-                files.push(currentFile);
-                currentHunk = null;
-                continue;
-            }
-
-            if (currentFile) {
-                const hunkHeaderMatch = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
-                if (hunkHeaderMatch) {
-                    const oldStart = parseInt(hunkHeaderMatch[1], 10);
-                    const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1; // Group 2 is optional for oldLines
-                    const newStart = parseInt(hunkHeaderMatch[3], 10); // Group 3 is newStart
-                    const newLines = hunkHeaderMatch[4] ? parseInt(hunkHeaderMatch[4], 10) : 1; // Group 4 is optional for newLines
-
-                    currentHunk = {
-                        oldStart: oldStart, oldLines: oldLines,
-                        newStart: newStart, newLines: newLines,
-                        lines: [],
-                        hunkId: this.getHunkIdentifier(currentFile.filePath, { newStart: newStart })
-                    };
-                    currentFile.hunks.push(currentHunk);
-                } else if (currentHunk && (line.startsWith('+') || line.startsWith('-') || line.startsWith(' '))) {
-                    currentHunk.lines.push(line);
-                }
-            }
-        }
-        return files;
-    }
 
     /**
      * Get relevant code context for a diff, now returns an array of ContextSnippet objects.
@@ -323,7 +284,7 @@ export class ContextProvider implements vscode.Disposable {
     ): Promise<HybridContextResult> {
         Log.info(`Finding relevant context for PR diff (mode: ${analysisMode})`);
         const allContextSnippets: ContextSnippet[] = [];
-        const parsedDiffFileHunks = this.parseDiff(diff); // Now includes hunkId
+        const parsedDiffFileHunks = DiffUtils.parseDiff(diff); // Now includes hunkId
 
         try {
             if (token?.isCancellationRequested) {

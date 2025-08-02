@@ -9,6 +9,8 @@ import type {
   ToolCallMessage,
   ToolCall
 } from '../types/modelTypes';
+import type { DiffHunk, DiffHunkLine } from '../types/contextTypes';
+import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 
 /**
@@ -35,10 +37,15 @@ export class ToolCallingAnalysisProvider {
       // Clear previous conversation history for a fresh analysis
       this.conversationManager.clearHistory();
 
-      const systemPrompt = this.promptGenerator.getSystemPrompt() + this.promptGenerator.getToolInformation();
+      // Get available tools and generate comprehensive system prompt
+      const availableTools = this.toolExecutor.getAvailableTools();
+      const systemPrompt = this.promptGenerator.generateToolAwareSystemPrompt(availableTools);
 
-      // Add the user's request for analysis
-      const userMessage = `Please analyze the following pull request diff and provide insights about the changes:\n\n${diff}`;
+      // Parse diff for structured analysis
+      const parsedDiff = DiffUtils.parseDiff(diff);
+
+      // Generate tool-calling optimized user prompt
+      const userMessage = this.promptGenerator.generateToolCallingUserPrompt(diff, parsedDiff);
       this.conversationManager.addUserMessage(userMessage);
 
       // Start the conversation loop with the LLM

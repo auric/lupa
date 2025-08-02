@@ -43,7 +43,9 @@ const mockCopilotModelManager = {
 
 const mockPromptGenerator = {
     getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: find_usages')
+    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: find_usages'),
+    generateToolAwareSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer with access to tools: find_usages'),
+    generateToolCallingUserPrompt: vi.fn().mockReturnValue('<files_to_review>Sample diff content</files_to_review>')
 };
 
 describe('FindUsages Integration Tests', () => {
