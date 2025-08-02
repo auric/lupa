@@ -112,12 +112,12 @@ export class ContextProvider implements vscode.Disposable {
                         fullFileContent = Buffer.from(contentBytes).toString('utf8');
                     }
                 } catch (error) {
-                    const newFilePattern = new RegExp(`^diff --git a\\/dev\\/null b\\/${filePath.replace(/\\/g, '\\\\/')}`, 'm');
-                    if (newFilePattern.test(diff)) {
+                    // Check if this is a new file using parsed diff metadata
+                    if (fileDiff.isNewFile) {
                         fullFileContent = fileDiff.hunks
-                            .flatMap(hunk => hunk.lines)
-                            .filter(line => line.startsWith('+'))
-                            .map(line => line.substring(1))
+                            .flatMap(hunk => hunk.parsedLines)
+                            .filter(line => line.type === 'added')
+                            .map(line => line.content)
                             .join('\n');
                     } else {
                         Log.warn(`Could not read file content for ${filePath}:`, error);
@@ -132,12 +132,12 @@ export class ContextProvider implements vscode.Disposable {
                 let currentNewLineInFile = hunk.newStart - 1; // 0-based file line number
                 let rangeStartLine: number | null = null;
 
-                for (const line of hunk.lines) {
-                    const isAdded = line.startsWith('+');
-                    const isRemoved = line.startsWith('-');
+                for (const parsedLine of hunk.parsedLines) {
+                    const isAdded = parsedLine.type === 'added';
+                    const isRemoved = parsedLine.type === 'removed';
 
                     if (isAdded) {
-                        addedLinesForSymbolSnippets.push({ fileLine: currentNewLineInFile, text: line.substring(1) });
+                        addedLinesForSymbolSnippets.push({ fileLine: currentNewLineInFile, text: parsedLine.content });
                         if (rangeStartLine === null) rangeStartLine = currentNewLineInFile;
                     } else {
                         if (rangeStartLine !== null) {
@@ -188,12 +188,12 @@ export class ContextProvider implements vscode.Disposable {
                 let currentHunkAddedLinesWithFileNumbers: { fileLine: number, text: string }[] = [];
                 let currentFileLineForHunkProcessing = hunk.newStart - 1; // 0-based
 
-                for (const line of hunk.lines) {
-                    const isAdded = line.startsWith('+');
-                    const isRemoved = line.startsWith('-');
+                for (const parsedLine of hunk.parsedLines) {
+                    const isAdded = parsedLine.type === 'added';
+                    const isRemoved = parsedLine.type === 'removed';
 
                     if (isAdded) {
-                        const lineContent = line.substring(1);
+                        const lineContent = parsedLine.content;
                         currentAddedBlockLines.push(lineContent);
                         currentHunkAddedLinesWithFileNumbers.push({ fileLine: currentFileLineForHunkProcessing, text: lineContent });
                     } else {
@@ -247,9 +247,9 @@ export class ContextProvider implements vscode.Disposable {
             let allAddedLinesFromDiff = "";
             for (const fileDiff of parsedDiff) {
                 for (const hunk of fileDiff.hunks) {
-                    for (const line of hunk.lines) {
-                        if (line.startsWith('+')) {
-                            allAddedLinesFromDiff += line.substring(1) + '\n';
+                    for (const parsedLine of hunk.parsedLines) {
+                        if (parsedLine.type === 'added') {
+                            allAddedLinesFromDiff += parsedLine.content + '\n';
                         }
                     }
                 }

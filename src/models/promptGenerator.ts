@@ -334,18 +334,17 @@ Use these tools proactively to understand the context of any functions, classes,
             fileContentXml += `<file>\n<path>${fileDiff.filePath}</path>\n<changes>\n`;
 
             for (const hunk of fileDiff.hunks) {
-                // Extract hunk header from original diff
-                const hunkHeaderMatch = diffText.match(
-                    new RegExp(`^@@ .*${hunk.oldStart},${hunk.oldLines} \\\\+${hunk.newStart},${hunk.newLines} @@.*`, "m")
-                );
+                // Use the stored hunk header instead of regex matching
+                fileContentXml += `${hunk.hunkHeader}\n`;
 
-                if (hunkHeaderMatch) {
-                    fileContentXml += `${hunkHeaderMatch[0]}\n`;
-                } else {
-                    fileContentXml += `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@\n`;
-                }
+                // Reconstruct diff lines from parsed data
+                const diffLines = hunk.parsedLines.map(parsedLine => {
+                    const prefix = parsedLine.type === 'added' ? '+' :
+                        parsedLine.type === 'removed' ? '-' : ' ';
+                    return prefix + parsedLine.content;
+                });
 
-                fileContentXml += hunk.lines.join('\n') + '\n\n';
+                fileContentXml += diffLines.join('\n') + '\n\n';
             }
 
             fileContentXml += '</changes>\n</file>\n\n';

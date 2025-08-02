@@ -263,7 +263,24 @@ describe('AnalysisProvider', () => {
             { id: 's1', type: 'embedding', content: 'Snippet 1 content', relevanceScore: 0.8, filePath: 'file1.ts', startLine: 10, associatedHunkIdentifiers: ['file.ts:L1'] },
         ];
         const mockParsedDiff: DiffHunk[] = [
-            { filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }] }
+            {
+                filePath: 'file.ts',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/file.ts b/file.ts',
+                hunks: [{
+                    oldStart: 1,
+                    oldLines: 1,
+                    newStart: 1,
+                    newLines: 1,
+                    parsedLines: [
+                        { type: 'removed', content: 'console.log("old");', lineNumber: undefined },
+                        { type: 'added', content: 'console.log("new");', lineNumber: 1 }
+                    ],
+                    hunkId: 'file.ts:L1',
+                    hunkHeader: '@@ -1,1 +1,1 @@'
+                }]
+            }
         ];
         const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
 
@@ -329,7 +346,24 @@ describe('AnalysisProvider', () => {
             { id: 's1', type: 'lsp-definition', content: 'Long snippet 1 DEF', relevanceScore: 1.0, associatedHunkIdentifiers: ['file.ts:L1'] },
         ];
         const mockParsedDiff: DiffHunk[] = [
-            { filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-old', '+new'], hunkId: 'file.ts:L1' }] }
+            {
+                filePath: 'file.ts',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/file.ts b/file.ts',
+                hunks: [{
+                    oldStart: 1,
+                    oldLines: 1,
+                    newStart: 1,
+                    newLines: 1,
+                    parsedLines: [
+                        { type: 'removed', content: 'old', lineNumber: undefined },
+                        { type: 'added', content: 'new', lineNumber: 1 }
+                    ],
+                    hunkId: 'file.ts:L1',
+                    hunkHeader: '@@ -1,1 +1,1 @@'
+                }]
+            }
         ];
         const mockHybridResult: HybridContextResult = { snippets: allSnippets, parsedDiff: mockParsedDiff };
 
@@ -409,7 +443,23 @@ describe('AnalysisProvider', () => {
         const gitRootPath = '/test/repo';
         const mode = AnalysisMode.Comprehensive;
         const mockSnippets: ContextSnippet[] = [{ id: 's1', type: 'embedding', content: 'Snippet 1', relevanceScore: 0.8, filePath: 'file.ts', startLine: 1 }];
-        const mockParsedDiff: DiffHunk[] = [{ filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['+a'], hunkId: 'h1' }] }];
+        const mockParsedDiff: DiffHunk[] = [{
+            filePath: 'file.ts',
+            isNewFile: false,
+            isDeletedFile: false,
+            originalHeader: 'diff --git a/file.ts b/file.ts',
+            hunks: [{
+                oldStart: 1,
+                oldLines: 1,
+                newStart: 1,
+                newLines: 1,
+                parsedLines: [
+                    { type: 'added', content: 'a', lineNumber: 1 }
+                ],
+                hunkId: 'h1',
+                hunkHeader: '@@ -1,1 +1,1 @@'
+            }]
+        }];
         const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
 
 
@@ -475,7 +525,23 @@ describe('AnalysisProvider', () => {
         const mockParsedDiff: DiffHunk[] = [
             {
                 filePath: 'file1.ts',
-                hunks: [{ oldStart: 1, oldLines: 2, newStart: 1, newLines: 2, lines: ['-old line 1', '-old line 2', '+new line 1', '+new line 2'], hunkId: 'file1.ts:L1' }]
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/file1.ts b/file1.ts',
+                hunks: [{
+                    oldStart: 1,
+                    oldLines: 2,
+                    newStart: 1,
+                    newLines: 2,
+                    parsedLines: [
+                        { type: 'removed', content: 'old line 1', lineNumber: undefined },
+                        { type: 'removed', content: 'old line 2', lineNumber: undefined },
+                        { type: 'added', content: 'new line 1', lineNumber: 1 },
+                        { type: 'added', content: 'new line 2', lineNumber: 2 }
+                    ],
+                    hunkId: 'file1.ts:L1',
+                    hunkHeader: '@@ -1,2 +1,2 @@'
+                }]
             }
         ];
         const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
@@ -519,7 +585,12 @@ Structure your response using XML tags for different types of feedback:
         let fileContentXmlForCalc = "<files_to_review>\n";
         fileContentXmlForCalc += `<file>\n<path>${mockParsedDiff[0].filePath}</path>\n<changes>\n`;
         fileContentXmlForCalc += `@@ -1,2 +1,2 @@\n`; // Hunk header from diffText
-        fileContentXmlForCalc += mockParsedDiff[0].hunks[0].lines.join('\n') + '\n\n';
+        const diffLines = mockParsedDiff[0].hunks[0].parsedLines.map(parsedLine => {
+            const prefix = parsedLine.type === 'added' ? '+' :
+                parsedLine.type === 'removed' ? '-' : ' ';
+            return prefix + parsedLine.content;
+        });
+        fileContentXmlForCalc += diffLines.join('\n') + '\n\n';
         fileContentXmlForCalc += "</changes>\n</file>\n\n";
         fileContentXmlForCalc += "</files_to_review>\n\n";
 
@@ -579,7 +650,21 @@ Structure your response using XML tags for different types of feedback:
         const mockParsedDiff: DiffHunk[] = [
             {
                 filePath: 'file.empty.ts',
-                hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-old content', '+new content'], hunkId: 'file.empty.ts:L1' }]
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/file.empty.ts b/file.empty.ts',
+                hunks: [{
+                    oldStart: 1,
+                    oldLines: 1,
+                    newStart: 1,
+                    newLines: 1,
+                    parsedLines: [
+                        { type: 'removed', content: 'old content', lineNumber: undefined },
+                        { type: 'added', content: 'new content', lineNumber: 1 }
+                    ],
+                    hunkId: 'file.empty.ts:L1',
+                    hunkHeader: '@@ -1,1 +1,1 @@'
+                }]
             }
         ];
         const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
@@ -623,7 +708,12 @@ Structure your response using XML tags for different types of feedback:
         expect(interleavedUserMessageContent).toContain('<files_to_review>');
         expect(interleavedUserMessageContent).toContain(`<path>${mockParsedDiff[0].filePath}</path>`);
         expect(interleavedUserMessageContent).toContain(`@@ -1,1 +1,1 @@`);
-        expect(interleavedUserMessageContent).toContain(mockParsedDiff[0].hunks[0].lines.join('\n'));
+        const expectedDiffLines = mockParsedDiff[0].hunks[0].parsedLines.map(parsedLine => {
+            const prefix = parsedLine.type === 'added' ? '+' :
+                parsedLine.type === 'removed' ? '-' : ' ';
+            return prefix + parsedLine.content;
+        }).join('\n');
+        expect(interleavedUserMessageContent).toContain(expectedDiffLines);
         expect(interleavedUserMessageContent).toContain('</files_to_review>');
 
         // Since there are no optimized snippets, there shouldn't be a context section
@@ -640,7 +730,24 @@ Structure your response using XML tags for different types of feedback:
         const mockHybridResult: HybridContextResult = {
             snippets: [], // No snippets
             parsedDiff: [
-                { filePath: 'file.ts', hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }] }
+                {
+                    filePath: 'file.ts',
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: 'diff --git a/file.ts b/file.ts',
+                    hunks: [{
+                        oldStart: 1,
+                        oldLines: 1,
+                        newStart: 1,
+                        newLines: 1,
+                        parsedLines: [
+                            { type: 'removed', content: 'console.log("old");', lineNumber: undefined },
+                            { type: 'added', content: 'console.log("new");', lineNumber: 1 }
+                        ],
+                        hunkId: 'file.ts:L1',
+                        hunkHeader: '@@ -1,1 +1,1 @@'
+                    }]
+                }
             ]
         };
 
@@ -683,7 +790,21 @@ Structure your response using XML tags for different types of feedback:
         const mockParsedDiff: DiffHunk[] = [
             {
                 filePath: 'file.ts',
-                hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-console.log("old");', '+console.log("new");'], hunkId: 'file.ts:L1' }]
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/file.ts b/file.ts',
+                hunks: [{
+                    oldStart: 1,
+                    oldLines: 1,
+                    newStart: 1,
+                    newLines: 1,
+                    parsedLines: [
+                        { type: 'removed', content: 'console.log("old");', lineNumber: undefined },
+                        { type: 'added', content: 'console.log("new");', lineNumber: 1 }
+                    ],
+                    hunkId: 'file.ts:L1',
+                    hunkHeader: '@@ -1,1 +1,1 @@'
+                }]
             }
         ];
         const mockHybridResult: HybridContextResult = { snippets: mockSnippets, parsedDiff: mockParsedDiff };
