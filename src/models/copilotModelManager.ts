@@ -261,10 +261,10 @@ export class CopilotModelManager implements vscode.Disposable {
             const messages: vscode.LanguageModelChatMessage[] = [];
 
             for (const msg of request.messages) {
-                if (msg.role === 'system') {
-                    messages.push(vscode.LanguageModelChatMessage.Assistant(msg.content || ''));
-                } else if (msg.role === 'user') {
-                    messages.push(vscode.LanguageModelChatMessage.User(msg.content || ''));
+                if (msg.role === 'system' && msg.content) {
+                    messages.push(vscode.LanguageModelChatMessage.Assistant(msg.content));
+                } else if (msg.role === 'user' && msg.content) {
+                    messages.push(vscode.LanguageModelChatMessage.User(msg.content));
                 } else if (msg.role === 'assistant') {
                     const content: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
 
