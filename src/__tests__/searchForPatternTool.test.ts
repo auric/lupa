@@ -4,7 +4,7 @@ import ignore from 'ignore';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import * as pathUtils from '../lib/pathUtils';
+import * as gitUtils from '../utils/gitUtils';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -39,7 +39,7 @@ vi.mock('../utils/pathSanitizer', () => ({
 }));
 
 // Mock pathUtils
-vi.mock('../lib/pathUtils', () => ({
+vi.mock('../utils/gitUtils', () => ({
     readGitignore: vi.fn()
 }));
 
@@ -77,7 +77,7 @@ describe('SearchForPatternTool', () => {
             rootUri: { fsPath: '/project' }
         });
         vi.mocked(PathSanitizer.sanitizePath).mockImplementation((path) => path);
-        vi.mocked(pathUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
+        vi.mocked(gitUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
     });
 
     describe('Tool Configuration', () => {
@@ -120,7 +120,7 @@ describe('SearchForPatternTool', () => {
                 rootUri: { fsPath: '/project' }
             });
             vi.mocked(PathSanitizer.sanitizePath).mockImplementation((path) => path);
-            vi.mocked(pathUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
+            vi.mocked(gitUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
         });
 
         it('should find pattern matches in files', async () => {
@@ -402,7 +402,7 @@ describe('SearchForPatternTool', () => {
                 }))
             } as any;
             vi.mocked(ignore).mockReturnValue(mockIgnore);
-            vi.mocked(pathUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
+            vi.mocked(gitUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
 
             // Mock directory with ignored files - avoid infinite loop
             vi.mocked(vscode.workspace.fs.readDirectory).mockImplementation((uri) => {
@@ -425,7 +425,7 @@ describe('SearchForPatternTool', () => {
                 pattern: 'test'
             });
 
-            expect(pathUtils.readGitignore).toHaveBeenCalledWith(
+            expect(gitUtils.readGitignore).toHaveBeenCalledWith(
                 mockGitOperationsManager.getRepository()
             );
             expect(mockIgnore.add).toHaveBeenCalledWith('node_modules/\n*.log');

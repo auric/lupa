@@ -7,7 +7,7 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import * as pathUtils from '../lib/pathUtils';
+import * as gitUtils from '../utils/gitUtils';
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -37,7 +37,7 @@ vi.mock('vscode', async () => {
 });
 
 // Mock pathUtils
-vi.mock('../lib/pathUtils', () => ({
+vi.mock('../utils/gitUtils', () => ({
     readGitignore: vi.fn()
 }));
 
@@ -113,7 +113,7 @@ describe('SearchForPatternTool Integration Tests', () => {
                 fsPath: '/test/git-repo'
             }
         });
-        vi.mocked(pathUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
+        vi.mocked(gitUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
     });
 
     describe('End-to-End Tool-Calling Workflow', () => {
@@ -434,7 +434,7 @@ describe('SearchForPatternTool Integration Tests', () => {
             const results = await toolExecutor.executeTools([toolCall]);
 
             expect(results).toHaveLength(1);
-            expect(pathUtils.readGitignore).toHaveBeenCalledWith(
+            expect(gitUtils.readGitignore).toHaveBeenCalledWith(
                 mockGitOperationsManager.getRepository()
             );
 

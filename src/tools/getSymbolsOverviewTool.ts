@@ -5,7 +5,7 @@ import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { readGitignore } from '../lib/pathUtils';
+import { readGitignore } from '../utils/gitUtils';
 
 /**
  * Tool that provides a high-level overview of symbols in a file or directory.

@@ -49,7 +49,7 @@ vi.mock('../utils/pathSanitizer', () => ({
 }));
 
 // Mock readGitignore to simulate .gitignore filtering
-vi.mock('../lib/pathUtils', () => ({
+vi.mock('../utils/gitUtils', () => ({
     readGitignore: vi.fn().mockResolvedValue('node_modules\n*.log\n.env')
 }));
 

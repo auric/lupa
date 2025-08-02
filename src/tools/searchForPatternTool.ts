@@ -5,7 +5,7 @@ import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { readGitignore } from '../lib/pathUtils';
+import { readGitignore } from '../utils/gitUtils';
 import { SearchResultFormatter } from './searchResultFormatter';
 
 /**
@@ -30,7 +30,7 @@ export class SearchForPatternTool extends BaseTool {
 
   async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
     const { pattern, include, path: searchPath } = args;
-    
+
     try {
       // Sanitize the search path if provided
       const sanitizedPath = searchPath ? PathSanitizer.sanitizePath(searchPath) : '.';

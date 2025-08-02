@@ -5,6 +5,7 @@ import ignore from 'ignore'
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
+import { readGitignore } from '../utils/gitUtils';
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -47,7 +48,7 @@ export class ListDirTool extends BaseTool {
    */
   private async callListDir(relativePath: string, recursive: boolean): Promise<{ dirs: string[], files: string[] }> {
     try {
-      const ig = ignore().add(await this.readGitignore());
+      const ig = ignore().add(await readGitignore(this.gitOperationsManager.getRepository()));
 
       const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
       const targetPath = path.join(gitRootDirectory, relativePath);
@@ -87,21 +88,6 @@ export class ListDirTool extends BaseTool {
       throw new Error(`Failed to read directory '${relativePath}': ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-
-  private async readGitignore(): Promise<string> {
-    try {
-      const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
-      if (!gitRootDirectory) {
-        return '';
-      }
-      const gitignoreUri = vscode.Uri.file(path.join(gitRootDirectory, '.gitignore'));
-      const gitignoreContent = await vscode.workspace.fs.readFile(gitignoreUri);
-      return gitignoreContent.toString();
-    } catch (error) {
-      return '';
-    }
-  }
-
 
   /**
    * Formats the output as a simple list of strings

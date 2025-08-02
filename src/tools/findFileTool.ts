@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import * as path from 'path';
-import * as vscode from 'vscode';
 import { fdir } from 'fdir';
 import picomatch from 'picomatch';
 import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
+import { readGitignore } from '../utils/gitUtils';
 
 /**
  * Tool that finds files matching a given name or glob pattern.
@@ -69,7 +69,7 @@ export class FindFileTool extends BaseTool {
       const targetPath = path.join(gitRootDirectory, searchPath);
 
       // Read .gitignore patterns
-      const gitignorePatterns = await this.readGitignore();
+      const gitignorePatterns = await readGitignore(this.gitOperationsManager.getRepository());
       const ig = ignore().add(gitignorePatterns);
 
       // Use fdir with glob pattern matching and gitignore filtering
@@ -103,23 +103,6 @@ export class FindFileTool extends BaseTool {
       return results.sort();
     } catch (error) {
       throw new Error(`Failed to find files matching '${pattern}' in '${searchPath}': ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  /**
-   * Reads the .gitignore file content
-   */
-  private async readGitignore(): Promise<string> {
-    try {
-      const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
-      if (!gitRootDirectory) {
-        return '';
-      }
-      const gitignoreUri = vscode.Uri.file(path.join(gitRootDirectory, '.gitignore'));
-      const gitignoreContent = await vscode.workspace.fs.readFile(gitignoreUri);
-      return gitignoreContent.toString();
-    } catch (error) {
-      return '';
     }
   }
 }
