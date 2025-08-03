@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { StatusBarService } from './statusBarService';
 import { AnalysisMode } from '../types/modelTypes';
 import { Log } from './loggingService';
-import {
+import type {
     WebviewMessageType,
     OpenFilePayload,
     ValidatePathPayload,
@@ -111,6 +111,10 @@ export class UIManager {
         const mainScriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
             this.extensionContext.extensionUri, 'dist', 'webview', 'main.js'
         ));
+        
+        const mainStylesUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
+            this.extensionContext.extensionUri, 'dist', 'webview', 'main.css'
+        ));
 
         return `
         <!DOCTYPE html>
@@ -119,6 +123,7 @@ export class UIManager {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>${titleTruncated}</title>
+            <link href="${mainStylesUri}" rel="stylesheet">
             <style>
                 body {
                     margin: 0;
@@ -171,7 +176,7 @@ export class UIManager {
             vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast}
                 };
             </script>
-            <script src="${mainScriptUri}"></script>
+            <script type="module" src="${mainScriptUri}"></script>
         </body>
         </html>
         `;
@@ -406,5 +411,13 @@ export class UIManager {
             cancellable: true
         }, task);
     }
+
+
+
+
+
+
+
+
 
 }

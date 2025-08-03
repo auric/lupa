@@ -42,18 +42,16 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     // Webview app configuration (browser-like)
     const webviewBuildConfig: BuildOptions = {
         rollupOptions: {
-            input: resolve(__dirname, 'src/webview/main.tsx'),
+            input: {
+                main: resolve(__dirname, 'src/webview/main.tsx'),
+                toolTesting: resolve(__dirname, 'src/webview/toolTestingMain.tsx')
+            },
             output: {
-                entryFileNames: 'webview/main.js',
+                inlineDynamicImports: false,
+                entryFileNames: 'webview/[name].js',
                 chunkFileNames: 'webview/[name].js',
-                assetFileNames: (assetInfo) => {
-                    if (assetInfo.name?.endsWith('.css')) {
-                        return 'webview/main.css';
-                    }
-                    return 'webview/[name].[ext]';
-                },
-                format: 'iife',
-                name: 'WebviewApp'
+                assetFileNames: 'webview/[name].[ext]',
+                format: 'esm',
             },
             external: []
         },

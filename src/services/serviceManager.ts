@@ -12,6 +12,7 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { CodeAnalysisService, CodeAnalysisServiceInitializer } from './codeAnalysisService';
 import { UIManager } from './uiManager';
 import { GitOperationsManager } from './gitOperationsManager';
+import { ToolTestingWebviewService } from './toolTestingWebview';
 
 // Complex services
 import { IndexingService } from './indexingService';
@@ -61,6 +62,7 @@ export interface IServiceRegistry {
     // UI and Git services
     uiManager: UIManager;
     gitOperations: GitOperationsManager;
+    toolTestingWebview: ToolTestingWebviewService;
 
     // Tool-calling services
     toolRegistry: ToolRegistry;
@@ -249,6 +251,15 @@ export class ServiceManager implements vscode.Disposable {
 
         // Register available tools
         this.initializeTools();
+
+        // Initialize tool testing webview service
+        const gitRootPath = this.services.gitOperations!.getRepository()?.rootUri.fsPath || '';
+        this.services.toolTestingWebview = new ToolTestingWebviewService(
+            this.context,
+            gitRootPath,
+            this.services.toolRegistry,
+            this.services.toolExecutor
+        );
 
         this.services.tokenManager = new TokenManagerService(
             this.services.copilotModelManager!,

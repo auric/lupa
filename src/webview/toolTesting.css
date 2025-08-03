@@ -1,0 +1,819 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+/* Import component-specific styles for tool testing */
+@import "./styles/copy-button.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* VS Code Design System - Typography & Spacing */
+:root {
+  /* Font Settings */
+  --font-family: var(--vscode-font-family);
+  --font-size-xs: calc(var(--vscode-font-size) * 0.75);    /* 10.5px */
+  --font-size-sm: calc(var(--vscode-font-size) * 0.875);   /* 12.25px */
+  --font-size-base: var(--vscode-font-size);               /* 14px */
+  --font-size-lg: calc(var(--vscode-font-size) * 1.125);   /* 15.75px */
+  
+  /* Spacing System */
+  --space-1: 4px;   /* Tight spacing */
+  --space-2: 8px;   /* Standard spacing */
+  --space-3: 12px;  /* Medium spacing */
+  --space-4: 16px;  /* Large spacing */
+  --space-6: 24px;  /* Section spacing */
+  
+  /* VS Code semantic colors */
+  --background: var(--vscode-editor-background);
+  --foreground: var(--vscode-editor-foreground);
+  --card: var(--vscode-sideBar-background);
+  --card-foreground: var(--vscode-sideBar-foreground);
+  --primary: var(--vscode-button-background);
+  --primary-foreground: var(--vscode-button-foreground);
+  --secondary: var(--vscode-button-secondaryBackground);
+  --secondary-foreground: var(--vscode-button-secondaryForeground);
+  --muted: var(--vscode-input-background);
+  --muted-foreground: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-list-hoverBackground);
+  --accent-foreground: var(--vscode-list-hoverForeground);
+  --destructive: var(--vscode-errorForeground);
+  --border: var(--vscode-panel-border);
+  --input: var(--vscode-input-background);
+  --ring: var(--vscode-focusBorder);
+  --radius: 2px; /* VS Code's subtle radius */
+  
+  /* Sidebar specific colors */
+  --sidebar: var(--vscode-sideBar-background);
+  --sidebar-foreground: var(--vscode-sideBar-foreground);
+  --sidebar-border: var(--vscode-sideBar-border);
+}
+
+/* Base styles for the tool testing webview */
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  background-color: var(--background);
+  color: var(--foreground);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Three-Panel Layout */
+.tool-testing-interface {
+  display: flex;
+  height: 100vh;
+  background-color: var(--background);
+  color: var(--foreground);
+  min-width: 920px; /* Minimum width requirement */
+}
+
+/* Left Panel - Tool Sidebar (280px) */
+.tool-sidebar {
+  width: 280px;
+  min-width: 280px;
+  background-color: var(--sidebar);
+  color: var(--sidebar-foreground);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Center Panel - Parameter Input (340px) */
+.tool-parameter-panel {
+  width: 340px;
+  min-width: 340px;
+  background-color: var(--card);
+  color: var(--card-foreground);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Right Panel - Results (flex-1) */
+.tool-results-panel {
+  flex: 1;
+  min-width: 300px;
+  background-color: var(--background);
+  color: var(--foreground);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ===== SIDEBAR STYLES ===== */
+.tool-library-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--sidebar-border);
+  background-color: var(--sidebar);
+}
+
+.search-container {
+  position: relative;
+}
+
+.tool-search {
+  width: 100%;
+  height: 32px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--input);
+  color: var(--foreground);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: border-color 150ms ease-out;
+}
+
+.tool-search:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px var(--ring);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius);
+  font-size: var(--font-size-xs);
+  transition: color 150ms ease-out;
+}
+
+.search-clear-btn:hover {
+  color: var(--foreground);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.tool-section {
+  margin-bottom: var(--space-4);
+}
+
+.section-title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.tool-category {
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.category-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  color: var(--sidebar-foreground);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: background-color 150ms ease-out;
+}
+
+.category-header:hover {
+  background-color: var(--accent);
+}
+
+.category-icon {
+  font-size: var(--font-size-base);
+}
+
+.category-name {
+  flex: 1;
+}
+
+.category-count {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+}
+
+.expand-icon {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tool-list {
+  background-color: var(--card);
+}
+
+.tool-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 150ms ease-out;
+  outline: none;
+}
+
+.tool-item:hover {
+  background-color: var(--accent);
+}
+
+.tool-item:focus {
+  background-color: var(--accent);
+  box-shadow: inset 2px 0 0 var(--ring);
+}
+
+.tool-item.selected {
+  background-color: var(--accent);
+  border-left: 2px solid var(--ring);
+}
+
+.tool-main {
+  flex: 1;
+}
+
+.tool-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--foreground);
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.tool-description {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.no-results {
+  padding: var(--space-6) var(--space-3);
+  text-align: center;
+}
+
+.no-results-icon {
+  font-size: 24px;
+  margin-bottom: var(--space-2);
+}
+
+.no-results-text {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  margin-bottom: var(--space-3);
+}
+
+.clear-search-btn {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border: none;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.clear-search-btn:hover {
+  opacity: 0.8;
+}
+
+/* ===== PARAMETER PANEL STYLES ===== */
+.parameter-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.parameter-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-6);
+}
+
+.tool-info-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background-color: var(--card);
+}
+
+.tool-name-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.tool-name {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0;
+  color: var(--foreground);
+}
+
+.tool-category-badge {
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+
+.tool-description {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.parameter-form-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.parameter-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.parameter-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.parameter-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.parameter-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  color: var(--foreground);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  text-align: left;
+  transition: color 150ms ease-out;
+}
+
+.parameter-section-toggle:hover {
+  color: var(--accent-foreground);
+}
+
+.toggle-icon {
+  font-size: var(--font-size-xs);
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.optional-parameters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.parameter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.parameter-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--foreground);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.required-indicator {
+  color: var(--destructive);
+  font-weight: bold;
+}
+
+.parameter-input,
+.parameter-textarea {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--input);
+  color: var(--foreground);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: border-color 150ms ease-out;
+}
+
+.parameter-input:focus,
+.parameter-textarea:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px var(--ring);
+}
+
+.parameter-input.error,
+.parameter-textarea.error {
+  border-color: var(--destructive);
+}
+
+.parameter-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.parameter-checkbox {
+  width: 16px;
+  height: 16px;
+}
+
+.checkbox-text {
+  font-size: var(--font-size-sm);
+  color: var(--foreground);
+}
+
+.parameter-description {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+  line-height: 1.3;
+  margin: 0;
+}
+
+.parameter-error {
+  font-size: var(--font-size-xs);
+  color: var(--destructive);
+  margin: 0;
+}
+
+.parameter-actions {
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+  background-color: var(--card);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.btn {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 150ms ease-out;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-cancel {
+  background-color: var(--destructive);
+  color: var(--background);
+}
+
+.btn-cancel:hover {
+  opacity: 0.9;
+}
+
+/* ===== RESULTS PANEL STYLES ===== */
+.results-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background-color: var(--background);
+  gap: var(--space-3);
+}
+
+.execution-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.status-icon {
+  font-size: var(--font-size-base);
+}
+
+.status-text {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.execution-metadata {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+}
+
+.copy-all-btn {
+  /* Inherits from copy button styles */
+}
+
+.results-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.result-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background-color: var(--card);
+  overflow: hidden;
+}
+
+.result-content-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.result-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.result-index {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.result-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.copy-btn-small {
+  /* Smaller version of copy button */
+  padding: var(--space-1);
+  font-size: var(--font-size-xs);
+}
+
+.file-navigate-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius);
+  transition: background-color 150ms ease-out;
+}
+
+.file-navigate-btn:hover {
+  background-color: var(--accent);
+}
+
+.result-content {
+  padding: var(--space-3);
+  margin: 0;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  background-color: var(--input);
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-x: auto;
+}
+
+.error-display {
+  border: 1px solid var(--destructive);
+  border-radius: var(--radius);
+  background-color: var(--background);
+  overflow: hidden;
+}
+
+.error-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background-color: var(--destructive);
+  color: var(--background);
+}
+
+.error-content {
+  padding: var(--space-3);
+  margin: 0;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--font-size-sm);
+  color: var(--destructive);
+  background-color: var(--background);
+  white-space: pre-wrap;
+}
+
+.error-actions {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* ===== SHARED STYLES ===== */
+.empty-state {
+  text-align: center;
+  padding: var(--space-6);
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: var(--space-4);
+}
+
+.empty-state-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--foreground);
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-description {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--space-3);
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--muted);
+  border-top: 2px solid var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-spinner.large {
+  width: 24px;
+  height: 24px;
+}
+
+.loading-text {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.result-appear {
+  animation: fadeInUp 250ms ease-out;
+}
+
+/* ===== FOCUS AND ACCESSIBILITY ===== */
+*:focus {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+button:focus,
+input:focus,
+textarea:focus {
+  outline: none; /* Let component styles handle focus */
+}
+
+/* Screen reader only text */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===== RESPONSIVE BEHAVIOR ===== */
+@media (max-width: 1200px) {
+  .tool-parameter-panel {
+    width: 300px;
+    min-width: 300px;
+  }
+}
+
+@media (max-width: 1000px) {
+  .tool-sidebar {
+    width: 260px;
+    min-width: 260px;
+  }
+  
+  .tool-parameter-panel {
+    width: 280px;
+    min-width: 280px;
+  }
+}

@@ -66,6 +66,11 @@ export class CommandRegistry implements vscode.Disposable {
             this.services.indexingService.showIndexingManagementOptions()
         );
 
+        // Tool testing interface command
+        this.registerCommand('lupa.openToolTesting', () =>
+            this.services.toolTestingWebview.openToolTestingInterface()
+        );
+
         // Test webview command for development
         this.registerCommand('lupa.testWebview', () =>
             this.showTestWebview()

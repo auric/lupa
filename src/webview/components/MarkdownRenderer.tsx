@@ -246,7 +246,6 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                         </SyntaxHighlighter>
                         <CopyButton
                             text={textContent}
-                            id={codeBlockId}
                             className="absolute top-2 right-2"
                             onCopy={onCopy}
                         />
@@ -281,7 +280,6 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                 <div className="absolute top-2 right-2 z-10">
                     <CopyButton
                         text={content}
-                        id={id}
                         onCopy={onCopy}
                     />
                 </div>

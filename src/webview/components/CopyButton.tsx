@@ -5,14 +5,12 @@ import { cn } from '@/lib/utils';
 
 interface CopyButtonProps {
     text: string;
-    id?: string;
     className?: string;
     onCopy?: (text: string) => void;
 }
 
 export const CopyButton: React.FC<CopyButtonProps> = ({
     text,
-    id,
     className,
     onCopy
 }) => {
@@ -36,7 +34,7 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
             setIsCopied(false);
             timeoutRef.current = null;
         }, 1000);
-    }, [text, id, onCopy]);
+    }, [text, onCopy]);
 
     return (
         <Button
