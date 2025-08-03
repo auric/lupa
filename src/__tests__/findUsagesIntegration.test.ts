@@ -37,7 +37,13 @@ vi.mock('vscode', async () => {
     };
 });
 
+const mockModel = {
+    countTokens: vi.fn(() => Promise.resolve(100)),
+    maxInputTokens: 8000
+};
+
 const mockCopilotModelManager = {
+    getCurrentModel: vi.fn(() => Promise.resolve(mockModel)),
     sendRequest: vi.fn()
 };
 
@@ -54,6 +60,7 @@ describe('FindUsages Integration Tests', () => {
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let findUsagesTool: FindUsagesTool;
+    let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
         // Initialize the tool-calling system
@@ -75,6 +82,37 @@ describe('FindUsages Integration Tests', () => {
 
         // Clear all mocks
         vi.clearAllMocks();
+
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
+            const listeners: Array<(e: any) => any> = [];
+            let isCancelled = false;
+
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() { return isCancelled; },
+                onCancellationRequested: vi.fn((listener: (e: any) => any) => {
+                    listeners.push(listener);
+                    return {
+                        dispose: vi.fn(() => {
+                            const index = listeners.indexOf(listener);
+                            if (index !== -1) {
+                                listeners.splice(index, 1);
+                            }
+                        })
+                    };
+                })
+            };
+
+            return {
+                token: token,
+                cancel: vi.fn(() => {
+                    isCancelled = true;
+                    // Create a copy of listeners array before iteration
+                    [...listeners].forEach(listener => listener(undefined)); // Pass undefined or a specific event if needed
+                }),
+                dispose: vi.fn()
+            } as unknown as vscode.CancellationTokenSource; // Cast to assure TS it's a CancellationTokenSource
+        });
+        tokenSource = new vscode.CancellationTokenSource();
     });
 
     describe('End-to-End Find Usages Workflow', () => {
@@ -143,7 +181,7 @@ describe('FindUsages Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toBe('Based on the tool results, I found 2 usages of MyClass.');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
@@ -202,7 +240,7 @@ describe('FindUsages Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class UnusedClass {}';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toBe('No usages found for this class, it appears to be unused.');
 
@@ -271,7 +309,7 @@ describe('FindUsages Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class ClassA {}\n+class ClassB {}';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toBe('Both classes have one usage each.');
             expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(4); // Two tools × (1 definition + 1 reference call each) = 4 calls
@@ -307,7 +345,7 @@ describe('FindUsages Integration Tests', () => {
             (vscode.workspace.openTextDocument as any).mockRejectedValue(new Error('File not found'));
 
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+// some change';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toBe('I encountered an error finding usages for that symbol.');
 
@@ -357,7 +395,7 @@ describe('FindUsages Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
-            await toolCallingAnalyzer.analyze(diff);
+            await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(capturedContext?.includeDeclaration).toBe(true);
         });
@@ -405,7 +443,7 @@ describe('FindUsages Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
-            await toolCallingAnalyzer.analyze(diff);
+            await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             // Verify context includes the expected lines
             const history = conversationManager.getHistory();

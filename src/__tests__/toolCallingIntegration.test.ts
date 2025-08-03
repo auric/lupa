@@ -26,7 +26,13 @@ vi.mock('vscode', async () => {
     };
 });
 
+const mockModel = {
+    countTokens: vi.fn(() => Promise.resolve(100)),
+    maxInputTokens: 8000
+};
+
 const mockCopilotModelManager = {
+    getCurrentModel: vi.fn(() => Promise.resolve(mockModel)),
     sendRequest: vi.fn()
 };
 
@@ -43,6 +49,7 @@ describe('Tool-Calling Integration Tests', () => {
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let findSymbolTool: FindSymbolTool;
+    let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
         // Initialize the tool-calling system
@@ -64,6 +71,37 @@ describe('Tool-Calling Integration Tests', () => {
 
         // Clear all mocks
         vi.clearAllMocks();
+
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
+            const listeners: Array<(e: any) => any> = [];
+            let isCancelled = false;
+
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() { return isCancelled; },
+                onCancellationRequested: vi.fn((listener: (e: any) => any) => {
+                    listeners.push(listener);
+                    return {
+                        dispose: vi.fn(() => {
+                            const index = listeners.indexOf(listener);
+                            if (index !== -1) {
+                                listeners.splice(index, 1);
+                            }
+                        })
+                    };
+                })
+            };
+
+            return {
+                token: token,
+                cancel: vi.fn(() => {
+                    isCancelled = true;
+                    // Create a copy of listeners array before iteration
+                    [...listeners].forEach(listener => listener(undefined)); // Pass undefined or a specific event if needed
+                }),
+                dispose: vi.fn()
+            } as unknown as vscode.CancellationTokenSource; // Cast to assure TS it's a CancellationTokenSource
+        });
+        tokenSource = new vscode.CancellationTokenSource();
     });
 
     describe('End-to-End Tool-Calling Workflow', () => {
@@ -75,7 +113,7 @@ describe('Tool-Calling Integration Tests', () => {
             });
 
             const diff = 'diff --git a/test.js b/test.js\n+console.log("hello");';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toBe('This is a straightforward analysis without tool calls.');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(1);
@@ -128,7 +166,7 @@ describe('Tool-Calling Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/test.js b/test.js\n+const obj = new MyClass();';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('Based on the symbol definition');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
@@ -184,7 +222,7 @@ describe('Tool-Calling Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/test.js b/test.js\n+MyClass and myFunction usage';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('Analysis complete based on both definitions');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
@@ -222,7 +260,7 @@ describe('Tool-Calling Integration Tests', () => {
             vi.mocked(vscode.workspace).textDocuments = [];
 
             const diff = 'diff --git a/test.js b/test.js\n+// some change';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('I could not find the symbol');
 
@@ -237,7 +275,7 @@ describe('Tool-Calling Integration Tests', () => {
             mockCopilotModelManager.sendRequest.mockRejectedValue(new Error('LLM service unavailable'));
 
             const diff = 'diff --git a/test.js b/test.js\n+console.log("test");';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('Error during analysis');
             expect(result).toContain('LLM service unavailable');
@@ -259,7 +297,7 @@ describe('Tool-Calling Integration Tests', () => {
             vi.mocked(vscode.workspace).textDocuments = [];
 
             const diff = 'diff --git a/test.js b/test.js\n+// change';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('maximum iterations');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(10); // Max iterations
@@ -279,7 +317,7 @@ describe('Tool-Calling Integration Tests', () => {
                 toolCalls: null
             });
 
-            await toolCallingAnalyzer.analyze('test diff');
+            await toolCallingAnalyzer.analyze('test diff', tokenSource.token);
 
             const sendRequestCall = mockCopilotModelManager.sendRequest.mock.calls[0][0];
             expect(sendRequestCall.messages[0].role).toBe('system');
@@ -308,7 +346,7 @@ describe('Tool-Calling Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/test.js b/test.js\n+// test';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('Handling the error gracefully');
 

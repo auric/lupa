@@ -34,7 +34,13 @@ vi.mock('vscode', async () => {
     };
 });
 
+const mockModel = {
+    countTokens: vi.fn(() => Promise.resolve(100)),
+    maxInputTokens: 8000
+};
+
 const mockCopilotModelManager = {
+    getCurrentModel: vi.fn(() => Promise.resolve(mockModel)),
     sendRequest: vi.fn()
 };
 
@@ -54,6 +60,7 @@ describe('ListDirTool Integration Tests', () => {
     let mockReadDirectory: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
+    let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
         // Initialize the tool-calling system
@@ -94,6 +101,36 @@ describe('ListDirTool Integration Tests', () => {
                 fsPath: '/test/git-repo'
             }
         });
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
+            const listeners: Array<(e: any) => any> = [];
+            let isCancelled = false;
+
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() { return isCancelled; },
+                onCancellationRequested: vi.fn((listener: (e: any) => any) => {
+                    listeners.push(listener);
+                    return {
+                        dispose: vi.fn(() => {
+                            const index = listeners.indexOf(listener);
+                            if (index !== -1) {
+                                listeners.splice(index, 1);
+                            }
+                        })
+                    };
+                })
+            };
+
+            return {
+                token: token,
+                cancel: vi.fn(() => {
+                    isCancelled = true;
+                    // Create a copy of listeners array before iteration
+                    [...listeners].forEach(listener => listener(undefined)); // Pass undefined or a specific event if needed
+                }),
+                dispose: vi.fn()
+            } as unknown as vscode.CancellationTokenSource; // Cast to assure TS it's a CancellationTokenSource
+        });
+        tokenSource = new vscode.CancellationTokenSource();
     });
 
     describe('End-to-End List Directory Workflow', () => {
@@ -127,7 +164,7 @@ describe('ListDirTool Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/index.js b/src/index.js\n+console.log("hello");';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('Based on the directory listing');
             expect(result).toContain('project structure');
@@ -184,7 +221,7 @@ describe('ListDirTool Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/components/NewComponent.jsx b/src/components/NewComponent.jsx\n+export default NewComponent;';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('recursive listing');
             expect(result).toContain('React project');
@@ -213,7 +250,7 @@ describe('ListDirTool Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/test.js b/test.js\n+console.log("test");';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('error accessing the directory');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
@@ -248,7 +285,7 @@ describe('ListDirTool Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/config.js b/config.js\n+const config = {};';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('cannot access directories outside');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
@@ -292,7 +329,7 @@ describe('ListDirTool Integration Tests', () => {
                 });
 
             const diff = 'diff --git a/src/utils.js b/src/utils.js\n+export const helper = () => {};';
-            const result = await toolCallingAnalyzer.analyze(diff);
+            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('well-organized codebase');
             expect(result).toContain('src and test directories');

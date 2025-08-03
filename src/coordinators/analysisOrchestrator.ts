@@ -71,7 +71,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 if (useEmbeddingLspAlgorithm) {
                     // Use legacy embedding-based LSP algorithm
                     progress.report({ message: 'Using legacy embedding-based analysis...', increment: 10 });
-                    
+
                     const result = await this.services.analysisProvider.analyzePullRequest(
                         diffText,
                         gitRootPath,
@@ -89,17 +89,17 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                         },
                         token
                     );
-                    
+
                     analysis = result.analysis;
                     context = result.context;
                 } else {
                     // Use new tool-calling approach
                     progress.report({ message: 'Using new tool-calling analysis...', increment: 10 });
-                    
-                    analysis = await this.services.toolCallingAnalysisProvider.analyze(diffText);
+
+                    analysis = await this.services.toolCallingAnalysisProvider.analyze(diffText, token);
                     // For tool-calling approach, context is retrieved dynamically during conversation
                     context = 'Context retrieved dynamically via tool calls during analysis.';
-                    
+
                     progress.report({ message: 'Tool-calling analysis completed', increment: 70 });
                 }
 

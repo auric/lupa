@@ -40,13 +40,12 @@ export class SearchResultFormatter {
         `  <matches count="${fileMatches.length}">`
       ];
 
-      // Add each match with line number and content
+      // Add content with line numbers in the format "lineNumber: content"
+      xmlParts.push(`    <content>`);
       for (const match of fileMatches) {
-        xmlParts.push(`    <match>`);
-        xmlParts.push(`      <line_number>${match.lineNumber}</line_number>`);
-        xmlParts.push(`      <content>${XmlUtils.escapeXml(match.line)}</content>`);
-        xmlParts.push(`    </match>`);
+        xmlParts.push(`${match.lineNumber}: ${XmlUtils.escapeXml(match.line)}`);
       }
+      xmlParts.push(`    </content>`);
 
       xmlParts.push(`  </matches>`);
       xmlParts.push('</search_result>');

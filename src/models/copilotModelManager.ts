@@ -253,7 +253,7 @@ export class CopilotModelManager implements vscode.Disposable {
     /**
      * Send a request to the language model with tool-calling support
      */
-    async sendRequest(request: ToolCallRequest): Promise<ToolCallResponse> {
+    async sendRequest(request: ToolCallRequest, token: vscode.CancellationToken): Promise<ToolCallResponse> {
         try {
             const model = await this.getCurrentModel();
 
@@ -300,7 +300,7 @@ export class CopilotModelManager implements vscode.Disposable {
             };
 
             // Send the request
-            const response = await model.sendRequest(messages, options);
+            const response = await model.sendRequest(messages, options, token);
 
             // Parse the response stream for both text and tool calls
             let responseText = '';

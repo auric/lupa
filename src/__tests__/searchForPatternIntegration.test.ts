@@ -158,9 +158,9 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results[0].success).toBe(true);
             const resultContent = results[0].result.join('\n');
             expect(resultContent).toContain('<file>src/index.ts</file>');
-            expect(resultContent).toContain('<content>export class MainClass {</content>');
+            expect(resultContent).toContain('1: export class MainClass {');
             expect(resultContent).toContain('<file>src/utils.ts</file>');
-            expect(resultContent).toContain('<content>export class UtilClass {</content>');
+            expect(resultContent).toContain('1: export class UtilClass {');
         });
 
         it('should handle complex search patterns in integration workflow', async () => {
@@ -224,9 +224,9 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(resultContent).toContain('<file>src/components/Button.tsx</file>');
             expect(resultContent).toContain('<file>src/components/Modal.tsx</file>');
             expect(resultContent).toContain('<file>src/services/api.ts</file>');
-            expect(resultContent).toContain('<content>export function Button() {</content>');
-            expect(resultContent).toContain('<content>export function Modal() {</content>');
-            expect(resultContent).toContain('<content>export function apiCall() {</content>');
+            expect(resultContent).toContain('1: export function Button() {');
+            expect(resultContent).toContain('1: export function Modal() {');
+            expect(resultContent).toContain('1: export function apiCall() {');
         });
 
         it('should handle path filtering in integration workflow', async () => {
@@ -267,8 +267,8 @@ describe('SearchForPatternTool Integration Tests', () => {
             const resultContent = results[0].result.join('\n');
             expect(resultContent).toContain('<file>src/components/Button.tsx</file>');
             expect(resultContent).toContain('<file>src/components/Input.tsx</file>');
-            expect(resultContent).toContain('<content>const Button = () =&gt; &lt;button&gt;Click&lt;/button&gt;;</content>');
-            expect(resultContent).toContain('<content>const Input = () =&gt; &lt;input type=&quot;text&quot; /&gt;;</content>');
+            expect(resultContent).toContain('1: const Button = () =&gt; &lt;button&gt;Click&lt;/button&gt;;');
+            expect(resultContent).toContain('1: const Input = () =&gt; &lt;input type=&quot;text&quot; /&gt;;');
         });
 
         it('should handle glob pattern filtering in integration workflow', async () => {
@@ -322,8 +322,8 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(resultContent).toContain('<file>src/service.ts</file>');
             expect(resultContent).not.toContain('styles.css');
             expect(resultContent).not.toContain('readme.md');
-            expect(resultContent).toContain('<content>interface Props {}</content>');
-            expect(resultContent).toContain('<content>interface Service {}</content>');
+            expect(resultContent).toContain('1: interface Props {}');
+            expect(resultContent).toContain('1: interface Service {}');
         });
 
         it('should handle error cases in integration workflow', async () => {

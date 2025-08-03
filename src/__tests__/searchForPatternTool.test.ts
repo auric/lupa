@@ -161,9 +161,9 @@ describe('SearchForPatternTool', () => {
             expect(result.length).toBeGreaterThan(0);
             const resultText = result.join('\n');
             expect(resultText).toContain('<file>src/index.ts</file>');
-            expect(resultText).toContain('<content>export class MyClass {</content>');
+            expect(resultText).toContain('1: export class MyClass {');
             expect(resultText).toContain('<file>src/utils.ts</file>');
-            expect(resultText).toContain('<content>class UtilClass {}</content>');
+            expect(resultText).toContain('4: class UtilClass {}');
         });
 
         it('should handle glob pattern filtering', async () => {
@@ -208,7 +208,7 @@ describe('SearchForPatternTool', () => {
             });
             const resultText = result.join('\n');
             expect(resultText).toContain('<file>src/index.ts</file>');
-            expect(resultText).toContain('<content>class TypeScript {}</content>');
+            expect(resultText).toContain('1: class TypeScript {}');
             expect(resultText).not.toContain('README.md');
             expect(resultText).not.toContain('Button.tsx');
         });
@@ -249,9 +249,9 @@ describe('SearchForPatternTool', () => {
             expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith('src/components');
             const resultText = result.join('\n');
             expect(resultText).toContain('<file>src/components/Button.tsx</file>');
-            expect(resultText).toContain('<content>class Button {}</content>');
+            expect(resultText).toContain('1: class Button {}');
             expect(resultText).toContain('<file>src/components/Modal.tsx</file>');
-            expect(resultText).toContain('<content>class Modal {}</content>');
+            expect(resultText).toContain('1: class Modal {}');
         });
 
         it('should return no matches message when pattern not found', async () => {
@@ -348,10 +348,8 @@ describe('SearchForPatternTool', () => {
             // Check that matches are in XML format with correct file and content
             const resultText = result.join('\n');
             expect(resultText).toContain('<file>src/test.ts</file>');
-            expect(resultText).toContain('<line_number>1</line_number>');
-            expect(resultText).toContain('<content>class First {}</content>');
-            expect(resultText).toContain('<line_number>2</line_number>');
-            expect(resultText).toContain('<content>class Second {}</content>');
+            expect(resultText).toContain('1: class First {}');
+            expect(resultText).toContain('2: class Second {}');
         });
 
         it('should remove trailing whitespace from matched lines', async () => {
@@ -388,8 +386,8 @@ describe('SearchForPatternTool', () => {
 
             // Check that trailing whitespace is removed in XML content
             const resultText = result.join('\n');
-            expect(resultText).toContain('<content>class TestClass {</content>');
-            expect(resultText).not.toContain('<content>class TestClass {   </content>');
+            expect(resultText).toContain('1: class TestClass {');
+            expect(resultText).not.toContain('1: class TestClass {   ');
         });
     });
 

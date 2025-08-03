@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { ConversationManager } from '../models/conversationManager';
 import {
   ToolExecutor,
@@ -5,11 +6,12 @@ import {
 } from '../models/toolExecutor';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { PromptGenerator } from '../models/promptGenerator';
+import { TokenValidator } from '../models/tokenValidator';
 import type {
   ToolCallMessage,
   ToolCall
 } from '../types/modelTypes';
-import type { DiffHunk, DiffHunkLine } from '../types/contextTypes';
+import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 
@@ -18,6 +20,8 @@ import { Log } from './loggingService';
  * invoking tools, and interacting with the LLM.
  */
 export class ToolCallingAnalysisProvider {
+  private tokenValidator: TokenValidator | null = null;
+
   constructor(
     private conversationManager: ConversationManager,
     private toolExecutor: ToolExecutor,
@@ -30,26 +34,35 @@ export class ToolCallingAnalysisProvider {
    * @param diff The diff content to analyze
    * @returns Promise resolving to the analysis result
    */
-  async analyze(diff: string): Promise<string> {
+  async analyze(diff: string, token: vscode.CancellationToken): Promise<string> {
     try {
       Log.info('Starting analysis with tool-calling support');
 
       // Clear previous conversation history for a fresh analysis
       this.conversationManager.clearHistory();
 
-      // Get available tools and generate comprehensive system prompt
-      const availableTools = this.toolExecutor.getAvailableTools();
+      // Check diff size and handle truncation/tool availability
+      const { processedDiff, toolsAvailable, toolsDisabledMessage } = await this.processDiffSize(diff);
+
+      // Get available tools and generate system prompt based on tool availability
+      const availableTools = toolsAvailable ? this.toolExecutor.getAvailableTools() : [];
       const systemPrompt = this.promptGenerator.generateToolAwareSystemPrompt(availableTools);
 
       // Parse diff for structured analysis
-      const parsedDiff = DiffUtils.parseDiff(diff);
+      const parsedDiff = DiffUtils.parseDiff(processedDiff);
 
-      // Generate tool-calling optimized user prompt
-      const userMessage = this.promptGenerator.generateToolCallingUserPrompt(diff, parsedDiff);
+      // Generate user prompt with processed diff
+      let userMessage = this.promptGenerator.generateToolCallingUserPrompt(processedDiff, parsedDiff);
+
+      // Add tools disabled message if applicable
+      if (toolsDisabledMessage) {
+        userMessage = `${toolsDisabledMessage}\n\n${userMessage}`;
+      }
+
       this.conversationManager.addUserMessage(userMessage);
 
       // Start the conversation loop with the LLM
-      const result = await this.conversationLoop(systemPrompt);
+      const result = await this.conversationLoop(systemPrompt, token);
 
       Log.info('Analysis completed successfully');
       return result;
@@ -66,7 +79,7 @@ export class ToolCallingAnalysisProvider {
    * @param systemPrompt The system prompt to use for the conversation
    * @returns Promise resolving to the final analysis result
    */
-  private async conversationLoop(systemPrompt: string): Promise<string> {
+  private async conversationLoop(systemPrompt: string, token: vscode.CancellationToken): Promise<string> {
     const maxIterations = 10; // Prevent infinite loops
     let iteration = 0;
 
@@ -80,13 +93,62 @@ export class ToolCallingAnalysisProvider {
         const vscodeTools = availableTools.map(tool => tool.getVSCodeTool());
 
         // Prepare messages for the LLM
-        const messages = this.prepareMessagesForLLM(systemPrompt);
+        let messages = this.prepareMessagesForLLM(systemPrompt);
+
+        // Initialize token validator if not already done
+        if (!this.tokenValidator) {
+          const currentModel = await this.copilotModelManager.getCurrentModel();
+          this.tokenValidator = new TokenValidator(currentModel);
+        }
+
+        // Validate token count and clean up context if needed
+        const validation = await this.tokenValidator.validateTokens(
+          messages.slice(1), // Exclude system prompt from validation
+          systemPrompt
+        );
+
+        if (validation.suggestedAction === 'request_final_answer') {
+          // Context window is full, request final answer
+          this.conversationManager.addUserMessage(
+            'Context window is full. Please provide your final analysis based on the information you have gathered so far.'
+          );
+          messages = this.prepareMessagesForLLM(systemPrompt);
+        } else if (validation.suggestedAction === 'remove_old_context') {
+          // Clean up old context
+          const cleanup = await this.tokenValidator.cleanupContext(
+            messages.slice(1), // Exclude system prompt
+            systemPrompt
+          );
+
+          // Update conversation manager with cleaned messages
+          this.conversationManager.clearHistory();
+          for (const message of cleanup.cleanedMessages) {
+            if (message.role === 'user') {
+              this.conversationManager.addUserMessage(message.content || '');
+            } else if (message.role === 'assistant') {
+              this.conversationManager.addAssistantMessage(message.content, message.toolCalls);
+            } else if (message.role === 'tool') {
+              this.conversationManager.addToolMessage(message.toolCallId || '', message.content || '');
+            }
+          }
+
+          messages = this.prepareMessagesForLLM(systemPrompt);
+
+          if (cleanup.contextFullMessageAdded) {
+            Log.info(`Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`);
+          }
+        }
 
         // Send request to the LLM
         const response = await this.copilotModelManager.sendRequest({
           messages,
           tools: vscodeTools
-        });
+        }, token);
+
+        if (token.isCancellationRequested) {
+          Log.info('Analysis cancelled by user');
+          return 'Analysis cancelled by user';
+        }
 
         // Add assistant response to conversation
         this.conversationManager.addAssistantMessage(
@@ -208,6 +270,87 @@ export class ToolCallingAnalysisProvider {
     return messages;
   }
 
+  /**
+   * Process diff size and determine if tools should be available
+   * @param diff Original diff content
+   * @returns Object with processed diff, tool availability, and disabled message
+   */
+  private async processDiffSize(diff: string): Promise<{
+    processedDiff: string;
+    toolsAvailable: boolean;
+    toolsDisabledMessage?: string;
+  }> {
+    try {
+      // Initialize token validator if not already done
+      if (!this.tokenValidator) {
+        const currentModel = await this.copilotModelManager.getCurrentModel();
+        this.tokenValidator = new TokenValidator(currentModel);
+      }
+
+      const model = await this.copilotModelManager.getCurrentModel();
+      const maxTokens = model.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
+
+      // Parse diff for structured analysis
+      const parsedDiff = DiffUtils.parseDiff(diff);
+
+      // Generate actual system prompt and user message to get real token counts
+      const availableTools = this.toolExecutor.getAvailableTools();
+      const systemPrompt = this.promptGenerator.generateToolAwareSystemPrompt(availableTools);
+      const userMessage = this.promptGenerator.generateToolCallingUserPrompt(diff, parsedDiff);
+
+      // Count real tokens for actual content that will be sent
+      const systemPromptTokens = await model.countTokens(systemPrompt);
+      const userMessageTokens = await model.countTokens(userMessage);
+      const totalUsedTokens = systemPromptTokens + userMessageTokens;
+
+      // Leave significant room for tool conversations (30% of total context)
+      const minSpaceForTools = Math.floor(maxTokens * 0.3);
+      const availableForTools = maxTokens - totalUsedTokens;
+
+      // If there's enough space for meaningful tool interactions, enable tools
+      if (availableForTools >= minSpaceForTools) {
+        return {
+          processedDiff: diff,
+          toolsAvailable: true
+        };
+      }
+
+      // If diff is too large, truncate it and disable tools
+      Log.warn(`Diff uses too much context (${totalUsedTokens}/${maxTokens} tokens, only ${availableForTools} remaining). Truncating and disabling tools.`);
+
+      // Calculate how much of the diff we can keep to leave room for basic analysis
+      const targetTotalTokens = Math.floor(maxTokens * 0.8); // Use 80% for truncated content
+      const targetDiffTokens = targetTotalTokens - systemPromptTokens;
+      const estimatedCharsPerToken = TokenConstants.CHARS_PER_TOKEN_ESTIMATE;
+      const targetChars = Math.floor(targetDiffTokens * estimatedCharsPerToken);
+
+      // Truncate the diff
+      let truncatedDiff = diff.substring(0, targetChars);
+
+      // Try to truncate at a sensible boundary (line break)
+      const lastLineBreak = truncatedDiff.lastIndexOf('\n');
+      if (lastLineBreak > targetChars * 0.8) { // If line break is reasonably close to target
+        truncatedDiff = truncatedDiff.substring(0, lastLineBreak);
+      }
+
+      // Add truncation indicator
+      truncatedDiff += '\n\n[... diff truncated due to size ...]';
+
+      return {
+        processedDiff: truncatedDiff,
+        toolsAvailable: false,
+        toolsDisabledMessage: TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED
+      };
+
+    } catch (error) {
+      Log.error('Error processing diff size:', error);
+      // On error, return original diff with tools available
+      return {
+        processedDiff: diff,
+        toolsAvailable: true
+      };
+    }
+  }
 
   dispose(): void {
     // No resources to dispose of currently

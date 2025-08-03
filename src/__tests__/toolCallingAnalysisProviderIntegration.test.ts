@@ -1,14 +1,13 @@
+import * as vscode from 'vscode';
+import { z } from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
-import { ConversationManager } from '../models/conversationManager';
-import { ToolExecutor } from '../models/toolExecutor';
-import { CopilotModelManager } from '../models/copilotModelManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import type { DiffHunk } from '../types/contextTypes';
-import { z } from 'zod';
-import * as vscode from 'vscode';
+
+vi.mock('vscode');
 
 // Mock tool for testing
 class MockAnalysisTool implements ITool {
@@ -39,6 +38,7 @@ describe('ToolCallingAnalysisProvider Integration', () => {
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
     let sampleDiff: string;
+    let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
         // Sample diff for testing
@@ -74,7 +74,13 @@ index 1234567..abcdefg 100644
             }])
         };
 
+        const mockModel = {
+            countTokens: vi.fn(() => Promise.resolve(100)),
+            maxInputTokens: 8000
+        };
+
         mockCopilotModelManager = {
+            getCurrentModel: vi.fn(() => Promise.resolve(mockModel)),
             sendRequest: vi.fn().mockResolvedValue({
                 content: 'Mock analysis result',
                 toolCalls: null // No tool calls for simple test
@@ -89,6 +95,36 @@ index 1234567..abcdefg 100644
             mockCopilotModelManager,
             mockPromptGenerator
         );
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
+            const listeners: Array<(e: any) => any> = [];
+            let isCancelled = false;
+
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() { return isCancelled; },
+                onCancellationRequested: vi.fn((listener: (e: any) => any) => {
+                    listeners.push(listener);
+                    return {
+                        dispose: vi.fn(() => {
+                            const index = listeners.indexOf(listener);
+                            if (index !== -1) {
+                                listeners.splice(index, 1);
+                            }
+                        })
+                    };
+                })
+            };
+
+            return {
+                token: token,
+                cancel: vi.fn(() => {
+                    isCancelled = true;
+                    // Create a copy of listeners array before iteration
+                    [...listeners].forEach(listener => listener(undefined)); // Pass undefined or a specific event if needed
+                }),
+                dispose: vi.fn()
+            } as unknown as vscode.CancellationTokenSource; // Cast to assure TS it's a CancellationTokenSource
+        });
+        tokenSource = new vscode.CancellationTokenSource();
     });
 
     describe('analyze method integration', () => {
@@ -97,7 +133,7 @@ index 1234567..abcdefg 100644
             const generateToolAwareSystemPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolAwareSystemPrompt');
             const generateToolCallingUserPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolCallingUserPrompt');
 
-            await provider.analyze(sampleDiff);
+            await provider.analyze(sampleDiff, tokenSource.token);
 
             // Verify tool-aware system prompt was generated
             expect(generateToolAwareSystemPromptSpy).toHaveBeenCalledWith([expect.any(MockAnalysisTool)]);
@@ -112,19 +148,19 @@ index 1234567..abcdefg 100644
         it('should parse diff using DiffUtils', async () => {
             const parseDiffSpy = vi.spyOn(DiffUtils, 'parseDiff');
 
-            await provider.analyze(sampleDiff);
+            await provider.analyze(sampleDiff, tokenSource.token);
 
             expect(parseDiffSpy).toHaveBeenCalledWith(sampleDiff);
         });
 
         it('should clear conversation history at start', async () => {
-            await provider.analyze(sampleDiff);
+            await provider.analyze(sampleDiff, tokenSource.token);
 
             expect(mockConversationManager.clearHistory).toHaveBeenCalled();
         });
 
         it('should add structured user message to conversation', async () => {
-            await provider.analyze(sampleDiff);
+            await provider.analyze(sampleDiff, tokenSource.token);
 
             expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
                 expect.stringContaining('<files_to_review>')
@@ -155,7 +191,7 @@ index 1234567..abcdefg 100644
                     toolCalls: null
                 });
 
-            const result = await provider.analyze(sampleDiff);
+            const result = await provider.analyze(sampleDiff, tokenSource.token);
 
             // Verify tool execution was called
             expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([{
@@ -170,7 +206,7 @@ index 1234567..abcdefg 100644
         it('should generate comprehensive system prompt with available tools', async () => {
             const generateToolAwareSystemPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolAwareSystemPrompt');
 
-            await provider.analyze(sampleDiff);
+            await provider.analyze(sampleDiff, tokenSource.token);
 
             const systemPromptCall = generateToolAwareSystemPromptSpy.mock.calls[0];
             const tools = systemPromptCall[0] as ITool[];
@@ -183,7 +219,7 @@ index 1234567..abcdefg 100644
         it('should structure user prompt for optimal tool usage', async () => {
             const generateToolCallingUserPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolCallingUserPrompt');
 
-            await provider.analyze(sampleDiff);
+            await provider.analyze(sampleDiff, tokenSource.token);
 
             const userPromptCall = generateToolCallingUserPromptSpy.mock.calls[0];
             const [diffParam, parsedDiffParam] = userPromptCall;
@@ -219,7 +255,7 @@ index 1234567..abcdefg 100644
                     toolCalls: null
                 });
 
-            const result = await provider.analyze(sampleDiff);
+            const result = await provider.analyze(sampleDiff, tokenSource.token);
 
             expect(result).toBe('Analysis despite tool error');
             expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
@@ -245,7 +281,7 @@ index 1234567..abcdefg 100644
                     toolCalls: null
                 });
 
-            const result = await provider.analyze(sampleDiff);
+            const result = await provider.analyze(sampleDiff, tokenSource.token);
 
             // Should still complete despite malformed arguments
             expect(result).toBe('Final result');
@@ -258,7 +294,7 @@ index 1234567..abcdefg 100644
         it('should handle analysis errors and return error message', async () => {
             mockCopilotModelManager.sendRequest.mockRejectedValue(new Error('LLM service unavailable'));
 
-            const result = await provider.analyze(sampleDiff);
+            const result = await provider.analyze(sampleDiff, tokenSource.token);
 
             expect(result).toContain('Error during analysis');
             expect(result).toContain('LLM service unavailable');
@@ -289,7 +325,7 @@ index 0000000..3333333
 
             const generateToolCallingUserPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolCallingUserPrompt');
 
-            await provider.analyze(complexDiff);
+            await provider.analyze(complexDiff, tokenSource.token);
 
             const parsedDiff = generateToolCallingUserPromptSpy.mock.calls[0][1] as DiffHunk[];
 

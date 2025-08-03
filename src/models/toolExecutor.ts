@@ -1,5 +1,6 @@
 import { ToolRegistry } from './toolRegistry';
 import { ITool } from '../tools/ITool';
+import { TokenConstants } from './tokenConstants';
 
 /**
  * Interface for tool execution requests
@@ -45,6 +46,16 @@ export class ToolExecutor {
       }
 
       const result = await tool.execute(args);
+
+      // Validate response size
+      const validationResult = this.validateResponseSize(result, name);
+      if (!validationResult.isValid) {
+        return {
+          name,
+          success: false,
+          error: validationResult.errorMessage
+        };
+      }
 
       return {
         name,
@@ -120,6 +131,46 @@ export class ToolExecutor {
    */
   isToolAvailable(name: string): boolean {
     return this.toolRegistry.hasTool(name);
+  }
+
+  /**
+   * Validate the size of a tool response
+   * @param result The result returned by the tool
+   * @param toolName Name of the tool for error messages
+   * @returns Validation result with error message if invalid
+   */
+  private validateResponseSize(result: any, toolName: string): { isValid: boolean; errorMessage?: string } {
+    try {
+      // Convert result to string for size measurement
+      let resultString: string;
+      
+      if (Array.isArray(result)) {
+        // For array results, join them to measure total size
+        resultString = result.join('\n\n');
+      } else if (typeof result === 'string') {
+        resultString = result;
+      } else if (result && typeof result === 'object') {
+        // For object results, stringify them
+        resultString = JSON.stringify(result, null, 2);
+      } else {
+        // For other types, convert to string
+        resultString = String(result);
+      }
+
+      // Check if result exceeds maximum allowed size
+      if (resultString.length > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
+        return {
+          isValid: false,
+          errorMessage: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool '${toolName}' returned ${resultString.length} characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`
+        };
+      }
+
+      return { isValid: true };
+
+    } catch (error) {
+      // If validation itself fails, allow the result through but log the issue
+      return { isValid: true };
+    }
   }
 
   public dispose(): void {
