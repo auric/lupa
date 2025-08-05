@@ -160,9 +160,9 @@ describe('SearchForPatternTool', () => {
 
             expect(result.length).toBeGreaterThan(0);
             const resultText = result.join('\n');
-            expect(resultText).toContain('<file>src/index.ts</file>');
+            expect(resultText).toContain('"file": "src/index.ts"');
             expect(resultText).toContain('1: export class MyClass {');
-            expect(resultText).toContain('<file>src/utils.ts</file>');
+            expect(resultText).toContain('"file": "src/utils.ts"');
             expect(resultText).toContain('4: class UtilClass {}');
         });
 
@@ -207,7 +207,7 @@ describe('SearchForPatternTool', () => {
                 include: '*.ts'
             });
             const resultText = result.join('\n');
-            expect(resultText).toContain('<file>src/index.ts</file>');
+            expect(resultText).toContain('"file": "src/index.ts"');
             expect(resultText).toContain('1: class TypeScript {}');
             expect(resultText).not.toContain('README.md');
             expect(resultText).not.toContain('Button.tsx');
@@ -248,9 +248,9 @@ describe('SearchForPatternTool', () => {
 
             expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith('src/components');
             const resultText = result.join('\n');
-            expect(resultText).toContain('<file>src/components/Button.tsx</file>');
+            expect(resultText).toContain('"file": "src/components/Button.tsx"');
             expect(resultText).toContain('1: class Button {}');
-            expect(resultText).toContain('<file>src/components/Modal.tsx</file>');
+            expect(resultText).toContain('"file": "src/components/Modal.tsx"');
             expect(resultText).toContain('1: class Modal {}');
         });
 
@@ -263,7 +263,7 @@ describe('SearchForPatternTool', () => {
                 pattern: 'nonexistentpattern'
             });
 
-            expect(result[0]).toContain('<message>No matches found for the specified pattern</message>');
+            expect(result[0]).toContain('No matches found for the specified pattern'); // No longer wrapped in XML tags
         });
 
         it('should handle file read errors gracefully', async () => {
@@ -347,7 +347,7 @@ describe('SearchForPatternTool', () => {
 
             // Check that matches are in XML format with correct file and content
             const resultText = result.join('\n');
-            expect(resultText).toContain('<file>src/test.ts</file>');
+            expect(resultText).toContain('"file": "src/test.ts"');
             expect(resultText).toContain('1: class First {}');
             expect(resultText).toContain('2: class Second {}');
         });

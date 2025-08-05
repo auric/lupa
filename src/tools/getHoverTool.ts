@@ -14,7 +14,7 @@ export class GetHoverTool extends BaseTool {
   description = "Get hover information (type, documentation) for a symbol at a specific position using VS Code's hover provider";
 
   schema = z.object({
-    path: z.string().min(1, 'Path cannot be empty').describe('The file path (relative to project root)'),
+    filePath: z.string().min(1, 'File path cannot be empty').describe('The file path (relative to project root)'),
     line: z.number().int().min(0, 'Line must be a non-negative integer').describe('The line number (0-based)'),
     character: z.number().int().min(0, 'Character must be a non-negative integer').describe('The character position (0-based)'),
   });
@@ -25,7 +25,7 @@ export class GetHoverTool extends BaseTool {
 
   async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
     try {
-      const { path: filePath, line, character } = args;
+      const { filePath, line, character } = args;
 
       // Get git repository root
       const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath;

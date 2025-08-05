@@ -60,15 +60,15 @@ describe('FindUsagesTool', () => {
             const fullInput = {
                 symbolName: 'MyClass',
                 filePath: 'src/test.ts',
-                includeDeclaration: true,
-                contextLines: 3
+                shouldIncludeDeclaration: true,
+                contextLineCount: 3
             };
             expect(schema.safeParse(fullInput).success).toBe(true);
 
             // Test validation failures
             expect(schema.safeParse({ symbolName: '' }).success).toBe(false);
             expect(schema.safeParse({ filePath: '' }).success).toBe(false);
-            expect(schema.safeParse({ symbolName: 'test', filePath: 'test.ts', contextLines: 15 }).success).toBe(false);
+            expect(schema.safeParse({ symbolName: 'test', filePath: 'test.ts', contextLineCount: 15 }).success).toBe(false);
         });
 
         it('should generate correct VS Code tool configuration', () => {
@@ -190,14 +190,15 @@ describe('FindUsagesTool', () => {
             const result = await findUsagesTool.execute({
                 symbolName: 'MyClass',
                 filePath: 'src/test.ts',
-                contextLines: 1
+                contextLineCount: 1
             });
 
             expect(result).toBeDefined();
             expect(result.length).toBeGreaterThan(0);
-            expect(result[0]).toContain('<symbol_usage>');
-            expect(result[0]).toContain('MyClass');
-            expect(result[0]).toContain('<context>');
+            // Check for JSON format instead of XML
+            expect(result[0]).toContain('"file"');
+            expect(result[0]).toContain('"location"');
+            expect(result[0]).toContain('"context"');
         });
 
         it('should handle reference provider errors gracefully', async () => {
@@ -282,7 +283,7 @@ describe('FindUsagesTool', () => {
             await findUsagesTool.execute({
                 symbolName: 'MyClass',
                 filePath: 'src/test.ts',
-                includeDeclaration: true
+                shouldIncludeDeclaration: true
             });
 
             expect(capturedIncludeDeclaration).toBe(true);
@@ -321,7 +322,7 @@ describe('FindUsagesTool', () => {
             });
 
             expect(result).toBeDefined();
-            expect(result[0]).toContain('<error>Could not read file content');
+            expect(result[0]).toContain('"error": "Could not read file content');
         });
 
         it('should respect contextLines parameter', async () => {
@@ -353,10 +354,10 @@ describe('FindUsagesTool', () => {
             const result = await findUsagesTool.execute({
                 symbolName: 'MyClass',
                 filePath: 'src/test.ts',
-                contextLines: 1
+                contextLineCount: 1
             });
 
-            expect(result[0]).toContain('<context>');
+            expect(result[0]).toContain('"context"');
             // Should include line before and after the reference line
             expect(result[0]).toContain('line2');
             expect(result[0]).toContain('line4');

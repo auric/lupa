@@ -1,19 +1,18 @@
 import * as vscode from 'vscode';
-import { XmlUtils } from './xmlUtils';
 
 /**
- * Utility class for formatting symbol definitions into structured XML output
- * optimized for LLM parsing and understanding.
+ * Utility class for formatting symbol definitions into structured JSON output
+ * optimized for LLM parsing and understanding with minimal token usage.
  */
 export class DefinitionFormatter {
   /**
-   * Format a symbol definition into structured XML format for LLM consumption
+   * Format a symbol definition into structured JSON format for LLM consumption
    * @param filePath The relative file path containing the symbol
    * @param symbolName The name of the symbol
    * @param range The range of the symbol definition
    * @param symbolBody The full body/content of the symbol (optional)
    * @param includeFullBody Whether to include the full symbol body
-   * @returns Formatted XML string representing the symbol definition
+   * @returns JSON string representing the symbol definition
    */
   formatDefinition(
     filePath: string,
@@ -25,30 +24,30 @@ export class DefinitionFormatter {
     // Use 1-based line numbers for better human readability
     const startLine = range.start.line + 1;
     const startCharacter = range.start.character;
-    const endLine = range.end.line + 1;
-    const endCharacter = range.end.character;
 
-    const xmlParts = [
-      '<symbol_definition>',
-      `  <file>${XmlUtils.escapeXml(filePath)}</file>`,
-      `  <symbol_name>${XmlUtils.escapeXml(symbolName)}</symbol_name>`,
-      `  <location>`,
-      `    <start_line>${startLine}</start_line>`,
-      `    <start_character>${startCharacter}</start_character>`,
-      `    <end_line>${endLine}</end_line>`,
-      `    <end_character>${endCharacter}</end_character>`,
-      `  </location>`
-    ];
+    const definition = {
+      file: filePath,
+      location: {
+        line: startLine,
+        character: startCharacter
+      }
+    };
 
     if (includeFullBody && symbolBody !== undefined) {
-      xmlParts.push(`  <full_body>\n${symbolBody}\n  </full_body>`);
-    } else {
-      xmlParts.push(`  <full_body>false</full_body>`);
+      // Format body with line numbers for consistency
+      const bodyWithLineNumbers = this.formatBodyWithLineNumbers(symbolBody, startLine);
+      (definition as any).body = bodyWithLineNumbers;
     }
 
-    xmlParts.push('</symbol_definition>');
+    return JSON.stringify(definition, null, 2);
+  }
 
-    return xmlParts.join('\n');
+  /**
+   * Format symbol body content with line numbers in "lineNumber: content" format
+   */
+  private formatBodyWithLineNumbers(content: string, startLine: number): string[] {
+    const lines = content.split('\n');
+    return lines.map((line, index) => `${startLine + index}: ${line}`);
   }
 
   /**
@@ -57,7 +56,7 @@ export class DefinitionFormatter {
    * @param symbolName The name of the symbol
    * @param range The range of the symbol definition
    * @param error The error that occurred
-   * @returns Formatted XML string with error information
+   * @returns JSON string with error information
    */
   formatErrorDefinition(
     filePath: string,
@@ -67,33 +66,27 @@ export class DefinitionFormatter {
   ): string {
     const startLine = range.start.line + 1;
     const startCharacter = range.start.character;
-    const endLine = range.end.line + 1;
-    const endCharacter = range.end.character;
-
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    return [
-      '<symbol_definition>',
-      `  <file>${XmlUtils.escapeXml(filePath)}</file>`,
-      `  <symbol_name>${XmlUtils.escapeXml(symbolName)}</symbol_name>`,
-      `  <location>`,
-      `    <start_line>${startLine}</start_line>`,
-      `    <start_character>${startCharacter}</start_character>`,
-      `    <end_line>${endLine}</end_line>`,
-      `    <end_character>${endCharacter}</end_character>`,
-      `  </location>`,
-      `  <error>Could not read file content: ${XmlUtils.escapeXml(errorMessage)}</error>`,
-      '</symbol_definition>'
-    ].join('\n');
+    const errorDefinition = {
+      file: filePath,
+      location: {
+        line: startLine,
+        character: startCharacter
+      },
+      error: `Could not read file content: ${errorMessage}`
+    };
+
+    return JSON.stringify(errorDefinition, null, 2);
   }
 
   /**
    * Format a 'symbol not found' message
    * @param symbolName The name of the symbol that was not found
-   * @returns Formatted error message
+   * @returns Simple string error message
    */
   formatNotFoundMessage(symbolName: string): string {
-    return `Symbol '${XmlUtils.escapeXml(symbolName)}' not found`;
+    return `Symbol '${symbolName}' not found`;
   }
 
 }

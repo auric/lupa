@@ -135,7 +135,7 @@ describe('GetHover Integration Tests', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue(mockHover);
 
             const result = await toolExecutor.executeTool('get_hover', {
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 0,
                 character: 6
             });
@@ -170,7 +170,7 @@ describe('GetHover Integration Tests', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue(mockHover);
 
             const result = await toolExecutor.executeTool('get_hover', {
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 0,
                 character: 9
             });
@@ -208,7 +208,7 @@ describe('GetHover Integration Tests', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue(mockHover);
 
             const result = await toolExecutor.executeTool('get_hover', {
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 0,
                 character: 10
             });
@@ -230,7 +230,7 @@ describe('GetHover Integration Tests', () => {
             });
 
             const result = await toolExecutor.executeTool('get_hover', {
-                path: '../../../etc/passwd',
+                filePath: '../../../etc/passwd',
                 line: 0,
                 character: 0
             });
@@ -256,7 +256,7 @@ describe('GetHover Integration Tests', () => {
             (vscode.commands.executeCommand as any).mockRejectedValue(new Error('VSCode API unavailable'));
 
             const result = await toolExecutor.executeTool('get_hover', {
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 0,
                 character: 6
             });
@@ -276,7 +276,7 @@ describe('GetHover Integration Tests', () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
             const result = await toolExecutor.executeTool('get_hover', {
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 10, // Out of bounds
                 character: 0
             });
@@ -291,7 +291,7 @@ describe('GetHover Integration Tests', () => {
             // Test with invalid schema - this should be caught by the tool's schema validation
             try {
                 await toolExecutor.executeTool('get_hover', {
-                    path: '', // Empty path should fail schema validation
+                    filePath: '', // Empty path should fail schema validation
                     line: 0,
                     character: 0
                 });
@@ -312,7 +312,7 @@ describe('GetHover Integration Tests', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue([]);
 
             const result = await toolExecutor.executeTool('get_hover', {
-                path: 'src/valid.ts',
+                filePath: 'src/valid.ts',
                 line: 0,
                 character: 0
             });

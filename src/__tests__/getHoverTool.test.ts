@@ -65,24 +65,24 @@ describe('GetHoverTool', () => {
             const schema = getHoverTool.schema;
 
             // Test valid input
-            const validInput = { path: 'src/test.ts', line: 5, character: 10 };
+            const validInput = { filePath: 'src/test.ts', line: 5, character: 10 };
             expect(schema.safeParse(validInput).success).toBe(true);
 
             // Test missing required fields
             expect(schema.safeParse({ line: 5, character: 10 }).success).toBe(false);
-            expect(schema.safeParse({ path: 'src/test.ts', character: 10 }).success).toBe(false);
-            expect(schema.safeParse({ path: 'src/test.ts', line: 5 }).success).toBe(false);
+            expect(schema.safeParse({ filePath: 'src/test.ts', character: 10 }).success).toBe(false);
+            expect(schema.safeParse({ filePath: 'src/test.ts', line: 5 }).success).toBe(false);
 
             // Test invalid types
-            expect(schema.safeParse({ path: 'src/test.ts', line: 'invalid', character: 10 }).success).toBe(false);
-            expect(schema.safeParse({ path: 'src/test.ts', line: 5, character: 'invalid' }).success).toBe(false);
+            expect(schema.safeParse({ filePath: 'src/test.ts', line: 'invalid', character: 10 }).success).toBe(false);
+            expect(schema.safeParse({ filePath: 'src/test.ts', line: 5, character: 'invalid' }).success).toBe(false);
 
             // Test negative numbers
-            expect(schema.safeParse({ path: 'src/test.ts', line: -1, character: 10 }).success).toBe(false);
-            expect(schema.safeParse({ path: 'src/test.ts', line: 5, character: -1 }).success).toBe(false);
+            expect(schema.safeParse({ filePath: 'src/test.ts', line: -1, character: 10 }).success).toBe(false);
+            expect(schema.safeParse({ filePath: 'src/test.ts', line: 5, character: -1 }).success).toBe(false);
 
             // Test empty path
-            expect(schema.safeParse({ path: '', line: 5, character: 10 }).success).toBe(false);
+            expect(schema.safeParse({ filePath: '', line: 5, character: 10 }).success).toBe(false);
         });
 
         it('should return VS Code tool configuration', () => {
@@ -98,7 +98,7 @@ describe('GetHoverTool', () => {
             (mockGitOperationsManager.getRepository as any).mockReturnValue(null);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 10
             });
@@ -112,7 +112,7 @@ describe('GetHoverTool', () => {
             });
 
             const result = await getHoverTool.execute({
-                path: '../../../etc/passwd',
+                filePath: '../../../etc/passwd',
                 line: 5,
                 character: 10
             });
@@ -125,7 +125,7 @@ describe('GetHoverTool', () => {
             (vscode.workspace.fs.stat as any).mockRejectedValue(new Error('File not found'));
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 10
             });
@@ -139,7 +139,7 @@ describe('GetHoverTool', () => {
             (vscode.workspace.openTextDocument as any).mockRejectedValue(new Error('Cannot open document'));
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 10
             });
@@ -157,7 +157,7 @@ describe('GetHoverTool', () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 15,
                 character: 10
             });
@@ -176,7 +176,7 @@ describe('GetHoverTool', () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 50
             });
@@ -196,7 +196,7 @@ describe('GetHoverTool', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue([]);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 10
             });
@@ -220,7 +220,7 @@ describe('GetHoverTool', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue(mockHover);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 6
             });
@@ -247,7 +247,7 @@ describe('GetHoverTool', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue(mockHover);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 0,
                 character: 9
             });
@@ -275,7 +275,7 @@ describe('GetHoverTool', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue(mockHover);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 0,
                 character: 6
             });
@@ -295,7 +295,7 @@ describe('GetHoverTool', () => {
             (vscode.commands.executeCommand as any).mockRejectedValue(new Error('Hover provider failed'));
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 6
             });
@@ -319,7 +319,7 @@ describe('GetHoverTool', () => {
             (vscode.commands.executeCommand as any).mockResolvedValue(mockHover);
 
             const result = await getHoverTool.execute({
-                path: 'src/test.ts',
+                filePath: 'src/test.ts',
                 line: 5,
                 character: 6
             });

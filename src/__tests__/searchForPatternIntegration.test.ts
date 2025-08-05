@@ -157,9 +157,9 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results[0].name).toBe('search_for_pattern');
             expect(results[0].success).toBe(true);
             const resultContent = results[0].result.join('\n');
-            expect(resultContent).toContain('<file>src/index.ts</file>');
+            expect(resultContent).toContain('"file": "src/index.ts"');
             expect(resultContent).toContain('1: export class MainClass {');
-            expect(resultContent).toContain('<file>src/utils.ts</file>');
+            expect(resultContent).toContain('"file": "src/utils.ts"');
             expect(resultContent).toContain('1: export class UtilClass {');
         });
 
@@ -221,9 +221,9 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results[0].success).toBe(true);
 
             const resultContent = results[0].result.join('\n');
-            expect(resultContent).toContain('<file>src/components/Button.tsx</file>');
-            expect(resultContent).toContain('<file>src/components/Modal.tsx</file>');
-            expect(resultContent).toContain('<file>src/services/api.ts</file>');
+            expect(resultContent).toContain('"file": "src/components/Button.tsx"');
+            expect(resultContent).toContain('"file": "src/components/Modal.tsx"');
+            expect(resultContent).toContain('"file": "src/services/api.ts"');
             expect(resultContent).toContain('1: export function Button() {');
             expect(resultContent).toContain('1: export function Modal() {');
             expect(resultContent).toContain('1: export function apiCall() {');
@@ -265,10 +265,10 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results[0].success).toBe(true);
 
             const resultContent = results[0].result.join('\n');
-            expect(resultContent).toContain('<file>src/components/Button.tsx</file>');
-            expect(resultContent).toContain('<file>src/components/Input.tsx</file>');
-            expect(resultContent).toContain('1: const Button = () =&gt; &lt;button&gt;Click&lt;/button&gt;;');
-            expect(resultContent).toContain('1: const Input = () =&gt; &lt;input type=&quot;text&quot; /&gt;;');
+            expect(resultContent).toContain('"file": "src/components/Button.tsx"');
+            expect(resultContent).toContain('"file": "src/components/Input.tsx"');
+            expect(resultContent).toContain('1: const Button = () => <button>Click</button>;');
+            expect(resultContent).toContain('1: const Input = () => <input type=\\\"text\\\" />;');
         });
 
         it('should handle glob pattern filtering in integration workflow', async () => {
@@ -318,8 +318,8 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results[0].success).toBe(true);
 
             const resultContent = results[0].result.join('\n');
-            expect(resultContent).toContain('<file>src/component.tsx</file>');
-            expect(resultContent).toContain('<file>src/service.ts</file>');
+            expect(resultContent).toContain('"file": "src/component.tsx"');
+            expect(resultContent).toContain('"file": "src/service.ts"');
             expect(resultContent).not.toContain('styles.css');
             expect(resultContent).not.toContain('readme.md');
             expect(resultContent).toContain('1: interface Props {}');
@@ -342,7 +342,7 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results).toHaveLength(1);
             expect(results[0].name).toBe('search_for_pattern');
             expect(results[0].success).toBe(true);
-            expect(results[0].result.join('\n')).toContain('<message>No matches found for the specified pattern</message>');
+            expect(results[0].result.join('\n')).toContain('No matches found for the specified pattern');
         });
 
         it('should handle no matches scenario in integration workflow', async () => {
@@ -365,7 +365,7 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results).toHaveLength(1);
             expect(results[0].name).toBe('search_for_pattern');
             expect(results[0].success).toBe(true);
-            expect(results[0].result.join('\n')).toContain('<message>No matches found for the specified pattern</message>');
+            expect(results[0].result.join('\n')).toContain('No matches found for the specified pattern');
         });
     });
 
@@ -440,7 +440,7 @@ describe('SearchForPatternTool Integration Tests', () => {
 
             // Should find matches only in non-ignored files
             const resultContent = results[0].result.join('\n');
-            expect(resultContent).toContain('<file>src/index.ts</file>');
+            expect(resultContent).toContain('"file": "src/index.ts"');
             expect(resultContent).not.toContain('node_modules');
             expect(resultContent).not.toContain('debug.log');
         });

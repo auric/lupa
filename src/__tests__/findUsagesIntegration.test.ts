@@ -170,7 +170,7 @@ describe('FindUsages Integration Tests', () => {
                             arguments: JSON.stringify({
                                 symbolName: 'MyClass',
                                 filePath: 'src/test.ts',
-                                contextLines: 2
+                                contextLineCount: 2
                             })
                         }
                     }]
@@ -186,7 +186,7 @@ describe('FindUsages Integration Tests', () => {
             expect(result).toBe('Based on the tool results, I found 2 usages of MyClass.');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
-            // Verify the tool was called correctly
+            // Verify the tool was called correctly (should be called at least once with reference provider)
             expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
                 'vscode.executeReferenceProvider',
                 expect.any(Object),
@@ -200,7 +200,7 @@ describe('FindUsages Integration Tests', () => {
 
             // Find the tool result message
             const toolResultMessage = history.find(msg =>
-                msg.role === 'tool' && msg.content?.includes('<symbol_usage>')
+                msg.role === 'tool' && msg.content?.includes('"file"')
             );
             expect(toolResultMessage).toBeDefined();
         });
@@ -317,7 +317,7 @@ describe('FindUsages Integration Tests', () => {
             // Verify both tool results are in conversation history
             const history = conversationManager.getHistory();
             const toolResultMessages = history.filter(msg =>
-                msg.role === 'tool' && msg.content?.includes('<symbol_usage>')
+                msg.role === 'tool' && msg.content?.includes('"file"')
             );
             expect(toolResultMessages).toHaveLength(2); // Two separate tool result messages
         });
@@ -357,7 +357,7 @@ describe('FindUsages Integration Tests', () => {
             expect(errorMessage).toBeDefined();
         });
 
-        it('should handle includeDeclaration parameter correctly', async () => {
+        it('should handle shouldIncludeDeclaration parameter correctly', async () => {
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('class MyClass {}'),
                 uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
@@ -384,7 +384,7 @@ describe('FindUsages Integration Tests', () => {
                             arguments: JSON.stringify({
                                 symbolName: 'MyClass',
                                 filePath: 'src/test.ts',
-                                includeDeclaration: true
+                                shouldIncludeDeclaration: true
                             })
                         }
                     }]
@@ -400,7 +400,7 @@ describe('FindUsages Integration Tests', () => {
             expect(capturedContext?.includeDeclaration).toBe(true);
         });
 
-        it('should respect contextLines parameter', async () => {
+        it('should respect contextLineCount parameter', async () => {
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('line1\nline2\nclass MyClass {}\nline4\nline5'),
                 uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
@@ -432,7 +432,7 @@ describe('FindUsages Integration Tests', () => {
                             arguments: JSON.stringify({
                                 symbolName: 'MyClass',
                                 filePath: 'src/test.ts',
-                                contextLines: 1
+                                contextLineCount: 1
                             })
                         }
                     }]
@@ -448,11 +448,11 @@ describe('FindUsages Integration Tests', () => {
             // Verify context includes the expected lines
             const history = conversationManager.getHistory();
             const toolResultMessage = history.find(msg =>
-                msg.role === 'tool' && msg.content?.includes('<context>')
+                msg.role === 'tool' && msg.content?.includes('"context"')
             );
 
-            expect(toolResultMessage?.content).toContain('line2');
-            expect(toolResultMessage?.content).toContain('line4');
+            expect(toolResultMessage?.content).toContain('2: line2');
+            expect(toolResultMessage?.content).toContain('4: line4');
         });
     });
 });

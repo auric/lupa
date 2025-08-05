@@ -5,7 +5,6 @@ import { BaseTool } from './baseTool';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { XmlUtils } from './xmlUtils';
 
 /**
  * Tool that reads file content with support for partial content reading.
@@ -90,7 +89,7 @@ export class ReadFileTool extends BaseTool {
       const selectedLines = lines.slice(actualStartLine - 1, endLine);
 
       // Check response size before formatting
-      const estimatedSize = selectedLines.join('\n').length + 500; // Add overhead for XML
+      const estimatedSize = selectedLines.join('\n').length + 200; // Add overhead for JSON
       if (estimatedSize > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
         return [this.formatError(
           `Selected content too large (estimated ${estimatedSize} characters). ` +
@@ -108,43 +107,33 @@ export class ReadFileTool extends BaseTool {
   }
 
   /**
-   * Format file content as XML with line numbers in the format "lineNumber: content"
+   * Format file content as JSON with line numbers in the format "lineNumber: content"
    * @param filePath File path for display
    * @param lines Array of lines to format
    * @param startLine Starting line number
-   * @returns Formatted XML content string
+   * @returns JSON string with content
    */
   private formatFileContent(filePath: string, lines: string[], startLine: number): string {
-    const xmlParts = [
-      '<file_content>',
-      `  <file>${XmlUtils.escapeXml(filePath)}</file>`,
-      '  <content>'
-    ];
-
-    // Add each line with proper line numbering using the format: lineNumber: content
-    lines.forEach((line, index) => {
+    // Format content with line numbers using the standard "lineNumber: content" format
+    const content = lines.map((line, index) => {
       const lineNumber = startLine + index;
-      xmlParts.push(`${lineNumber}: ${XmlUtils.escapeXml(line)}`);
+      return `${lineNumber}: ${line}`;
     });
 
-    xmlParts.push('  </content>');
-    xmlParts.push('</file_content>');
+    const fileContent = {
+      file: filePath,
+      content: content
+    };
 
-    return xmlParts.join('\n');
+    return JSON.stringify(fileContent, null, 2);
   }
 
   /**
    * Format an error result when file reading fails
    * @param error The error message
-   * @returns Formatted XML string with error information
+   * @returns Simple string error message
    */
   private formatError(error: string): string {
-    const xmlParts = [
-      '<file_content>',
-      `  <error>${XmlUtils.escapeXml(error)}</error>`,
-      '</file_content>'
-    ];
-
-    return xmlParts.join('\n');
+    return `Error reading file: ${error}`;
   }
 }

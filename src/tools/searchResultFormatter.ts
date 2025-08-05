@@ -1,14 +1,12 @@
-import { XmlUtils } from './xmlUtils';
-
 /**
- * Utility class for formatting search pattern results into structured XML output
- * optimized for LLM parsing and understanding.
+ * Utility class for formatting search pattern results into structured JSON output
+ * optimized for LLM parsing and understanding with minimal token usage.
  */
 export class SearchResultFormatter {
   /**
-   * Format search pattern results into structured XML format for LLM consumption
+   * Format search pattern results into structured JSON format for LLM consumption
    * @param matches Array of matches with file paths, line numbers, and content
-   * @returns Array of formatted XML strings representing the search results
+   * @returns Array of JSON strings representing the search results
    */
   formatResults(
     matches: Array<{ filePath: string; lineNumber: number; line: string }>
@@ -32,25 +30,14 @@ export class SearchResultFormatter {
 
     const results: string[] = [];
 
-    // Create XML for each file
+    // Create simplified JSON structure for each file
     for (const [filePath, fileMatches] of groupedMatches) {
-      const xmlParts = [
-        '<search_result>',
-        `  <file>${XmlUtils.escapeXml(filePath)}</file>`,
-        `  <matches count="${fileMatches.length}">`
-      ];
+      const searchResult = {
+        file: filePath,
+        matches: fileMatches.map(match => `${match.lineNumber}: ${match.line}`)
+      };
 
-      // Add content with line numbers in the format "lineNumber: content"
-      xmlParts.push(`    <content>`);
-      for (const match of fileMatches) {
-        xmlParts.push(`${match.lineNumber}: ${XmlUtils.escapeXml(match.line)}`);
-      }
-      xmlParts.push(`    </content>`);
-
-      xmlParts.push(`  </matches>`);
-      xmlParts.push('</search_result>');
-
-      results.push(xmlParts.join('\n'));
+      results.push(JSON.stringify(searchResult, null, 2));
     }
 
     return results;
@@ -58,34 +45,19 @@ export class SearchResultFormatter {
 
   /**
    * Format a 'no matches found' message
-   * @returns Formatted XML message indicating no matches
+   * @returns Simple string message indicating no matches
    */
   formatNoMatches(): string {
-    const xmlParts = [
-      '<search_result>',
-      `  <matches count="0">`,
-      `    <message>No matches found for the specified pattern</message>`,
-      `  </matches>`,
-      '</search_result>'
-    ];
-
-    return xmlParts.join('\n');
+    return 'No matches found for the specified pattern';
   }
 
   /**
    * Format an error result when search fails
    * @param error The error that occurred
-   * @returns Formatted XML string with error information
+   * @returns Simple string error message
    */
   formatError(error: unknown): string {
     const errorMessage = error instanceof Error ? error.message : String(error);
-
-    const xmlParts = [
-      '<search_result>',
-      `  <error>Error searching for pattern: ${XmlUtils.escapeXml(errorMessage)}</error>`,
-      '</search_result>'
-    ];
-
-    return xmlParts.join('\n');
+    return `Error searching for pattern: ${errorMessage}`;
   }
 }

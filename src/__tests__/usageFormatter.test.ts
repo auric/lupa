@@ -20,7 +20,7 @@ describe('UsageFormatter', () => {
     });
 
     describe('formatUsage', () => {
-        it('should format usage with proper XML structure', () => {
+        it('should format usage with proper JSON structure', () => {
             const range = new vscode.Range(
                 new vscode.Position(5, 10),
                 new vscode.Position(5, 17)
@@ -30,23 +30,18 @@ describe('UsageFormatter', () => {
                 'src/components/Button.tsx',
                 'MyClass',
                 range,
-                '  5: const instance = new MyClass();\n  6: return instance;'
+                ['  5: const instance = new MyClass();', '  6: return instance;']
             );
 
-            expect(result).toContain('<symbol_usage>');
-            expect(result).toContain('<file>src/components/Button.tsx</file>');
-            expect(result).toContain('<symbol_name>MyClass</symbol_name>');
-            expect(result).toContain('<location>');
-            expect(result).toContain('<start_line>6</start_line>'); // 1-based line numbers
-            expect(result).toContain('<start_character>10</start_character>');
-            expect(result).toContain('<end_line>6</end_line>');
-            expect(result).toContain('<end_character>17</end_character>');
-            expect(result).toContain('<context>');
-            expect(result).toContain('const instance = new MyClass()');
-            expect(result).toContain('</symbol_usage>');
+            expect(result).toContain('"file": "src/components/Button.tsx"');
+            expect(result).toContain('"location"');
+            expect(result).toContain('"line": 6'); // 1-based line numbers
+            expect(result).toContain('"character": 10');
+            expect(result).toContain('"context"'); // Context array
+            expect(result).toContain('const instance = new MyClass()'); // Context content
         });
 
-        it('should escape XML characters in file path and symbol name', () => {
+        it('should handle special characters in file path', () => {
             const range = new vscode.Range(
                 new vscode.Position(0, 0),
                 new vscode.Position(0, 5)
@@ -56,16 +51,16 @@ describe('UsageFormatter', () => {
                 'src/test<file>.ts',
                 'Class&Name',
                 range,
-                'context'
+                ['context line']
             );
 
-            expect(result).toContain('<file>src/test&lt;file&gt;.ts</file>');
-            expect(result).toContain('<symbol_name>Class&amp;Name</symbol_name>');
+            expect(result).toContain('"file": "src/test<file>.ts"'); // JSON preserves original characters
+            expect(result).toContain('"context"'); // Should include context array
         });
     });
 
     describe('formatErrorUsage', () => {
-        it('should format error usage with proper XML structure', () => {
+        it('should format error usage with proper JSON structure', () => {
             const range = new vscode.Range(
                 new vscode.Position(2, 5),
                 new vscode.Position(2, 12)
@@ -79,13 +74,10 @@ describe('UsageFormatter', () => {
                 error
             );
 
-            expect(result).toContain('<symbol_usage>');
-            expect(result).toContain('<file>src/error.ts</file>');
-            expect(result).toContain('<symbol_name>ErrorClass</symbol_name>');
-            expect(result).toContain('<location>');
-            expect(result).toContain('<start_line>3</start_line>'); // 1-based
-            expect(result).toContain('<error>Could not read file content: File read failed</error>');
-            expect(result).toContain('</symbol_usage>');
+            expect(result).toContain('"file": "src/error.ts"');
+            expect(result).toContain('"location"');
+            expect(result).toContain('"line": 3'); // 1-based
+            expect(result).toContain('"error": "Could not read file content: File read failed"');
         });
 
         it('should handle non-Error objects', () => {
@@ -101,10 +93,10 @@ describe('UsageFormatter', () => {
                 'String error message'
             );
 
-            expect(result).toContain('<error>Could not read file content: String error message</error>');
+            expect(result).toContain('"error": "Could not read file content: String error message"');
         });
 
-        it('should escape XML characters in error messages', () => {
+        it('should handle special characters in error messages', () => {
             const range = new vscode.Range(
                 new vscode.Position(0, 0),
                 new vscode.Position(0, 1)
@@ -117,7 +109,7 @@ describe('UsageFormatter', () => {
                 'Error with <brackets> & ampersands'
             );
 
-            expect(result).toContain('Error with &lt;brackets&gt; &amp; ampersands');
+            expect(result).toContain('"error": "Could not read file content: Error with <brackets> & ampersands"');
         });
     });
 
@@ -132,10 +124,10 @@ describe('UsageFormatter', () => {
             expect(result).toBe("No usages found for symbol 'UnusedClass' in src/unused.ts");
         });
 
-        it('should escape XML characters in symbol name and file path', () => {
+        it('should handle special characters in symbol name and file path', () => {
             const result = formatter.formatNoUsagesMessage('Class<T>', 'src/test&file.ts');
-            expect(result).toContain("'Class&lt;T&gt;'");
-            expect(result).toContain('src/test&amp;file.ts');
+            expect(result).toContain("'Class<T>'"); // No XML escaping needed for plain strings
+            expect(result).toContain('src/test&file.ts');
         });
     });
 
@@ -156,13 +148,13 @@ describe('UsageFormatter', () => {
 
             const result = formatter.extractContextLines(mockDocument, range);
 
-            const lines = result.split('\n');
-            expect(lines).toHaveLength(5); // 2 before + 1 target + 2 after
-            expect(lines[0]).toBe('  2: line1'); // Line before (2-based indexing)
-            expect(lines[1]).toBe('  3: line2');
-            expect(lines[2]).toBe('> 4: line3'); // Target line with > prefix
-            expect(lines[3]).toBe('  5: line4');
-            expect(lines[4]).toBe('  6: line5'); // Line after
+            expect(Array.isArray(result)).toBe(true); // Now returns an array
+            expect(result).toHaveLength(5); // 2 before + 1 target + 2 after
+            expect(result[0]).toBe('2: line1'); // Line before (1-based indexing, no spaces)
+            expect(result[1]).toBe('3: line2');
+            expect(result[2]).toBe('4: line3'); // Target line (no > prefix in array format)
+            expect(result[3]).toBe('5: line4');
+            expect(result[4]).toBe('6: line5'); // Line after
         });
 
         it('should extract context lines with custom context size', () => {
@@ -173,11 +165,11 @@ describe('UsageFormatter', () => {
 
             const result = formatter.extractContextLines(mockDocument, range, 1);
 
-            const lines = result.split('\n');
-            expect(lines).toHaveLength(3); // 1 before + 1 target + 1 after
-            expect(lines[0]).toBe('  3: line2');
-            expect(lines[1]).toBe('> 4: line3'); // Target line
-            expect(lines[2]).toBe('  5: line4');
+            expect(Array.isArray(result)).toBe(true); // Now returns an array
+            expect(result).toHaveLength(3); // 1 before + 1 target + 1 after
+            expect(result[0]).toBe('3: line2');
+            expect(result[1]).toBe('4: line3'); // Target line
+            expect(result[2]).toBe('5: line4');
         });
 
         it('should handle context at beginning of file', () => {
@@ -188,10 +180,10 @@ describe('UsageFormatter', () => {
 
             const result = formatter.extractContextLines(mockDocument, range, 2);
 
-            const lines = result.split('\n');
-            expect(lines[0]).toBe('> 1: line0'); // First line, no lines before
-            expect(lines[1]).toBe('  2: line1');
-            expect(lines[2]).toBe('  3: line2');
+            expect(Array.isArray(result)).toBe(true); // Now returns an array
+            expect(result[0]).toBe('1: line0'); // First line, no lines before
+            expect(result[1]).toBe('2: line1');
+            expect(result[2]).toBe('3: line2');
         });
 
         it('should handle context at end of file', () => {
@@ -202,8 +194,8 @@ describe('UsageFormatter', () => {
 
             const result = formatter.extractContextLines(mockDocument, range, 2);
 
-            const lines = result.split('\n');
-            expect(lines[lines.length - 1]).toBe('> 7: line6'); // Last line
+            expect(Array.isArray(result)).toBe(true); // Now returns an array
+            expect(result[result.length - 1]).toBe('7: line6'); // Last line
             // Should include previous lines but not exceed file bounds
         });
 
@@ -215,9 +207,9 @@ describe('UsageFormatter', () => {
 
             const result = formatter.extractContextLines(mockDocument, range, 0);
 
-            const lines = result.split('\n');
-            expect(lines).toHaveLength(1);
-            expect(lines[0]).toBe('> 4: line3'); // Only the target line
+            expect(Array.isArray(result)).toBe(true); // Now returns an array
+            expect(result).toHaveLength(1);
+            expect(result[0]).toBe('4: line3'); // Only the target line
         });
 
         it('should handle single line document', () => {
@@ -232,9 +224,9 @@ describe('UsageFormatter', () => {
 
             const result = formatter.extractContextLines(singleLineDoc, range, 2);
 
-            const lines = result.split('\n');
-            expect(lines).toHaveLength(1);
-            expect(lines[0]).toBe('> 1: single line');
+            expect(Array.isArray(result)).toBe(true); // Now returns an array
+            expect(result).toHaveLength(1);
+            expect(result[0]).toBe('1: single line');
         });
     });
 });

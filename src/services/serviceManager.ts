@@ -279,7 +279,7 @@ export class ServiceManager implements vscode.Disposable {
     private initializeTools(): void {
         try {
             // Register the FindSymbolTool (Get Definition functionality)
-            const findSymbolTool = new FindSymbolTool();
+            const findSymbolTool = new FindSymbolTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(findSymbolTool);
 
             // Register the FindUsagesTool (Find Usages functionality)

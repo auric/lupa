@@ -16,13 +16,13 @@ export class FindUsagesTool extends BaseTool {
   schema = z.object({
     symbolName: z.string().min(1, 'Symbol name cannot be empty').describe('The name of the symbol to find usages for'),
     filePath: z.string().min(1, 'File path cannot be empty').describe('The file path where the symbol is defined (used as starting point for reference search)'),
-    includeDeclaration: z.boolean().default(false).optional().describe('Whether to include the symbol declaration in results (default: false)'),
-    contextLines: z.number().min(0).max(10).default(2).optional().describe('Number of context lines to include around each usage (0-10, default: 2)'),
+    shouldIncludeDeclaration: z.boolean().default(false).optional().describe('Whether to include the symbol declaration in results (default: false)'),
+    contextLineCount: z.number().min(0).max(10).default(2).optional().describe('Number of context lines to include around each usage (0-10, default: 2)'),
   });
 
   async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
     try {
-      const { symbolName, filePath, includeDeclaration, contextLines } = args;
+      const { symbolName, filePath, shouldIncludeDeclaration, contextLineCount } = args;
 
       // Sanitize input to prevent potential injection attacks
       const sanitizedSymbolName = symbolName.trim();
@@ -64,7 +64,7 @@ export class FindUsagesTool extends BaseTool {
           'vscode.executeReferenceProvider',
           document.uri,
           symbolPosition,
-          { includeDeclaration: includeDeclaration || false }
+          { includeDeclaration: shouldIncludeDeclaration || false }
         );
 
         if (!references || references.length === 0) {
@@ -86,7 +86,7 @@ export class FindUsagesTool extends BaseTool {
             const contextText = this.formatter.extractContextLines(
               refDocument, 
               reference.range, 
-              contextLines || 2
+              contextLineCount || 2
             );
 
             const formattedUsage = this.formatter.formatUsage(

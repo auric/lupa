@@ -24,15 +24,15 @@ describe('DefinitionFormatter', () => {
                 true
             );
 
-            expect(result).toContain('<symbol_definition>');
-            expect(result).toContain('<file>src/test.ts</file>');
-            expect(result).toContain('<symbol_name>TestClass</symbol_name>');
-            expect(result).toContain('<start_line>6</start_line>'); // 1-based
-            expect(result).toContain('<start_character>0</start_character>');
-            expect(result).toContain('<end_line>11</end_line>'); // 1-based
-            expect(result).toContain('<end_character>1</end_character>');
-            expect(result).toContain('<full_body>\nclass TestClass {\n  constructor() {}\n}\n  </full_body>');
-            expect(result).toContain('</symbol_definition>');
+            expect(result).toContain('"file": "src/test.ts"');
+            expect(result).toContain('"location"');
+            expect(result).toContain('"line": 6');
+            expect(result).toContain('"character": 0');
+            expect(result).toContain('"body"');
+            expect(result).toContain('class TestClass');
+            expect(result).toContain('constructor() {}');
+            // JSON format includes all the content in body lines
+            // JSON format validation complete
         });
 
         it('should format definition without full body', () => {
@@ -49,9 +49,9 @@ describe('DefinitionFormatter', () => {
                 false
             );
 
-            expect(result).toContain('<symbol_name>myFunction</symbol_name>');
-            expect(result).toContain('<full_body>false</full_body>');
-            expect(result).not.toContain('function myFunction');
+            expect(result).toContain('"file": "src/utils.ts"');
+            expect(result).not.toContain('"body"'); // No body when includeFullBody is false
+            expect(result).toContain('"location"'); // Should still have location info
         });
 
         it('should escape XML special characters', () => {
@@ -68,9 +68,9 @@ describe('DefinitionFormatter', () => {
                 true
             );
 
-            expect(result).toContain('<file>src/file&lt;with&gt;special&amp;chars&quot;test&apos;.ts</file>');
-            expect(result).toContain('<symbol_name>symbol&lt;with&gt;&amp;special&quot;chars&apos;</symbol_name>');
-            expect(result).toContain('const test = "value & other";');
+            expect(result).toContain('"file": "src/file<with>special&chars\\"test\'.ts"'); // JSON preserves original characters
+            expect(result).toContain('"body"'); // Should include body content
+            expect(result).toContain('const test = \\"value & other\\";'); // JSON escapes quotes
         });
     });
 
@@ -89,10 +89,10 @@ describe('DefinitionFormatter', () => {
                 error
             );
 
-            expect(result).toContain('<file>src/missing.ts</file>');
-            expect(result).toContain('<symbol_name>MissingClass</symbol_name>');
-            expect(result).toContain('<start_line>4</start_line>'); // 1-based
-            expect(result).toContain('<error>Could not read file content: File not found</error>');
+            expect(result).toContain('"file": "src/missing.ts"');
+            expect(result).toContain('"location"');
+            expect(result).toContain('"line": 4'); // 1-based line number
+            expect(result).toContain('"error": "Could not read file content: File not found"');
         });
 
         it('should format error definition with string error', () => {
@@ -108,7 +108,7 @@ describe('DefinitionFormatter', () => {
                 'Custom error message'
             );
 
-            expect(result).toContain('<error>Could not read file content: Custom error message</error>');
+            expect(result).toContain('"error": "Could not read file content: Custom error message"');
         });
 
         it('should escape XML characters in error messages', () => {
@@ -124,7 +124,7 @@ describe('DefinitionFormatter', () => {
                 'Error with <XML> & "quotes"'
             );
 
-            expect(result).toContain('<error>Could not read file content: Error with &lt;XML&gt; &amp; &quot;quotes&quot;</error>');
+            expect(result).toContain('"error": "Could not read file content: Error with <XML> & \\"quotes\\""'); // JSON preserves chars, escapes quotes
         });
     });
 
@@ -136,7 +136,7 @@ describe('DefinitionFormatter', () => {
 
         it('should escape XML characters in symbol name', () => {
             const result = formatter.formatNotFoundMessage('Symbol<with>&special"chars\'');
-            expect(result).toBe("Symbol 'Symbol&lt;with&gt;&amp;special&quot;chars&apos;' not found");
+            expect(result).toBe("Symbol 'Symbol<with>&special\"chars\'' not found"); // No XML escaping needed for plain strings
         });
     });
 });

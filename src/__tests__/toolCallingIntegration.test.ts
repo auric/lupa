@@ -267,7 +267,7 @@ describe('Tool-Calling Integration Tests', () => {
             // Verify tool error is captured in conversation
             const history = conversationManager.getHistory();
             const toolMessage = history.find(m => m.role === 'tool');
-            expect(toolMessage?.content).toContain('NonExistentSymbol');
+            expect(toolMessage?.content).toContain('Error finding symbol definition');
         });
 
         it('should handle LLM errors during conversation', async () => {
