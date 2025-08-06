@@ -62,7 +62,7 @@ const mockCopilotModelManager = {
 
 const mockPromptGenerator = {
     getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: find_file')
+    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: find_files_by_pattern')
 };
 
 describe('FindFileTool Integration Tests', () => {
@@ -150,10 +150,10 @@ describe('FindFileTool Integration Tests', () => {
 
             const mockToolCall = {
                 call: {
-                    name: 'find_file',
+                    name: 'find_files_by_pattern',
                     arguments: {
-                        fileName: '*.tsx',
-                        path: 'components'
+                        pattern: '*.tsx',
+                        search_directory: 'components'
                     }
                 }
             };
@@ -175,7 +175,7 @@ describe('FindFileTool Integration Tests', () => {
 
             // Verify results are properly formatted
             expect(toolCallResults).toHaveLength(1);
-            expect(toolCallResults[0].name).toBe('find_file');
+            expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(true);
             expect(toolCallResults[0].result).toEqual([
                 'components/components/Button.tsx',
@@ -202,10 +202,10 @@ describe('FindFileTool Integration Tests', () => {
 
             const mockToolCall = {
                 call: {
-                    name: 'find_file',
+                    name: 'find_files_by_pattern',
                     arguments: {
-                        fileName: '**/*.{js,ts}',
-                        path: '.'
+                        pattern: '**/*.{js,ts}',
+                        search_directory: '.'
                     }
                 }
             };
@@ -243,9 +243,9 @@ describe('FindFileTool Integration Tests', () => {
 
             const mockToolCall = {
                 call: {
-                    name: 'find_file',
+                    name: 'find_files_by_pattern',
                     arguments: {
-                        fileName: '*.js'
+                        pattern: '*.js'
                     }
                 }
             };
@@ -283,10 +283,10 @@ describe('FindFileTool Integration Tests', () => {
 
             const mockToolCall = {
                 call: {
-                    name: 'find_file',
+                    name: 'find_files_by_pattern',
                     arguments: {
-                        fileName: '*.js',
-                        path: 'restricted'
+                        pattern: '*.js',
+                        search_directory: 'restricted'
                     }
                 }
             };
@@ -296,10 +296,10 @@ describe('FindFileTool Integration Tests', () => {
                 args: mockToolCall.call.arguments
             }]);
 
-            expect(toolCallResults[0].name).toBe('find_file');
+            expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(true);
             expect(toolCallResults[0].result).toEqual([
-                'Error finding files: Failed to find files matching \'*.js\' in \'restricted\': Permission denied'
+                'Unable to find files matching pattern \'*.js\' in directory \'restricted\': Failed to find files matching \'*.js\' in \'restricted\': Permission denied'
             ]);
         });
 
@@ -317,10 +317,10 @@ describe('FindFileTool Integration Tests', () => {
 
             const mockToolCall = {
                 call: {
-                    name: 'find_file',
+                    name: 'find_files_by_pattern',
                     arguments: {
-                        fileName: '', // Invalid: empty filename but will be processed
-                        path: 'src'
+                        pattern: '', // Invalid: empty pattern but will be processed
+                        search_directory: 'src'
                     }
                 }
             };
@@ -330,9 +330,9 @@ describe('FindFileTool Integration Tests', () => {
                 args: mockToolCall.call.arguments
             }]);
 
-            expect(toolCallResults[0].name).toBe('find_file');
+            expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(true);
-            expect(toolCallResults[0].result[0]).toContain('Error finding files:');
+            expect(toolCallResults[0].result[0]).toContain('Unable to find files matching pattern');
         });
 
         it('should handle recursive search patterns', async () => {
@@ -353,9 +353,9 @@ describe('FindFileTool Integration Tests', () => {
 
             const mockToolCall = {
                 call: {
-                    name: 'find_file',
+                    name: 'find_files_by_pattern',
                     arguments: {
-                        fileName: '**/*.test.ts'
+                        pattern: '**/*.test.ts'
                     }
                 }
             };
@@ -376,24 +376,24 @@ describe('FindFileTool Integration Tests', () => {
 
     describe('Tool Registry Integration', () => {
         it('should register FindFileTool correctly', () => {
-            expect(toolRegistry.hasTool('find_file')).toBe(true);
-            expect(toolRegistry.getTool('find_file')).toBe(findFileTool);
+            expect(toolRegistry.hasTool('find_files_by_pattern')).toBe(true);
+            expect(toolRegistry.getTool('find_files_by_pattern')).toBe(findFileTool);
         });
 
         it('should include FindFileTool in available tools list', () => {
             const toolNames = toolRegistry.getToolNames();
-            expect(toolNames).toContain('find_file');
+            expect(toolNames).toContain('find_files_by_pattern');
         });
 
         it('should provide correct tool definition for LLM', () => {
-            const tool = toolRegistry.getTool('find_file');
+            const tool = toolRegistry.getTool('find_files_by_pattern');
             const vscodeToolDef = tool!.getVSCodeTool();
 
-            expect(vscodeToolDef.name).toBe('find_file');
+            expect(vscodeToolDef.name).toBe('find_files_by_pattern');
             expect(vscodeToolDef.description).toContain('glob pattern');
             expect(vscodeToolDef.inputSchema).toBeDefined();
-            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('fileName');
-            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('path');
+            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('pattern');
+            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('search_directory');
         });
     });
 });

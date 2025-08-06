@@ -107,8 +107,8 @@ describe('FindFileTool', () => {
 
     describe('Tool Configuration', () => {
         it('should have correct name and description', () => {
-            expect(findFileTool.name).toBe('find_file');
-            expect(findFileTool.description).toContain('Find files by name or glob pattern');
+            expect(findFileTool.name).toBe('find_files_by_pattern');
+            expect(findFileTool.description).toContain('Find files matching glob patterns within a directory');
             expect(findFileTool.description).toContain('glob patterns');
             expect(findFileTool.description).toContain('.gitignore');
         });
@@ -117,32 +117,32 @@ describe('FindFileTool', () => {
             const schema = findFileTool.schema;
 
             // Test valid input with filename only
-            const validInput1 = { fileName: '*.js' };
+            const validInput1 = { pattern: '*.js' };
             expect(schema.safeParse(validInput1).success).toBe(true);
 
             // Test valid input with filename and path
-            const validInput2 = { fileName: '**/*.ts', path: 'src' };
+            const validInput2 = { pattern: '**/*.ts', search_directory: 'src' };
             expect(schema.safeParse(validInput2).success).toBe(true);
 
             // Test empty fileName should fail
-            const invalidInput = { fileName: '', path: 'src' };
+            const invalidInput = { pattern: '', search_directory: 'src' };
             expect(schema.safeParse(invalidInput).success).toBe(false);
 
             // Test missing fileName should fail
-            const missingFileName = { path: 'src' };
+            const missingFileName = { search_directory: 'src' };
             expect(schema.safeParse(missingFileName).success).toBe(false);
 
             // Test default path behavior
-            const withoutPath = { fileName: '*.js' };
+            const withoutPath = { pattern: '*.js' };
             const parsed = schema.parse(withoutPath);
-            expect(parsed.path).toBe('.');
+            expect(parsed.search_directory).toBe('.');
         });
 
         it('should create valid VS Code tool definition', () => {
             const vscodeToolDef = findFileTool.getVSCodeTool();
 
-            expect(vscodeToolDef.name).toBe('find_file');
-            expect(vscodeToolDef.description).toContain('Find files by name or glob pattern');
+            expect(vscodeToolDef.name).toBe('find_files_by_pattern');
+            expect(vscodeToolDef.description).toContain('Find files matching glob patterns within a directory');
             expect(vscodeToolDef.inputSchema).toBeDefined();
         });
     });
@@ -161,7 +161,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            await findFileTool.execute({ fileName: '*.js', path: 'src/../test' });
+            await findFileTool.execute({ pattern: '*.js', search_directory: 'src/../test' });
 
             expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith('src/../test');
         });
@@ -178,7 +178,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            await findFileTool.execute({ fileName: '*.js' });
+            await findFileTool.execute({ pattern: '*.js' });
 
             expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith('.');
         });
@@ -197,7 +197,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            const result = await findFileTool.execute({ fileName: '*.js', path: 'src' });
+            const result = await findFileTool.execute({ pattern: '*.js', search_directory: 'src' });
 
             // Verify fdir was configured correctly
             expect(mockFdirInstance.withGlobFunction).toHaveBeenCalledWith(picomatch);
@@ -224,7 +224,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            const result = await findFileTool.execute({ fileName: '**/*.{js,ts}' });
+            const result = await findFileTool.execute({ pattern: '**/*.{js,ts}' });
 
             expect(mockFdirInstance.glob).toHaveBeenCalledWith('**/*.{js,ts}');
             expect(result).toEqual(['component.js', 'test.ts']);
@@ -243,7 +243,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            const result = await findFileTool.execute({ fileName: '*.js' });
+            const result = await findFileTool.execute({ pattern: '*.js' });
 
             expect(result).toEqual(['a.js', 'm.js', 'z.js']);
         });
@@ -264,7 +264,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            await findFileTool.execute({ fileName: '*.js' });
+            await findFileTool.execute({ pattern: '*.js' });
 
             expect(mockReadFile).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -287,7 +287,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            const result = await findFileTool.execute({ fileName: '*.js' });
+            const result = await findFileTool.execute({ pattern: '*.js' });
 
             expect(result).toEqual(['file.js']);
         });
@@ -297,9 +297,9 @@ describe('FindFileTool', () => {
         it('should handle missing git repository', async () => {
             mockGetRepository.mockReturnValue(null);
 
-            const result = await findFileTool.execute({ fileName: '*.js' });
+            const result = await findFileTool.execute({ pattern: '*.js' });
 
-            expect(result[0]).toContain('Error finding files:');
+            expect(result[0]).toContain('Unable to find files matching pattern');
             expect(result[0]).toContain('Git repository not found');
         });
 
@@ -315,20 +315,20 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            const result = await findFileTool.execute({ fileName: '*.js' });
+            const result = await findFileTool.execute({ pattern: '*.js' });
 
-            expect(result[0]).toContain('Error finding files');
+            expect(result[0]).toContain('Unable to find files matching pattern');
             expect(result[0]).toContain('Directory not found');
         });
 
         it('should handle path sanitization errors', async () => {
             vi.mocked(PathSanitizer.sanitizePath).mockImplementation(() => {
-                throw new Error('Invalid path: Directory traversal detected');
+                throw new Error('Invalid search_directory: Directory traversal detected');
             });
 
-            const result = await findFileTool.execute({ fileName: '*.js', path: '../evil' });
+            const result = await findFileTool.execute({ pattern: '*.js', search_directory: '../evil' });
 
-            expect(result[0]).toContain('Error finding files');
+            expect(result[0]).toContain('Unable to find files matching pattern');
             expect(result[0]).toContain('Directory traversal detected');
         });
     });
@@ -346,7 +346,7 @@ describe('FindFileTool', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            const result = await findFileTool.execute({ fileName: '*.tsx' });
+            const result = await findFileTool.execute({ pattern: '*.tsx' });
 
             expect(result).toEqual(['src/components/Button.tsx']);
         });
