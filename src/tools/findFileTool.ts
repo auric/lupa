@@ -31,7 +31,7 @@ import { readGitignore } from '../utils/gitUtils';
 const MAX_RESULTS = 1000; // Prevent excessive memory usage
 const SEARCH_TIMEOUT = 30000; // 30 second timeout for expensive searches
 
-export class FindFileTool extends BaseTool {
+export class FindFilesByPatternTool extends BaseTool {
   name = 'find_files_by_pattern';
   description = 'Find files matching glob patterns within a directory. Supports wildcards (*.js), recursive search (**/*.ts), multiple extensions (*.{js,ts}). Automatically respects .gitignore rules. Returns relative paths from project root.';
 

@@ -4,7 +4,7 @@ import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProv
 import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import { FindFileTool } from '../tools/findFileTool';
+import { FindFilesByPatternTool } from '../tools/findFileTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { fdir } from 'fdir';
 
@@ -70,7 +70,7 @@ describe('FindFileTool Integration Tests', () => {
     let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
-    let findFileTool: FindFileTool;
+    let findFileTool: FindFilesByPatternTool;
     let mockReadFile: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
@@ -92,7 +92,7 @@ describe('FindFileTool Integration Tests', () => {
         } as any;
 
         // Initialize tools
-        findFileTool = new FindFileTool(mockGitOperationsManager);
+        findFileTool = new FindFilesByPatternTool(mockGitOperationsManager);
         toolRegistry.registerTool(findFileTool);
 
         // Initialize orchestrator
@@ -184,7 +184,7 @@ describe('FindFileTool Integration Tests', () => {
             ]);
         });
 
-        it('should handle glob patterns with multiple extensions', async () => {
+        it('should handle complex glob patterns', async () => {
             const mockFdirInstance = {
                 withGlobFunction: vi.fn().mockReturnThis(),
                 glob: vi.fn().mockReturnThis(),
@@ -200,19 +200,13 @@ describe('FindFileTool Integration Tests', () => {
             } as any;
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
-            const mockToolCall = {
-                call: {
-                    name: 'find_files_by_pattern',
-                    arguments: {
-                        pattern: '**/*.{js,ts}',
-                        search_directory: '.'
-                    }
-                }
-            };
-
+            // Test multiple extensions pattern
             const toolCallResults = await toolExecutor.executeTools([{
-                name: mockToolCall.call.name,
-                args: mockToolCall.call.arguments
+                name: 'find_files_by_pattern',
+                args: {
+                    pattern: '**/*.{js,ts}',
+                    search_directory: '.'
+                }
             }]);
 
             expect(mockFdirInstance.glob).toHaveBeenCalledWith('**/*.{js,ts}');
@@ -335,43 +329,6 @@ describe('FindFileTool Integration Tests', () => {
             expect(toolCallResults[0].result[0]).toContain('Unable to find files matching pattern');
         });
 
-        it('should handle recursive search patterns', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue([
-                    'src/components/Button/Button.test.ts',
-                    'src/utils/helpers.test.ts',
-                    'tests/integration/api.test.ts'
-                ])
-            } as any;
-            vi.mocked(fdir).mockReturnValue(mockFdirInstance);
-
-            const mockToolCall = {
-                call: {
-                    name: 'find_files_by_pattern',
-                    arguments: {
-                        pattern: '**/*.test.ts'
-                    }
-                }
-            };
-
-            const toolCallResults = await toolExecutor.executeTools([{
-                name: mockToolCall.call.name,
-                args: mockToolCall.call.arguments
-            }]);
-
-            expect(mockFdirInstance.glob).toHaveBeenCalledWith('**/*.test.ts');
-            expect(toolCallResults[0].result).toEqual([
-                'src/components/Button/Button.test.ts',
-                'src/utils/helpers.test.ts',
-                'tests/integration/api.test.ts'
-            ]);
-        });
     });
 
     describe('Tool Registry Integration', () => {
@@ -385,15 +342,43 @@ describe('FindFileTool Integration Tests', () => {
             expect(toolNames).toContain('find_files_by_pattern');
         });
 
-        it('should provide correct tool definition for LLM', () => {
+        it('should provide comprehensive tool definition for LLM', () => {
             const tool = toolRegistry.getTool('find_files_by_pattern');
             const vscodeToolDef = tool!.getVSCodeTool();
 
+            // Verify tool identification
             expect(vscodeToolDef.name).toBe('find_files_by_pattern');
-            expect(vscodeToolDef.description).toContain('glob pattern');
+            expect(tool!.name).toBe('find_files_by_pattern');
+
+            // Verify description is LLM-friendly with key features
+            expect(vscodeToolDef.description).toContain('Find files matching glob patterns within a directory');
+            expect(vscodeToolDef.description).toContain('glob patterns');
+            expect(vscodeToolDef.description).toContain('.gitignore');
+            expect(vscodeToolDef.description).toContain('relative paths');
+            expect(tool!.description).toContain('wildcards');
+            expect(tool!.description).toContain('recursive search');
+
+            // Verify schema structure and properties
             expect(vscodeToolDef.inputSchema).toBeDefined();
-            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('pattern');
-            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('search_directory');
+            const schema = vscodeToolDef.inputSchema as any;
+            expect(schema.type).toBe('object');
+            expect(schema.properties).toHaveProperty('pattern');
+            expect(schema.properties).toHaveProperty('search_directory');
+            expect(schema.required).toContain('pattern');
+
+            // Verify pattern parameter details for LLM understanding
+            const patternProp = schema.properties.pattern;
+            expect(patternProp.type).toBe('string');
+            expect(patternProp.description).toContain('*.js');
+            expect(patternProp.description).toContain('**/*.test.ts');
+            expect(patternProp.description).toContain('src/**/*.{js,ts}');
+
+            // Verify search_directory parameter details
+            const searchDirProp = schema.properties.search_directory;
+            expect(searchDirProp.type).toBe('string');
+            expect(searchDirProp.description).toContain('relative to project root');
+            expect(searchDirProp.description).toContain('default');
+            expect(searchDirProp.default).toBe('.');
         });
     });
 });

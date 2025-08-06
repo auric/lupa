@@ -32,7 +32,7 @@ import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GetHoverTool } from '../tools/getHoverTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { ListDirTool } from '../tools/listDirTool';
-import { FindFileTool } from '../tools/findFileTool';
+import { FindFilesByPatternTool } from '../tools/findFileTool';
 import { ReadFileTool } from '../tools/readFileTool';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
@@ -291,7 +291,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(listDirTool);
 
             // Register the FindFileTool (Find File functionality)
-            const findFileTool = new FindFileTool(this.services.gitOperations!);
+            const findFileTool = new FindFilesByPatternTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(findFileTool);
 
             // Register the ReadFileTool (Read File functionality)
