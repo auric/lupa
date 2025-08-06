@@ -32,7 +32,7 @@ import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GetHoverTool } from '../tools/getHoverTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { ListDirTool } from '../tools/listDirTool';
-import { FindFilesByPatternTool } from '../tools/findFileTool';
+import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { ReadFileTool } from '../tools/readFileTool';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';

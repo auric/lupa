@@ -4,7 +4,7 @@ import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProv
 import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import { FindFilesByPatternTool } from '../tools/findFileTool';
+import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { fdir } from 'fdir';
 

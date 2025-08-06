@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { FindFilesByPatternTool } from '../tools/findFileTool';
+import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { fdir } from 'fdir';
 import picomatch from 'picomatch';
