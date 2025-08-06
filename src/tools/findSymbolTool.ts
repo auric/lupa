@@ -129,7 +129,6 @@ export class FindSymbolTool extends BaseTool {
 
           const formattedDefinition = this.formatter.formatDefinition(
             filePath,
-            sanitizedSymbolName,
             range,
             symbolBody,
             shouldIncludeFullBody

@@ -16,7 +16,6 @@ export class DefinitionFormatter {
    */
   formatDefinition(
     filePath: string,
-    symbolName: string,
     range: vscode.Range,
     symbolBody: string | undefined = undefined,
     includeFullBody: boolean = true

@@ -18,7 +18,6 @@ describe('DefinitionFormatter', () => {
 
             const result = formatter.formatDefinition(
                 'src/test.ts',
-                'TestClass',
                 range,
                 'class TestClass {\n  constructor() {}\n}',
                 true
@@ -43,7 +42,6 @@ describe('DefinitionFormatter', () => {
 
             const result = formatter.formatDefinition(
                 'src/utils.ts',
-                'myFunction',
                 range,
                 undefined,
                 false
@@ -62,7 +60,6 @@ describe('DefinitionFormatter', () => {
 
             const result = formatter.formatDefinition(
                 'src/file<with>special&chars"test\'.ts',
-                'symbol<with>&special"chars\'',
                 range,
                 'const test = "value & other";',
                 true
