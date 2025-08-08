@@ -357,9 +357,14 @@ html, body, #root {
   margin: 0;
 }
 
-.parameter-form-container {
+.parameter-panel-scroll {
   flex: 1;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.parameter-form-container {
   padding: var(--space-4);
 }
 

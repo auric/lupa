@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { SymbolExtractor } from '../utils/symbolExtractor';
 
 // Mock the readGitignore function
 vi.mock('../utils/gitUtils', () => ({
@@ -35,13 +36,24 @@ vi.mock('vscode', async () => {
         FileType: {
             File: 1,
             Directory: 2
+        },
+        SymbolKind: {
+            Class: 5,
+            Function: 12,
+            Interface: 11,
+            Method: 6,
+            Variable: 13
         }
     };
 });
 
+vi.mock('../services/gitOperationsManager');
+vi.mock('../utils/symbolExtractor');
+
 describe('FindSymbolTool (Integration Tests)', () => {
     let findSymbolTool: FindSymbolTool;
     let mockGitOperationsManager: GitOperationsManager;
+    let mockSymbolExtractor: SymbolExtractor;
 
     beforeEach(() => {
         // Mock GitOperationsManager
@@ -50,47 +62,52 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 rootUri: { fsPath: '/mock/repo/root' }
             })
         } as any;
-        
-        findSymbolTool = new FindSymbolTool(mockGitOperationsManager);
+
+        // Mock SymbolExtractor
+        mockSymbolExtractor = {
+            getGitRelativePathFromUri: vi.fn((uri) => 'test.ts'),
+            getDirectorySymbols: vi.fn(),
+            getTextDocument: vi.fn(),
+            getGitRootPath: vi.fn(() => '/mock/repo/root'),
+            getPathStat: vi.fn(),
+            extractSymbolsWithContext: vi.fn()
+        } as any;
+
+        findSymbolTool = new FindSymbolTool(mockGitOperationsManager, mockSymbolExtractor);
         vi.clearAllMocks();
     });
 
     describe('Tool Configuration', () => {
-        it('should have correct name and description', () => {
-            expect(findSymbolTool.name).toBe('find_symbol');
-            expect(findSymbolTool.description).toContain('Find the definition of a code symbol');
-        });
-
         it('should have valid schema with all required fields', () => {
             const schema = findSymbolTool.schema;
 
             // Test required field
-            const validInput = { symbolName: 'MyClass' };
+            const validInput = { name_path: 'MyClass' };
             expect(schema.safeParse(validInput).success).toBe(true);
 
             // Test with all optional fields
             const fullInput = {
-                symbolName: 'MyClass',
-                searchPath: 'src/test.ts',
-                shouldIncludeFullBody: false
+                name_path: 'MyClass',
+                relative_path: 'src/test.ts',
+                include_body: false
             };
             expect(schema.safeParse(fullInput).success).toBe(true);
 
             // Test validation (empty string rejection)
-            expect(schema.safeParse({ symbolName: '' }).success).toBe(false);
+            expect(schema.safeParse({ name_path: '' }).success).toBe(false);
         });
 
         it('should create valid VS Code tool definition', () => {
             const vscodeTools = findSymbolTool.getVSCodeTool();
             expect(vscodeTools.name).toBe('find_symbol');
-            expect(vscodeTools.description).toContain('Find the definition');
+            expect(vscodeTools.description).toContain('Finds code symbols (classes, functions, methods, variables, etc.) by exact name within the codebase.');
             expect(vscodeTools.inputSchema).toBeDefined();
         });
     });
 
     describe('Integration Workflow', () => {
         it('should orchestrate complete symbol finding workflow', async () => {
-            const mockFileUri = { toString: () => 'file:///project/test.ts', fsPath: '/project/test.ts' };
+            const mockFileUri = { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' };
             const mockFileContent = 'class MyClass {\n  constructor() {}\n}';
 
             const mockDocument = {
@@ -99,55 +116,57 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 lineCount: 3
             };
 
-            const mockDefinition = {
-                uri: mockFileUri,
-                range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } }
+            // Mock workspace symbol provider response
+            const mockWorkspaceSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                location: {
+                    uri: mockFileUri,
+                    range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } }
+                }
             };
 
-            // Mock GitOperationsManager for repository access
-            mockGitOperationsManager.getRepository.mockReturnValue({
-                rootUri: { fsPath: '/project' }
-            });
+            // Mock document symbol provider response with proper range methods
+            const mockDocumentSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                range: { 
+                    start: { line: 0, character: 6 }, 
+                    end: { line: 0, character: 13 },
+                    contains: vi.fn().mockReturnValue(true)
+                },
+                selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } },
+                children: []
+            };
 
-            // Mock file system to return files
-            vi.mocked(vscode.workspace.fs.readDirectory).mockResolvedValue([
-                ['test.ts', vscode.FileType.File]
-            ] as [string, vscode.FileType][]);
-
-            // Mock fs.stat to return directory type for the root and file type for the test file
-            vi.mocked(vscode.workspace.fs.stat).mockImplementation((uri) => {
-                if (uri.fsPath === '/project/.') {
-                    return Promise.resolve({ type: vscode.FileType.Directory } as any);
-                }
-                return Promise.resolve({ type: vscode.FileType.File } as any);
-            });
-
-            // Mock openTextDocument to return the document with the content that contains MyClass
+            // Mock openTextDocument to return the document
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
 
-            // Mock VS Code definition provider to return definitions when called
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, uri, position) => {
-                if (command === 'vscode.executeDefinitionProvider') {
-                    // Return definition only if we're looking at the right position
-                    return Promise.resolve([mockDefinition]);
+            // Mock VS Code commands for workspace and document symbols
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([mockWorkspaceSymbol]);
+                }
+                if (command === 'vscode.executeDocumentSymbolProvider') {
+                    return Promise.resolve([mockDocumentSymbol]);
                 }
                 return Promise.resolve([]);
             });
 
             const result = await findSymbolTool.execute({
-                symbolName: 'MyClass',
-                shouldIncludeFullBody: true
+                name_path: 'MyClass',
+                include_body: true
             });
 
             expect(result).toHaveLength(1);
-            expect(result[0]).toContain('"file"');
+            expect(result[0]).toContain('"file_path"');
             expect(result[0]).toContain('MyClass');
             expect(result[0]).toContain('"body"');
             // Integration test: verify complete workflow when symbols are found
         });
 
         it('should handle multiple definitions workflow', async () => {
-            const mockFileUri = { toString: () => 'file:///project/test.ts', fsPath: '/project/test.ts' };
+            const mockFileUri = { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' };
             const mockFileContent = 'function test() {}\nclass test {}';
 
             const mockDocument = {
@@ -156,49 +175,75 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 lineCount: 2
             };
 
-            const mockDefinitions = [
-                { uri: mockFileUri, range: { start: { line: 0, character: 9 }, end: { line: 0, character: 13 } } },
-                { uri: mockFileUri, range: { start: { line: 1, character: 6 }, end: { line: 1, character: 10 } } }
+            // Mock multiple workspace symbols with the same name
+            const mockWorkspaceSymbols = [
+                {
+                    name: 'test',
+                    kind: vscode.SymbolKind.Function,
+                    location: {
+                        uri: mockFileUri,
+                        range: { start: { line: 0, character: 9 }, end: { line: 0, character: 13 } }
+                    }
+                },
+                {
+                    name: 'test',
+                    kind: vscode.SymbolKind.Class,
+                    location: {
+                        uri: mockFileUri,
+                        range: { start: { line: 1, character: 6 }, end: { line: 1, character: 10 } }
+                    }
+                }
             ];
 
-            // Mock GitOperationsManager for repository access
-            mockGitOperationsManager.getRepository.mockReturnValue({
-                rootUri: { fsPath: '/project' }
-            });
-
-            // Mock file system to return files
-            vi.mocked(vscode.workspace.fs.readDirectory).mockResolvedValue([
-                ['test.ts', vscode.FileType.File]
-            ] as [string, vscode.FileType][]);
-
-            // Mock fs.stat to return directory type for the root and file type for the test file
-            vi.mocked(vscode.workspace.fs.stat).mockImplementation((uri) => {
-                if (uri.fsPath === '/project/.') {
-                    return Promise.resolve({ type: vscode.FileType.Directory } as any);
+            // Mock document symbols with proper range methods
+            const mockDocumentSymbols = [
+                {
+                    name: 'test',
+                    kind: vscode.SymbolKind.Function,
+                    range: { 
+                        start: { line: 0, character: 9 }, 
+                        end: { line: 0, character: 13 },
+                        contains: vi.fn().mockReturnValue(true)
+                    },
+                    selectionRange: { start: { line: 0, character: 9 }, end: { line: 0, character: 13 } },
+                    children: []
+                },
+                {
+                    name: 'test',
+                    kind: vscode.SymbolKind.Class,
+                    range: { 
+                        start: { line: 1, character: 6 }, 
+                        end: { line: 1, character: 10 },
+                        contains: vi.fn().mockReturnValue(true)
+                    },
+                    selectionRange: { start: { line: 1, character: 6 }, end: { line: 1, character: 10 } },
+                    children: []
                 }
-                return Promise.resolve({ type: vscode.FileType.File } as any);
-            });
+            ];
 
-            // Mock openTextDocument to return the document with the content that contains test
+            // Mock openTextDocument to return the document
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
 
-            // Mock VS Code definition provider to return multiple definitions
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, uri, position) => {
-                if (command === 'vscode.executeDefinitionProvider') {
-                    return Promise.resolve(mockDefinitions);
+            // Mock VS Code commands
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve(mockWorkspaceSymbols);
+                }
+                if (command === 'vscode.executeDocumentSymbolProvider') {
+                    return Promise.resolve(mockDocumentSymbols);
                 }
                 return Promise.resolve([]);
             });
 
-            const result = await findSymbolTool.execute({ symbolName: 'test' });
+            const result = await findSymbolTool.execute({ name_path: 'test' });
 
             expect(result).toHaveLength(2);
             // Verify orchestration completed successfully
-            expect(result.every(r => r.includes('"file"'))).toBe(true);
+            expect(result.every(r => r.includes('"file_path"'))).toBe(true);
         });
 
         it('should respect includeFullBody parameter in workflow', async () => {
-            const mockFileUri = { toString: () => 'file:///project/test.ts', fsPath: '/project/test.ts' };
+            const mockFileUri = { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' };
             const mockFileContent = 'class MyClass {}';
 
             const mockDocument = {
@@ -207,160 +252,159 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 lineCount: 1
             };
 
-            const mockDefinition = {
-                uri: mockFileUri,
-                range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } }
+            // Mock workspace symbol
+            const mockWorkspaceSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                location: {
+                    uri: mockFileUri,
+                    range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } }
+                }
             };
 
-            // Mock GitOperationsManager for repository access
-            mockGitOperationsManager.getRepository.mockReturnValue({
-                rootUri: { fsPath: '/project' }
-            });
+            // Mock document symbol with proper range methods
+            const mockDocumentSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                range: { 
+                    start: { line: 0, character: 6 }, 
+                    end: { line: 0, character: 13 },
+                    contains: vi.fn().mockReturnValue(true)
+                },
+                selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } },
+                children: []
+            };
 
-            // Mock file system to return files
-            vi.mocked(vscode.workspace.fs.readDirectory).mockResolvedValue([
-                ['test.ts', vscode.FileType.File]
-            ] as [string, vscode.FileType][]);
-
-            // Mock fs.stat to return directory type for the root and file type for the test file
-            vi.mocked(vscode.workspace.fs.stat).mockImplementation((uri) => {
-                if (uri.fsPath === '/project/.') {
-                    return Promise.resolve({ type: vscode.FileType.Directory } as any);
-                }
-                return Promise.resolve({ type: vscode.FileType.File } as any);
-            });
-
-            // Mock openTextDocument to return the document with the content that contains MyClass
+            // Mock openTextDocument to return the document
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
 
-            // Mock VS Code definition provider to return definitions when called
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, uri, position) => {
-                if (command === 'vscode.executeDefinitionProvider') {
-                    return Promise.resolve([mockDefinition]);
+            // Mock VS Code commands
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([mockWorkspaceSymbol]);
+                }
+                if (command === 'vscode.executeDocumentSymbolProvider') {
+                    return Promise.resolve([mockDocumentSymbol]);
                 }
                 return Promise.resolve([]);
             });
 
-            // Test shouldIncludeFullBody: false
+            // Test include_body: false
             const resultFalse = await findSymbolTool.execute({
-                symbolName: 'MyClass',
-                shouldIncludeFullBody: false
+                name_path: 'MyClass',
+                include_body: false
             });
 
-            expect(resultFalse[0]).toContain('"file"');
+            expect(resultFalse).toHaveLength(1);
+            expect(resultFalse[0]).toContain('"file_path"');
             expect(resultFalse[0]).not.toContain('"body"');
 
-            // Test shouldIncludeFullBody: true (default)
+            // Test include_body: true
             const resultTrue = await findSymbolTool.execute({
-                symbolName: 'MyClass',
-                shouldIncludeFullBody: true
+                name_path: 'MyClass',
+                include_body: true
             });
 
-            expect(resultTrue[0]).toContain('"file"');
+            expect(resultTrue).toHaveLength(1);
+            expect(resultTrue[0]).toContain('"file_path"');
             expect(resultTrue[0]).toContain('"body"');
         });
     });
 
     describe('Error Handling Integration', () => {
         it('should handle input validation errors', async () => {
-            const result = await findSymbolTool.execute({ symbolName: '   ' });
-            expect(result).toEqual(['Error: Symbol name cannot be empty']);
+            const result = await findSymbolTool.execute({ name_path: '   ' });
+            expect(result).toHaveLength(1);
+            expect(result[0]).toContain('Error: Symbol name cannot be empty');
         });
 
         it('should handle symbol not found workflow', async () => {
-            // Mock GitOperationsManager for repository access
-            mockGitOperationsManager.getRepository.mockReturnValue({
-                rootUri: { fsPath: '/project' }
-            });
-
-            // Mock file system to return no files
-            vi.mocked(vscode.workspace.fs.readDirectory).mockResolvedValue([]);
-
-            const result = await findSymbolTool.execute({ symbolName: 'NonExistentSymbol' });
-            expect(result).toEqual(["Symbol 'NonExistentSymbol' not found"]);
-        });
-
-        it('should handle VS Code API failures gracefully', async () => {
-            // Mock GitOperationsManager for repository access
-            mockGitOperationsManager.getRepository.mockReturnValue({
-                rootUri: { fsPath: '/project' }
-            });
-
-            // Mock file system to return files
-            vi.mocked(vscode.workspace.fs.readDirectory).mockResolvedValue([
-                ['test.ts', vscode.FileType.File]
-            ] as [string, vscode.FileType][]);
-
-            vi.mocked(vscode.commands.executeCommand).mockRejectedValue(new Error('API failed'));
-
-            const result = await findSymbolTool.execute({ symbolName: 'MyClass' });
-            expect(result).toEqual(["Symbol 'MyClass' not found"]);
-        });
-
-        it('should handle file reading errors in workflow', async () => {
-            const mockFileUri = { toString: () => 'file:///project/test.ts', fsPath: '/project/test.ts' };
-            const mockFileContent = 'class MyClass {}';
-
-            const mockDefinition = {
-                uri: mockFileUri,
-                range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } }
-            };
-
-            // Mock GitOperationsManager for repository access
-            mockGitOperationsManager.getRepository.mockReturnValue({
-                rootUri: { fsPath: '/project' }
-            });
-
-            // Mock file system to return files
-            vi.mocked(vscode.workspace.fs.readDirectory).mockResolvedValue([
-                ['test.ts', vscode.FileType.File]
-            ] as [string, vscode.FileType][]);
-
-            // Mock fs.stat to return directory type for the root and file type for the test file
-            vi.mocked(vscode.workspace.fs.stat).mockImplementation((uri) => {
-                if (uri.fsPath === '/project/.') {
-                    return Promise.resolve({ type: vscode.FileType.Directory } as any);
-                }
-                return Promise.resolve({ type: vscode.FileType.File } as any);
-            });
-
-            // First openTextDocument call succeeds (to find the symbol in the file)
-            // Second openTextDocument call fails (when trying to read for formatting)
-            let callCount = 0;
-            vi.mocked(vscode.workspace.openTextDocument).mockImplementation(() => {
-                callCount++;
-                if (callCount === 1) {
-                    return Promise.resolve({
-                        getText: vi.fn().mockReturnValue(mockFileContent),
-                        uri: mockFileUri,
-                        lineCount: 1
-                    } as any);
-                } else {
-                    return Promise.reject(new Error('File not readable'));
-                }
-            });
-
-            // Mock VS Code definition provider to return definitions when called
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, uri, position) => {
-                if (command === 'vscode.executeDefinitionProvider') {
-                    return Promise.resolve([mockDefinition]);
+            // Mock workspace symbol provider to return empty results
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([]);
                 }
                 return Promise.resolve([]);
             });
 
-            const result = await findSymbolTool.execute({ symbolName: 'MyClass' });
+            const result = await findSymbolTool.execute({ name_path: 'NonExistentSymbol' });
+            expect(result).toHaveLength(1);
+            expect(result[0]).toContain("Symbol 'NonExistentSymbol' not found");
+        });
+
+        it('should handle VS Code API failures gracefully', async () => {
+            // Mock workspace symbol provider to throw an error
+            vi.mocked(vscode.commands.executeCommand).mockRejectedValue(new Error('API failed'));
+
+            const result = await findSymbolTool.execute({ name_path: 'MyClass' });
+            expect(result).toHaveLength(1);
+            expect(result[0]).toContain("Symbol 'MyClass' not found");
+        });
+
+        it('should handle file reading errors in workflow', async () => {
+            // Mock workspace symbol provider to succeed but document opening to fail
+            const mockWorkspaceSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                location: {
+                    uri: { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' },
+                    range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } }
+                }
+            };
+
+            // Mock openTextDocument to always fail
+            vi.mocked(vscode.workspace.openTextDocument).mockRejectedValue(new Error('File not readable'));
+
+            // Mock VS Code commands
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([mockWorkspaceSymbol]);
+                }
+                if (command === 'vscode.executeDocumentSymbolProvider') {
+                    return Promise.resolve([]);
+                }
+                return Promise.resolve([]);
+            });
+
+            const result = await findSymbolTool.execute({ name_path: 'MyClass' });
 
             expect(result).toHaveLength(1);
-            expect(result[0]).toContain('Could not read file content');
-            // Integration test: verify error handled, not error message format details
+            expect(result[0]).toContain("Symbol 'MyClass' not found");
+            // Integration test: verify error handled gracefully when file can't be read
         });
 
         it('should handle unexpected workflow errors', async () => {
-            // Mock GitOperationsManager to return null (no repository)
-            mockGitOperationsManager.getRepository.mockReturnValue(null);
+            // Mock SymbolExtractor to throw an error
+            mockSymbolExtractor.getGitRelativePathFromUri.mockImplementation(() => {
+                throw new Error('Unexpected error in symbol extraction');
+            });
 
-            const result = await findSymbolTool.execute({ symbolName: 'test' });
-            expect(result[0]).toContain('Error: Git repository not found');
+            // Mock workspace symbol provider to return a symbol
+            const mockWorkspaceSymbol = {
+                name: 'test',
+                kind: vscode.SymbolKind.Class,
+                location: {
+                    uri: { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' },
+                    range: { start: { line: 0, character: 6 }, end: { line: 0, character: 10 } }
+                }
+            };
+
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([mockWorkspaceSymbol]);
+                }
+                return Promise.resolve([]);
+            });
+
+            vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue({
+                getText: vi.fn().mockReturnValue('class test {}'),
+                uri: mockWorkspaceSymbol.location.uri,
+                lineCount: 1
+            } as any);
+
+            const result = await findSymbolTool.execute({ name_path: 'test' });
+            expect(result).toHaveLength(1);
+            expect(result[0]).toContain("Symbol 'test' not found");
         });
     });
 });

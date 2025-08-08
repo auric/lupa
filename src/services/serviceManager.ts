@@ -23,6 +23,9 @@ import { TokenManagerService } from './tokenManagerService';
 import { AnalysisProvider } from './analysisProvider';
 import { IndexingManager } from './indexingManager';
 
+// Utility services
+import { SymbolExtractor } from '../utils/symbolExtractor';
+
 // Tool-calling services
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
@@ -63,6 +66,9 @@ export interface IServiceRegistry {
     uiManager: UIManager;
     gitOperations: GitOperationsManager;
     toolTestingWebview: ToolTestingWebviewService;
+
+    // Utility services
+    symbolExtractor: SymbolExtractor;
 
     // Tool-calling services
     toolRegistry: ToolRegistry;
@@ -182,6 +188,9 @@ export class ServiceManager implements vscode.Disposable {
         if (initialModelInfo && initialModelInfo.dimensions) {
             this.services.vectorDatabase.setCurrentModelDimension(initialModelInfo.dimensions);
         }
+
+        // Utility services (depend on gitOperations)
+        this.services.symbolExtractor = new SymbolExtractor(this.services.gitOperations!);
     }
 
     /**
@@ -279,7 +288,7 @@ export class ServiceManager implements vscode.Disposable {
     private initializeTools(): void {
         try {
             // Register the FindSymbolTool (Get Definition functionality)
-            const findSymbolTool = new FindSymbolTool(this.services.gitOperations!);
+            const findSymbolTool = new FindSymbolTool(this.services.gitOperations!, this.services.symbolExtractor!);
             this.services.toolRegistry!.registerTool(findSymbolTool);
 
             // Register the FindUsagesTool (Find Usages functionality)
@@ -299,7 +308,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(readFileTool);
 
             // Register the GetSymbolsOverviewTool (Get Symbols Overview functionality)
-            const getSymbolsOverviewTool = new GetSymbolsOverviewTool(this.services.gitOperations!);
+            const getSymbolsOverviewTool = new GetSymbolsOverviewTool(this.services.gitOperations!, this.services.symbolExtractor!);
             this.services.toolRegistry!.registerTool(getSymbolsOverviewTool);
 
             // Register the SearchForPatternTool (Search for Pattern functionality)

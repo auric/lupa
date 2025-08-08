@@ -22,6 +22,13 @@ vi.mock('vscode', async () => {
         Range: vi.fn().mockImplementation((start, end) => ({ start, end })),
         Uri: {
             parse: vi.fn((path) => ({ toString: () => path, fsPath: path }))
+        },
+        SymbolKind: {
+            Class: 5,
+            Function: 12,
+            Interface: 11,
+            Method: 6,
+            Variable: 13
         }
     };
 });
@@ -155,7 +162,7 @@ describe('Tool-Calling Integration Tests', () => {
                             id: 'call_1',
                             function: {
                                 name: 'find_symbol',
-                                arguments: JSON.stringify({ symbolName: 'MyClass' })
+                                arguments: JSON.stringify({ name_path: 'MyClass' })
                             }
                         }
                     ]
@@ -208,11 +215,11 @@ describe('Tool-Calling Integration Tests', () => {
                     toolCalls: [
                         {
                             id: 'call_1',
-                            function: { name: 'find_symbol', arguments: JSON.stringify({ symbolName: 'MyClass' }) }
+                            function: { name: 'find_symbol', arguments: JSON.stringify({ name_path: 'MyClass' }) }
                         },
                         {
                             id: 'call_2',
-                            function: { name: 'find_symbol', arguments: JSON.stringify({ symbolName: 'myFunction' }) }
+                            function: { name: 'find_symbol', arguments: JSON.stringify({ name_path: 'myFunction' }) }
                         }
                     ]
                 })
@@ -246,7 +253,7 @@ describe('Tool-Calling Integration Tests', () => {
                             id: 'call_1',
                             function: {
                                 name: 'find_symbol',
-                                arguments: JSON.stringify({ symbolName: 'NonExistentSymbol' })
+                                arguments: JSON.stringify({ name_path: 'NonExistentSymbol' })
                             }
                         }
                     ]
@@ -267,7 +274,7 @@ describe('Tool-Calling Integration Tests', () => {
             // Verify tool error is captured in conversation
             const history = conversationManager.getHistory();
             const toolMessage = history.find(m => m.role === 'tool');
-            expect(toolMessage?.content).toContain('Error finding symbol definition');
+            expect(toolMessage?.content).toContain('Symbol \'NonExistentSymbol\' not found');
         });
 
         it('should handle LLM errors during conversation', async () => {
@@ -288,7 +295,7 @@ describe('Tool-Calling Integration Tests', () => {
                 toolCalls: [
                     {
                         id: 'call_infinite',
-                        function: { name: 'find_symbol', arguments: JSON.stringify({ symbolName: 'test' }) }
+                        function: { name: 'find_symbol', arguments: JSON.stringify({ name_path: 'test' }) }
                     }
                 ]
             });

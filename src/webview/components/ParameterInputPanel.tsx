@@ -170,66 +170,69 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
 
   return (
     <div className="parameter-panel">
-      {/* Tool Info Header */}
-      <div className="tool-info-header">
-        <div className="tool-name-section">
-          <h2 className="tool-name">{toolInfo.name}</h2>
+      {/* Scrollable Content */}
+      <div className="parameter-panel-scroll">
+        {/* Tool Info Header */}
+        <div className="tool-info-header">
+          <div className="tool-name-section">
+            <h2 className="tool-name">{toolInfo.name}</h2>
+          </div>
+          <p className="tool-description">{toolInfo.description}</p>
         </div>
-        <p className="tool-description">{toolInfo.description}</p>
+
+        {/* Parameter Form */}
+        <div className="parameter-form-container">
+          <form className="parameter-form" onSubmit={(e) => { e.preventDefault(); handleExecute(); }}>
+
+            {/* Required Parameters */}
+            {requiredParams.length > 0 && (
+              <div className="parameter-section">
+                <h4 className="parameter-section-title">Required Parameters</h4>
+                {requiredParams.map(param => (
+                  <ParameterField
+                    key={param.name}
+                    parameter={param}
+                    value={parameters[param.name] !== undefined ? parameters[param.name] : (param.defaultValue !== undefined ? param.defaultValue : '')}
+                    onChange={handleParameterChange}
+                    error={getValidationError(param.name)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Optional Parameters */}
+            {optionalParams.length > 0 && (
+              <div className="parameter-section">
+                <button
+                  type="button"
+                  className="parameter-section-toggle"
+                  onClick={() => setShowOptionalParams(!showOptionalParams)}
+                  aria-expanded={showOptionalParams}
+                >
+                  <span className="toggle-icon">{showOptionalParams ? '▼' : '▶'}</span>
+                  Optional Parameters ({optionalParams.length})
+                </button>
+
+                {showOptionalParams && (
+                  <div className="optional-parameters">
+                    {optionalParams.map(param => (
+                      <ParameterField
+                        key={param.name}
+                        parameter={param}
+                        value={parameters[param.name] !== undefined ? parameters[param.name] : (param.defaultValue !== undefined ? param.defaultValue : '')}
+                        onChange={handleParameterChange}
+                        error={getValidationError(param.name)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </form>
+        </div>
       </div>
 
-      {/* Parameter Form */}
-      <div className="parameter-form-container">
-        <form className="parameter-form" onSubmit={(e) => { e.preventDefault(); handleExecute(); }}>
-
-          {/* Required Parameters */}
-          {requiredParams.length > 0 && (
-            <div className="parameter-section">
-              <h4 className="parameter-section-title">Required Parameters</h4>
-              {requiredParams.map(param => (
-                <ParameterField
-                  key={param.name}
-                  parameter={param}
-                  value={parameters[param.name] !== undefined ? parameters[param.name] : (param.defaultValue !== undefined ? param.defaultValue : '')}
-                  onChange={handleParameterChange}
-                  error={getValidationError(param.name)}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Optional Parameters */}
-          {optionalParams.length > 0 && (
-            <div className="parameter-section">
-              <button
-                type="button"
-                className="parameter-section-toggle"
-                onClick={() => setShowOptionalParams(!showOptionalParams)}
-                aria-expanded={showOptionalParams}
-              >
-                <span className="toggle-icon">{showOptionalParams ? '▼' : '▶'}</span>
-                Optional Parameters ({optionalParams.length})
-              </button>
-
-              {showOptionalParams && (
-                <div className="optional-parameters">
-                  {optionalParams.map(param => (
-                    <ParameterField
-                      key={param.name}
-                      parameter={param}
-                      value={parameters[param.name] !== undefined ? parameters[param.name] : (param.defaultValue !== undefined ? param.defaultValue : '')}
-                      onChange={handleParameterChange}
-                      error={getValidationError(param.name)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </form>
-      </div>
-
-      {/* Action Footer */}
+      {/* Fixed Action Footer */}
       <div className="parameter-actions">
         {isExecuting ? (
           <button
