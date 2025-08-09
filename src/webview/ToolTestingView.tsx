@@ -5,6 +5,7 @@ import { ResultsPanel } from './components/ResultsPanel';
 import { useVSCodeApi } from './hooks/useVSCodeApi';
 import { useTheme } from './hooks/useTheme';
 import { useToolExecution } from './hooks/useToolExecution';
+import { useResponsiveLayout } from './hooks/useResponsiveLayout';
 import type {
   ToolTestingViewProps,
   ToolInfo
@@ -16,11 +17,13 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
 }) => {
   const vscode = useVSCodeApi();
   const isDarkTheme = useTheme();
+  const layout = useResponsiveLayout();
   
   // State management
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [selectedTool, setSelectedTool] = useState<string | undefined>(initialTool);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'parameters' | 'results'>('parameters');
   
   // Custom hooks
   const {
@@ -86,10 +89,21 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
     });
   }, [vscode]);
 
+  const handleTabChange = useCallback((tab: 'parameters' | 'results') => {
+    setActiveTab(tab);
+  }, []);
+
+  // Auto-switch to results tab when execution starts
+  useEffect(() => {
+    if (isExecuting || currentSession) {
+      setActiveTab('results');
+    }
+  }, [isExecuting, currentSession]);
+
   return (
-    <div className={`tool-testing-interface ${isDarkTheme ? 'dark' : ''}`}>
-      {/* Left Panel - Tool Selection */}
-      <div className="tool-sidebar">
+    <div className={`toolTesting-interface ${isDarkTheme ? 'dark' : ''} layout-${layout.mode}`}>
+      {/* Tool Selection Sidebar */}
+      <div className="toolTesting-sidebar">
         <ToolLibrarySidebar
           tools={tools}
           selectedTool={selectedTool}
@@ -99,25 +113,69 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
         />
       </div>
 
-      {/* Center Panel - Parameter Input */}
-      <div className="tool-parameter-panel">
-        <ParameterInputPanel
-          toolInfo={currentToolInfo}
-          initialParameters={initialParameters}
-          onExecute={handleExecute}
-          isExecuting={isExecuting}
-          validationErrors={validationErrors}
-          onCancel={cancelExecution}
-        />
-      </div>
+      {/* Main Workspace Area */}
+      <div className="toolTesting-workspace">
+        {layout.shouldStack ? (
+          /* Stacked Layout for Narrow Screens */
+          <div className="toolTesting-tabs">
+            <div className="toolTesting-tabList">
+              <button
+                className={`toolTesting-tab ${activeTab === 'parameters' ? 'active' : ''}`}
+                onClick={() => handleTabChange('parameters')}
+                disabled={!selectedTool}
+              >
+                Parameters
+              </button>
+              <button
+                className={`toolTesting-tab ${activeTab === 'results' ? 'active' : ''}`}
+                onClick={() => handleTabChange('results')}
+              >
+                Results
+              </button>
+            </div>
+            
+            <div className="toolTesting-tabContent">
+              {activeTab === 'parameters' ? (
+                <ParameterInputPanel
+                  toolInfo={currentToolInfo}
+                  initialParameters={initialParameters}
+                  onExecute={handleExecute}
+                  isExecuting={isExecuting}
+                  validationErrors={validationErrors}
+                  onCancel={cancelExecution}
+                />
+              ) : (
+                <ResultsPanel
+                  session={currentSession}
+                  isExecuting={isExecuting}
+                  onNavigateToFile={handleNavigateToFile}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          /* Side-by-Side Layout for Wide Screens */
+          <>
+            <div className="toolTesting-parameterPanel">
+              <ParameterInputPanel
+                toolInfo={currentToolInfo}
+                initialParameters={initialParameters}
+                onExecute={handleExecute}
+                isExecuting={isExecuting}
+                validationErrors={validationErrors}
+                onCancel={cancelExecution}
+              />
+            </div>
 
-      {/* Right Panel - Results */}
-      <div className="tool-results-panel">
-        <ResultsPanel
-          session={currentSession}
-          isExecuting={isExecuting}
-          onNavigateToFile={handleNavigateToFile}
-        />
+            <div className="toolTesting-resultsPanel">
+              <ResultsPanel
+                session={currentSession}
+                isExecuting={isExecuting}
+                onNavigateToFile={handleNavigateToFile}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

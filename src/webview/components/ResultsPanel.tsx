@@ -1,7 +1,11 @@
-import React, { useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { CopyButton } from './CopyButton';
+import { JsonViewer } from './JsonViewer';
+import { LiveTimer } from './LiveTimer';
+import { StatusIndicator } from './StatusIndicator';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import type { ToolTestSession } from '../types/toolTestingTypes';
+import type { ExecutionStatus } from './StatusIndicator';
 
 interface ResultsPanelProps {
   session: ToolTestSession | null;
@@ -15,29 +19,22 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   onNavigateToFile
 }) => {
   const copyToClipboard = useCopyToClipboard();
+  const [activeTab, setActiveTab] = useState<'output' | 'raw'>('output');
 
   const formatExecutionTime = (ms: number) => {
     if (ms < 1000) return `${ms}ms`;
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'running': return '⏳';
-      case 'completed': return '✅';
-      case 'error': return '❌';
-      default: return '⭕';
-    }
+  const getExecutionStatus = (): ExecutionStatus => {
+    if (isExecuting) return 'running';
+    if (!session) return 'idle';
+    return session.status as ExecutionStatus;
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'running': return 'Executing...';
-      case 'completed': return 'Completed';
-      case 'error': return 'Error';
-      default: return 'Unknown';
-    }
-  };
+  const handleTabChange = useCallback((tab: 'output' | 'raw') => {
+    setActiveTab(tab);
+  }, []);
 
   const renderResultContent = (data: any, index: number) => {
     let content: string;
@@ -85,17 +82,15 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   // Show loading state
   if (isExecuting) {
     return (
-      <div className="results-panel">
-        <div className="results-header">
-          <div className="execution-status">
-            <span className="status-icon">⏳</span>
-            <span className="status-text">Executing...</span>
-          </div>
+      <div className="results-panel toolTesting-resultsPanel">
+        <div className="results-header toolTesting-resultsHeader">
+          <StatusIndicator status="running" />
+          <LiveTimer isRunning={true} className="toolTesting-executionTimer" />
         </div>
-        <div className="results-content">
-          <div className="loading-container">
-            <div className="loading-spinner large"></div>
-            <p className="loading-text">Running tool...</p>
+        <div className="results-content toolTesting-resultsContent">
+          <div className="loading-container toolTesting-loadingContainer">
+            <div className="toolTesting-loadingSpinner large"></div>
+            <p className="loading-text toolTesting-loadingText">Running tool...</p>
           </div>
         </div>
       </div>
@@ -105,18 +100,15 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   // Show empty state when no session
   if (!session) {
     return (
-      <div className="results-panel">
-        <div className="results-header">
-          <div className="execution-status">
-            <span className="status-icon">⭕</span>
-            <span className="status-text">Ready</span>
-          </div>
+      <div className="results-panel toolTesting-resultsPanel">
+        <div className="results-header toolTesting-resultsHeader">
+          <StatusIndicator status="idle" />
         </div>
-        <div className="results-content">
-          <div className="empty-state">
-            <div className="empty-state-icon">📊</div>
-            <h3 className="empty-state-title">No Results Yet</h3>
-            <p className="empty-state-description">
+        <div className="results-content toolTesting-resultsContent">
+          <div className="empty-state toolTesting-emptyState">
+            <div className="empty-state-icon toolTesting-emptyStateIcon">📊</div>
+            <h3 className="empty-state-title toolTesting-emptyStateTitle">No Results Yet</h3>
+            <p className="empty-state-description toolTesting-emptyStateDescription">
               Configure parameters and execute a tool to see results here
             </p>
           </div>
@@ -125,23 +117,27 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
     );
   }
 
+  const executionStatus = getExecutionStatus();
+
   // Show results
   return (
-    <div className="results-panel">
+    <div className="results-panel toolTesting-resultsPanel">
       {/* Results Header */}
-      <div className="results-header">
-        <div className="execution-status">
-          <span className="status-icon">{getStatusIcon(session.status)}</span>
-          <span className="status-text">{getStatusText(session.status)}</span>
-        </div>
+      <div className="results-header toolTesting-resultsHeader">
+        <StatusIndicator status={executionStatus} />
         
-        <div className="execution-metadata">
-          {session.executionTime && (
-            <span className="execution-time">
-              {formatExecutionTime(session.executionTime)}
+        <div className="execution-metadata toolTesting-executionMetadata">
+          {isExecuting ? (
+            <LiveTimer 
+              isRunning={true} 
+              className="toolTesting-executionTimer" 
+            />
+          ) : session.executionTime ? (
+            <span className="execution-time toolTesting-executionTime">
+              Final: {formatExecutionTime(session.executionTime)}
             </span>
-          )}
-          <span className="execution-timestamp">
+          ) : null}
+          <span className="execution-timestamp toolTesting-executionTimestamp">
             {session.timestamp.toLocaleTimeString()}
           </span>
         </div>
@@ -156,23 +152,41 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
               return `--- Result ${index + 1} ---\n${content}`;
             }).join('\n\n')}
             onCopy={copyToClipboard}
-            className="copy-all-btn"
+            className="copy-all-btn toolTesting-copyAllBtn"
           />
         )}
       </div>
 
+      {/* Results Tabs */}
+      <div className="toolTesting-resultsTabs">
+        <div className="toolTesting-tabList">
+          <button
+            className={`toolTesting-tab ${activeTab === 'output' ? 'active' : ''}`}
+            onClick={() => handleTabChange('output')}
+          >
+            Output
+          </button>
+          <button
+            className={`toolTesting-tab ${activeTab === 'raw' ? 'active' : ''}`}
+            onClick={() => handleTabChange('raw')}
+          >
+            Raw
+          </button>
+        </div>
+      </div>
+
       {/* Results Content */}
-      <div className="results-content">
+      <div className="results-content toolTesting-resultsContent">
         {session.status === 'error' && session.error ? (
-          <div className="error-display">
-            <div className="error-header">
-              <span className="error-icon">❌</span>
-              <span className="error-title">Execution Error</span>
+          <div className="error-display toolTesting-errorDisplay">
+            <div className="error-header toolTesting-errorHeader">
+              <StatusIndicator status="error" showText={false} />
+              <span className="error-title toolTesting-errorTitle">Execution Error</span>
             </div>
-            <pre className="error-content">
+            <pre className="error-content toolTesting-errorContent">
               <code>{session.error}</code>
             </pre>
-            <div className="error-actions">
+            <div className="error-actions toolTesting-errorActions">
               <CopyButton
                 text={session.error}
                 onCopy={copyToClipboard}
@@ -180,19 +194,45 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
             </div>
           </div>
         ) : session.results && session.results.length > 0 ? (
-          <div className="results-list">
-            {session.results.map((result, index) => (
-              <div key={result.id || index} className="result-item">
-                {renderResultContent(result.data, index)}
+          <div className="toolTesting-tabContent">
+            {activeTab === 'output' && (
+              <div className="toolTesting-outputTab">
+                {session.results.map((result, index) => (
+                  <div key={result.id || index} className="toolTesting-resultItem">
+                    <JsonViewer
+                      data={result.data}
+                      rootKey={`Result ${index + 1}`}
+                      defaultExpanded={index === 0}
+                      autoExpandDepth={1}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {activeTab === 'raw' && (
+              <div className="toolTesting-rawTab">
+                <div className="toolTesting-rawHeader">
+                  <span className="toolTesting-rawTitle">Raw JSON Output</span>
+                  <CopyButton
+                    text={JSON.stringify(session.results.map(r => r.data), null, 2)}
+                    onCopy={copyToClipboard}
+                    className="toolTesting-jsonViewerCopyBtn"
+                  />
+                </div>
+                <pre className="toolTesting-rawContent">
+                  <code>
+                    {JSON.stringify(session.results.map(r => r.data), null, 2)}
+                  </code>
+                </pre>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="empty-results">
-            <div className="empty-state">
-              <div className="empty-state-icon">📭</div>
-              <h3 className="empty-state-title">No Output</h3>
-              <p className="empty-state-description">
+          <div className="empty-results toolTesting-emptyResults">
+            <div className="empty-state toolTesting-emptyState">
+              <div className="empty-state-icon toolTesting-emptyStateIcon">📭</div>
+              <h3 className="empty-state-title toolTesting-emptyStateTitle">No Output</h3>
+              <p className="empty-state-description toolTesting-emptyStateDescription">
                 The tool executed successfully but returned no results
               </p>
             </div>

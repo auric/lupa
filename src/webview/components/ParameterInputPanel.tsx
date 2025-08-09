@@ -1,7 +1,6 @@
-import React, { useState, useCallback, useEffect, act } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { ToolInfo, FormValidationError } from '../types/toolTestingTypes';
 import { Checkbox } from '../../components/ui/checkbox';
-import is from 'zod/v4/locales/is.cjs';
 
 interface ParameterInputPanelProps {
   toolInfo: ToolInfo | undefined;
@@ -303,89 +302,143 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
       'aria-required': parameter.required
     };
 
-    console.log(`Rendering input for parameter: ${parameter.name}, type: ${parameter.type}, value: ${value}`);
-
+    // Boolean inputs
     if (parameter.type === 'boolean') {
       return (
-        <div className="flex items-center space-x-2">
+        <div className="toolTesting-checkboxWrapper">
           <Checkbox
             id={parameter.name}
             checked={Boolean(value)}
             onCheckedChange={(checked) => onChange(parameter.name, checked)}
             aria-describedby={parameter.description ? `${parameter.name}-desc` : undefined}
+            className="toolTesting-checkbox"
           />
           <label
             htmlFor={parameter.name}
-            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            className="toolTesting-checkboxLabel"
           >
-            {parameter.name}
+            Enable {parameter.name}
           </label>
         </div>
       );
     }
 
+    // Number inputs with enhanced styling
     if (parameter.type === 'number') {
       return (
-        <input
-          type="number"
-          {...commonProps}
-          value={value !== undefined ? value : ''}
-          onChange={handleChange}
-          className={`parameter-input ${error ? 'error' : ''}`}
-          placeholder={`Enter ${parameter.name}...`}
-          min={parameter.validation?.min}
-          max={parameter.validation?.max}
-        />
+        <div className="toolTesting-numberInputWrapper">
+          <input
+            type="number"
+            {...commonProps}
+            value={value !== undefined ? value : ''}
+            onChange={handleChange}
+            className={`toolTesting-numberInput ${error ? 'error' : ''}`}
+            placeholder={`Enter ${parameter.name}...`}
+            min={parameter.validation?.min}
+            max={parameter.validation?.max}
+            step="any"
+          />
+          {(parameter.validation?.min !== undefined || parameter.validation?.max !== undefined) && (
+            <div className="toolTesting-inputHint">
+              {parameter.validation?.min !== undefined && parameter.validation?.max !== undefined
+                ? `Range: ${parameter.validation.min} - ${parameter.validation.max}`
+                : parameter.validation?.min !== undefined
+                ? `Min: ${parameter.validation.min}`
+                : `Max: ${parameter.validation.max}`
+              }
+            </div>
+          )}
+        </div>
       );
     }
 
-    // String, array, object types - use textarea for longer content
-    if (parameter.name.toLowerCase().includes('content') ||
-      parameter.name.toLowerCase().includes('text') ||
-      parameter.type === 'array' ||
-      parameter.type === 'object') {
+    // File path inputs - detect common file path parameter names
+    const isFilePathParam = parameter.name.toLowerCase().includes('path') || 
+                           parameter.name.toLowerCase().includes('file') ||
+                           parameter.description?.toLowerCase().includes('path') ||
+                           parameter.description?.toLowerCase().includes('file');
+
+    if (isFilePathParam) {
       return (
-        <textarea
+        <div className="toolTesting-fileInputWrapper">
+          <input
+            type="text"
+            {...commonProps}
+            value={value || ''}
+            onChange={handleChange}
+            className={`toolTesting-fileInput ${error ? 'error' : ''}`}
+            placeholder={`Enter file path...`}
+          />
+          <div className="toolTesting-inputHint">
+            File path (e.g., src/components/MyComponent.tsx)
+          </div>
+        </div>
+      );
+    }
+
+    // Large text inputs - use textarea for content, text, or multi-line fields
+    const isLargeText = parameter.name.toLowerCase().includes('content') ||
+                       parameter.name.toLowerCase().includes('text') ||
+                       parameter.name.toLowerCase().includes('message') ||
+                       parameter.name.toLowerCase().includes('description') ||
+                       parameter.type === 'array' ||
+                       parameter.type === 'object';
+
+    if (isLargeText) {
+      const rows = parameter.type === 'object' ? 5 : 3;
+      return (
+        <div className="toolTesting-textareaWrapper">
+          <textarea
+            {...commonProps}
+            value={value || ''}
+            onChange={handleChange}
+            className={`toolTesting-textarea ${error ? 'error' : ''}`}
+            placeholder={parameter.type === 'object' ? 'Enter JSON object...' : 
+                        parameter.type === 'array' ? 'Enter comma-separated values...' :
+                        `Enter ${parameter.name}...`}
+            rows={rows}
+          />
+          {(parameter.type === 'object' || parameter.type === 'array') && (
+            <div className="toolTesting-inputHint">
+              {parameter.type === 'object' ? 'JSON object format' : 'Comma-separated values'}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Default text input with enhanced styling
+    return (
+      <div className="toolTesting-textInputWrapper">
+        <input
+          type="text"
           {...commonProps}
           value={value || ''}
           onChange={handleChange}
-          className={`parameter-textarea ${error ? 'error' : ''}`}
+          className={`toolTesting-textInput ${error ? 'error' : ''}`}
           placeholder={`Enter ${parameter.name}...`}
-          rows={3}
         />
-      );
-    }
-
-    // Default to text input
-    return (
-      <input
-        type="text"
-        {...commonProps}
-        value={value || ''}
-        onChange={handleChange}
-        className={`parameter-input ${error ? 'error' : ''}`}
-        placeholder={`Enter ${parameter.name}...`}
-      />
+      </div>
     );
   };
 
   return (
-    <div className="parameter-field">
-      <label htmlFor={parameter.name} className="parameter-label">
+    <div className="parameter-field toolTesting-parameterField">
+      <label htmlFor={parameter.name} className="parameter-label toolTesting-parameterLabel">
         {parameter.name}
-        {parameter.required && <span className="required-indicator" aria-label="required">*</span>}
+        {parameter.required && <span className="required-indicator toolTesting-requiredIndicator" aria-label="required">*</span>}
       </label>
 
       {renderInput()}
 
       {parameter.description && (
-        <p id={`${parameter.name}-desc`} className="parameter-description">
+        <p id={`${parameter.name}-desc`} className="parameter-description toolTesting-parameterDescription">
           {parameter.description}
         </p>
       )}
 
       {error && (
-        <p id={`${parameter.name}-error`} className="parameter-error" role="alert">
+        <p id={`${parameter.name}-error`} className="parameter-error toolTesting-parameterError" role="alert">
           {error.message}
         </p>
       )}

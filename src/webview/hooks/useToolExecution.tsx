@@ -69,12 +69,6 @@ export const useToolExecution = () => {
         };
 
         window.addEventListener('message', messageHandler);
-        
-        // Set timeout for execution
-        const timeout = setTimeout(() => {
-          window.removeEventListener('message', messageHandler);
-          reject(new Error('Tool execution timed out'));
-        }, 30000); // 30 second timeout
 
         // Send execution request
         vscode?.postMessage({
@@ -88,7 +82,6 @@ export const useToolExecution = () => {
 
         // Handle abort
         abortController.signal.addEventListener('abort', () => {
-          clearTimeout(timeout);
           window.removeEventListener('message', messageHandler);
           reject(new Error('Tool execution was cancelled'));
         });

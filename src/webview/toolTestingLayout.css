@@ -1,0 +1,258 @@
+/*
+ * Tool Testing Interface - Responsive Layout
+ * Modern CSS Grid layout with VS Code theme integration
+ */
+
+/* ===== CSS GRID LAYOUT SYSTEM ===== */
+
+.toolTesting-interface {
+  display: grid;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  overflow: hidden;
+  position: relative;
+  
+  /* Default Layout: mobile-first sidebar | workspace */
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 1fr;
+  grid-template-areas: "sidebar workspace";
+  gap: 0;
+  transition: grid-template-columns 0.2s ease-out;
+}
+
+/* ===== LAYOUT MODES ===== */
+
+/* Standard Mode (default - mobile first approach) */
+.toolTesting-interface.layout-standard {
+  grid-template-columns: 240px 1fr;
+  grid-template-areas: "sidebar workspace";
+}
+
+/* Compact Mode - stacked tabs */
+.toolTesting-interface.layout-compact {
+  grid-template-columns: 240px 1fr;
+  grid-template-areas: "sidebar workspace";
+}
+
+/* ===== GRID AREAS ===== */
+
+.toolTesting-sidebar {
+  grid-area: sidebar;
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground);
+  border-right: 1px solid var(--vscode-sideBar-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  min-width: 0; /* Allow shrinking but maintain grid positioning */
+  /* Ensure sidebar stays anchored to the left */
+  left: 0;
+  will-change: auto; /* Optimize for transitions */
+}
+
+.toolTesting-workspace {
+  grid-area: workspace;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--vscode-editor-background);
+}
+
+.toolTesting-parameterPanel {
+  grid-area: parameters;
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground);
+  border-right: 1px solid var(--vscode-panel-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.toolTesting-resultsPanel {
+  grid-area: results;
+  background-color: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ===== TABBED INTERFACE (Compact Mode) ===== */
+
+.toolTesting-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.toolTesting-tabList {
+  display: flex;
+  background-color: var(--vscode-editorGroupHeader-tabsBackground);
+  border-bottom: 1px solid var(--vscode-editorGroupHeader-tabsBorder);
+  min-height: 35px;
+}
+
+.toolTesting-tab {
+  background: var(--vscode-tab-inactiveBackground);
+  color: var(--vscode-tab-inactiveForeground);
+  border: none;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: var(--vscode-font-size);
+  font-family: var(--vscode-font-family);
+  border-right: 1px solid var(--vscode-tab-border);
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolTesting-tab:hover:not(:disabled) {
+  background-color: var(--vscode-tab-hoverBackground);
+  color: var(--vscode-tab-hoverForeground);
+}
+
+.toolTesting-tab.active {
+  background-color: var(--vscode-tab-activeBackground);
+  color: var(--vscode-tab-activeForeground);
+  border-bottom: 2px solid var(--vscode-tab-activeBorder);
+}
+
+.toolTesting-tab:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toolTesting-tabContent {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== RESPONSIVE BREAKPOINTS ===== */
+
+/* Medium screens and up - use direct 3-column grid layout */
+@media (min-width: 800px) {
+  .toolTesting-interface.layout-standard {
+    grid-template-columns: 240px minmax(280px, 350px) 1fr;
+    grid-template-areas: "sidebar parameters results";
+    transition: grid-template-columns 0.2s ease-out;
+  }
+  
+  /* Ensure workspace doesn't interfere with direct grid */
+  .toolTesting-interface.layout-standard .toolTesting-workspace {
+    display: contents; /* Makes workspace container transparent to grid */
+  }
+  
+  .toolTesting-interface.layout-standard .toolTesting-parameterPanel {
+    grid-area: parameters;
+  }
+  
+  .toolTesting-interface.layout-standard .toolTesting-resultsPanel {
+    grid-area: results;
+  }
+}
+
+/* Large screens - expand column sizes */
+@media (min-width: 1000px) {
+  .toolTesting-interface.layout-standard {
+    grid-template-columns: 260px minmax(320px, 400px) 1fr;
+    grid-template-areas: "sidebar parameters results";
+  }
+}
+
+/* Extra large screens - adjust column sizes */
+@media (min-width: 1200px) {
+  .toolTesting-interface.layout-standard {
+    grid-template-columns: 280px minmax(380px, 450px) 1fr;
+    grid-template-areas: "sidebar parameters results";
+  }
+}
+
+/* Small screens - stacked layout with tabs */
+@media (max-width: 799px) {
+  .toolTesting-interface {
+    grid-template-columns: 200px 1fr;
+    grid-template-areas: "sidebar workspace";
+    transition: grid-template-columns 0.2s ease-out;
+  }
+  
+  .toolTesting-workspace {
+    display: flex;
+    flex-direction: column;
+    transition: all 0.2s ease-out;
+  }
+  
+  .toolTesting-sidebar {
+    min-width: 200px;
+  }
+  
+  .toolTesting-tab {
+    padding: 6px 12px;
+    font-size: calc(var(--vscode-font-size) * 0.9);
+    min-width: 80px;
+  }
+}
+
+/* Very small screens - collapse sidebar option */
+@media (max-width: 599px) {
+  .toolTesting-interface {
+    grid-template-columns: 1fr;
+    grid-template-areas: "workspace";
+  }
+  
+  .toolTesting-sidebar {
+    display: none; /* Could be toggleable in future */
+  }
+}
+
+/* ===== SIDEBAR LAYOUT (Standard Mode) ===== */
+/* Removed conflicting nested grid - using main grid areas directly */
+
+/* ===== PRINT STYLES ===== */
+
+@media print {
+  .toolTesting-interface {
+    height: auto;
+    overflow: visible;
+  }
+  
+  .toolTesting-sidebar {
+    display: none;
+  }
+  
+  .toolTesting-workspace {
+    display: block;
+  }
+}
+
+/* ===== HIGH CONTRAST SUPPORT ===== */
+
+@media (prefers-contrast: high) {
+  .toolTesting-tab {
+    border-width: 2px;
+  }
+  
+  .toolTesting-tab.active {
+    border-bottom-width: 3px;
+  }
+}
+
+/* ===== REDUCED MOTION SUPPORT ===== */
+
+@media (prefers-reduced-motion: reduce) {
+  .toolTesting-interface,
+  .toolTesting-workspace,
+  .toolTesting-sidebar {
+    transition: none !important;
+  }
+}

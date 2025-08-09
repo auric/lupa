@@ -1,0 +1,80 @@
+/*
+ * Tool Testing Interface - json-edit-react Integration Styles
+ * Minimal styles to integrate json-edit-react with VSCode theme
+ */
+
+/* ===== JSON VIEWER CONTAINER ===== */
+
+.toolTesting-jsonViewer {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--radius);
+  background-color: var(--vscode-editor-background);
+  overflow: hidden;
+  font-family: var(--vscode-editor-font-family);
+}
+
+.toolTesting-jsonViewerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--vscode-editorWidget-background);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.toolTesting-jsonViewerTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--vscode-editorWidget-foreground);
+}
+
+.toolTesting-jsonViewerCopyBtn {
+  padding: var(--space-1);
+  font-size: var(--font-size-xs);
+}
+
+.toolTesting-jsonViewerContent {
+  max-height: 400px;
+  overflow: auto;
+  padding: 0; /* Let json-edit-react handle internal padding */
+}
+
+/* Override json-edit-react container to remove duplicate borders */
+.toolTesting-jsonViewer .jer-editor {
+  border: none;
+  background: transparent;
+}
+
+/* Compact mode adjustments for smaller screens */
+@media (max-width: 999px) {
+  .toolTesting-jsonViewerContent {
+    max-height: 300px;
+  }
+}
+
+/* ===== SCROLLBAR STYLING ===== */
+
+.toolTesting-jsonViewerContent::-webkit-scrollbar {
+  width: 8px;
+}
+
+.toolTesting-jsonViewerContent::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background);
+}
+
+.toolTesting-jsonViewerContent::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+  border-radius: 4px;
+}
+
+.toolTesting-jsonViewerContent::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/* ===== HIGH CONTRAST SUPPORT ===== */
+
+@media (prefers-contrast: high) {
+  .toolTesting-jsonViewer {
+    border-width: 2px;
+  }
+}
