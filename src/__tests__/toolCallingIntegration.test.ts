@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
-import { FindSymbolTool } from '../tools/FindSymbolTool';
+import { FindSymbolTool } from '../tools/findSymbolTool';
+import { SymbolExtractor } from '../utils/symbolExtractor';
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -57,6 +59,8 @@ describe('Tool-Calling Integration Tests', () => {
     let toolRegistry: ToolRegistry;
     let findSymbolTool: FindSymbolTool;
     let tokenSource: vscode.CancellationTokenSource;
+    let mockGitOperationsManager: Mocked<GitOperationsManager>;
+    let mockSymbolExtractor: Mocked<SymbolExtractor>;
 
     beforeEach(() => {
         // Initialize the tool-calling system
@@ -64,8 +68,20 @@ describe('Tool-Calling Integration Tests', () => {
         toolExecutor = new ToolExecutor(toolRegistry);
         conversationManager = new ConversationManager();
 
-        // Initialize tools
-        findSymbolTool = new FindSymbolTool();
+        mockGitOperationsManager = {
+            getRepository: vi.fn().mockReturnValue({
+                rootUri: { fsPath: '/test/repo' }
+            })
+        } as any;
+
+        mockSymbolExtractor = {
+            getGitRootPath: vi.fn().mockReturnValue('/test/repo'),
+            getPathStat: vi.fn(),
+            extractSymbolsWithContext: vi.fn(),
+            getDirectorySymbols: vi.fn(),
+            getTextDocument: vi.fn()
+        } as any;
+        findSymbolTool = new FindSymbolTool(mockGitOperationsManager, mockSymbolExtractor);
         toolRegistry.registerTool(findSymbolTool);
 
         // Initialize orchestrator

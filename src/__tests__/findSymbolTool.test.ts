@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
@@ -52,8 +52,8 @@ vi.mock('../utils/symbolExtractor');
 
 describe('FindSymbolTool (Integration Tests)', () => {
     let findSymbolTool: FindSymbolTool;
-    let mockGitOperationsManager: GitOperationsManager;
-    let mockSymbolExtractor: SymbolExtractor;
+    let mockGitOperationsManager: Mocked<GitOperationsManager>;
+    let mockSymbolExtractor: Mocked<SymbolExtractor>;
 
     beforeEach(() => {
         // Mock GitOperationsManager
@@ -130,8 +130,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const mockDocumentSymbol = {
                 name: 'MyClass',
                 kind: vscode.SymbolKind.Class,
-                range: { 
-                    start: { line: 0, character: 6 }, 
+                range: {
+                    start: { line: 0, character: 6 },
                     end: { line: 0, character: 13 },
                     contains: vi.fn().mockReturnValue(true)
                 },
@@ -200,8 +200,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 {
                     name: 'test',
                     kind: vscode.SymbolKind.Function,
-                    range: { 
-                        start: { line: 0, character: 9 }, 
+                    range: {
+                        start: { line: 0, character: 9 },
                         end: { line: 0, character: 13 },
                         contains: vi.fn().mockReturnValue(true)
                     },
@@ -211,8 +211,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 {
                     name: 'test',
                     kind: vscode.SymbolKind.Class,
-                    range: { 
-                        start: { line: 1, character: 6 }, 
+                    range: {
+                        start: { line: 1, character: 6 },
                         end: { line: 1, character: 10 },
                         contains: vi.fn().mockReturnValue(true)
                     },
@@ -266,8 +266,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const mockDocumentSymbol = {
                 name: 'MyClass',
                 kind: vscode.SymbolKind.Class,
-                range: { 
-                    start: { line: 0, character: 6 }, 
+                range: {
+                    start: { line: 0, character: 6 },
                     end: { line: 0, character: 13 },
                     contains: vi.fn().mockReturnValue(true)
                 },

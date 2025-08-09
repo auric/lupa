@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
@@ -86,8 +86,8 @@ vi.mock('../utils/symbolExtractor');
 
 describe('GetSymbolsOverviewTool (Unit Tests)', () => {
     let getSymbolsOverviewTool: GetSymbolsOverviewTool;
-    let mockGitOperationsManager: GitOperationsManager;
-    let mockSymbolExtractor: SymbolExtractor;
+    let mockGitOperationsManager: Mocked<GitOperationsManager>;
+    let mockSymbolExtractor: Mocked<SymbolExtractor>;
 
     beforeEach(() => {
         mockGitOperationsManager = {
@@ -108,6 +108,21 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         getSymbolsOverviewTool = new GetSymbolsOverviewTool(mockGitOperationsManager, mockSymbolExtractor);
         vi.clearAllMocks();
     });
+
+    // Helper to create a DocumentSymbol with minimal required data
+    function createSymbol(name: string, kind: vscode.SymbolKind, startLine: number): vscode.DocumentSymbol {
+        // Use plain object cast to satisfy typing without relying on VS Code runtime classes
+        const position = (line: number, character: number) => ({ line, character } as any);
+        const range = { start: position(startLine, 0), end: position(startLine + 1, 0) } as any;
+        return {
+            name,
+            detail: '',
+            kind,
+            range,
+            selectionRange: range,
+            children: []
+        } as any;
+    }
 
     describe('Tool Configuration', () => {
         it('should have correct name and description', () => {
@@ -143,29 +158,21 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         it('should handle single file with symbols', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.File
-            });
+                type: vscode.FileType.File,
+                ctime: 0,
+                mtime: 0,
+                size: 0
+            } as any);
 
-            const mockDocument = { getText: vi.fn().mockReturnValue('test content') };
-            
+            const mockDocument: any = { getText: vi.fn().mockReturnValue('test content') };
+
             mockSymbolExtractor.extractSymbolsWithContext.mockResolvedValue({
                 symbols: [
-                    {
-                        name: 'MyClass',
-                        kind: vscode.SymbolKind.Class,
-                        range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                        selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } },
-                        children: []
-                    },
-                    {
-                        name: 'myFunction',
-                        kind: vscode.SymbolKind.Function,
-                        range: { start: { line: 12, character: 0 }, end: { line: 15, character: 1 } },
-                        selectionRange: { start: { line: 12, character: 9 }, end: { line: 12, character: 19 } },
-                        children: []
-                    }
+                    createSymbol('MyClass', vscode.SymbolKind.Class, 0),
+                    createSymbol('myFunction', vscode.SymbolKind.Function, 12)
                 ],
-                document: mockDocument
+                document: mockDocument as any,
+                relativePath: 'src/test.ts'
             });
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/test.ts' });
@@ -176,14 +183,18 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         it('should handle single file with no symbols', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.File
-            });
+                type: vscode.FileType.File,
+                ctime: 0,
+                mtime: 0,
+                size: 0
+            } as any);
 
-            const mockDocument = { getText: vi.fn().mockReturnValue('') };
-            
+            const mockDocument: any = { getText: vi.fn().mockReturnValue('') };
+
             mockSymbolExtractor.extractSymbolsWithContext.mockResolvedValue({
                 symbols: [],
-                document: mockDocument
+                document: mockDocument as any,
+                relativePath: 'src/empty.ts'
             });
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/empty.ts' });
@@ -194,35 +205,22 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         it('should handle directory with multiple files', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.Directory
-            });
+                type: vscode.FileType.Directory,
+                ctime: 0,
+                mtime: 0,
+                size: 0
+            } as any);
 
             mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
                 {
                     filePath: 'src/test1.ts',
-                    symbols: [
-                        {
-                            name: 'Class1',
-                            kind: vscode.SymbolKind.Class,
-                            range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 12 } },
-                            children: []
-                        }
-                    ]
+                    symbols: [createSymbol('Class1', vscode.SymbolKind.Class, 0)]
                 },
                 {
                     filePath: 'src/test2.js',
-                    symbols: [
-                        {
-                            name: 'function1',
-                            kind: vscode.SymbolKind.Function,
-                            range: { start: { line: 0, character: 0 }, end: { line: 5, character: 1 } },
-                            selectionRange: { start: { line: 0, character: 9 }, end: { line: 0, character: 18 } },
-                            children: []
-                        }
-                    ]
+                    symbols: [createSymbol('function1', vscode.SymbolKind.Function, 0)]
                 }
-            ]);
+            ] as any);
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
@@ -232,23 +230,18 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         it('should handle directory with nested structure', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.Directory
-            });
+                type: vscode.FileType.Directory,
+                ctime: 0,
+                mtime: 0,
+                size: 0
+            } as any);
 
             mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
                 {
                     filePath: 'src/services/service1.ts',
-                    symbols: [
-                        {
-                            name: 'ServiceClass',
-                            kind: vscode.SymbolKind.Class,
-                            range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 18 } },
-                            children: []
-                        }
-                    ]
+                    symbols: [createSymbol('ServiceClass', vscode.SymbolKind.Class, 0)]
                 }
-            ]);
+            ] as any);
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
@@ -258,22 +251,18 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         it('should handle SymbolInformation format', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.File
-            });
+                type: vscode.FileType.File,
+                ctime: 0,
+                mtime: 0,
+                size: 0
+            } as any);
 
-            const mockDocument = { getText: vi.fn().mockReturnValue('interface MyInterface {}') };
-            
+            const mockDocument: any = { getText: vi.fn().mockReturnValue('interface MyInterface {}') };
+
             mockSymbolExtractor.extractSymbolsWithContext.mockResolvedValue({
-                symbols: [
-                    {
-                        name: 'MyInterface',
-                        kind: vscode.SymbolKind.Interface,
-                        range: { start: { line: 0, character: 10 }, end: { line: 0, character: 21 } },
-                        selectionRange: { start: { line: 0, character: 10 }, end: { line: 0, character: 21 } },
-                        children: []
-                    }
-                ],
-                document: mockDocument
+                symbols: [createSymbol('MyInterface', vscode.SymbolKind.Interface, 0)],
+                document: mockDocument as any,
+                relativePath: 'src/interface.ts'
             });
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/interface.ts' });
@@ -312,36 +301,17 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         it('should filter code files correctly', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.Directory
-            });
+                type: vscode.FileType.Directory,
+                ctime: 0,
+                mtime: 0,
+                size: 0
+            } as any);
 
             // Mock directory symbols - SymbolExtractor should already filter code files
             mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
-                {
-                    filePath: 'src/component.ts',
-                    symbols: [
-                        {
-                            name: 'Component',
-                            kind: vscode.SymbolKind.Class,
-                            range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 15 } },
-                            children: []
-                        }
-                    ]
-                },
-                {
-                    filePath: 'src/script.js',
-                    symbols: [
-                        {
-                            name: 'script',
-                            kind: vscode.SymbolKind.Function,
-                            range: { start: { line: 0, character: 0 }, end: { line: 5, character: 1 } },
-                            selectionRange: { start: { line: 0, character: 9 }, end: { line: 0, character: 15 } },
-                            children: []
-                        }
-                    ]
-                }
-            ]);
+                { filePath: 'src/component.ts', symbols: [createSymbol('Component', vscode.SymbolKind.Class, 0)] },
+                { filePath: 'src/script.js', symbols: [createSymbol('script', vscode.SymbolKind.Function, 0)] }
+            ] as any);
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
@@ -353,57 +323,25 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         it('should map VS Code SymbolKind to human-readable names', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.File
-            });
+                type: vscode.FileType.File,
+                ctime: 0,
+                mtime: 0,
+                size: 0
+            } as any);
 
-            const mockDocument = { getText: vi.fn().mockReturnValue('test content') };
-            
+            const mockDocument: any = { getText: vi.fn().mockReturnValue('test content') };
+
             mockSymbolExtractor.extractSymbolsWithContext.mockResolvedValue({
                 symbols: [
-                    {
-                        name: 'MyClass',
-                        kind: vscode.SymbolKind.Class,
-                        range: { start: { line: 0, character: 0 }, end: { line: 5, character: 0 } },
-                        selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } },
-                        children: []
-                    },
-                    {
-                        name: 'MyInterface',
-                        kind: vscode.SymbolKind.Interface,
-                        range: { start: { line: 6, character: 0 }, end: { line: 8, character: 0 } },
-                        selectionRange: { start: { line: 6, character: 10 }, end: { line: 6, character: 21 } },
-                        children: []
-                    },
-                    {
-                        name: 'MyEnum',
-                        kind: vscode.SymbolKind.Enum,
-                        range: { start: { line: 9, character: 0 }, end: { line: 12, character: 0 } },
-                        selectionRange: { start: { line: 9, character: 5 }, end: { line: 9, character: 11 } },
-                        children: []
-                    },
-                    {
-                        name: 'myFunction',
-                        kind: vscode.SymbolKind.Function,
-                        range: { start: { line: 13, character: 0 }, end: { line: 15, character: 0 } },
-                        selectionRange: { start: { line: 13, character: 9 }, end: { line: 13, character: 19 } },
-                        children: []
-                    },
-                    {
-                        name: 'myVariable',
-                        kind: vscode.SymbolKind.Variable,
-                        range: { start: { line: 16, character: 0 }, end: { line: 16, character: 20 } },
-                        selectionRange: { start: { line: 16, character: 4 }, end: { line: 16, character: 14 } },
-                        children: []
-                    },
-                    {
-                        name: 'myConstant',
-                        kind: vscode.SymbolKind.Constant,
-                        range: { start: { line: 17, character: 0 }, end: { line: 17, character: 25 } },
-                        selectionRange: { start: { line: 17, character: 6 }, end: { line: 17, character: 16 } },
-                        children: []
-                    }
+                    createSymbol('MyClass', vscode.SymbolKind.Class, 0),
+                    createSymbol('MyInterface', vscode.SymbolKind.Interface, 6),
+                    createSymbol('MyEnum', vscode.SymbolKind.Enum, 9),
+                    createSymbol('myFunction', vscode.SymbolKind.Function, 13),
+                    createSymbol('myVariable', vscode.SymbolKind.Variable, 16),
+                    createSymbol('myConstant', vscode.SymbolKind.Constant, 17)
                 ],
-                document: mockDocument
+                document: mockDocument as any,
+                relativePath: 'src/test.ts'
             });
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/test.ts' });
