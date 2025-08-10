@@ -48,7 +48,7 @@ export const useResponsiveLayout = (): ResponsiveLayoutResult => {
   }, []);
 
   const isMobile = width < 800;
-  const shouldStack = width < 1000;
+  const shouldStack = width < 800;
 
   return {
     mode,

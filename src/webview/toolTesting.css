@@ -2,13 +2,13 @@
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 
-/* Import tool testing specific styles */
+/* Import tool testing specific styles - LAYOUT LAST TO WIN CASCADE */
 @import "./styles/copy-button.css";
-@import "./toolTestingLayout.css";
 @import "./toolTestingAnimations.css";
 @import "./toolTestingJsonEditor.css";
 @import "./toolTestingParameters.css";
 @import "./toolTestingLegacyCompat.css";
+@import "./toolTestingLayout.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

@@ -101,7 +101,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   }, [isExecuting, currentSession]);
 
   return (
-    <div className={`toolTesting-interface ${isDarkTheme ? 'dark' : ''} layout-${layout.mode}`}>
+    <div className={`toolTesting-interface ${isDarkTheme ? 'dark' : ''}`}>
       {/* Tool Selection Sidebar */}
       <div className="toolTesting-sidebar">
         <ToolLibrarySidebar
