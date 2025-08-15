@@ -365,8 +365,8 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
         for (const { filePath, symbols } of directoryResults) {
           // Time-based execution control
-          if (Date.now() - startTime > SPECIFIC_PATH_TIMEOUT) {
-            Log.warn(`Symbol search in ${relativePath} stopped after ${SPECIFIC_PATH_TIMEOUT}ms timeout`);
+          if (Date.now() - startTime > SYMBOL_SEARCH_TIMEOUT) {
+            Log.warn(`Symbol search in ${relativePath} stopped after ${SYMBOL_SEARCH_TIMEOUT}ms timeout`);
             break;
           }
 
@@ -376,7 +376,7 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
           const fileUri = vscode.Uri.file(fullFilePath);
           const document = await this.symbolExtractor.getTextDocument(fileUri);
 
-          if (symbols.length > 0 && 'children' in symbols[0]) {
+          if (symbols.length > 0 && this.isDocumentSymbol(symbols[0])) {
             // Use simple recursive document symbol search
             const documentMatches = this.findInDocumentSymbolsRecursive(
               symbols as vscode.DocumentSymbol[],
@@ -514,9 +514,15 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     const matches: { symbol: vscode.DocumentSymbol; namePath: string }[] = [];
 
     for (const symbol of symbols) {
-      // Build simple path by concatenating clean names
+      // Build path using detail property for container context (C++ implementations)
       const cleanName = SymbolMatcher.cleanSymbolName(symbol.name);
-      const fullPath = [...currentPath, cleanName];
+
+      // Use detail as container name only at top level (not during recursion)
+      // This handles C++ implementations where detail contains class name,
+      // but avoids descriptors like "declaration" in nested symbols
+      const fullPath = (currentPath.length === 0 && symbol.detail)
+        ? [...currentPath, symbol.detail, cleanName]
+        : [...currentPath, cleanName];
 
       // Simple array comparison for path matching
       if (this.pathMatchesPattern(fullPath, pathSegments)) {
@@ -578,43 +584,22 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
       if (includeBody && match.document) {
         try {
-          // Get the appropriate range based on symbol type
           const symbolRange = this.getSymbolRange(match.symbol);
-
-          // If this is a SymbolInformation, try to get the DocumentSymbol for better body extraction
-          let rangeToUse = symbolRange;
-          let shouldExpand = true;
+          let finalRange: vscode.Range;
 
           if (this.isSymbolInformation(match.symbol)) {
-            const documentSymbol = await this.fetchDocumentSymbolForRange(match.document, symbolRange);
-            if (documentSymbol) {
-              rangeToUse = this.getBodyExtractionRange(documentSymbol);
-              shouldExpand = this.shouldExpandRange(documentSymbol);
-            }
-          } else if (this.isDocumentSymbol(match.symbol)) {
-            rangeToUse = this.getBodyExtractionRange(match.symbol);
-            shouldExpand = this.shouldExpandRange(match.symbol);
+            // SymbolInformation: range is incomplete, use SymbolRangeExpander
+            finalRange = await this.rangeExpander.getFullSymbolRange(match.document, symbolRange);
+          } else {
+            // DocumentSymbol: range is already complete, use as-is
+            finalRange = symbolRange;
           }
 
-          // Get appropriate range - expand only for multi-line definitions
-          let finalRange: vscode.Range;
-          if (shouldExpand) {
-            finalRange = await this.rangeExpander.getFullSymbolRange(match.document, rangeToUse);
-          } else {
-            finalRange = rangeToUse;
-          }
           const rawBody = match.document.getText(finalRange);
           body = this.formatBodyWithLineNumbers(rawBody, finalRange.start.line + 1);
         } catch (error) {
-          // If range expansion fails, use the basic range
-          try {
-            const basicRange = this.getSymbolRange(match.symbol);
-            const rawBody = match.document.getText(basicRange);
-            body = this.formatBodyWithLineNumbers(rawBody, basicRange.start.line + 1);
-          } catch (fallbackError) {
-            Log.debug(`Failed to extract body for symbol ${match.symbol.name}:`, fallbackError);
-            // Don't include body if extraction fails
-          }
+          Log.debug(`Failed to extract body for symbol ${match.symbol.name}:`, error);
+          // Don't include body if extraction fails
         }
       }
 
@@ -657,22 +642,13 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
             if (includeBody) {
               try {
-                // Get the appropriate range based on symbol type
+                // Children are always DocumentSymbol, so use exact range (no expansion needed)
                 const childSymbolRange = this.getSymbolRange(childSymbol.symbol);
-
-                // Get full symbol range including body using SymbolRangeExpander
-                const fullRange = await this.rangeExpander.getFullSymbolRange(match.document, childSymbolRange);
-                const rawChildBody = match.document.getText(fullRange);
-                childBody = this.formatBodyWithLineNumbers(rawChildBody, fullRange.start.line + 1);
+                const rawChildBody = match.document.getText(childSymbolRange);
+                childBody = this.formatBodyWithLineNumbers(rawChildBody, childSymbolRange.start.line + 1);
               } catch (error) {
-                try {
-                  const childSymbolRange = this.getSymbolRange(childSymbol.symbol);
-                  const rawChildBody = match.document.getText(childSymbolRange);
-                  childBody = this.formatBodyWithLineNumbers(rawChildBody, childSymbolRange.start.line + 1);
-                } catch (fallbackError) {
-                  Log.debug(`Failed to extract body for child symbol ${childSymbol.symbol.name}:`, fallbackError);
-                  // Don't include body if extraction fails
-                }
+                Log.debug(`Failed to extract body for child symbol ${childSymbol.symbol.name}:`, error);
+                // Don't include body if extraction fails
               }
             }
 
@@ -852,39 +828,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     );
   }
 
-  /**
-   * Get the appropriate range for body extraction using language-agnostic approach
-   * @param symbol - The DocumentSymbol
-   * @returns The range to use for body extraction
-   */
-  private getBodyExtractionRange(symbol: vscode.DocumentSymbol): vscode.Range {
-    // Always use the full range - we'll control expansion logic separately
-    return symbol.range;
-  }
-
-  /**
-   * Determine if we should expand the range for a symbol
-   * @param symbol - The DocumentSymbol
-   * @returns true if we should expand, false to use exact range
-   */
-  private shouldExpandRange(symbol: vscode.DocumentSymbol): boolean {
-    const lineSpan = symbol.range.end.line - symbol.range.start.line;
-
-    // Don't expand single-line symbols (likely declarations)
-    if (lineSpan === 0) {
-      return false;
-    }
-
-    // Don't expand short methods (likely declarations in headers)
-    if ((symbol.kind === vscode.SymbolKind.Method ||
-      symbol.kind === vscode.SymbolKind.Function ||
-      symbol.kind === vscode.SymbolKind.Constructor) && lineSpan <= 2) {
-      return false;
-    }
-
-    // Expand multi-line symbols (likely definitions with implementation)
-    return true;
-  }
 
 
   // getCodeFilesInDirectory method now handled by SymbolExtractor utility
