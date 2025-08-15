@@ -85,13 +85,21 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const validInput = { name_path: 'MyClass' };
             expect(schema.safeParse(validInput).success).toBe(true);
 
-            // Test with all optional fields
+            // Test with all optional fields including new hierarchical parameters
             const fullInput = {
-                name_path: 'MyClass',
+                name_path: 'MyClass/method',
                 relative_path: 'src/test.ts',
-                include_body: false
+                include_body: false,
+                include_children: true,
+                include_kinds: ['class', 'method'],
+                exclude_kinds: ['variable']
             };
             expect(schema.safeParse(fullInput).success).toBe(true);
+
+            // Test hierarchical path patterns
+            expect(schema.safeParse({ name_path: '/MyClass/method' }).success).toBe(true);
+            expect(schema.safeParse({ name_path: 'MyClass/method' }).success).toBe(true);
+            expect(schema.safeParse({ name_path: 'method' }).success).toBe(true);
 
             // Test validation (empty string rejection)
             expect(schema.safeParse({ name_path: '' }).success).toBe(false);
@@ -158,10 +166,14 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: true
             });
 
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain('"file_path"');
-            expect(result[0]).toContain('MyClass');
-            expect(result[0]).toContain('"body"');
+            expect(typeof result).toBe('string');
+            const parsedResult = JSON.parse(result);
+            expect(Array.isArray(parsedResult)).toBe(true);
+            expect(parsedResult).toHaveLength(1);
+            expect(parsedResult[0]).toHaveProperty('file_path');
+            expect(parsedResult[0].symbol_name).toBe('MyClass');
+            expect(parsedResult[0]).toHaveProperty('body');
+            expect(parsedResult[0].body).toContain('1: class MyClass {');
             // Integration test: verify complete workflow when symbols are found
         });
 
@@ -237,9 +249,12 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             const result = await findSymbolTool.execute({ name_path: 'test' });
 
-            expect(result).toHaveLength(2);
+            expect(typeof result).toBe('string');
+            const parsedResult = JSON.parse(result);
+            expect(Array.isArray(parsedResult)).toBe(true);
+            expect(parsedResult).toHaveLength(2);
             // Verify orchestration completed successfully
-            expect(result.every(r => r.includes('"file_path"'))).toBe(true);
+            expect(parsedResult.every(r => r.hasOwnProperty('file_path'))).toBe(true);
         });
 
         it('should respect includeFullBody parameter in workflow', async () => {
@@ -295,9 +310,11 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: false
             });
 
-            expect(resultFalse).toHaveLength(1);
-            expect(resultFalse[0]).toContain('"file_path"');
-            expect(resultFalse[0]).not.toContain('"body"');
+            expect(typeof resultFalse).toBe('string');
+            const parsedFalse = JSON.parse(resultFalse);
+            expect(parsedFalse).toHaveLength(1);
+            expect(parsedFalse[0]).toHaveProperty('file_path');
+            expect(parsedFalse[0]).not.toHaveProperty('body');
 
             // Test include_body: true
             const resultTrue = await findSymbolTool.execute({
@@ -305,17 +322,20 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: true
             });
 
-            expect(resultTrue).toHaveLength(1);
-            expect(resultTrue[0]).toContain('"file_path"');
-            expect(resultTrue[0]).toContain('"body"');
+            expect(typeof resultTrue).toBe('string');
+            const parsedTrue = JSON.parse(resultTrue);
+            expect(parsedTrue).toHaveLength(1);
+            expect(parsedTrue[0]).toHaveProperty('file_path');
+            expect(parsedTrue[0]).toHaveProperty('body');
+            expect(parsedTrue[0].body).toContain('1: class MyClass {}');
         });
     });
 
     describe('Error Handling Integration', () => {
         it('should handle input validation errors', async () => {
             const result = await findSymbolTool.execute({ name_path: '   ' });
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain('Error: Symbol name cannot be empty');
+            expect(typeof result).toBe('string');
+            expect(result).toContain('Error: Symbol name cannot be empty');
         });
 
         it('should handle symbol not found workflow', async () => {
@@ -328,8 +348,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             const result = await findSymbolTool.execute({ name_path: 'NonExistentSymbol' });
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain("Symbol 'NonExistentSymbol' not found");
+            expect(typeof result).toBe('string');
+            expect(result).toContain("Symbol 'NonExistentSymbol' not found");
         });
 
         it('should handle VS Code API failures gracefully', async () => {
@@ -337,8 +357,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             vi.mocked(vscode.commands.executeCommand).mockRejectedValue(new Error('API failed'));
 
             const result = await findSymbolTool.execute({ name_path: 'MyClass' });
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain("Symbol 'MyClass' not found");
+            expect(typeof result).toBe('string');
+            expect(result).toContain("Symbol 'MyClass' not found");
         });
 
         it('should handle file reading errors in workflow', async () => {
@@ -368,8 +388,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             const result = await findSymbolTool.execute({ name_path: 'MyClass' });
 
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain("Symbol 'MyClass' not found");
+            expect(typeof result).toBe('string');
+            expect(result).toContain("Symbol 'MyClass' not found");
             // Integration test: verify error handled gracefully when file can't be read
         });
 
@@ -403,8 +423,218 @@ describe('FindSymbolTool (Integration Tests)', () => {
             } as any);
 
             const result = await findSymbolTool.execute({ name_path: 'test' });
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain("Symbol 'test' not found");
+            expect(typeof result).toBe('string');
+            expect(result).toContain("Symbol 'test' not found");
+        });
+    });
+
+    describe('Hierarchical Path Matching', () => {
+        it('should handle absolute path matching ("/MyClass/method")', async () => {
+            const mockFileUri = { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' };
+            const mockFileContent = 'class MyClass {\n  method() {}\n}';
+
+            const mockDocument = {
+                getText: vi.fn().mockReturnValue(mockFileContent),
+                uri: mockFileUri,
+                lineCount: 3
+            };
+
+            // Create nested document symbol structure
+            const mockDocumentSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                range: {
+                    start: { line: 0, character: 6 },
+                    end: { line: 2, character: 1 },
+                    contains: vi.fn().mockReturnValue(true)
+                },
+                selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } },
+                children: [{
+                    name: 'method',
+                    kind: vscode.SymbolKind.Method,
+                    range: {
+                        start: { line: 1, character: 2 },
+                        end: { line: 1, character: 12 },
+                        contains: vi.fn().mockReturnValue(true)
+                    },
+                    selectionRange: { start: { line: 1, character: 2 }, end: { line: 1, character: 8 } },
+                    children: []
+                }]
+            };
+
+            vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([{
+                        name: 'method',
+                        kind: vscode.SymbolKind.Method,
+                        location: {
+                            uri: mockFileUri,
+                            range: { start: { line: 1, character: 2 }, end: { line: 1, character: 8 } }
+                        }
+                    }]);
+                }
+                if (command === 'vscode.executeDocumentSymbolProvider') {
+                    return Promise.resolve([mockDocumentSymbol]);
+                }
+                return Promise.resolve([]);
+            });
+
+            const result = await findSymbolTool.execute({ name_path: '/MyClass/method' });
+
+            expect(typeof result).toBe('string');
+            const parsedResult = JSON.parse(result);
+            expect(parsedResult).toHaveLength(1);
+            expect(parsedResult[0].name_path).toBe('MyClass/method');
+            expect(parsedResult[0].symbol_name).toBe('method');
+        });
+
+        it('should handle relative path matching ("MyClass/method")', async () => {
+            const mockFileUri = { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' };
+            const mockFileContent = 'namespace App {\n  class MyClass {\n    method() {}\n  }\n}';
+
+            const mockDocument = {
+                getText: vi.fn().mockReturnValue(mockFileContent),
+                uri: mockFileUri,
+                lineCount: 5
+            };
+
+            // Create deeply nested structure
+            const mockDocumentSymbol = {
+                name: 'App',
+                kind: vscode.SymbolKind.Module,
+                range: {
+                    start: { line: 0, character: 10 },
+                    end: { line: 4, character: 1 },
+                    contains: vi.fn().mockReturnValue(true)
+                },
+                selectionRange: { start: { line: 0, character: 10 }, end: { line: 0, character: 13 } },
+                children: [{
+                    name: 'MyClass',
+                    kind: vscode.SymbolKind.Class,
+                    range: {
+                        start: { line: 1, character: 8 },
+                        end: { line: 3, character: 3 },
+                        contains: vi.fn().mockReturnValue(true)
+                    },
+                    selectionRange: { start: { line: 1, character: 8 }, end: { line: 1, character: 15 } },
+                    children: [{
+                        name: 'method',
+                        kind: vscode.SymbolKind.Method,
+                        range: {
+                            start: { line: 2, character: 4 },
+                            end: { line: 2, character: 14 },
+                            contains: vi.fn().mockReturnValue(true)
+                        },
+                        selectionRange: { start: { line: 2, character: 4 }, end: { line: 2, character: 10 } },
+                        children: []
+                    }]
+                }]
+            };
+
+            vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([{
+                        name: 'method',
+                        kind: vscode.SymbolKind.Method,
+                        location: {
+                            uri: mockFileUri,
+                            range: { start: { line: 2, character: 4 }, end: { line: 2, character: 10 } }
+                        }
+                    }]);
+                }
+                if (command === 'vscode.executeDocumentSymbolProvider') {
+                    return Promise.resolve([mockDocumentSymbol]);
+                }
+                return Promise.resolve([]);
+            });
+
+            const result = await findSymbolTool.execute({ name_path: 'MyClass/method' });
+
+            expect(typeof result).toBe('string');
+            const parsedResult = JSON.parse(result);
+            expect(parsedResult).toHaveLength(1);
+            expect(parsedResult[0].name_path).toBe('App/MyClass/method');
+            expect(parsedResult[0].symbol_name).toBe('method');
+        });
+
+        it('should handle include_children parameter', async () => {
+            const mockFileUri = { toString: () => 'file:///mock/repo/root/test.ts', fsPath: '/mock/repo/root/test.ts' };
+            const mockFileContent = 'class MyClass {\n  method1() {}\n  method2() {}\n}';
+
+            const mockDocument = {
+                getText: vi.fn().mockReturnValue(mockFileContent),
+                uri: mockFileUri,
+                lineCount: 4
+            };
+
+            const mockDocumentSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                range: {
+                    start: { line: 0, character: 6 },
+                    end: { line: 3, character: 1 },
+                    contains: vi.fn().mockReturnValue(true)
+                },
+                selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } },
+                children: [
+                    {
+                        name: 'method1',
+                        kind: vscode.SymbolKind.Method,
+                        range: {
+                            start: { line: 1, character: 2 },
+                            end: { line: 1, character: 13 },
+                            contains: vi.fn().mockReturnValue(false)
+                        },
+                        selectionRange: { start: { line: 1, character: 2 }, end: { line: 1, character: 9 } },
+                        children: []
+                    },
+                    {
+                        name: 'method2',
+                        kind: vscode.SymbolKind.Method,
+                        range: {
+                            start: { line: 2, character: 2 },
+                            end: { line: 2, character: 13 },
+                            contains: vi.fn().mockReturnValue(false)
+                        },
+                        selectionRange: { start: { line: 2, character: 2 }, end: { line: 2, character: 9 } },
+                        children: []
+                    }
+                ]
+            };
+
+            vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+                if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                    return Promise.resolve([{
+                        name: 'MyClass',
+                        kind: vscode.SymbolKind.Class,
+                        location: {
+                            uri: mockFileUri,
+                            range: { start: { line: 0, character: 6 }, end: { line: 0, character: 13 } }
+                        }
+                    }]);
+                }
+                if (command === 'vscode.executeDocumentSymbolProvider') {
+                    return Promise.resolve([mockDocumentSymbol]);
+                }
+                return Promise.resolve([]);
+            });
+
+            const result = await findSymbolTool.execute({ 
+                name_path: 'MyClass',
+                include_children: true
+            });
+
+            expect(typeof result).toBe('string');
+            const parsedResult = JSON.parse(result);
+            expect(parsedResult).toHaveLength(3); // MyClass + method1 + method2
+            expect(parsedResult[0].symbol_name).toBe('MyClass');
+            expect(parsedResult[1].symbol_name).toBe('method1');
+            expect(parsedResult[2].symbol_name).toBe('method2');
+            expect(parsedResult[1].name_path).toBe('MyClass/method1');
+            expect(parsedResult[2].name_path).toBe('MyClass/method2');
         });
     });
 });

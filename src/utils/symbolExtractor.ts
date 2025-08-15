@@ -65,6 +65,13 @@ export class SymbolExtractor {
     const repository = this.gitOperationsManager.getRepository();
     const gitignoreContent = await readGitignore(repository);
     const ig = ignore().add(gitignoreContent);
+    
+    // Debug: Log gitignore patterns loaded
+    if (gitignoreContent.trim()) {
+      console.log(`[SymbolExtractor] Loaded gitignore patterns:`, gitignoreContent.split('\n').filter(line => line.trim() && !line.startsWith('#')));
+    } else {
+      console.log(`[SymbolExtractor] No gitignore patterns found`);
+    }
 
     // Get all files in directory recursively
     const files = await this.getAllFiles(targetPath, relativePath, ig, options);
@@ -123,12 +130,25 @@ export class SymbolExtractor {
           continue;
         }
 
-        // Check if this entry should be ignored by .gitignore
-        if (ignorePatterns.checkIgnore(name).ignored) {
-          continue;
-        }
-
+        // Build full path relative to git root for gitignore checking
         const fullPath = relativePath === '.' ? name : path.posix.join(relativePath, name);
+
+        // Validate path format before checking gitignore patterns
+        if (ignore.isPathValid(fullPath)) {
+          try {
+            // Check if this entry should be ignored by .gitignore using full path
+            // Use ignores() method with full path instead of checkIgnore() with just name
+            if (ignorePatterns.ignores(fullPath)) {
+              continue;
+            }
+          } catch (error) {
+            // Log gitignore check failures for debugging but continue processing
+            console.warn(`Failed to check gitignore for path "${fullPath}":`, error);
+          }
+        } else {
+          // Log invalid paths for debugging
+          console.warn(`Invalid path format for gitignore check: "${fullPath}"`);
+        }
 
         if (type === vscode.FileType.File) {
           // Check if it's a code file

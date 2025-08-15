@@ -19,7 +19,15 @@ export interface SearchOptions {
 }
 
 /**
- * Represents a symbol match with context information
+ * Represents a basic symbol match without document context
+ */
+export interface BasicSymbolMatch {
+  symbol: vscode.DocumentSymbol;
+  namePath: string;
+}
+
+/**
+ * Represents a symbol match with full context information
  */
 export interface SymbolMatch {
   symbol: vscode.DocumentSymbol | vscode.SymbolInformation;
@@ -33,83 +41,38 @@ export interface SymbolMatch {
  * Provides advanced matching logic including C++ class context support.
  */
 export class SymbolMatcher {
-  /**
-   * Check if a symbol matches the target name, including detail property for C++ classes
-   * @param symbol - VS Code DocumentSymbol to check
-   * @param targetName - Name to match against
-   * @param options - Matching options
-   * @returns True if symbol matches the target name
-   */
-  static matchesSymbolName(
-    symbol: vscode.DocumentSymbol,
-    targetName: string,
-    options: MatchOptions = {}
-  ): boolean {
-    const { checkDetailProperty = true, caseSensitive = true } = options;
-    
-    const normalizeString = (str: string) => caseSensitive ? str : str.toLowerCase();
-    const normalizedTarget = normalizeString(targetName);
+  // Complex symbol name matching removed - using simple isExactSymbolMatch for all cases
 
-    // Check primary symbol name
-    if (normalizeString(symbol.name) === normalizedTarget) {
+  /**
+   * Smart symbol name matching that handles function signatures
+   * @param symbolName - Actual symbol name (e.g., "Shutdown()" or "BShutdownIfAllPipesClosed()")
+   * @param targetName - Target name to match (e.g., "Shutdown")
+   * @returns True if target matches as exact symbol name, not substring
+   */
+  static isExactSymbolMatch(symbolName: string, targetName: string): boolean {
+    // Exact match first (fastest path)
+    if (symbolName === targetName) {
       return true;
     }
 
-    // Check detail property (for C++ class/namespace context)
-    // Detail typically contains just the class name, e.g., detail = "MyClass" for methods in MyClass
-    if (checkDetailProperty && symbol.detail && normalizeString(symbol.detail) === normalizedTarget) {
-      return true;
+    // Check if symbol starts with target name
+    if (!symbolName.startsWith(targetName)) {
+      return false;
+    }
+
+    // If symbol is longer than target, check that the next character indicates end of identifier
+    // This prevents "Shutdown" from matching "ShutdownMethod" but allows "Shutdown()", "Shutdown.Service", etc.
+    if (symbolName.length > targetName.length) {
+      const nextChar = symbolName[targetName.length];
+      // Reject if followed by alphanumeric or underscore (indicates we're in middle of different identifier)
+      // Allow any other character (punctuation, operators, etc.) - this handles all languages universally
+      return !/^[a-zA-Z0-9_]/.test(nextChar);
     }
 
     return false;
   }
 
-  /**
-   * Find all child symbols when parent matches (useful for C++ classes)
-   * @param symbols - Array of DocumentSymbols to search
-   * @param targetName - Name to match against
-   * @param matchOptions - Options for matching
-   * @returns Array of matching symbols including children when parent matches
-   */
-  static includeChildSymbolsWhenParentMatches(
-    symbols: vscode.DocumentSymbol[],
-    targetName: string,
-    matchOptions: MatchOptions = {}
-  ): vscode.DocumentSymbol[] {
-    const results: vscode.DocumentSymbol[] = [];
-
-    const processSymbols = (symbolList: vscode.DocumentSymbol[]): void => {
-      for (const symbol of symbolList) {
-        const parentMatches = this.matchesSymbolName(symbol, targetName, matchOptions);
-        
-        if (parentMatches) {
-          // Include the parent symbol
-          results.push(symbol);
-          
-          // Include all child symbols if parent matches and option is enabled
-          if (matchOptions.includeChildrenOnParentMatch && symbol.children) {
-            const addChildren = (children: vscode.DocumentSymbol[]): void => {
-              for (const child of children) {
-                results.push(child);
-                if (child.children) {
-                  addChildren(child.children);
-                }
-              }
-            };
-            addChildren(symbol.children);
-          }
-        } else {
-          // Check children even if parent doesn't match
-          if (symbol.children) {
-            processSymbols(symbol.children);
-          }
-        }
-      }
-    };
-
-    processSymbols(symbols);
-    return results;
-  }
+  // Complex child symbol inclusion removed - handled simply in document recursion
 
   /**
    * Filter symbols by kind (include/exclude lists)
@@ -128,150 +91,40 @@ export class SymbolMatcher {
       if (excludeKinds?.includes(symbol.kind)) {
         return false;
       }
-      
+
       // If include list exists, symbol must be in it
       if (includeKinds && !includeKinds.includes(symbol.kind)) {
         return false;
       }
-      
+
       return true;
     });
   }
 
-  /**
-   * Recursively find matching symbols in document symbol tree with enhanced matching
-   * @param symbols - Array of DocumentSymbols to search
-   * @param pathSegments - Target symbol path segments (typically just one name)
-   * @param currentPath - Current path in symbol hierarchy
-   * @param matches - Array to collect matches
-   * @param document - TextDocument for context
-   * @param filePath - File path for context
-   * @param options - Search options
-   */
-  static findMatchingSymbols(
-    symbols: vscode.DocumentSymbol[],
-    pathSegments: string[],
-    currentPath: string[],
-    matches: SymbolMatch[],
-    document: vscode.TextDocument,
-    filePath: string,
-    options: SearchOptions = {}
-  ): void {
-    const { includeKinds, excludeKinds, matchOptions = {} } = options;
+  // Complex tree traversal methods removed - replaced with simple workspace symbol matching
+  // and simple document symbol recursion in FindSymbolTool
 
-    for (const symbol of symbols) {
-      // Apply kind filtering early
-      if (excludeKinds?.includes(symbol.kind)) continue;
-      if (includeKinds && !includeKinds.includes(symbol.kind)) continue;
+  // Complex path matching methods removed - replaced with simple array subsequence matching
 
-      const symbolPath = [...currentPath, symbol.name];
-
-      // Check if this symbol matches using enhanced matching
-      if (this.matchesNamePath(symbolPath, pathSegments, symbol, matchOptions)) {
-        matches.push({
-          symbol,
-          document,
-          namePath: symbolPath.join('/'),
-          filePath
-        });
-
-        // If parent matches and option enabled, include all children
-        if (matchOptions.includeChildrenOnParentMatch && symbol.children) {
-          this.addAllChildrenToMatches(
-            symbol.children,
-            symbolPath,
-            matches,
-            document,
-            filePath,
-            includeKinds,
-            excludeKinds
-          );
-        }
-      }
-
-      // Recursively check children (if not already processed above)
-      if (symbol.children && symbol.children.length > 0 && !matchOptions.includeChildrenOnParentMatch) {
-        this.findMatchingSymbols(
-          symbol.children,
-          pathSegments,
-          symbolPath,
-          matches,
-          document,
-          filePath,
-          options
-        );
-      }
-    }
-  }
+  // Complex child addition methods removed - no longer needed with simplified approach
 
   /**
-   * Check if a symbol path matches the target path segments with enhanced matching
-   * @param symbolPath - Current symbol path
-   * @param pathSegments - Target path segments
-   * @param symbol - The actual symbol for enhanced matching
-   * @param matchOptions - Matching options
-   * @returns True if paths match
+   * Clean symbol name by removing function signatures and templates for output
+   * Makes name_path parameter-agnostic like competitor tools (Serena MCP)
+   * @param symbolName - Raw symbol name (e.g., "Shutdown()", "method<T>", "func(int, string)")
+   * @returns Clean symbol name (e.g., "Shutdown", "method", "func")
    */
-  private static matchesNamePath(
-    symbolPath: string[],
-    pathSegments: string[],
-    symbol: vscode.DocumentSymbol,
-    matchOptions: MatchOptions = {}
-  ): boolean {
-    if (pathSegments.length === 0) return false;
-    if (pathSegments.length > 1) return false; // Only support single symbol names
-
-    const targetName = pathSegments[0];
-    
-    // Use enhanced matching that checks both name and detail
-    return this.matchesSymbolName(symbol, targetName, matchOptions);
-  }
-
-  /**
-   * Add all children symbols to matches (used when parent matches)
-   * @param children - Child symbols to add
-   * @param parentPath - Parent symbol path
-   * @param matches - Array to collect matches
-   * @param document - TextDocument for context
-   * @param filePath - File path for context
-   * @param includeKinds - Optional kinds to include
-   * @param excludeKinds - Optional kinds to exclude
-   */
-  private static addAllChildrenToMatches(
-    children: vscode.DocumentSymbol[],
-    parentPath: string[],
-    matches: SymbolMatch[],
-    document: vscode.TextDocument,
-    filePath: string,
-    includeKinds?: number[],
-    excludeKinds?: number[]
-  ): void {
-    for (const child of children) {
-      // Apply kind filtering
-      if (excludeKinds?.includes(child.kind)) continue;
-      if (includeKinds && !includeKinds.includes(child.kind)) continue;
-
-      const childPath = [...parentPath, child.name];
-      matches.push({
-        symbol: child,
-        document,
-        namePath: childPath.join('/'),
-        filePath
-      });
-
-      // Recursively add grandchildren
-      if (child.children) {
-        this.addAllChildrenToMatches(
-          child.children,
-          childPath,
-          matches,
-          document,
-          filePath,
-          includeKinds,
-          excludeKinds
-        );
-      }
-    }
+  static cleanSymbolName(symbolName: string): string {
+    // Remove function signatures: method() or method(params...)
+    // Remove template parameters: method<T> or method<T, U>
+    // Remove array brackets: array[index]
+    // Remove other common suffixes but preserve the core identifier
+    return symbolName
+      .replace(/\([^)]*\).*$/, '')  // Remove (params) and everything after
+      .replace(/<[^>]*>.*$/, '')    // Remove <templates> and everything after
+      .replace(/\[[^\]]*\].*$/, '') // Remove [arrays] and everything after
+      .replace(/\s+.*$/, '')        // Remove anything after whitespace
+      .trim();
   }
 
   /**
@@ -288,5 +141,119 @@ export class SymbolMatcher {
       vscode.SymbolKind.Enum,
       vscode.SymbolKind.Struct
     ].includes(symbolKind);
+  }
+
+  /**
+   * Parse container name from SymbolInformation into constituent parts
+   * Handles different separators: "Namespace::Class", "Namespace.Class", etc.
+   * @param containerName - Container name from SymbolInformation
+   * @returns Array of container parts, empty if no container
+   */
+  static parseContainerName(containerName: string | undefined): string[] {
+    if (!containerName || containerName.trim() === '') {
+      return [];
+    }
+
+    // Handle different namespace separators used across languages
+    // Split on :: (C++), . (C#/Java), \ or / (some tools)
+    return containerName
+      .split(/[::.\\\/]/)
+      .map(part => part.trim())
+      .filter(part => part.length > 0);
+  }
+
+  /**
+   * Check if a container name matches a target container pattern
+   * @param containerName - Container name from SymbolInformation
+   * @param targetContainer - Target container name to match
+   * @returns True if container matches target
+   */
+  static matchesContainer(containerName: string | undefined, targetContainer: string): boolean {
+    if (!containerName) return false;
+
+    // Parse container into parts and check if any part matches target
+    const containerParts = this.parseContainerName(containerName);
+    return containerParts.some(part => part === targetContainer);
+  }
+
+  /**
+   * Check if a workspace symbol matches a hierarchical path pattern
+   * Uses containerName + name from SymbolInformation directly
+   * @param symbol - SymbolInformation from workspace search
+   * @param pathSegments - Target path segments (e.g., ["MyClass", "method"])
+   * @returns True if symbol matches the hierarchical pattern
+   */
+  static matchesWorkspaceSymbol(symbol: vscode.SymbolInformation, pathSegments: string[]): boolean {
+    if (pathSegments.length === 0) return false;
+
+    if (pathSegments.length === 1) {
+      // Simple search: just match symbol name
+      return this.isExactSymbolMatch(symbol.name, pathSegments[0]);
+    }
+
+    if (pathSegments.length === 2) {
+      // Most common case: "Container/symbol"
+      const [targetContainer, targetSymbol] = pathSegments;
+      return this.matchesContainer(symbol.containerName, targetContainer) &&
+        this.isExactSymbolMatch(symbol.name, targetSymbol);
+    }
+
+    // Handle nested paths: ["Outer", "Inner", "Class", "method"]
+    return this.matchesNestedPath(symbol.containerName, symbol.name, pathSegments);
+  }
+
+  /**
+   * Check if a workspace symbol matches a nested hierarchical path
+   * @param containerName - Container name from SymbolInformation
+   * @param symbolName - Symbol name from SymbolInformation
+   * @param pathSegments - Target path segments
+   * @returns True if the nested path matches
+   */
+  static matchesNestedPath(containerName: string | undefined, symbolName: string, pathSegments: string[]): boolean {
+    // Build full path: container parts + symbol name
+    const containerParts = this.parseContainerName(containerName);
+    const fullPath = [...containerParts, symbolName];
+
+    // Check if pathSegments appears as a subsequence in fullPath
+    return this.arrayContainsSequence(fullPath, pathSegments);
+  }
+
+  /**
+   * Check if an array contains another array as a subsequence
+   * @param haystack - Array to search in
+   * @param needle - Sequence to find
+   * @returns True if needle appears as a subsequence in haystack
+   */
+  static arrayContainsSequence(haystack: string[], needle: string[]): boolean {
+    if (needle.length === 0) return false;
+    if (haystack.length < needle.length) return false;
+
+    // Try each possible starting position
+    for (let start = 0; start <= haystack.length - needle.length; start++) {
+      let matches = true;
+
+      for (let i = 0; i < needle.length; i++) {
+        const haystackItem = haystack[start + i];
+        const needleItem = needle[i];
+
+        // For the last item (symbol name), use smart symbol matching
+        if (i === needle.length - 1) {
+          if (!this.isExactSymbolMatch(haystackItem, needleItem)) {
+            matches = false;
+            break;
+          }
+        } else {
+          // For container names, use exact matching
+          if (haystackItem !== needleItem) {
+            matches = false;
+            break;
+          }
+        }
+      }
+
+      if (matches) return true;
+    }
+
+    return false;
   }
 }
