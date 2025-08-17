@@ -519,8 +519,12 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
       // Use detail as container name only at top level (not during recursion)
       // This handles C++ implementations where detail contains class name,
-      // but avoids descriptors like "declaration" in nested symbols
-      const fullPath = (currentPath.length === 0 && symbol.detail)
+      // but excludes generic descriptors like "declaration" from header files
+      const isUsefulDetail = currentPath.length === 0 && 
+        symbol.detail && 
+        symbol.detail !== 'declaration';
+      
+      const fullPath = isUsefulDetail
         ? [...currentPath, symbol.detail, cleanName]
         : [...currentPath, cleanName];
 
