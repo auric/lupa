@@ -21,7 +21,7 @@ export class PathSanitizer {
     }
 
     // Normalize path separators to forward slashes for consistent handling
-    const normalizedPath = path.posix.normalize(trimmedPath.replace(/\\/g, '/'));
+    const normalizedPath = path.posix.normalize(trimmedPath.replaceAll(path.sep, path.posix.sep));
 
     // Check for directory traversal attempts
     if (normalizedPath.startsWith('..') || normalizedPath.startsWith('/')) {

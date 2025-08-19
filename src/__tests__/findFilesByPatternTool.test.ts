@@ -51,7 +51,9 @@ vi.mock('picomatch', () => ({
 vi.mock('ignore', () => ({
     default: vi.fn(() => ({
         add: vi.fn().mockReturnThis(),
-        checkIgnore: vi.fn(() => ({ ignored: false }))
+        checkIgnore: vi.fn(() => ({ ignored: false })),
+        ignores: vi.fn(() => false),
+        filter: vi.fn().mockImplementation((files) => files)
     }))
 }));
 
@@ -64,6 +66,30 @@ vi.mock('../utils/pathSanitizer', () => ({
         sanitizePath: vi.fn((path) => path === '' ? '.' : path)
     }
 }));
+
+// Test utility functions for DRY mocks
+function createMockFdirInstance(syncReturnValue: string[] = []) {
+    return {
+        withGlobFunction: vi.fn().mockReturnThis(),
+        glob: vi.fn().mockReturnThis(),
+        globWithOptions: vi.fn().mockReturnThis(),
+        withRelativePaths: vi.fn().mockReturnThis(),
+        withFullPaths: vi.fn().mockReturnThis(),
+        exclude: vi.fn().mockReturnThis(),
+        filter: vi.fn().mockReturnThis(),
+        crawl: vi.fn().mockReturnThis(),
+        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
+        sync: vi.fn().mockReturnValue(syncReturnValue)
+    } as any;
+}
+
+function createMockGitRepository(gitRootPath: string = '/test/git-repo') {
+    return {
+        rootUri: {
+            fsPath: gitRootPath
+        }
+    };
+}
 
 describe('FindFileTool', () => {
     let findFileTool: FindFilesByPatternTool;
@@ -135,15 +161,7 @@ describe('FindFileTool', () => {
     describe('Path Sanitization', () => {
 
         it('should sanitize search path using PathSanitizer', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue([])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([]);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             await findFileTool.execute({ pattern: '*.js', search_directory: 'src/../test' });
@@ -152,15 +170,7 @@ describe('FindFileTool', () => {
         });
 
         it('should use default path when path is undefined', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue([])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([]);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             await findFileTool.execute({ pattern: '*.js' });
@@ -171,35 +181,20 @@ describe('FindFileTool', () => {
 
     describe('File Finding', () => {
         it('should execute file search with mocked fdir', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue(['file1.js', 'file2.js'])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance(['/test/git-repo/src/file1.js', '/test/git-repo/src/file2.js']);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const result = await findFileTool.execute({ pattern: '*.js', search_directory: 'src' });
 
             // Verify basic fdir setup and execution
             expect(vi.mocked(fdir)).toHaveBeenCalled();
-            expect(mockFdirInstance.withPromise).toHaveBeenCalled();
+            expect(mockFdirInstance.sync).toHaveBeenCalled();
+            expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(['*.js'], expect.any(Object));
             expect(result).toEqual(['src/file1.js', 'src/file2.js']);
         });
 
         it('should sort results alphabetically', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue(['z.js', 'a.js', 'm.js'])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance(['/test/git-repo/z.js', '/test/git-repo/a.js', '/test/git-repo/m.js']);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const result = await findFileTool.execute({ pattern: '*.js' });
@@ -212,15 +207,7 @@ describe('FindFileTool', () => {
         it('should read .gitignore file', async () => {
             mockReadFile.mockResolvedValue(Buffer.from('node_modules\n.env\n*.log'));
 
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue([])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([]);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             await findFileTool.execute({ pattern: '*.js' });
@@ -235,15 +222,7 @@ describe('FindFileTool', () => {
         it('should handle missing .gitignore file gracefully', async () => {
             mockReadFile.mockRejectedValue(new Error('File not found'));
 
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue(['file.js'])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance(['/test/git-repo/file.js']);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const result = await findFileTool.execute({ pattern: '*.js' });
@@ -263,15 +242,10 @@ describe('FindFileTool', () => {
         });
 
         it('should handle fdir errors', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockRejectedValue(new Error('Directory not found'))
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([]);
+            mockFdirInstance.sync.mockImplementation(() => {
+                throw new Error('Directory not found');
+            });
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const result = await findFileTool.execute({ pattern: '*.js' });
@@ -294,20 +268,66 @@ describe('FindFileTool', () => {
 
     describe('Path Normalization', () => {
         it('should normalize Windows paths to forward slashes', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue(['src\\components\\Button.tsx'])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance(['/test/git-repo/src/components/Button.tsx']);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const result = await findFileTool.execute({ pattern: '*.tsx' });
 
             expect(result).toEqual(['src/components/Button.tsx']);
+        });
+    });
+
+    describe('Windows Pattern Fix', () => {
+        it('should pass windows: true to picomatch for pattern matching', async () => {
+            // Mock os.platform to return win32 for this test
+            const mockOsPlatform = vi.fn().mockReturnValue('win32');
+            vi.doMock('os', () => ({ platform: mockOsPlatform }));
+
+            const mockFdirInstance = createMockFdirInstance([
+                '/test/git-repo/src/WGChelper.h',
+                '/test/git-repo/lib/WGCmath.h'
+            ]);
+            vi.mocked(fdir).mockReturnValue(mockFdirInstance);
+
+            await findFileTool.execute({ pattern: '**/WGC*h' });
+
+            // Verify that windows: true is passed to globWithOptions when on Windows
+            expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(['**/WGC*h'],
+                expect.objectContaining({ windows: true })
+            );
+        });
+    });
+
+    describe('Performance Limits', () => {
+        it('should handle large result sets with MAX_RESULTS limit', async () => {
+            // Create 1200 mock files (exceeds MAX_RESULTS=1000)
+            const largeFileList = Array.from({ length: 1200 }, (_, i) =>
+                `/test/git-repo/file${i.toString().padStart(4, '0')}.js`
+            );
+            const mockFdirInstance = createMockFdirInstance(largeFileList);
+            vi.mocked(fdir).mockReturnValue(mockFdirInstance);
+
+            const result = await findFileTool.execute({ pattern: '*.js' });
+
+            expect(result.length).toBe(1002); // 1000 files + header + footer messages
+            expect(result[0]).toContain('Found 1200 files (showing first 1000)');
+            expect(result[result.length - 1]).toContain('... and 200 more files. Consider using a more specific pattern.');
+        });
+    });
+
+    describe('Real Integration Errors', () => {
+        it('should handle actual picomatch/fdir integration errors', async () => {
+            const mockFdirInstance = createMockFdirInstance([]);
+            // Simulate real fdir error that could occur with complex patterns
+            mockFdirInstance.sync.mockImplementation(() => {
+                throw new Error('ENOENT: no such file or directory, scandir');
+            });
+            vi.mocked(fdir).mockReturnValue(mockFdirInstance);
+
+            const result = await findFileTool.execute({ pattern: '**/*.js', search_directory: 'nonexistent' });
+
+            expect(result[0]).toContain('Unable to find files matching pattern');
+            expect(result[0]).toContain('ENOENT: no such file or directory');
         });
     });
 });

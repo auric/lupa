@@ -52,7 +52,9 @@ vi.mock('picomatch', () => ({
 vi.mock('ignore', () => ({
     default: vi.fn(() => ({
         add: vi.fn().mockReturnThis(),
-        checkIgnore: vi.fn(() => ({ ignored: false }))
+        checkIgnore: vi.fn(() => ({ ignored: false })),
+        ignores: vi.fn(() => false),
+        filter: vi.fn().mockImplementation((files) => files)
     }))
 }));
 
@@ -64,6 +66,30 @@ const mockPromptGenerator = {
     getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
     getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: find_files_by_pattern')
 };
+
+// Test utility functions for DRY mocks
+function createMockFdirInstance(syncReturnValue: string[] = []) {
+    return {
+        withGlobFunction: vi.fn().mockReturnThis(),
+        glob: vi.fn().mockReturnThis(),
+        globWithOptions: vi.fn().mockReturnThis(),
+        withRelativePaths: vi.fn().mockReturnThis(),
+        withFullPaths: vi.fn().mockReturnThis(),
+        exclude: vi.fn().mockReturnThis(),
+        filter: vi.fn().mockReturnThis(),
+        crawl: vi.fn().mockReturnThis(),
+        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
+        sync: vi.fn().mockReturnValue(syncReturnValue)
+    } as any;
+}
+
+function createMockGitRepository(gitRootPath: string = '/test/git-repo') {
+    return {
+        rootUri: {
+            fsPath: gitRootPath
+        }
+    };
+}
 
 describe('FindFileTool Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
@@ -121,20 +147,12 @@ describe('FindFileTool Integration Tests', () => {
 
     describe('End-to-End Find File Workflow', () => {
         it('should handle find file tool call workflow', async () => {
-            // Mock file search results
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue([
-                    'components/Button.tsx',
-                    'components/Input.tsx',
-                    'pages/Home.tsx'
-                ])
-            } as any;
+            // Mock file search results with full paths from git repo
+            const mockFdirInstance = createMockFdirInstance([
+                '/test/git-repo/components/Button.tsx',
+                '/test/git-repo/components/Input.tsx',
+                '/test/git-repo/pages/Home.tsx'
+            ]);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             // Mock LLM requesting to find TypeScript files
@@ -170,7 +188,7 @@ describe('FindFileTool Integration Tests', () => {
             }]);
 
             // Verify tool was called with correct arguments
-            expect(mockFdirInstance.glob).toHaveBeenCalledWith('*.tsx');
+            expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(['*.tsx'], expect.any(Object));
             expect(mockFdirInstance.crawl).toHaveBeenCalledWith(expect.stringContaining('components'));
 
             // Verify results are properly formatted
@@ -178,26 +196,18 @@ describe('FindFileTool Integration Tests', () => {
             expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(true);
             expect(toolCallResults[0].result).toEqual([
-                'components/components/Button.tsx',
-                'components/components/Input.tsx',
-                'components/pages/Home.tsx'
+                'components/Button.tsx',
+                'components/Input.tsx',
+                'pages/Home.tsx'
             ]);
         });
 
         it('should handle complex glob patterns', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue([
-                    'utils/helper.js',
-                    'utils/config.ts',
-                    'lib/parser.js'
-                ])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([
+                '/test/git-repo/utils/helper.js',
+                '/test/git-repo/utils/config.ts',
+                '/test/git-repo/lib/parser.js'
+            ]);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             // Test multiple extensions pattern
@@ -209,7 +219,7 @@ describe('FindFileTool Integration Tests', () => {
                 }
             }]);
 
-            expect(mockFdirInstance.glob).toHaveBeenCalledWith('**/*.{js,ts}');
+            expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(['**/*.{js,ts}'], expect.any(Object));
             expect(toolCallResults[0].result).toEqual([
                 'lib/parser.js',
                 'utils/config.ts',
@@ -221,18 +231,10 @@ describe('FindFileTool Integration Tests', () => {
             // Mock .gitignore content
             mockReadFile.mockResolvedValue(Buffer.from('node_modules\n*.log\n.env'));
 
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockResolvedValue([
-                    'src/app.js',
-                    'src/utils.js'
-                ])
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([
+                '/test/git-repo/src/app.js',
+                '/test/git-repo/src/utils.js'
+            ]);
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const mockToolCall = {
@@ -264,15 +266,10 @@ describe('FindFileTool Integration Tests', () => {
         });
 
         it('should handle tool execution errors gracefully', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockRejectedValue(new Error('Permission denied'))
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([]);
+            mockFdirInstance.sync.mockImplementation(() => {
+                throw new Error('Permission denied');
+            });
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const mockToolCall = {
@@ -298,15 +295,10 @@ describe('FindFileTool Integration Tests', () => {
         });
 
         it('should validate tool arguments according to schema', async () => {
-            const mockFdirInstance = {
-                withGlobFunction: vi.fn().mockReturnThis(),
-                glob: vi.fn().mockReturnThis(),
-                withRelativePaths: vi.fn().mockReturnThis(),
-                exclude: vi.fn().mockReturnThis(),
-                filter: vi.fn().mockReturnThis(),
-                crawl: vi.fn().mockReturnThis(),
-                withPromise: vi.fn().mockRejectedValue(new Error('Permission denied'))
-            } as any;
+            const mockFdirInstance = createMockFdirInstance([]);
+            mockFdirInstance.sync.mockImplementation(() => {
+                throw new Error('Invalid pattern');
+            });
             vi.mocked(fdir).mockReturnValue(mockFdirInstance);
 
             const mockToolCall = {

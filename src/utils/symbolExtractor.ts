@@ -27,7 +27,7 @@ export interface FileSymbolResult {
  * Handles Git repository context, .gitignore patterns, and recursive directory traversal.
  */
 export class SymbolExtractor {
-  constructor(private readonly gitOperationsManager: GitOperationsManager) {}
+  constructor(private readonly gitOperationsManager: GitOperationsManager) { }
 
   /**
    * Extract symbols from a single file using VS Code LSP API
@@ -65,7 +65,7 @@ export class SymbolExtractor {
     const repository = this.gitOperationsManager.getRepository();
     const gitignoreContent = await readGitignore(repository);
     const ig = ignore().add(gitignoreContent);
-    
+
     // Debug: Log gitignore patterns loaded
     if (gitignoreContent.trim()) {
       console.log(`[SymbolExtractor] Loaded gitignore patterns:`, gitignoreContent.split('\n').filter(line => line.trim() && !line.startsWith('#')));
@@ -153,7 +153,7 @@ export class SymbolExtractor {
         if (type === vscode.FileType.File) {
           // Check if it's a code file
           let shouldInclude = CodeFileUtils.isCodeFile(name);
-          
+
           // Apply additional file pattern filter if provided
           if (shouldInclude && filePattern) {
             shouldInclude = filePattern.test(name);
@@ -202,7 +202,7 @@ export class SymbolExtractor {
     }
 
     if (absolutePath.startsWith(gitRoot)) {
-      return path.relative(gitRoot, absolutePath).replace(/\\/g, '/');
+      return path.relative(gitRoot, absolutePath).replaceAll(path.sep, path.posix.sep);
     }
 
     return path.basename(absolutePath);

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import * as path from 'path';
+import * as os from 'os';
 import { fdir } from 'fdir';
-import picomatch from 'picomatch';
+import picomatch, { PicomatchOptions } from 'picomatch';
 import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
@@ -83,46 +84,32 @@ export class FindFilesByPatternTool extends BaseTool {
    */
   private async findFiles(pattern: string, searchPath: string): Promise<string[]> {
     try {
-      const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
-      if (!gitRootDirectory) {
+      const gitRepo = this.gitOperationsManager.getRepository();
+      if (!gitRepo) {
         throw new Error('Git repository not found');
       }
 
+      const gitRootDirectory = gitRepo.rootUri.fsPath;
       const targetPath = path.join(gitRootDirectory, searchPath);
 
-      // Read .gitignore patterns
-      const gitignorePatterns = await readGitignore(this.gitOperationsManager.getRepository());
+      const gitignorePatterns = await readGitignore(gitRepo);
       const ig = ignore().add(gitignorePatterns);
 
-      // Use fdir with glob pattern matching and gitignore filtering
-      const files = await new fdir()
+      const options: PicomatchOptions = {
+        windows: os.platform() === 'win32',
+      };
+      const files = new fdir()
         .withGlobFunction(picomatch)
-        .glob(pattern)
-        .withRelativePaths() // Return paths relative to the search directory
-        .exclude((dirName, dirPath) => {
-          // Check if directory should be ignored based on .gitignore
-          const relativePath = path.relative(gitRootDirectory, dirPath);
-          return ig.checkIgnore(relativePath).ignored || ig.checkIgnore(dirName).ignored;
-        })
-        .filter((filePath, isDirectory) => {
-          if (isDirectory) return true; // Don't filter directories at this level
-
-          // Check if file should be ignored based on .gitignore
-          const fullPath = path.join(targetPath, filePath);
-          const relativePath = path.relative(gitRootDirectory, fullPath);
-          return !ig.checkIgnore(relativePath).ignored;
-        })
+        .globWithOptions([pattern], options)
+        .withFullPaths()
+        .exclude((_dirName, dirPath) =>
+          ig.ignores(path.relative(gitRootDirectory, dirPath))
+        )
         .crawl(targetPath)
-        .withPromise();
+        .sync();
 
-      // Convert to proper relative paths from project root
-      const results = files.map(file => {
-        const fullPath = path.join(targetPath, file);
-        const relativePath = path.relative(gitRootDirectory, fullPath);
-        return relativePath.replace(/\\/g, '/'); // Normalize to forward slashes
-      });
-
-      return results.sort();
+      const filesRelativePath = files.map(file => path.relative(gitRootDirectory, file).replaceAll(path.sep, path.posix.sep));
+      return ig.filter(filesRelativePath).sort();
     } catch (error) {
       throw new Error(`Failed to find files matching '${pattern}' in '${searchPath}': ${error instanceof Error ? error.message : String(error)}`);
     }
