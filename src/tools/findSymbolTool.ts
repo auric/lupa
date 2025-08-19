@@ -77,14 +77,10 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     ),
     exclude_kinds: z.array(z.string()).optional().describe(
       'Exclude these symbol types. Takes precedence over include_kinds.'
-    ),
-    max_answer_chars: z.number().int().min(1000).default(50000).optional().describe(
-      'Maximum response size. Results truncated if exceeded.'
     )
   });
 
   async execute(args: z.infer<typeof this.schema>): Promise<string> {
-    // Validate input arguments first
     const validationResult = this.schema.safeParse(args);
     if (!validationResult.success) {
       return `Error: ${validationResult.error.issues.map(e => e.message).join(', ')}`;
@@ -98,20 +94,16 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
         include_children: includeChildren,
         include_kinds: includeKindsStrings,
         exclude_kinds: excludeKindsStrings,
-        max_answer_chars: maxAnswerChars
       } = validationResult.data;
 
-      // Convert string kinds to numbers using SymbolFormatter
       const includeKinds = includeKindsStrings?.map(kind => SymbolFormatter.convertKindStringToNumber(kind)).filter(k => k !== undefined) as number[] | undefined;
       const excludeKinds = excludeKindsStrings?.map(kind => SymbolFormatter.convertKindStringToNumber(kind)).filter(k => k !== undefined) as number[] | undefined;
 
-      // Parse and validate the hierarchical name path
       const pathSegments = this.parseNamePath(namePath);
       if (pathSegments.length === 0) {
         return `Error: Symbol name cannot be empty`;
       }
 
-      // Find symbols based on the search scope - Two-path strategy
       let symbols: SymbolMatch[] = [];
 
       if (relativePath && relativePath !== '.') {
@@ -126,18 +118,9 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
         return `Symbol '${namePath}' not found`;
       }
 
-      // Format the results
       const formattedResults = await this.formatSymbolResults(symbols, includeBody ?? false, includeChildren ?? false, includeKinds, excludeKinds);
 
-      // Convert FormattedSymbol objects to JSON string
       const resultString = JSON.stringify(formattedResults, null, 2);
-
-      // Apply character limit
-      if (maxAnswerChars && resultString.length > maxAnswerChars) {
-        // Truncate results to fit within limit
-        const truncatedResults = formattedResults.slice(0, Math.floor(formattedResults.length / 2));
-        return JSON.stringify(truncatedResults, null, 2);
-      }
 
       return resultString;
 
@@ -153,7 +136,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     const cleaned = namePath.trim();
     if (!cleaned) return [];
 
-    // Split by "/" and filter out empty segments (ignore leading slash)
     const segments = cleaned.split('/').filter(segment => segment.length > 0);
 
     return segments;
@@ -189,28 +171,21 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     ignorePatterns: ReturnType<typeof ignore>
   ): vscode.SymbolInformation[] {
     return symbols.filter(symbol => {
-      // Get git-relative path for the symbol's file
       const gitRelativePath = this.getGitRelativePath(symbol.location.uri);
 
-      // Validate path format before checking gitignore patterns (same as SymbolExtractor)
       if (ignore.isPathValid(gitRelativePath)) {
         try {
-          // Use ignores() method with full path (same as SymbolExtractor)
           if (ignorePatterns.ignores(gitRelativePath)) {
-            // Symbol should be ignored
             Log.debug(`[FindSymbolTool] Ignoring symbol ${symbol.name} in ${gitRelativePath} due to gitignore`);
             return false;
           }
         } catch (error) {
-          // Log gitignore check failures for debugging but include the symbol
           Log.warn(`Failed to check gitignore for path "${gitRelativePath}":`, error);
         }
       } else {
-        // Log invalid paths for debugging but include the symbol
         Log.warn(`Invalid path format for gitignore check: "${gitRelativePath}"`);
       }
 
-      // Include symbol (not ignored)
       return true;
     });
   }
@@ -226,17 +201,14 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     try {
       const targetSymbolName = pathSegments[pathSegments.length - 1];
 
-      // Load gitignore patterns (same as SymbolExtractor)
       const repository = this.gitOperationsManager.getRepository();
       const gitignoreContent = await readGitignore(repository);
       const ig = ignore().add(gitignoreContent);
 
-      // Debug: Log gitignore patterns loaded
       if (gitignoreContent.trim()) {
         Log.debug(`[FindSymbolTool] Loaded gitignore patterns:`, gitignoreContent.split('\n').filter(line => line.trim() && !line.startsWith('#')));
       }
 
-      // Get workspace symbols with timeout
       let workspaceSymbols: vscode.SymbolInformation[] = [];
       try {
         const symbolsPromise = Promise.resolve(vscode.commands.executeCommand<vscode.SymbolInformation[]>(
@@ -253,15 +225,12 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
         return [];
       }
 
-      // Filter symbols by gitignore patterns
       const filteredSymbols = this.filterSymbolsByGitignore(workspaceSymbols, ig);
       Log.debug(`[FindSymbolTool] Filtered ${workspaceSymbols.length} symbols to ${filteredSymbols.length} after gitignore`);
 
       const matches: SymbolMatch[] = [];
 
-      // Process filtered symbols with timeout per file
-      for (const symbol of filteredSymbols.slice(0, 50)) { // Limit to first 50 results
-        // Apply kind filtering early
+      for (const symbol of filteredSymbols.slice(0, 50)) {
         if (excludeKinds?.includes(symbol.kind)) continue;
         if (includeKinds && !includeKinds.includes(symbol.kind)) continue;
 
@@ -272,7 +241,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
             matches.push(match);
           }
         } catch (error) {
-          // Skip symbols that timeout or fail to process
           continue;
         }
       }
@@ -298,26 +266,21 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
         return null;
       }
 
-      // Build the clean name path for output
       const cleanSymbolName = SymbolMatcher.cleanSymbolName(symbol.name);
       let namePath: string;
 
       if (symbol.containerName) {
-        // Parse container name and build clean path
         const containerParts = SymbolMatcher.parseContainerName(symbol.containerName);
         namePath = [...containerParts, cleanSymbolName].join('/');
       } else {
-        // No container context
         namePath = cleanSymbolName;
       }
 
-      // Get document for body extraction (only if match is confirmed)
       let document: vscode.TextDocument | undefined;
       try {
         document = await vscode.workspace.openTextDocument(symbol.location.uri);
       } catch (error) {
         Log.debug(`Failed to open document for symbol ${symbol.name}:`, error);
-        // Don't fail the match just because we can't open the document
       }
 
       return {
@@ -371,7 +334,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
           }
 
           // Process symbols using enhanced matching with C++ support
-          const fileMatches: SymbolMatch[] = [];
           const fullFilePath = path.join(gitRootDirectory, filePath);
           const fileUri = vscode.Uri.file(fullFilePath);
           const document = await this.symbolExtractor.getTextDocument(fileUri);
@@ -384,9 +346,7 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
               []
             );
 
-            // Apply kind filtering and convert to SymbolMatch format
             for (const match of documentMatches) {
-              // Apply kind filtering
               if (excludeKinds?.includes(match.symbol.kind)) continue;
               if (includeKinds && !includeKinds.includes(match.symbol.kind)) continue;
 
@@ -403,7 +363,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
         return allMatches;
       }
     } catch (error) {
-      // Path doesn't exist or can't be accessed
       return [];
     }
 
@@ -469,36 +428,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     }
   }
 
-
-
-
-  /**
-   * Find symbol in document symbols using simple recursive path building
-   * Much simpler than the previous complex tree traversal approach
-   */
-  private findSymbolInDocumentSymbols(
-    symbols: vscode.DocumentSymbol[],
-    position: vscode.Position,
-    pathSegments: string[]
-  ): { symbol: vscode.DocumentSymbol; namePath: string } | undefined {
-    // Use simple recursive search with path building
-    const matches = this.findInDocumentSymbolsRecursive(symbols, pathSegments, []);
-
-    if (matches.length === 0) {
-      return undefined;
-    }
-
-    // If we have matches, find the one that contains the position (for compatibility)
-    for (const match of matches) {
-      if (match.symbol.range.contains(position)) {
-        return match;
-      }
-    }
-
-    // If no position-based match, return first match
-    return matches[0];
-  }
-
   /**
    * Simple recursive function to find matching symbols with path building
    * @param symbols - DocumentSymbols to search
@@ -520,10 +449,10 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
       // Use detail as container name only at top level (not during recursion)
       // This handles C++ implementations where detail contains class name,
       // but excludes generic descriptors like "declaration" from header files
-      const isUsefulDetail = currentPath.length === 0 && 
-        symbol.detail && 
+      const isUsefulDetail = currentPath.length === 0 &&
+        symbol.detail &&
         symbol.detail !== 'declaration';
-      
+
       const fullPath = isUsefulDetail
         ? [...currentPath, symbol.detail, cleanName]
         : [...currentPath, cleanName];
@@ -560,13 +489,11 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     if (pathSegments.length === 0) return false;
 
     if (pathSegments.length === 1) {
-      // Simple search: match any path that ends with the target
       const targetName = pathSegments[0];
       const lastName = fullPath[fullPath.length - 1];
       return SymbolMatcher.isExactSymbolMatch(lastName, targetName);
     }
 
-    // For hierarchical patterns, use the same subsequence matching as workspace symbols
     return SymbolMatcher.arrayContainsSequence(fullPath, pathSegments);
   }
 
@@ -652,7 +579,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
                 childBody = this.formatBodyWithLineNumbers(rawChildBody, childSymbolRange.start.line + 1);
               } catch (error) {
                 Log.debug(`Failed to extract body for child symbol ${childSymbol.symbol.name}:`, error);
-                // Don't include body if extraction fails
               }
             }
 
@@ -685,7 +611,6 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     const childSymbols: SymbolMatch[] = [];
 
     for (const child of children) {
-      // Apply kind filtering
       if (excludeKinds?.includes(child.kind)) continue;
       if (includeKinds && !includeKinds.includes(child.kind)) continue;
 
@@ -696,11 +621,10 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
       childSymbols.push({
         symbol: child,
         document,
-        namePath: childPath, // Clean path without signatures
+        namePath: childPath,
         filePath
       });
 
-      // Recursively collect grandchildren
       if (child.children && child.children.length > 0) {
         const grandChildren = this.collectChildrenSymbols(
           child.children,
@@ -831,11 +755,4 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
       range2.end.isBefore(range1.start)
     );
   }
-
-
-
-  // getCodeFilesInDirectory method now handled by SymbolExtractor utility
-
-  // isCodeFile method now handled by CodeFileUtils utility
-
 }
