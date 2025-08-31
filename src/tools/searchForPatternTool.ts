@@ -1,174 +1,302 @@
 import { z } from 'zod';
-import * as path from 'path';
 import * as vscode from 'vscode';
-import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { PathSanitizer } from '../utils/pathSanitizer';
-import { readGitignore } from '../utils/gitUtils';
-import { SearchResultFormatter } from './searchResultFormatter';
+import { FileDiscoverer } from '../utils/fileDiscoverer';
+import { CodeFileDetector } from '../utils/codeFileDetector';
+import { Repository } from '../types/vscodeGitExtension';
+
+interface SearchForPatternResult {
+  matches: Array<{ file_path: string; content: string }>;
+  message?: string;
+}
+
+interface SearchForPatternError {
+  error: string;
+}
 
 /**
- * Tool that searches for regex patterns in the codebase.
- * Respects .gitignore files and supports file filtering with glob patterns.
+ * Enhanced tool for searching regex patterns in the codebase with flexible file filtering.
+ * Supports context extraction, gitignore filtering, and code-file-only restrictions.
+ *
+ * Pattern Matching Logic:
+ * - Uses DOTALL flag for multiline pattern matching
+ * - Extracts configurable context lines before and after matches
+ * - Groups consecutive matches intelligently
+ *
+ * File Selection Logic:
+ * - Flexible glob pattern inclusion/exclusion
+ * - Code-only filtering when only_code_files is enabled
+ * - Full gitignore compliance
  */
 export class SearchForPatternTool extends BaseTool {
   name = 'search_for_pattern';
-  description = 'Search for a regex pattern in the codebase, with optional path filtering and glob pattern support. Returns structured XML with matches, file paths, and line numbers.';
+  description = `Offers flexible search for arbitrary patterns in the codebase, including the possibility to search in non-code files.
+Generally, symbolic operations like find_symbol should be preferred if you know which symbols you are looking for.
 
-  private readonly formatter = new SearchResultFormatter();
+Pattern Matching Logic:
+For each match, the returned result contains the full lines where the pattern is found, plus optionally context lines before and after. The pattern is compiled with DOTALL, meaning dot matches all characters including newlines. Be careful to not use greedy quantifiers unnecessarily - use non-greedy quantifiers like .*? to avoid matching too much content.
+
+File Selection Logic:
+Files can be restricted very flexibly. Use only_code_files=true for code symbols. Combine with glob patterns and relative paths for targeted searches. Exclude patterns take precedence over include patterns.`;
 
   schema = z.object({
-    pattern: z.string().min(1, 'Pattern cannot be empty').describe('The regex pattern to search for in file contents'),
-    include: z.string().optional().describe('Optional glob pattern to filter files (e.g., "*.ts", "src/**/*.js")'),
-    path: z.string().optional().describe('Optional relative path to search within (e.g., "src", "src/components")')
+    pattern: z.string().min(1, 'Pattern cannot be empty').describe(
+      'Regular expression pattern to search for in file contents'
+    ),
+    lines_before: z.number().int().min(0).max(20).default(0).optional().describe(
+      'Number of lines of context to include before each match (default: 0, max: 20)'
+    ),
+    lines_after: z.number().int().min(0).max(20).default(0).optional().describe(
+      'Number of lines of context to include after each match (default: 0, max: 20)'
+    ),
+    include_files: z.string().default('').optional().describe(
+      'Optional glob pattern specifying files to include (e.g., "*.py", "src/**/*.ts"). If empty, all non-ignored files are included.'
+    ),
+    exclude_files: z.string().default('').optional().describe(
+      'Optional glob pattern specifying files to exclude (e.g., "*test*", "**/*_generated.py"). Takes precedence over include_files.'
+    ),
+    search_path: z.string().default('.').optional().describe(
+      'Only search within this path relative to repo root. Use "." for entire project, "src" for src folder, or path to single file.'
+    ),
+    only_code_files: z.boolean().default(false).optional().describe(
+      'Whether to restrict search to only code files (files with programming language extensions). Set to true for finding code symbols, false to search all files including configs, docs, etc.'
+    ),
+    case_sensitive: z.boolean().default(false).optional().describe(
+      'Whether the pattern matching should be case sensitive (default: false for case-insensitive matching)'
+    )
   });
 
   constructor(private readonly gitOperationsManager: GitOperationsManager) {
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
-    const { pattern, include, path: searchPath } = args;
-
-    try {
-      // Sanitize the search path if provided
-      const sanitizedPath = searchPath ? PathSanitizer.sanitizePath(searchPath) : '.';
-
-      // Search for pattern in files
-      const matches = await this.searchForPattern(pattern, include, sanitizedPath);
-
-      // Format the output using structured XML formatter
-      return this.formatter.formatResults(matches);
-
-    } catch (error) {
-      return [this.formatter.formatError(error)];
+  async execute(args: z.infer<typeof this.schema>): Promise<SearchForPatternResult | SearchForPatternError> {
+    const validationResult = this.schema.safeParse(args);
+    if (!validationResult.success) {
+      return {
+        error: `Invalid parameters: ${validationResult.error.issues.map(e => e.message).join(', ')}`
+      };
     }
-  }
 
-  /**
-   * Searches for the regex pattern in files, respecting gitignore and glob patterns
-   */
-  private async searchForPattern(
-    pattern: string,
-    include: string | undefined,
-    searchPath: string = '.'
-  ): Promise<Array<{ filePath: string; lineNumber: number; line: string }>> {
     try {
-      // Create regex from pattern with dotall flag for multiline matching
-      const regex = new RegExp(pattern, 'gims');
+      const {
+        pattern,
+        lines_before = 0,
+        lines_after = 0,
+        include_files = '',
+        exclude_files = '',
+        search_path = '.',
+        only_code_files = false,
+        case_sensitive = false
+      } = validationResult.data;
 
-      const ig = ignore().add(await readGitignore(this.gitOperationsManager.getRepository()));
-      const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
-
-      // Get all files to search
-      const filesToSearch = await this.getFilesToSearch(gitRootDirectory, searchPath, include, ig);
-
-      const matches: Array<{ filePath: string; lineNumber: number; line: string }> = [];
-
-      // Search each file for the pattern
-      for (const filePath of filesToSearch) {
-        try {
-          const fileUri = vscode.Uri.file(path.posix.join(gitRootDirectory, filePath));
-          const fileContent = await vscode.workspace.fs.readFile(fileUri);
-          const text = fileContent.toString();
-
-          // Split into lines for line-by-line matching
-          const lines = text.split('\n');
-
-          for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-            const line = lines[lineIndex];
-
-            // Reset regex lastIndex to avoid global regex state issues
-            regex.lastIndex = 0;
-
-            if (regex.test(line)) {
-              matches.push({
-                filePath,
-                lineNumber: lineIndex + 1, // 1-based line numbers
-                line: line.trimEnd() // Remove trailing whitespace
-              });
-            }
-          }
-        } catch (error) {
-          // Skip files that can't be read (binary files, permission issues, etc.)
-          continue;
-        }
+      const gitRepo = this.gitOperationsManager.getRepository();
+      if (!gitRepo) {
+        return { error: 'Git repository not found' };
       }
 
-      return matches;
-    } catch (error) {
-      throw new Error(`Pattern search failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
+      // Step 1: Discover files to search
+      const fileDiscoveryResult = await FileDiscoverer.discoverFiles(gitRepo, {
+        searchPath: search_path,
+        includePattern: include_files || undefined,
+        excludePattern: exclude_files || undefined,
+        respectGitignore: true,
+        maxResults: 1000, // Prevent excessive processing
+        timeoutMs: 30000
+      });
 
-  /**
-   * Get list of files to search, applying glob patterns and gitignore rules
-   */
-  private async getFilesToSearch(
-    gitRootDirectory: string,
-    searchPath: string,
-    include: string | undefined,
-    ig: ReturnType<typeof ignore>
-  ): Promise<string[]> {
-    const files: string[] = [];
+      let filesToSearch = fileDiscoveryResult.files;
 
-    // Create glob pattern matcher if include pattern is provided
-    let globPattern: RegExp | undefined;
-    if (include) {
-      // Convert glob pattern to regex (basic implementation)
-      const globRegexSource = include
-        .replace(/\./g, '\\.')  // Escape dots
-        .replace(/\*/g, '.*')   // Convert * to .*
-        .replace(/\?/g, '.')    // Convert ? to .
-        .replace(/\\\.\*/g, '\\*'); // Fix escaped dots followed by *
-
-      globPattern = new RegExp(`^${globRegexSource}$`, 'i');
-    }
-
-    await this.scanDirectory(gitRootDirectory, searchPath, files, ig, globPattern);
-
-    return files;
-  }
-
-  /**
-   * Recursively scan directory for files
-   */
-  private async scanDirectory(
-    gitRootDirectory: string,
-    currentPath: string,
-    files: string[],
-    ig: ReturnType<typeof ignore>,
-    globPattern: RegExp | undefined
-  ): Promise<void> {
-    try {
-      const targetPath = path.posix.join(gitRootDirectory, currentPath);
-      const targetUri = vscode.Uri.file(targetPath);
-
-      const entries = await vscode.workspace.fs.readDirectory(targetUri);
-
-      for (const [name, type] of entries) {
-        const fullPath = currentPath === '.' ? name : path.posix.join(currentPath, name);
-
-        // Skip if ignored by gitignore
-        if (ig?.checkIgnore(fullPath).ignored) {
-          continue;
-        }
-
-        if (type === vscode.FileType.Directory) {
-          // Recursively scan subdirectories
-          await this.scanDirectory(gitRootDirectory, fullPath, files, ig, globPattern);
-        } else if (type === vscode.FileType.File) {
-          // Check if file matches glob pattern (if provided)
-          if (!globPattern || globPattern.test(fullPath)) {
-            files.push(fullPath);
-          }
-        }
+      // Step 2: Filter to code files if requested
+      if (only_code_files) {
+        filesToSearch = CodeFileDetector.filterCodeFiles(filesToSearch);
       }
+
+      if (filesToSearch.length === 0) {
+        return {
+          matches: [],
+          message: 'No files found matching the specified criteria'
+        };
+      }
+
+      // Step 3: Search for pattern in discovered files
+      const matches = await this.searchInFiles({
+        pattern,
+        files: filesToSearch,
+        gitRepo,
+        linesBefore: lines_before,
+        linesAfter: lines_after,
+        caseSensitive: case_sensitive
+      });
+
+      // Step 4: Format and return results
+      return {
+        matches: matches,
+        ...(fileDiscoveryResult.truncated && {
+          message: `Search was limited to first ${fileDiscoveryResult.files.length} files. Consider using more specific filters.`
+        })
+      };
+
     } catch (error) {
-      // Skip directories that can't be read
-      return;
+      return {
+        error: `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
+      };
     }
   }
 
+  /**
+   * Search for pattern in the specified files with context extraction
+   */
+  private async searchInFiles(options: {
+    pattern: string;
+    files: string[];
+    gitRepo: Repository;
+    linesBefore: number;
+    linesAfter: number;
+    caseSensitive: boolean;
+  }): Promise<Array<{ file_path: string; content: string }>> {
+    const { pattern, files, gitRepo, linesBefore, linesAfter, caseSensitive } = options;
+
+    // Create regex with appropriate flags
+    const regexFlags = `gm${caseSensitive ? '' : 'i'}s`; // global, multiline, case-insensitive (optional), dotall
+    let regex: RegExp;
+
+    try {
+      regex = new RegExp(pattern, regexFlags);
+    } catch (error) {
+      throw new Error(`Invalid regex pattern: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const gitRootDirectory = gitRepo.rootUri.fsPath;
+    const matches: Array<{ file_path: string; content: string }> = [];
+
+    // Process files with reasonable limits
+    const maxFilesToProcess = Math.min(files.length, 200); // Prevent excessive processing
+    const filesToProcess = files.slice(0, maxFilesToProcess);
+
+    for (const relativeFilePath of filesToProcess) {
+      try {
+        // Read file content
+        const fileUri = vscode.Uri.file(`${gitRootDirectory}/${relativeFilePath}`);
+        const fileContent = await vscode.workspace.fs.readFile(fileUri);
+        const text = fileContent.toString();
+
+        // Find matches with context
+        const fileMatches = this.findMatchesWithContext(text, regex, linesBefore, linesAfter);
+
+        if (fileMatches.length > 0) {
+          // Group consecutive/overlapping matches
+          const groupedContent = this.groupConsecutiveMatches(fileMatches);
+
+          matches.push({
+            file_path: relativeFilePath,
+            content: groupedContent
+          });
+        }
+
+      } catch (error) {
+        // Skip files that can't be read (binary files, permission issues, etc.)
+        continue;
+      }
+    }
+
+    return matches;
+  }
+
+  /**
+   * Find all pattern matches in text with context lines
+   */
+  private findMatchesWithContext(
+    text: string,
+    regex: RegExp,
+    linesBefore: number,
+    linesAfter: number
+  ): Array<{ startLine: number; endLine: number; content: string }> {
+    const lines = text.split('\n');
+    const matches: Array<{ startLine: number; endLine: number; content: string }> = [];
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex];
+
+      // Reset regex state for each line
+      regex.lastIndex = 0;
+
+      if (regex.test(line)) {
+        // Calculate context boundaries
+        const contextStart = Math.max(0, lineIndex - linesBefore);
+        const contextEnd = Math.min(lines.length - 1, lineIndex + linesAfter);
+
+        // Extract lines with context
+        const contextLines = lines.slice(contextStart, contextEnd + 1);
+
+        // Format with line numbers
+        const formattedLines = contextLines.map((contextLine, index) => {
+          const actualLineNumber = contextStart + index + 1; // 1-based line numbers
+          return `${actualLineNumber}: ${contextLine}`;
+        });
+
+        matches.push({
+          startLine: contextStart + 1,
+          endLine: contextEnd + 1,
+          content: formattedLines.join('\n')
+        });
+      }
+    }
+
+    return matches;
+  }
+
+  /**
+   * Group consecutive or overlapping matches to avoid duplication
+   */
+  private groupConsecutiveMatches(
+    matches: Array<{ startLine: number; endLine: number; content: string }>
+  ): string {
+    if (matches.length === 0) return '';
+    if (matches.length === 1) return matches[0].content;
+
+    // Sort matches by start line
+    const sortedMatches = matches.sort((a, b) => a.startLine - b.startLine);
+    const grouped: string[] = [];
+
+    let currentGroup = sortedMatches[0];
+
+    for (let i = 1; i < sortedMatches.length; i++) {
+      const nextMatch = sortedMatches[i];
+
+      // Check if matches overlap or are consecutive (with small gap tolerance)
+      if (nextMatch.startLine <= currentGroup.endLine + 2) {
+        // Merge matches - extend the current group to include the next match
+        const nextEndLine = Math.max(currentGroup.endLine, nextMatch.endLine);
+
+        // Reconstruct content by taking the wider range
+        const allLines = new Set<string>();
+        currentGroup.content.split('\n').forEach(line => allLines.add(line));
+        nextMatch.content.split('\n').forEach(line => allLines.add(line));
+
+        // Sort lines by line number and reconstruct
+        const sortedLines = Array.from(allLines).sort((a, b) => {
+          const aNum = parseInt(a.split(':')[0]);
+          const bNum = parseInt(b.split(':')[0]);
+          return aNum - bNum;
+        });
+
+        currentGroup = {
+          startLine: Math.min(currentGroup.startLine, nextMatch.startLine),
+          endLine: nextEndLine,
+          content: sortedLines.join('\n')
+        };
+      } else {
+        // No overlap - add current group and start new one
+        grouped.push(currentGroup.content);
+        currentGroup = nextMatch;
+      }
+    }
+
+    // Add the last group
+    grouped.push(currentGroup.content);
+
+    return grouped.join('\n\n');
+  }
 }

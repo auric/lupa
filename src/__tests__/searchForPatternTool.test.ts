@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import ignore from 'ignore';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { PathSanitizer } from '../utils/pathSanitizer';
-import * as gitUtils from '../utils/gitUtils';
+import { FileDiscoverer } from '../utils/fileDiscoverer';
+import { CodeFileDetector } from '../utils/codeFileDetector';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -13,77 +12,60 @@ vi.mock('vscode', async () => {
         ...actualVscode,
         workspace: {
             fs: {
-                readFile: vi.fn(),
-                readDirectory: vi.fn()
-            },
-            asRelativePath: vi.fn((uri) => uri.fsPath.replace('/project/', ''))
+                readFile: vi.fn()
+            }
         },
         Uri: {
             file: vi.fn((path) => ({
                 fsPath: path,
                 toString: () => `file://${path}`
             }))
-        },
-        FileType: {
-            File: 1,
-            Directory: 2
         }
     };
 });
 
-// Mock PathSanitizer
-vi.mock('../utils/pathSanitizer', () => ({
-    PathSanitizer: {
-        sanitizePath: vi.fn()
+// Mock FileDiscoverer
+vi.mock('../utils/fileDiscoverer', () => ({
+    FileDiscoverer: {
+        discoverFiles: vi.fn()
     }
 }));
 
-// Mock pathUtils
-vi.mock('../utils/gitUtils', () => ({
-    readGitignore: vi.fn()
+// Mock CodeFileDetector
+vi.mock('../utils/codeFileDetector', () => ({
+    CodeFileDetector: {
+        filterCodeFiles: vi.fn()
+    }
 }));
-
-// Mock GitOperationsManager
-vi.mock('../services/gitOperationsManager', () => ({
-    GitOperationsManager: vi.fn()
-}));
-
-// Mock ignore library
-vi.mock('ignore', () => {
-    const mockIgnore = {
-        add: vi.fn().mockReturnThis(),
-        checkIgnore: vi.fn().mockReturnValue({ ignored: false })
-    };
-    return {
-        default: vi.fn(() => mockIgnore)
-    };
-});
 
 describe('SearchForPatternTool', () => {
     let searchForPatternTool: SearchForPatternTool;
     let mockGitOperationsManager: any;
+    let mockReadFile: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
         mockGitOperationsManager = {
             getRepository: vi.fn().mockReturnValue({
-                rootUri: { fsPath: '/project' }
+                rootUri: { fsPath: '/test/git-repo' }
             })
         };
 
         searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);
-
+        mockReadFile = vi.mocked(vscode.workspace.fs.readFile);
+        
+        // Clear all mocks
+        vi.clearAllMocks();
+        
         // Re-setup essential mocks
         mockGitOperationsManager.getRepository.mockReturnValue({
-            rootUri: { fsPath: '/project' }
+            rootUri: { fsPath: '/test/git-repo' }
         });
-        vi.mocked(PathSanitizer.sanitizePath).mockImplementation((path) => path);
-        vi.mocked(gitUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
     });
 
     describe('Tool Configuration', () => {
         it('should have correct name and description', () => {
             expect(searchForPatternTool.name).toBe('search_for_pattern');
-            expect(searchForPatternTool.description).toContain('Search for a regex pattern');
+            expect(searchForPatternTool.description).toContain('flexible search for arbitrary patterns');
         });
 
         it('should have valid schema with all required fields', () => {
@@ -96,8 +78,12 @@ describe('SearchForPatternTool', () => {
             // Test with all optional fields
             const fullInput = {
                 pattern: 'function.*\\(',
-                include: '*.ts',
-                path: 'src'
+                include_files: '*.ts',
+                search_path: 'src',
+                lines_before: 2,
+                lines_after: 1,
+                only_code_files: true,
+                case_sensitive: false
             };
             expect(schema.safeParse(fullInput).success).toBe(true);
 
@@ -108,45 +94,37 @@ describe('SearchForPatternTool', () => {
         it('should create valid VS Code tool definition', () => {
             const vscodeTools = searchForPatternTool.getVSCodeTool();
             expect(vscodeTools.name).toBe('search_for_pattern');
-            expect(vscodeTools.description).toContain('Search for a regex pattern');
+            expect(vscodeTools.description).toContain('flexible search for arbitrary patterns');
             expect(vscodeTools.inputSchema).toBeDefined();
+
+            // Verify schema properties use LLM-optimized parameter names
+            const schema = vscodeTools.inputSchema as any;
+            expect(schema.properties.pattern).toBeDefined();
+            expect(schema.properties.include_files).toBeDefined();
+            expect(schema.properties.search_path).toBeDefined();
+            expect(schema.properties.lines_before).toBeDefined();
+            expect(schema.properties.lines_after).toBeDefined();
+            expect(schema.properties.only_code_files).toBeDefined();
+            expect(schema.properties.case_sensitive).toBeDefined();
         });
     });
 
     describe('Pattern Search Functionality', () => {
-        beforeEach(() => {
-            // Re-setup essential mocks
-            mockGitOperationsManager.getRepository.mockReturnValue({
-                rootUri: { fsPath: '/project' }
-            });
-            vi.mocked(PathSanitizer.sanitizePath).mockImplementation((path) => path);
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
-        });
-
-        it('should find pattern matches in files', async () => {
-            // Mock directory structure
-            vi.mocked(vscode.workspace.fs.readDirectory).mockImplementation((uri) => {
-                const path = uri.fsPath;
-                if (path === '/project') {
-                    return Promise.resolve([
-                        ['src', vscode.FileType.Directory]
-                    ] as [string, vscode.FileType][]);
-                } else if (path === '/project/src') {
-                    return Promise.resolve([
-                        ['index.ts', vscode.FileType.File],
-                        ['utils.ts', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                }
-                return Promise.resolve([]);
+        it('should find pattern matches in files with proper formatting', async () => {
+            // Mock FileDiscoverer to return test files
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/index.ts', 'src/utils.ts'],
+                truncated: false,
+                totalFound: 2
             });
 
             // Mock file contents
             const mockFileContents = new Map([
-                ['/project/src/index.ts', 'export class MyClass {\n  constructor() {}\n}\nfunction test() {}'],
-                ['/project/src/utils.ts', 'export function utilFunction() {\n  return true;\n}\nclass UtilClass {}']
+                ['/test/git-repo/src/index.ts', 'export class MyClass {\n  constructor() {}\n}\nfunction test() {}'],
+                ['/test/git-repo/src/utils.ts', 'export function utilFunction() {\n  return true;\n}\nclass UtilClass {}']
             ]);
 
-            vi.mocked(vscode.workspace.fs.readFile).mockImplementation((uri) => {
+            mockReadFile.mockImplementation((uri) => {
                 const content = mockFileContents.get(uri.fsPath);
                 if (content) {
                     return Promise.resolve(Buffer.from(content));
@@ -158,146 +136,143 @@ describe('SearchForPatternTool', () => {
                 pattern: 'class.*{'
             });
 
-            expect(result.length).toBeGreaterThan(0);
-            const resultText = result.join('\n');
-            expect(resultText).toContain('"file": "src/index.ts"');
-            expect(resultText).toContain('1: export class MyClass {');
-            expect(resultText).toContain('"file": "src/utils.ts"');
-            expect(resultText).toContain('4: class UtilClass {}');
+            expect(result).toHaveProperty('matches');
+            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches).toBeDefined();
+            expect(successResult.matches.length).toBeGreaterThan(0);
+            expect(successResult.matches[0].file_path).toBe('src/index.ts');
+            expect(successResult.matches[0].content).toContain('1: export class MyClass {');
+            expect(successResult.matches[1].file_path).toBe('src/utils.ts');
+            expect(successResult.matches[1].content).toContain('4: class UtilClass {}');
         });
 
-        it('should handle glob pattern filtering', async () => {
-            // Mock directory structure
-            vi.mocked(vscode.workspace.fs.readDirectory).mockImplementation((uri) => {
-                const path = uri.fsPath;
-                if (path === '/project') {
-                    return Promise.resolve([
-                        ['src', vscode.FileType.Directory],
-                        ['README.md', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                } else if (path === '/project/src') {
-                    return Promise.resolve([
-                        ['index.ts', vscode.FileType.File],
-                        ['components', vscode.FileType.Directory]
-                    ] as [string, vscode.FileType][]);
-                } else if (path === '/project/src/components') {
-                    return Promise.resolve([
-                        ['Button.tsx', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                }
-                return Promise.resolve([]);
+        it('should handle context lines extraction', async () => {
+            // Mock FileDiscoverer to return test files
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test.ts'],
+                truncated: false,
+                totalFound: 1
             });
 
-            const mockFileContents = new Map([
-                ['/project/src/index.ts', 'class TypeScript {}'],
-                ['/project/src/components/Button.tsx', 'class ReactComponent {}'],
-                ['/project/README.md', 'class Documentation {}']
-            ]);
-
-            vi.mocked(vscode.workspace.fs.readFile).mockImplementation((uri) => {
-                const content = mockFileContents.get(uri.fsPath);
-                if (content) {
-                    return Promise.resolve(Buffer.from(content));
-                }
-                throw new Error('File not found');
-            });
+            const testContent = 'line 1\nclass TestClass {\nline 3\nline 4\nline 5';
+            mockReadFile.mockResolvedValue(Buffer.from(testContent));
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
-                include: '*.ts'
+                lines_before: 1,
+                lines_after: 2
             });
-            const resultText = result.join('\n');
-            expect(resultText).toContain('"file": "src/index.ts"');
-            expect(resultText).toContain('1: class TypeScript {}');
-            expect(resultText).not.toContain('README.md');
-            expect(resultText).not.toContain('Button.tsx');
+
+            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches).toBeDefined();
+            expect(successResult.matches[0].content).toContain('1: line 1'); // before
+            expect(successResult.matches[0].content).toContain('2: class TestClass {'); // match
+            expect(successResult.matches[0].content).toContain('3: line 3'); // after
+            expect(successResult.matches[0].content).toContain('4: line 4'); // after
         });
 
-        it('should handle path filtering', async () => {
-            vi.mocked(PathSanitizer.sanitizePath).mockReturnValue('src/components');
-
-            // Mock directory structure for path filtering
-            vi.mocked(vscode.workspace.fs.readDirectory).mockImplementation((uri) => {
-                const path = uri.fsPath;
-                if (path === '/project/src/components') {
-                    return Promise.resolve([
-                        ['Button.tsx', vscode.FileType.File],
-                        ['Modal.tsx', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                }
-                return Promise.resolve([]);
+        it('should handle case sensitivity', async () => {
+            // Mock FileDiscoverer to return test files
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test.ts'],
+                truncated: false,
+                totalFound: 1
             });
 
-            const mockFileContents = new Map([
-                ['/project/src/components/Button.tsx', 'class Button {}'],
-                ['/project/src/components/Modal.tsx', 'class Modal {}']
-            ]);
+            const testContent = 'Class TestClass {\nclass TestClass {';
+            mockReadFile.mockResolvedValue(Buffer.from(testContent));
 
-            vi.mocked(vscode.workspace.fs.readFile).mockImplementation((uri) => {
-                const content = mockFileContents.get(uri.fsPath);
-                if (content) {
-                    return Promise.resolve(Buffer.from(content));
-                }
-                throw new Error('File not found');
+            // Case insensitive (default)
+            let result = await searchForPatternTool.execute({
+                pattern: 'class.*{',
+                case_sensitive: false
             });
+            let successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches[0].content).toContain('1: Class TestClass {');
+            expect(successResult.matches[0].content).toContain('2: class TestClass {');
+
+            // Case sensitive
+            result = await searchForPatternTool.execute({
+                pattern: 'class.*{',
+                case_sensitive: true
+            });
+            successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches[0].content).toContain('2: class TestClass {');
+            expect(successResult.matches[0].content).not.toContain('1: Class TestClass {');
+        });
+
+        it('should handle only_code_files filtering', async () => {
+            // Mock FileDiscoverer to return mixed file types
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/code.ts', 'README.md', 'config.json'],
+                truncated: false,
+                totalFound: 3
+            });
+            
+            // Mock CodeFileDetector to filter to code files only
+            vi.mocked(CodeFileDetector.filterCodeFiles).mockReturnValue(['src/code.ts']);
+
+            mockReadFile.mockResolvedValue(Buffer.from('class Test {}'));
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
-                path: 'src/components'
+                only_code_files: true
             });
 
-            expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith('src/components');
-            const resultText = result.join('\n');
-            expect(resultText).toContain('"file": "src/components/Button.tsx"');
-            expect(resultText).toContain('1: class Button {}');
-            expect(resultText).toContain('"file": "src/components/Modal.tsx"');
-            expect(resultText).toContain('1: class Modal {}');
+            expect(CodeFileDetector.filterCodeFiles).toHaveBeenCalledWith(['src/code.ts', 'README.md', 'config.json']);
+            
+            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches).toBeDefined();
+            expect(successResult.matches[0].file_path).toBe('src/code.ts');
         });
 
-        it('should return no matches message when pattern not found', async () => {
-            vi.mocked(vscode.workspace.fs.readFile).mockImplementation(() => {
-                return Promise.resolve(Buffer.from('const variable = "test";'));
+        it('should return no matches when pattern not found', async () => {
+            // Mock FileDiscoverer to return test files
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test.ts'],
+                truncated: false,
+                totalFound: 1
             });
+
+            mockReadFile.mockResolvedValue(Buffer.from('const variable = "test";'));
 
             const result = await searchForPatternTool.execute({
                 pattern: 'nonexistentpattern'
             });
 
-            expect(result[0]).toContain('No matches found for the specified pattern'); // No longer wrapped in XML tags
-        });
-
-        it('should handle file read errors gracefully', async () => {
-            vi.mocked(vscode.workspace.fs.readFile).mockRejectedValue(new Error('Permission denied'));
-
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{'
-            });
-
-            // Should not throw error, should return no matches or handle gracefully
-            expect(Array.isArray(result)).toBe(true);
+            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches).toEqual([]);
         });
     });
 
     describe('Error Handling', () => {
         it('should handle invalid regex patterns', async () => {
+            // Mock FileDiscoverer to return files (error should occur before file processing)
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test.ts'],
+                truncated: false,
+                totalFound: 1
+            });
+
             const result = await searchForPatternTool.execute({
                 pattern: '[invalid regex'
             });
 
-            expect(result[0]).toContain('Error searching for pattern');
+            const errorResult = result as { error: string };
+            expect(errorResult.error).toBeDefined();
+            expect(errorResult.error).toContain('Invalid regex pattern');
         });
 
-        it('should handle path sanitization errors', async () => {
-            vi.mocked(PathSanitizer.sanitizePath).mockImplementation(() => {
-                throw new Error('Invalid path');
-            });
+        it('should handle FileDiscoverer errors', async () => {
+            vi.mocked(FileDiscoverer.discoverFiles).mockRejectedValue(new Error('File discovery failed'));
 
             const result = await searchForPatternTool.execute({
-                pattern: 'test',
-                path: '../../../etc/passwd'
+                pattern: 'test'
             });
 
-            expect(result[0]).toContain('Error searching for pattern');
+            const errorResult = result as { error: string };
+            expect(errorResult.error).toBeDefined();
+            expect(errorResult.error).toContain('Pattern search failed');
         });
 
         it('should handle git repository access errors', async () => {
@@ -307,126 +282,104 @@ describe('SearchForPatternTool', () => {
                 pattern: 'test'
             });
 
-            // Should handle missing git repository gracefully
-            expect(Array.isArray(result)).toBe(true);
+            const errorResult = result as { error: string };
+            expect(errorResult.error).toContain('Git repository not found');
+        });
+
+        it('should handle file read errors gracefully', async () => {
+            // Mock FileDiscoverer to return test files
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test.ts', 'src/error.ts'],
+                truncated: false,
+                totalFound: 2
+            });
+
+            mockReadFile.mockImplementation((uri) => {
+                if (uri.fsPath.includes('error.ts')) {
+                    throw new Error('Permission denied');
+                }
+                return Promise.resolve(Buffer.from('class Test {}'));
+            });
+
+            const result = await searchForPatternTool.execute({
+                pattern: 'class.*{'
+            });
+
+            // Should skip unreadable files and process readable ones
+            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches).toBeDefined();
+            expect(successResult.matches.length).toBe(1);
+            expect(successResult.matches[0].file_path).toBe('src/test.ts');
         });
     });
 
     describe('Output Formatting', () => {
-        it('should format matches grouped by file', async () => {
-            // Mock directory structure
-            vi.mocked(vscode.workspace.fs.readDirectory).mockImplementation((uri) => {
-                const path = uri.fsPath;
-                if (path === '/project') {
-                    return Promise.resolve([
-                        ['src', vscode.FileType.Directory]
-                    ] as [string, vscode.FileType][]);
-                } else if (path === '/project/src') {
-                    return Promise.resolve([
-                        ['test.ts', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                }
-                return Promise.resolve([]);
+        it('should format matches grouped by file with line numbers', async () => {
+            // Mock FileDiscoverer to return test files
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test.ts'],
+                truncated: false,
+                totalFound: 1
             });
 
-            const mockFileContents = new Map([
-                ['/project/src/test.ts', 'class First {}\nclass Second {}\nfunction other() {}']
-            ]);
-
-            vi.mocked(vscode.workspace.fs.readFile).mockImplementation((uri) => {
-                const content = mockFileContents.get(uri.fsPath);
-                if (content) {
-                    return Promise.resolve(Buffer.from(content));
-                }
-                throw new Error('File not found');
-            });
+            const testContent = 'class First {}\nclass Second {}\nfunction other() {}';
+            mockReadFile.mockResolvedValue(Buffer.from(testContent));
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{'
             });
 
-            // Check that matches are in XML format with correct file and content
-            const resultText = result.join('\n');
-            expect(resultText).toContain('"file": "src/test.ts"');
-            expect(resultText).toContain('1: class First {}');
-            expect(resultText).toContain('2: class Second {}');
+            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches).toBeDefined();
+            expect(successResult.matches[0].file_path).toBe('src/test.ts');
+            expect(successResult.matches[0].content).toContain('1: class First {}');
+            expect(successResult.matches[0].content).toContain('2: class Second {}');
+            expect(successResult.matches[0].content).not.toContain('function other()');
         });
 
-        it('should remove trailing whitespace from matched lines', async () => {
-            // Mock directory structure
-            vi.mocked(vscode.workspace.fs.readDirectory).mockImplementation((uri) => {
-                const path = uri.fsPath;
-                if (path === '/project') {
-                    return Promise.resolve([
-                        ['src', vscode.FileType.Directory]
-                    ] as [string, vscode.FileType][]);
-                } else if (path === '/project/src') {
-                    return Promise.resolve([
-                        ['test.ts', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                }
-                return Promise.resolve([]);
+        it('should group consecutive matches intelligently', async () => {
+            // Mock FileDiscoverer to return test files
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test.ts'],
+                truncated: false,
+                totalFound: 1
             });
 
-            const mockFileContents = new Map([
-                ['/project/src/test.ts', 'class TestClass {   \n  method() {}']
-            ]);
+            const testContent = 'line1\nclass First {\nline3\nclass Second {\nline5';
+            mockReadFile.mockResolvedValue(Buffer.from(testContent));
 
-            vi.mocked(vscode.workspace.fs.readFile).mockImplementation((uri) => {
-                const content = mockFileContents.get(uri.fsPath);
-                if (content) {
-                    return Promise.resolve(Buffer.from(content));
-                }
-                throw new Error('File not found');
+            const result = await searchForPatternTool.execute({
+                pattern: 'class.*{',
+                lines_before: 0,
+                lines_after: 1
             });
+
+            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
+            expect(successResult.matches).toBeDefined();
+            expect(successResult.matches[0].file_path).toBe('src/test.ts');
+            // Should contain both matches with their context, grouped intelligently
+            const content = successResult.matches[0].content;
+            expect(content).toContain('2: class First {');
+            expect(content).toContain('4: class Second {');
+        });
+        it('should handle truncated file discovery results', async () => {
+            // Mock FileDiscoverer to return truncated results
+            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
+                files: ['src/test1.ts', 'src/test2.ts'],
+                truncated: true,
+                totalFound: 500
+            });
+
+            mockReadFile.mockResolvedValue(Buffer.from('class Test {}'));
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{'
             });
 
-            // Check that trailing whitespace is removed in XML content
-            const resultText = result.join('\n');
-            expect(resultText).toContain('1: class TestClass {');
-            expect(resultText).not.toContain('1: class TestClass {   ');
-        });
-    });
-
-    describe('Gitignore Integration', () => {
-        it('should respect gitignore patterns', async () => {
-            const mockIgnore = {
-                add: vi.fn().mockReturnThis(),
-                checkIgnore: vi.fn().mockImplementation((path) => ({
-                    ignored: path.includes('node_modules')
-                }))
-            } as any;
-            vi.mocked(ignore).mockReturnValue(mockIgnore);
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue('node_modules/\n*.log');
-
-            // Mock directory with ignored files - avoid infinite loop
-            vi.mocked(vscode.workspace.fs.readDirectory).mockImplementation((uri) => {
-                const path = uri.fsPath;
-                if (path === '/project') {
-                    return Promise.resolve([
-                        ['src', vscode.FileType.Directory],
-                        ['node_modules', vscode.FileType.Directory],
-                        ['test.log', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                } else if (path === '/project/src') {
-                    return Promise.resolve([
-                        ['index.ts', vscode.FileType.File]
-                    ] as [string, vscode.FileType][]);
-                }
-                return Promise.resolve([]);
-            });
-
-            await searchForPatternTool.execute({
-                pattern: 'test'
-            });
-
-            expect(gitUtils.readGitignore).toHaveBeenCalledWith(
-                mockGitOperationsManager.getRepository()
-            );
-            expect(mockIgnore.add).toHaveBeenCalledWith('node_modules/\n*.log');
+            const successResult = result as { matches: Array<{ file_path: string; content: string }>; message?: string };
+            expect(successResult.matches).toBeDefined();
+            expect(successResult.message).toContain('Search was limited to first');
+            expect(successResult.message).toContain('Consider using more specific filters');
         });
     });
 });

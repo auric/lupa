@@ -1,13 +1,7 @@
 import { z } from 'zod';
-import * as path from 'path';
-import * as os from 'os';
-import { fdir } from 'fdir';
-import picomatch, { PicomatchOptions } from 'picomatch';
-import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { PathSanitizer } from '../utils/pathSanitizer';
-import { readGitignore } from '../utils/gitUtils';
+import { FileDiscoverer } from '../utils/fileDiscoverer';
 
 /**
  * Tool that finds files matching glob patterns within a directory.
@@ -29,8 +23,6 @@ import { readGitignore } from '../utils/gitUtils';
 // - "test?.js" - test1.js, testA.js, etc.
 // - "README*" - README files with any extension
 
-const MAX_RESULTS = 1000; // Prevent excessive memory usage
-const SEARCH_TIMEOUT = 30000; // 30 second timeout for expensive searches
 
 export class FindFilesByPatternTool extends BaseTool {
   name = 'find_files_by_pattern';
@@ -49,29 +41,30 @@ export class FindFilesByPatternTool extends BaseTool {
     try {
       const { pattern, search_directory: searchPath } = args;
 
-      // Sanitize the search directory to prevent directory traversal attacks
-      const sanitizedPath = PathSanitizer.sanitizePath(searchPath || '.');
+      const gitRepo = this.gitOperationsManager.getRepository();
+      if (!gitRepo) {
+        throw new Error('Git repository not found');
+      }
 
-      // Find files matching the pattern with timeout protection
-      const result = await Promise.race([
-        this.findFiles(pattern, sanitizedPath),
-        new Promise<string[]>((_, reject) =>
-          setTimeout(() => reject(new Error('Search timeout - pattern too expensive')), SEARCH_TIMEOUT)
-        )
-      ]);
+      // Use FileDiscoverer to find files matching the pattern
+      const result = await FileDiscoverer.discoverFiles(gitRepo, {
+        searchPath: searchPath || '.',
+        includePattern: pattern,
+        respectGitignore: true
+      });
 
-      // Limit results to prevent excessive memory usage
-      if (result.length > MAX_RESULTS) {
+      // Handle truncated results
+      if (result.truncated) {
         return [
-          `Found ${result.length} files (showing first ${MAX_RESULTS}):`,
-          ...result.slice(0, MAX_RESULTS),
-          `... and ${result.length - MAX_RESULTS} more files. Consider using a more specific pattern.`
+          `Found ${result.totalFound} files (showing first ${result.files.length}):`,
+          ...result.files,
+          `... and ${result.totalFound - result.files.length} more files. Consider using a more specific pattern.`
         ];
       }
 
-      return result.length === 0
+      return result.files.length === 0
         ? [`No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'`]
-        : result;
+        : result.files;
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -79,39 +72,4 @@ export class FindFilesByPatternTool extends BaseTool {
     }
   }
 
-  /**
-   * Finds files matching the given glob pattern within the specified path
-   */
-  private async findFiles(pattern: string, searchPath: string): Promise<string[]> {
-    try {
-      const gitRepo = this.gitOperationsManager.getRepository();
-      if (!gitRepo) {
-        throw new Error('Git repository not found');
-      }
-
-      const gitRootDirectory = gitRepo.rootUri.fsPath;
-      const targetPath = path.join(gitRootDirectory, searchPath);
-
-      const gitignorePatterns = await readGitignore(gitRepo);
-      const ig = ignore().add(gitignorePatterns);
-
-      const options: PicomatchOptions = {
-        windows: os.platform() === 'win32',
-      };
-      const files = new fdir()
-        .withGlobFunction(picomatch)
-        .globWithOptions([pattern], options)
-        .withFullPaths()
-        .exclude((_dirName, dirPath) =>
-          ig.ignores(path.relative(gitRootDirectory, dirPath))
-        )
-        .crawl(targetPath)
-        .sync();
-
-      const filesRelativePath = files.map(file => path.relative(gitRootDirectory, file).replaceAll(path.sep, path.posix.sep));
-      return ig.filter(filesRelativePath).sort();
-    } catch (error) {
-      throw new Error(`Failed to find files matching '${pattern}' in '${searchPath}': ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
 }
