@@ -86,9 +86,9 @@ The extension follows a layered, service-oriented architecture with clear separa
 - **`ToolCallingAnalysisProvider`** (`src/services/toolCallingAnalysisProvider.ts`) - Manages the conversational tool-calling loop with the LLM, including conversation management and tool execution.
 - **`AnalysisProvider`** (`src/services/analysisProvider.ts`) - Legacy analysis provider using embedding-based context retrieval, available as fallback.
 - **`ConversationManager`** (`src/models/conversationManager.ts`) - Manages the multi-turn conversation history with the LLM.
-- **`ToolExecutor`** (`src/models/toolExecutor.ts`) - Executes tool calls requested by the LLM in parallel.
-- **`ToolRegistry`** (`src/models/toolRegistry.ts`) - Holds a registry of all available tools.
-- **Tools** (`src/tools/`) - Individual tools the LLM can call, such as `FindSymbolTool` to get code definitions with advanced symbol range expansion.
+- **`ToolExecutor`** (`src/models/toolExecutor.ts`) - Executes tool calls with rate limiting (50 calls per session) to prevent runaway loops
+- **`ToolRegistry`** (`src/models/toolRegistry.ts`) - Registry of available tools for code exploration
+- **Tools** (`src/tools/`) - Individual tools that let the LLM explore code dynamically during analysis
 - **`CopilotModelManager`** (`src/models/copilotModelManager.ts`) - Interfaces with VS Code's Language Model API.
 - **`ContextProvider`** (`src/services/contextProvider.ts`) - Provides context for legacy embedding-based approach.
 - **`TokenManagerService`** (`src/services/tokenManagerService.ts`) - Optimizes context to fit model limits.
