@@ -269,6 +269,61 @@ describe('ToolExecutor', () => {
     });
   });
 
+  describe('Rate Limiting', () => {
+    it('should allow tool calls under the limit', async () => {
+      const limitedExecutor = new ToolExecutor(toolRegistry, 3);
+
+      const result1 = await limitedExecutor.executeTool('success_tool', { message: 'test1' });
+      const result2 = await limitedExecutor.executeTool('success_tool', { message: 'test2' });
+      const result3 = await limitedExecutor.executeTool('success_tool', { message: 'test3' });
+
+      expect(result1.success).toBe(true);
+      expect(result2.success).toBe(true);
+      expect(result3.success).toBe(true);
+      expect(limitedExecutor.getToolCallCount()).toBe(3);
+    });
+
+    it('should reject tool calls exceeding the limit', async () => {
+      const limitedExecutor = new ToolExecutor(toolRegistry, 3);
+
+      // Make 3 successful calls
+      await limitedExecutor.executeTool('success_tool', { message: 'test1' });
+      await limitedExecutor.executeTool('success_tool', { message: 'test2' });
+      await limitedExecutor.executeTool('success_tool', { message: 'test3' });
+
+      // 4th call should fail due to rate limit
+      const result4 = await limitedExecutor.executeTool('success_tool', { message: 'test4' });
+
+      expect(result4.success).toBe(false);
+      expect(result4.error).toContain('Rate limit exceeded');
+      expect(result4.error).toContain('4 tool calls made');
+      expect(result4.error).toContain('maximum 3');
+      expect(limitedExecutor.getToolCallCount()).toBe(4);
+    });
+
+    it('should track call count correctly', async () => {
+      const limitedExecutor = new ToolExecutor(toolRegistry, 10);
+
+      await limitedExecutor.executeTool('success_tool', { message: 'test1' });
+      expect(limitedExecutor.getToolCallCount()).toBe(1);
+
+      await limitedExecutor.executeTool('success_tool', { message: 'test2' });
+      expect(limitedExecutor.getToolCallCount()).toBe(2);
+
+      await limitedExecutor.executeTool('error_tool', { input: 'will fail' });
+      expect(limitedExecutor.getToolCallCount()).toBe(3);
+    });
+
+    it('should use default limit from ToolConstants', async () => {
+      const defaultExecutor = new ToolExecutor(toolRegistry);
+
+      expect(defaultExecutor.getToolCallCount()).toBe(0);
+
+      await defaultExecutor.executeTool('success_tool', { message: 'test' });
+      expect(defaultExecutor.getToolCallCount()).toBe(1);
+    });
+  });
+
   describe('Disposal', () => {
     it('should dispose without errors', () => {
       expect(() => toolExecutor.dispose()).not.toThrow();

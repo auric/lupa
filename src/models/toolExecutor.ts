@@ -1,6 +1,7 @@
 import { ToolRegistry } from './toolRegistry';
 import { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
+import { ToolConstants } from './toolConstants';
 
 /**
  * Interface for tool execution requests
@@ -23,9 +24,18 @@ export interface ToolExecutionResult {
 /**
  * Service responsible for executing tools registered in the ToolRegistry.
  * Supports both single tool execution and parallel execution of multiple tools.
+ * Includes rate limiting to prevent excessive tool call loops.
  */
 export class ToolExecutor {
-  constructor(private toolRegistry: ToolRegistry) { }
+  private toolCallCount = 0;
+  private readonly maxToolCalls: number;
+
+  constructor(
+    private toolRegistry: ToolRegistry,
+    maxToolCalls: number = ToolConstants.MAX_TOOL_CALLS_PER_SESSION
+  ) {
+    this.maxToolCalls = maxToolCalls;
+  }
 
   /**
    * Execute a single tool with the provided arguments.
@@ -34,6 +44,16 @@ export class ToolExecutor {
    * @returns Promise resolving to the tool execution result
    */
   async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
+    this.toolCallCount++;
+
+    if (this.toolCallCount > this.maxToolCalls) {
+      return {
+        name,
+        success: false,
+        error: ToolConstants.ERROR_MESSAGES.RATE_LIMIT_EXCEEDED(this.maxToolCalls, this.toolCallCount)
+      };
+    }
+
     try {
       const tool = this.toolRegistry.getTool(name);
 
@@ -131,6 +151,14 @@ export class ToolExecutor {
    */
   isToolAvailable(name: string): boolean {
     return this.toolRegistry.hasTool(name);
+  }
+
+  /**
+   * Get the current count of tool calls made in this session.
+   * @returns The number of tools executed so far
+   */
+  getToolCallCount(): number {
+    return this.toolCallCount;
   }
 
   /**
