@@ -32,7 +32,6 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
 import { FindSymbolTool } from '../tools/findSymbolTool';
-import { GetHoverTool } from '../tools/getHoverTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { ListDirTool } from '../tools/listDirTool';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
@@ -314,10 +313,6 @@ export class ServiceManager implements vscode.Disposable {
             // Register the SearchForPatternTool (Search for Pattern functionality)
             const searchForPatternTool = new SearchForPatternTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(searchForPatternTool);
-
-            // Register the GetHoverTool (Get Hover functionality)
-            const getHoverTool = new GetHoverTool(this.services.gitOperations!);
-            this.services.toolRegistry!.registerTool(getHoverTool);
 
             Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
         } catch (error) {
