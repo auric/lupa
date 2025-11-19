@@ -14,19 +14,23 @@ export class FindUsagesTool extends BaseTool {
   private readonly formatter = new UsageFormatter();
 
   schema = z.object({
-    symbolName: z.string().min(1, 'Symbol name cannot be empty').describe('The name of the symbol to find usages for'),
-    filePath: z.string().min(1, 'File path cannot be empty').describe('The file path where the symbol is defined (used as starting point for reference search)'),
-    shouldIncludeDeclaration: z.boolean().default(false).optional().describe('Whether to include the symbol declaration in results (default: false)'),
-    contextLineCount: z.number().min(0).max(10).default(2).optional().describe('Number of context lines to include around each usage (0-10, default: 2)'),
+    symbol_name: z.string().min(1, 'Symbol name cannot be empty')
+      .describe('The name of the symbol to find usages for'),
+    file_path: z.string().min(1, 'File path cannot be empty')
+      .describe('The file path where the symbol is defined (used as starting point for reference search)'),
+    should_include_declaration: z.boolean().default(false).optional()
+      .describe('Whether to include the symbol declaration in results (default: false)'),
+    context_line_count: z.number().min(0).max(10).default(2).optional()
+      .describe('Number of context lines to include around each usage (0-10, default: 2)'),
   });
 
   async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
     try {
-      const { symbolName, filePath, shouldIncludeDeclaration, contextLineCount } = args;
+      const { symbol_name, file_path, should_include_declaration, context_line_count } = args;
 
       // Sanitize input to prevent potential injection attacks
-      const sanitizedSymbolName = symbolName.trim();
-      const sanitizedFilePath = filePath.trim();
+      const sanitizedSymbolName = symbol_name.trim();
+      const sanitizedFilePath = file_path.trim();
 
       if (!sanitizedSymbolName) {
         return ['Error: Symbol name cannot be empty'];
@@ -64,7 +68,7 @@ export class FindUsagesTool extends BaseTool {
           'vscode.executeReferenceProvider',
           document.uri,
           symbolPosition,
-          { includeDeclaration: shouldIncludeDeclaration || false }
+          { includeDeclaration: should_include_declaration || false }
         );
 
         if (!references || references.length === 0) {
@@ -84,9 +88,9 @@ export class FindUsagesTool extends BaseTool {
             
             // Extract context lines around the reference
             const contextText = this.formatter.extractContextLines(
-              refDocument, 
-              reference.range, 
-              contextLineCount || 2
+              refDocument,
+              reference.range,
+              context_line_count || 2
             );
 
             const formattedUsage = this.formatter.formatUsage(

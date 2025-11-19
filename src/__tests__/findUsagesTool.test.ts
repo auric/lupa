@@ -22,8 +22,8 @@ vi.mock('vscode', async () => {
         Range: vi.fn().mockImplementation((start, end) => ({ start, end, contains: vi.fn(() => true) })),
         Uri: {
             parse: vi.fn((path) => ({ toString: () => path, fsPath: path })),
-            joinPath: vi.fn((base, relative) => ({ 
-                toString: () => `${base.fsPath}/${relative}`, 
+            joinPath: vi.fn((base, relative) => ({
+                toString: () => `${base.fsPath}/${relative}`,
                 fsPath: `${base.fsPath}/${relative}`
             }))
         }
@@ -36,7 +36,7 @@ describe('FindUsagesTool', () => {
     beforeEach(() => {
         findUsagesTool = new FindUsagesTool();
         vi.clearAllMocks();
-        
+
         // Ensure workspace folders are properly set up for all tests
         (vscode.workspace as any).workspaceFolders = [{
             uri: { fsPath: '/test/workspace' }
@@ -53,27 +53,27 @@ describe('FindUsagesTool', () => {
             const schema = findUsagesTool.schema;
 
             // Test required fields
-            const validInput = { symbolName: 'MyClass', filePath: 'src/test.ts' };
+            const validInput = { symbol_name: 'MyClass', file_path: 'src/test.ts' };
             expect(schema.safeParse(validInput).success).toBe(true);
 
             // Test with all optional fields
             const fullInput = {
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts',
-                shouldIncludeDeclaration: true,
-                contextLineCount: 3
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+                should_include_declaration: true,
+                context_line_count: 3
             };
             expect(schema.safeParse(fullInput).success).toBe(true);
 
             // Test validation failures
-            expect(schema.safeParse({ symbolName: '' }).success).toBe(false);
-            expect(schema.safeParse({ filePath: '' }).success).toBe(false);
-            expect(schema.safeParse({ symbolName: 'test', filePath: 'test.ts', contextLineCount: 15 }).success).toBe(false);
+            expect(schema.safeParse({ symbol_name: '' }).success).toBe(false);
+            expect(schema.safeParse({ file_path: '' }).success).toBe(false);
+            expect(schema.safeParse({ symbol_name: 'test', file_path: 'test.ts', context_line_count: 15 }).success).toBe(false);
         });
 
         it('should generate correct VS Code tool configuration', () => {
             const vscodeTool = findUsagesTool.getVSCodeTool();
-            
+
             expect(vscodeTool.name).toBe('find_usages');
             expect(vscodeTool.description).toContain('Find all usages/references');
             expect(vscodeTool.inputSchema).toBeDefined();
@@ -91,8 +91,8 @@ describe('FindUsagesTool', () => {
 
         it('should validate and sanitize input parameters', async () => {
             const result = await findUsagesTool.execute({
-                symbolName: '  MyClass  ',
-                filePath: '  src/test.ts  '
+                symbol_name: '  MyClass  ',
+                file_path: '  src/test.ts  '
             });
 
             expect(result).toBeDefined();
@@ -101,8 +101,8 @@ describe('FindUsagesTool', () => {
 
         it('should handle empty symbol name', async () => {
             const result = await findUsagesTool.execute({
-                symbolName: '',
-                filePath: 'src/test.ts'
+                symbol_name: '',
+                file_path: 'src/test.ts'
             });
 
             expect(result).toEqual(['Error: Symbol name cannot be empty']);
@@ -110,8 +110,8 @@ describe('FindUsagesTool', () => {
 
         it('should handle empty file path', async () => {
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: ''
+                symbol_name: 'MyClass',
+                file_path: ''
             });
 
             expect(result).toEqual(['Error: File path cannot be empty']);
@@ -121,8 +121,8 @@ describe('FindUsagesTool', () => {
             (vscode.workspace as any).workspaceFolders = null;
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts'
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts'
             });
 
             expect(result).toEqual(['Error: No workspace folder is open']);
@@ -132,8 +132,8 @@ describe('FindUsagesTool', () => {
             (vscode.workspace.openTextDocument as any).mockRejectedValue(new Error('File not found'));
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'nonexistent.ts'
+                symbol_name: 'MyClass',
+                file_path: 'nonexistent.ts'
             });
 
             expect(result[0]).toContain('Error: Could not open file');
@@ -147,8 +147,8 @@ describe('FindUsagesTool', () => {
             });
 
             const result = await findUsagesTool.execute({
-                symbolName: 'NonExistentSymbol',
-                filePath: 'src/test.ts'
+                symbol_name: 'NonExistentSymbol',
+                file_path: 'src/test.ts'
             });
 
             expect(result[0]).toContain('No usages found for symbol');
@@ -174,7 +174,7 @@ describe('FindUsagesTool', () => {
                 .mockResolvedValueOnce(mockDocument)  // Initial document open
                 .mockResolvedValueOnce(mockDocument); // Reference document open
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeDefinitionProvider') {
                     return Promise.resolve([{
                         uri: { toString: () => 'file:///test.ts' },
@@ -188,9 +188,9 @@ describe('FindUsagesTool', () => {
             });
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts',
-                contextLineCount: 1
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+                context_line_count: 1
             });
 
             expect(result).toBeDefined();
@@ -207,7 +207,7 @@ describe('FindUsagesTool', () => {
                 uri: { toString: () => 'file:///test.ts' }
             });
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     throw new Error('Reference provider failed');
                 }
@@ -215,8 +215,8 @@ describe('FindUsagesTool', () => {
             });
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts'
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts'
             });
 
             expect(result[0]).toContain('Error executing reference provider');
@@ -248,7 +248,7 @@ describe('FindUsagesTool', () => {
             (vscode.workspace.openTextDocument as any)
                 .mockResolvedValue(mockDocument);
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     return Promise.resolve(duplicateReferences);
                 }
@@ -256,8 +256,8 @@ describe('FindUsagesTool', () => {
             });
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts'
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts'
             });
 
             expect(result.length).toBe(1); // Should deduplicate to single result
@@ -272,7 +272,7 @@ describe('FindUsagesTool', () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
             let capturedIncludeDeclaration: boolean | undefined;
-            (vscode.commands.executeCommand as any).mockImplementation((command, uri, position, context) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string, uri: any, position: any, context: any) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     capturedIncludeDeclaration = context?.includeDeclaration;
                     return Promise.resolve([]);
@@ -281,9 +281,9 @@ describe('FindUsagesTool', () => {
             });
 
             await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts',
-                shouldIncludeDeclaration: true
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+                should_include_declaration: true
             });
 
             expect(capturedIncludeDeclaration).toBe(true);
@@ -309,7 +309,7 @@ describe('FindUsagesTool', () => {
                 .mockResolvedValueOnce(mockInitialDocument)
                 .mockRejectedValueOnce(new Error('Cannot read reference file'));
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     return Promise.resolve(mockReferences);
                 }
@@ -317,8 +317,8 @@ describe('FindUsagesTool', () => {
             });
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts'
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts'
             });
 
             expect(result).toBeDefined();
@@ -344,7 +344,7 @@ describe('FindUsagesTool', () => {
             (vscode.workspace.openTextDocument as any)
                 .mockResolvedValue(mockDocument);
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     return Promise.resolve(mockReferences);
                 }
@@ -352,9 +352,9 @@ describe('FindUsagesTool', () => {
             });
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts',
-                contextLineCount: 1
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+                context_line_count: 1
             });
 
             expect(result[0]).toContain('"context"');
@@ -373,12 +373,12 @@ describe('FindUsagesTool', () => {
             });
 
             const result = await findUsagesTool.execute({
-                symbolName: 'MyClass',
-                filePath: 'src/test.ts'
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts'
             });
 
             expect(result[0]).toContain('Error finding symbol usages');
-            
+
             // Restore original function
             (vscode.Uri as any).joinPath = originalJoinPath;
         });

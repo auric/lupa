@@ -146,7 +146,7 @@ describe('FindUsages Integration Tests', () => {
                 .mockResolvedValueOnce(mockDocument)  // First reference
                 .mockResolvedValueOnce(mockDocument); // Second reference
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeDefinitionProvider') {
                     return Promise.resolve([{
                         uri: { toString: () => 'file:///src/test.ts' },
@@ -168,9 +168,9 @@ describe('FindUsages Integration Tests', () => {
                         function: {
                             name: 'find_usages',
                             arguments: JSON.stringify({
-                                symbolName: 'MyClass',
-                                filePath: 'src/test.ts',
-                                contextLineCount: 2
+                                symbol_name: 'MyClass',
+                                file_path: 'src/test.ts',
+                                context_line_count: 2
                             })
                         }
                     }]
@@ -213,7 +213,7 @@ describe('FindUsages Integration Tests', () => {
 
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     return Promise.resolve([]); // No references found
                 }
@@ -228,8 +228,8 @@ describe('FindUsages Integration Tests', () => {
                         function: {
                             name: 'find_usages',
                             arguments: JSON.stringify({
-                                symbolName: 'UnusedClass',
-                                filePath: 'src/test.ts'
+                                symbol_name: 'UnusedClass',
+                                file_path: 'src/test.ts'
                             })
                         }
                     }]
@@ -275,7 +275,7 @@ describe('FindUsages Integration Tests', () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
             let callCount = 0;
-            (vscode.commands.executeCommand as any).mockImplementation((command, uri, position, context) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string, uri: any, position: any, context: any) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     callCount++;
                     return Promise.resolve(callCount === 1 ? mockReferencesA : mockReferencesB);
@@ -291,14 +291,14 @@ describe('FindUsages Integration Tests', () => {
                             id: 'call_1',
                             function: {
                                 name: 'find_usages',
-                                arguments: JSON.stringify({ symbolName: 'ClassA', filePath: 'src/test.ts' })
+                                arguments: JSON.stringify({ symbol_name: 'ClassA', file_path: 'src/test.ts' })
                             }
                         },
                         {
                             id: 'call_2',
                             function: {
                                 name: 'find_usages',
-                                arguments: JSON.stringify({ symbolName: 'ClassB', filePath: 'src/test.ts' })
+                                arguments: JSON.stringify({ symbol_name: 'ClassB', file_path: 'src/test.ts' })
                             }
                         }
                     ]
@@ -331,8 +331,8 @@ describe('FindUsages Integration Tests', () => {
                         function: {
                             name: 'find_usages',
                             arguments: JSON.stringify({
-                                symbolName: 'NonExistentClass',
-                                filePath: 'nonexistent.ts'
+                                symbol_name: 'NonExistentClass',
+                                file_path: 'nonexistent.ts'
                             })
                         }
                     }]
@@ -366,7 +366,7 @@ describe('FindUsages Integration Tests', () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
             let capturedContext: any;
-            (vscode.commands.executeCommand as any).mockImplementation((command, uri, position, context) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string, uri: any, position: any, context: any) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     capturedContext = context;
                     return Promise.resolve([]);
@@ -382,9 +382,9 @@ describe('FindUsages Integration Tests', () => {
                         function: {
                             name: 'find_usages',
                             arguments: JSON.stringify({
-                                symbolName: 'MyClass',
-                                filePath: 'src/test.ts',
-                                shouldIncludeDeclaration: true
+                                symbol_name: 'MyClass',
+                                file_path: 'src/test.ts',
+                                should_include_declaration: true
                             })
                         }
                     }]
@@ -400,7 +400,7 @@ describe('FindUsages Integration Tests', () => {
             expect(capturedContext?.includeDeclaration).toBe(true);
         });
 
-        it('should respect contextLineCount parameter', async () => {
+        it('should respect context_line_count parameter', async () => {
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('line1\nline2\nclass MyClass {}\nline4\nline5'),
                 uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
@@ -415,7 +415,7 @@ describe('FindUsages Integration Tests', () => {
 
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
-            (vscode.commands.executeCommand as any).mockImplementation((command) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     return Promise.resolve(mockReferences);
                 }
@@ -430,9 +430,9 @@ describe('FindUsages Integration Tests', () => {
                         function: {
                             name: 'find_usages',
                             arguments: JSON.stringify({
-                                symbolName: 'MyClass',
-                                filePath: 'src/test.ts',
-                                contextLineCount: 1
+                                symbol_name: 'MyClass',
+                                file_path: 'src/test.ts',
+                                context_line_count: 1
                             })
                         }
                     }]
