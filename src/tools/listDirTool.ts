@@ -16,8 +16,10 @@ export class ListDirTool extends BaseTool {
   description = 'List files and directories within a specified path, with optional recursion. Respects .gitignore files.';
 
   schema = z.object({
-    relativePath: z.string().min(1, 'Relative path cannot be empty').describe('The relative path to the directory to list (e.g., "src", "src/components", "." for root)'),
-    recursive: z.boolean().describe('Whether to scan subdirectories recursively')
+    relative_path: z.string().min(1, 'Relative path cannot be empty')
+      .describe('The relative path to the directory to list (e.g., "src", "src/components", "." for root)'),
+    recursive: z.boolean()
+      .describe('Whether to scan subdirectories recursively')
   });
 
   constructor(private readonly gitOperationsManager: GitOperationsManager) {
@@ -26,10 +28,10 @@ export class ListDirTool extends BaseTool {
 
   async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
     try {
-      const { relativePath, recursive } = args;
+      const { relative_path, recursive } = args;
 
       // Sanitize the relative path to prevent directory traversal attacks
-      const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
+      const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
 
       // List directory contents with ignore pattern support
       const result = await this.callListDir(sanitizedPath, recursive);

@@ -81,15 +81,15 @@ describe('ListDirTool', () => {
             const schema = listDirTool.schema;
 
             // Test valid input
-            const validInput = { relativePath: 'src', recursive: false };
+            const validInput = { relative_path: 'src', recursive: false };
             expect(schema.safeParse(validInput).success).toBe(true);
 
             // Test empty relativePath should fail
-            const invalidInput = { relativePath: '', recursive: false };
+            const invalidInput = { relative_path: '', recursive: false };
             expect(schema.safeParse(invalidInput).success).toBe(false);
 
             // Test missing fields should fail
-            const missingFields = { relativePath: 'src' };
+            const missingFields = { relative_path: 'src' };
             expect(schema.safeParse(missingFields).success).toBe(false);
         });
 
@@ -115,7 +115,7 @@ describe('ListDirTool', () => {
 
             for (const maliciousPath of traversalPaths) {
                 const result = await listDirTool.execute({
-                    relativePath: maliciousPath,
+                    relative_path: maliciousPath,
                     recursive: false
                 });
 
@@ -134,7 +134,7 @@ describe('ListDirTool', () => {
 
             for (const absolutePath of absolutePaths) {
                 const result = await listDirTool.execute({
-                    relativePath: absolutePath,
+                    relative_path: absolutePath,
                     recursive: false
                 });
 
@@ -155,7 +155,7 @@ describe('ListDirTool', () => {
 
             for (const absolutePath of absolutePaths) {
                 const result = await listDirTool.execute({
-                    relativePath: absolutePath,
+                    relative_path: absolutePath,
                     recursive: false
                 });
 
@@ -177,7 +177,7 @@ describe('ListDirTool', () => {
 
             for (const uncPath of uncPaths) {
                 const result = await listDirTool.execute({
-                    relativePath: uncPath,
+                    relative_path: uncPath,
                     recursive: false
                 });
 
@@ -200,7 +200,7 @@ describe('ListDirTool', () => {
 
             for (const validPath of validPaths) {
                 const result = await listDirTool.execute({
-                    relativePath: validPath,
+                    relative_path: validPath,
                     recursive: false
                 });
 
@@ -214,7 +214,7 @@ describe('ListDirTool', () => {
 
             // Test path normalization that doesn't involve directory traversal
             const result = await listDirTool.execute({
-                relativePath: 'src/./utils',
+                relative_path: 'src/./utils',
                 recursive: false
             });
 
@@ -235,7 +235,7 @@ describe('ListDirTool', () => {
             mockReadDirectory.mockResolvedValue(mockEntries);
 
             const result = await listDirTool.execute({
-                relativePath: 'src',
+                relative_path: 'src',
                 recursive: false
             });
 
@@ -266,7 +266,7 @@ describe('ListDirTool', () => {
                 ]);
 
             const result = await listDirTool.execute({
-                relativePath: 'src',
+                relative_path: 'src',
                 recursive: true
             });
 
@@ -288,7 +288,7 @@ describe('ListDirTool', () => {
             mockReadDirectory.mockResolvedValue(mockEntries);
 
             const result = await listDirTool.execute({
-                relativePath: '.',
+                relative_path: '.',
                 recursive: false
             });
 
@@ -304,7 +304,7 @@ describe('ListDirTool', () => {
             mockReadDirectory.mockRejectedValue(new Error('Permission denied'));
 
             const result = await listDirTool.execute({
-                relativePath: 'src',
+                relative_path: 'src',
                 recursive: false
             });
 
@@ -318,7 +318,7 @@ describe('ListDirTool', () => {
             mockGetRepository.mockReturnValueOnce(null);
 
             const result = await listDirTool.execute({
-                relativePath: 'src',
+                relative_path: 'src',
                 recursive: false
             });
 
@@ -340,7 +340,7 @@ describe('ListDirTool', () => {
                 ]); // gooddir succeeds
 
             const result = await listDirTool.execute({
-                relativePath: '.',
+                relative_path: '.',
                 recursive: true
             });
 

@@ -154,7 +154,7 @@ describe('ListDirTool Integration Tests', () => {
                         id: 'call_123',
                         function: {
                             name: 'list_directory',
-                            arguments: '{"relativePath": ".", "recursive": false}'
+                            arguments: '{"relative_path": ".", "recursive": false}'
                         }
                     }]
                 })
@@ -211,7 +211,7 @@ describe('ListDirTool Integration Tests', () => {
                         id: 'call_456',
                         function: {
                             name: 'list_directory',
-                            arguments: '{"relativePath": ".", "recursive": true}'
+                            arguments: '{"relative_path": ".", "recursive": true}'
                         }
                     }]
                 })
@@ -240,7 +240,7 @@ describe('ListDirTool Integration Tests', () => {
                         id: 'call_error',
                         function: {
                             name: 'list_directory',
-                            arguments: '{"relativePath": "restricted", "recursive": false}'
+                            arguments: '{"relative_path": "restricted", "recursive": false}'
                         }
                     }]
                 })
@@ -275,7 +275,7 @@ describe('ListDirTool Integration Tests', () => {
                         id: 'call_traversal',
                         function: {
                             name: 'list_directory',
-                            arguments: '{"relativePath": "../../../etc", "recursive": false}'
+                            arguments: '{"relative_path": "../../../etc", "recursive": false}'
                         }
                     }]
                 })
@@ -318,7 +318,7 @@ describe('ListDirTool Integration Tests', () => {
                             id: 'call_list',
                             function: {
                                 name: 'list_directory',
-                                arguments: '{"relativePath": ".", "recursive": false}'
+                                arguments: '{"relative_path": ".", "recursive": false}'
                             }
                         }
                     ]
@@ -356,7 +356,7 @@ describe('ListDirTool Integration Tests', () => {
             const vscodeToolDef = tool!.getVSCodeTool();
             expect(vscodeToolDef.inputSchema).toBeDefined();
             expect(vscodeToolDef.inputSchema).toHaveProperty('properties');
-            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('relativePath');
+            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('relative_path');
             expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('recursive');
         });
     });
