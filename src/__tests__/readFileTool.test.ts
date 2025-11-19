@@ -68,18 +68,18 @@ describe('ReadFileTool', () => {
 
     it('should validate line count is within limits', () => {
       const result = readFileTool.schema.safeParse({
-        filePath: 'test.ts',
-        startLine: 1,
-        lineCount: TokenConstants.MAX_FILE_READ_LINES + 1
+        file_path: 'test.ts',
+        start_line: 1,
+        line_count: TokenConstants.MAX_FILE_READ_LINES + 1
       });
       expect(result.success).toBe(false);
     });
 
     it('should accept valid parameters', () => {
       const result = readFileTool.schema.safeParse({
-        filePath: 'src/test.ts',
-        startLine: 10,
-        lineCount: 50
+        file_path: 'src/test.ts',
+        start_line: 10,
+        line_count: 50
       });
       expect(result.success).toBe(true);
     });
@@ -96,7 +96,7 @@ describe('ReadFileTool', () => {
     it('should return error when git repository not found', async () => {
       mockGitOperationsManager.getRepository.mockReturnValue(null);
 
-      const result = await readFileTool.execute({ filePath: 'test.ts' });
+      const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       expect(result).toEqual(['Error reading file: Git repository not found']);
     });
@@ -104,7 +104,7 @@ describe('ReadFileTool', () => {
     it('should return error when file not found', async () => {
       mockWorkspaceFs.stat.mockRejectedValue(new Error('File not found'));
 
-      const result = await readFileTool.execute({ filePath: 'nonexistent.ts' });
+      const result = await readFileTool.execute({ file_path: 'nonexistent.ts' });
 
       expect(result[0]).toContain('Error reading file: File not found: nonexistent.ts');
     });
@@ -113,7 +113,7 @@ describe('ReadFileTool', () => {
       const fileContent = 'line 1\nline 2\nline 3';
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
-      const result = await readFileTool.execute({ filePath: 'test.ts' });
+      const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       expect(result).toHaveLength(1);
       expect(result[0]).toContain('"file": "test.ts"');
@@ -128,9 +128,9 @@ describe('ReadFileTool', () => {
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
       const result = await readFileTool.execute({
-        filePath: 'test.ts',
-        startLine: 2,
-        lineCount: 2
+        file_path: 'test.ts',
+        start_line: 2,
+        line_count: 2
       });
 
       expect(result[0]).toContain('2: line 2');
@@ -144,8 +144,8 @@ describe('ReadFileTool', () => {
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
       const result = await readFileTool.execute({
-        filePath: 'test.ts',
-        startLine: 10
+        file_path: 'test.ts',
+        start_line: 10
       });
 
       expect(result[0]).toContain('Error reading file: Start line 10 exceeds file length (2 lines)');
@@ -156,9 +156,9 @@ describe('ReadFileTool', () => {
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
       const result = await readFileTool.execute({
-        filePath: 'test.ts',
-        startLine: 1,
-        lineCount: 250
+        file_path: 'test.ts',
+        start_line: 1,
+        line_count: 250
       });
 
       // Should be limited to MAX_FILE_READ_LINES
@@ -170,16 +170,16 @@ describe('ReadFileTool', () => {
       const largeContent = 'A'.repeat(TokenConstants.MAX_TOOL_RESPONSE_CHARS + 1000);
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(largeContent));
 
-      const result = await readFileTool.execute({ filePath: 'large.ts' });
+      const result = await readFileTool.execute({ file_path: 'large.ts' });
 
       expect(result[0]).toContain('Error reading file: File too large');
-      expect(result[0]).toContain('Please use startLine and lineCount parameters');
+      expect(result[0]).toContain('Please use start_line and line_count parameters');
     });
 
     it('should handle read errors gracefully', async () => {
       mockWorkspaceFs.readFile.mockRejectedValue(new Error('Permission denied'));
 
-      const result = await readFileTool.execute({ filePath: 'test.ts' });
+      const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       expect(result[0]).toContain('Error reading file: Failed to read file test.ts: Permission denied');
     });
@@ -192,7 +192,7 @@ describe('ReadFileTool', () => {
       // Clear previous calls to get accurate assertion
       vi.mocked(vscode.Uri.file).mockClear();
 
-      await readFileTool.execute({ filePath: '../../../etc/passwd' });
+      await readFileTool.execute({ file_path: '../../../etc/passwd' });
 
       expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith('../../../etc/passwd');
       expect(vscode.Uri.file).toHaveBeenCalledWith(
@@ -207,9 +207,9 @@ describe('ReadFileTool', () => {
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
       const result = await readFileTool.execute({
-        filePath: 'test.ts',
-        startLine: 1,
-        lineCount: 10
+        file_path: 'test.ts',
+        start_line: 1,
+        line_count: 10
       });
 
       expect(result[0]).toContain('"content"');
@@ -223,8 +223,8 @@ describe('ReadFileTool', () => {
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
       const result = await readFileTool.execute({
-        filePath: 'test.ts',
-        lineCount: 2
+        file_path: 'test.ts',
+        line_count: 2
       });
 
       expect(result[0]).toContain('1: line 1');
@@ -235,7 +235,7 @@ describe('ReadFileTool', () => {
     it('should handle empty files', async () => {
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(''));
 
-      const result = await readFileTool.execute({ filePath: 'empty.ts' });
+      const result = await readFileTool.execute({ file_path: 'empty.ts' });
 
       expect(result[0]).toContain('"file": "empty.ts"');
       expect(result[0]).toContain('"content"');
@@ -245,7 +245,7 @@ describe('ReadFileTool', () => {
       const fileContent = 'const html = "<div>test & data</div>";';
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
-      const result = await readFileTool.execute({ filePath: 'test.ts' });
+      const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       // Content should contain the original characters in JSON format
       expect(result[0]).toContain('"content"');
@@ -256,7 +256,7 @@ describe('ReadFileTool', () => {
       const fileContent = '\n\n\n';
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
-      const result = await readFileTool.execute({ filePath: 'newlines.ts' });
+      const result = await readFileTool.execute({ file_path: 'newlines.ts' });
 
       expect(result[0]).toContain('1: ');
       expect(result[0]).toContain('2: ');
@@ -277,7 +277,7 @@ describe('ReadFileTool', () => {
       const fileContent = 'function test() {\n  return "hello";\n}';
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
-      const result = await readFileTool.execute({ filePath: 'test.ts' });
+      const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       expect(result[0]).toContain('"file": "test.ts"');
       expect(result[0]).toContain('"content"');
@@ -289,7 +289,7 @@ describe('ReadFileTool', () => {
     it('should format error output correctly', async () => {
       mockGitOperationsManager.getRepository.mockReturnValue(null);
 
-      const result = await readFileTool.execute({ filePath: 'test.ts' });
+      const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       expect(result[0]).toContain('Error reading file: Git repository not found');
     });

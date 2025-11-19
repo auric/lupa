@@ -15,9 +15,12 @@ export class ReadFileTool extends BaseTool {
   description = 'Read the content of a file, optionally specifying a line range for partial reading. Useful for getting specific sections of code files.';
 
   schema = z.object({
-    filePath: z.string().min(1, 'File path cannot be empty').describe('Relative path to the file to read (e.g., "src/components/Button.tsx")'),
-    startLine: z.number().min(1).optional().describe('Optional starting line number (1-based) for partial reading'),
-    lineCount: z.number().min(1).max(TokenConstants.MAX_FILE_READ_LINES).optional().describe(`Optional number of lines to read (max ${TokenConstants.MAX_FILE_READ_LINES}). If not specified, reads entire file or to end of file.`)
+    file_path: z.string().min(1, 'File path cannot be empty')
+      .describe('Relative path to the file to read (e.g., "src/components/Button.tsx")'),
+    start_line: z.number().min(1).optional()
+      .describe('Optional starting line number (1-based) for partial reading'),
+    line_count: z.number().min(1).max(TokenConstants.MAX_FILE_READ_LINES).optional()
+      .describe(`Optional number of lines to read (max ${TokenConstants.MAX_FILE_READ_LINES}). If not specified, reads entire file or to end of file.`)
   });
 
   constructor(private readonly gitOperationsManager: GitOperationsManager) {
@@ -26,10 +29,10 @@ export class ReadFileTool extends BaseTool {
 
   async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
     try {
-      const { filePath, startLine, lineCount } = args;
+      const { file_path, start_line, line_count } = args;
 
       // Sanitize the file path to prevent directory traversal attacks
-      const sanitizedPath = PathSanitizer.sanitizePath(filePath);
+      const sanitizedPath = PathSanitizer.sanitizePath(file_path);
       
       // Get git root directory
       const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
@@ -61,26 +64,26 @@ export class ReadFileTool extends BaseTool {
       const totalLines = lines.length;
 
       // Handle full file reading
-      if (!startLine && !lineCount) {
+      if (!start_line && !line_count) {
         if (fileContent.length > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
           return [this.formatError(
             `File too large (${fileContent.length} characters). ` +
             `Maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS} characters. ` +
-            `Please use startLine and lineCount parameters to read specific sections.`
+            `Please use start_line and line_count parameters to read specific sections.`
           )];
         }
         return [this.formatFileContent(sanitizedPath, lines, 1)];
       }
 
       // Handle partial file reading
-      const actualStartLine = startLine || 1;
+      const actualStartLine = start_line || 1;
       if (actualStartLine > totalLines) {
         return [this.formatError(`Start line ${actualStartLine} exceeds file length (${totalLines} lines)`)];
       }
 
       // Calculate end line
       const maxLinesToRead = Math.min(
-        lineCount || TokenConstants.MAX_FILE_READ_LINES,
+        line_count || TokenConstants.MAX_FILE_READ_LINES,
         TokenConstants.MAX_FILE_READ_LINES
       );
       const endLine = Math.min(actualStartLine + maxLinesToRead - 1, totalLines);
