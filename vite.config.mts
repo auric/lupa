@@ -80,7 +80,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         rollupOptions: {
             input: {
                 main: resolve(__dirname, 'src/webview/main.tsx'),
-                toolTesting: resolve(__dirname, 'src/webview/toolTestingMain.tsx')
+                toolTesting: resolve(__dirname, 'src/webview/tool-testing/index.tsx')
             },
             output: {
                 inlineDynamicImports: false,

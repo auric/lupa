@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLiveTimer } from '../hooks/useLiveTimer';
+import { useLiveTimer } from '../../hooks/useLiveTimer';
 
 interface LiveTimerProps {
   /** Whether the timer is currently running */
@@ -34,7 +34,7 @@ export const LiveTimer: React.FC<LiveTimerProps> = ({
 
   return (
     <span 
-      className={`live-timer ${isRunning ? 'running' : 'idle'} ${className}`.trim()}
+      className={`font-mono text-sm ${isRunning ? 'text-foreground' : 'text-muted-foreground'} ${className}`.trim()}
       role="timer"
       aria-live="polite"
       aria-label={`Execution time: ${formattedTime}`}

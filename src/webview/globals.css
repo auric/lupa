@@ -108,6 +108,14 @@ body {
   padding: 0;
 }
 
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
 /* VSCode webview fills the entire container */
 html,
 body,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import './styles/styles.css';
 import ToolTestingView from './ToolTestingView';
-import './toolTesting.css';
 
 // Extend Window interface for our webview data
 declare global {

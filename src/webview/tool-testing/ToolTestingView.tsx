@@ -2,14 +2,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ToolLibrarySidebar } from './components/ToolLibrarySidebar';
 import { ParameterInputPanel } from './components/ParameterInputPanel';
 import { ResultsPanel } from './components/ResultsPanel';
-import { useVSCodeApi } from './hooks/useVSCodeApi';
-import { useTheme } from './hooks/useTheme';
-import { useToolExecution } from './hooks/useToolExecution';
-import { useResponsiveLayout } from './hooks/useResponsiveLayout';
+import { useVSCodeApi } from '../hooks/useVSCodeApi';
+import { useTheme } from '../hooks/useTheme';
+import { useToolExecution } from '../hooks/useToolExecution';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { ScrollArea } from '../../components/ui/scroll-area';
 import type {
   ToolTestingViewProps,
   ToolInfo
-} from './types/toolTestingTypes';
+} from '../types/toolTestingTypes';
+import './styles/styles.css';
 
 const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   initialTool,
@@ -18,13 +21,13 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   const vscode = useVSCodeApi();
   const isDarkTheme = useTheme();
   const layout = useResponsiveLayout();
-  
+
   // State management
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [selectedTool, setSelectedTool] = useState<string | undefined>(initialTool);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'parameters' | 'results'>('parameters');
-  
+
   // Custom hooks
   const {
     currentSession,
@@ -46,7 +49,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
     // Set up message listeners
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      
+
       switch (message.type) {
         case 'tools':
           setTools(message.payload.tools);
@@ -72,7 +75,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
 
   const handleExecute = useCallback(async (parameters: Record<string, any>) => {
     if (!selectedTool) return;
-    
+
     try {
       await executeToolTest(selectedTool, parameters);
     } catch (error) {
@@ -89,10 +92,6 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
     });
   }, [vscode]);
 
-  const handleTabChange = useCallback((tab: 'parameters' | 'results') => {
-    setActiveTab(tab);
-  }, []);
-
   // Auto-switch to results tab when execution starts
   useEffect(() => {
     if (isExecuting || currentSession) {
@@ -101,9 +100,9 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   }, [isExecuting, currentSession]);
 
   return (
-    <div className={`toolTesting-interface ${isDarkTheme ? 'dark' : ''}`}>
+    <div className={`flex h-screen w-full bg-background text-foreground ${isDarkTheme ? 'dark' : ''}`}>
       {/* Tool Selection Sidebar */}
-      <div className="toolTesting-sidebar">
+      <div className="w-64 border-r border-border bg-[var(--vscode-sideBar-background)] flex flex-col shrink-0">
         <ToolLibrarySidebar
           tools={tools}
           selectedTool={selectedTool}
@@ -114,28 +113,30 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
       </div>
 
       {/* Main Workspace Area */}
-      <div className="toolTesting-workspace">
+      <div className="flex-1 flex overflow-hidden flex-col">
         {layout.shouldStack ? (
           /* Stacked Layout for Narrow Screens */
-          <div className="toolTesting-tabs">
-            <div className="toolTesting-tabList">
-              <button
-                className={`toolTesting-tab ${activeTab === 'parameters' ? 'active' : ''}`}
-                onClick={() => handleTabChange('parameters')}
-                disabled={!selectedTool}
-              >
-                Parameters
-              </button>
-              <button
-                className={`toolTesting-tab ${activeTab === 'results' ? 'active' : ''}`}
-                onClick={() => handleTabChange('results')}
-              >
-                Results
-              </button>
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col">
+            <div className="border-b border-border bg-muted/10 px-4">
+              <TabsList className="h-10 bg-transparent p-0">
+                <TabsTrigger
+                  value="parameters"
+                  disabled={!selectedTool}
+                  className="h-10 rounded-none border-b-2 border-transparent px-4 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                >
+                  Parameters
+                </TabsTrigger>
+                <TabsTrigger
+                  value="results"
+                  className="h-10 rounded-none border-b-2 border-transparent px-4 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                >
+                  Results
+                </TabsTrigger>
+              </TabsList>
             </div>
-            
-            <div className="toolTesting-tabContent">
-              {activeTab === 'parameters' ? (
+
+            <div className="flex-1 overflow-hidden">
+              <TabsContent value="parameters" className="h-full m-0 p-0 border-none">
                 <ParameterInputPanel
                   toolInfo={currentToolInfo}
                   initialParameters={initialParameters}
@@ -144,19 +145,20 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
                   validationErrors={validationErrors}
                   onCancel={cancelExecution}
                 />
-              ) : (
+              </TabsContent>
+              <TabsContent value="results" className="h-full m-0 p-0 border-none">
                 <ResultsPanel
                   session={currentSession}
                   isExecuting={isExecuting}
                   onNavigateToFile={handleNavigateToFile}
                 />
-              )}
+              </TabsContent>
             </div>
-          </div>
+          </Tabs>
         ) : (
           /* Side-by-Side Layout for Wide Screens */
-          <>
-            <div className="toolTesting-parameterPanel">
+          <div className="flex h-full">
+            <div className="flex-1 border-r border-border min-w-[300px]">
               <ParameterInputPanel
                 toolInfo={currentToolInfo}
                 initialParameters={initialParameters}
@@ -167,14 +169,14 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
               />
             </div>
 
-            <div className="toolTesting-resultsPanel">
+            <div className="flex-1 min-w-[300px]">
               <ResultsPanel
                 session={currentSession}
                 isExecuting={isExecuting}
                 onNavigateToFile={handleNavigateToFile}
               />
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

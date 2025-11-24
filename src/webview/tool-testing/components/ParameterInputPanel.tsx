@@ -1,6 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import type { ToolInfo, FormValidationError } from '../types/toolTestingTypes';
-import { Checkbox } from '../../components/ui/checkbox';
+import type { ToolInfo, FormValidationError } from '../../types/toolTestingTypes';
+import { Checkbox } from '../../../components/ui/checkbox';
+import { Input } from '../../../components/ui/input';
+import { Label } from '../../../components/ui/label';
+import { Button } from '../../../components/ui/button';
 
 interface ParameterInputPanelProps {
   toolInfo: ToolInfo | undefined;
@@ -155,38 +158,36 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
 
   if (!toolInfo) {
     return (
-      <div className="parameter-panel-empty">
-        <div className="empty-state">
-          <div className="empty-state-icon">⚙️</div>
-          <h3 className="empty-state-title">Select a Tool</h3>
-          <p className="empty-state-description">
-            Choose a tool from the sidebar to configure its parameters
-          </p>
-        </div>
+      <div className="flex flex-col items-center justify-center h-full text-center p-8 text-muted-foreground">
+        <div className="text-4xl mb-4">⚙️</div>
+        <h3 className="text-lg font-semibold mb-2">Select a Tool</h3>
+        <p className="text-sm max-w-xs">
+          Choose a tool from the sidebar to configure its parameters
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="parameter-panel">
+    <div className="flex flex-col h-full">
       {/* Scrollable Content */}
-      <div className="parameter-panel-scroll">
-        {/* Tool Info Header */}
-        <div className="tool-info-header">
-          <div className="tool-name-section">
-            <h2 className="tool-name">{toolInfo.name}</h2>
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-6">
+          {/* Tool Info Header */}
+          <div className="mb-6 pb-6 border-b border-border">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-bold">{toolInfo.name}</h2>
+            </div>
+            <p className="text-muted-foreground">{toolInfo.description}</p>
           </div>
-          <p className="tool-description">{toolInfo.description}</p>
-        </div>
 
-        {/* Parameter Form */}
-        <div className="parameter-form-container">
-          <form className="parameter-form" onSubmit={(e) => { e.preventDefault(); handleExecute(); }}>
+          {/* Parameter Form */}
+          <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleExecute(); }}>
 
             {/* Required Parameters */}
             {requiredParams.length > 0 && (
-              <div className="parameter-section">
-                <h4 className="parameter-section-title">Required Parameters</h4>
+              <div className="space-y-4">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Required Parameters</h4>
                 {requiredParams.map(param => (
                   <ParameterField
                     key={param.name}
@@ -201,19 +202,21 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
 
             {/* Optional Parameters */}
             {optionalParams.length > 0 && (
-              <div className="parameter-section">
-                <button
+              <div className="space-y-4">
+                <Button
                   type="button"
-                  className="parameter-section-toggle"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start p-0 h-auto font-semibold text-muted-foreground hover:text-foreground"
                   onClick={() => setShowOptionalParams(!showOptionalParams)}
                   aria-expanded={showOptionalParams}
                 >
-                  <span className="toggle-icon">{showOptionalParams ? '▼' : '▶'}</span>
+                  <span className="mr-2">{showOptionalParams ? '▼' : '▶'}</span>
                   Optional Parameters ({optionalParams.length})
-                </button>
+                </Button>
 
                 {showOptionalParams && (
-                  <div className="optional-parameters">
+                  <div className="space-y-4 pt-2 pl-4 border-l-2 border-muted">
                     {optionalParams.map(param => (
                       <ParameterField
                         key={param.name}
@@ -232,34 +235,33 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
       </div>
 
       {/* Fixed Action Footer */}
-      <div className="parameter-actions">
+      <div className="p-4 border-t border-border bg-background flex gap-2 justify-end shrink-0">
         {isExecuting ? (
-          <button
+          <Button
             type="button"
-            className="btn btn-cancel"
+            variant="destructive"
             onClick={onCancel}
           >
-            <span className="loading-spinner"></span>
+            <span className="mr-2 animate-spin">⟳</span>
             Cancel
-          </button>
+          </Button>
         ) : (
           <>
-            <button
+            <Button
               type="button"
-              className="btn btn-primary"
+              variant="outline"
+              onClick={handleClearForm}
+            >
+              Clear Form
+            </Button>
+            <Button
+              type="button"
               onClick={handleExecute}
               disabled={!isFormValid}
               title={!isFormValid ? 'Please fill in all required parameters' : 'Execute tool'}
             >
               Execute Tool
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleClearForm}
-            >
-              Clear Form
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -305,20 +307,19 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
     // Boolean inputs
     if (parameter.type === 'boolean') {
       return (
-        <div className="toolTesting-checkboxWrapper">
+        <div className="flex items-center space-x-2">
           <Checkbox
             id={parameter.name}
             checked={Boolean(value)}
             onCheckedChange={(checked) => onChange(parameter.name, checked)}
             aria-describedby={parameter.description ? `${parameter.name}-desc` : undefined}
-            className="toolTesting-checkbox"
           />
-          <label
+          <Label
             htmlFor={parameter.name}
-            className="toolTesting-checkboxLabel"
+            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
           >
             Enable {parameter.name}
-          </label>
+          </Label>
         </div>
       );
     }
@@ -326,20 +327,20 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
     // Number inputs with enhanced styling
     if (parameter.type === 'number') {
       return (
-        <div className="toolTesting-numberInputWrapper">
-          <input
+        <div className="space-y-1">
+          <Input
             type="number"
             {...commonProps}
             value={value !== undefined ? value : ''}
             onChange={handleChange}
-            className={`toolTesting-numberInput ${error ? 'error' : ''}`}
+            className={error ? 'border-destructive' : ''}
             placeholder={`Enter ${parameter.name}...`}
             min={parameter.validation?.min}
             max={parameter.validation?.max}
             step="any"
           />
           {(parameter.validation?.min !== undefined || parameter.validation?.max !== undefined) && (
-            <div className="toolTesting-inputHint">
+            <div className="text-xs text-muted-foreground">
               {parameter.validation?.min !== undefined && parameter.validation?.max !== undefined
                 ? `Range: ${parameter.validation.min} - ${parameter.validation.max}`
                 : parameter.validation?.min !== undefined
@@ -360,16 +361,16 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
 
     if (isFilePathParam) {
       return (
-        <div className="toolTesting-fileInputWrapper">
-          <input
+        <div className="space-y-1">
+          <Input
             type="text"
             {...commonProps}
             value={value || ''}
             onChange={handleChange}
-            className={`toolTesting-fileInput ${error ? 'error' : ''}`}
+            className={`font-mono text-xs ${error ? 'border-destructive' : ''}`}
             placeholder={`Enter file path...`}
           />
-          <div className="toolTesting-inputHint">
+          <div className="text-xs text-muted-foreground">
             File path (e.g., src/components/MyComponent.tsx)
           </div>
         </div>
@@ -387,19 +388,19 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
     if (isLargeText) {
       const rows = parameter.type === 'object' ? 5 : 3;
       return (
-        <div className="toolTesting-textareaWrapper">
+        <div className="space-y-1">
           <textarea
             {...commonProps}
             value={value || ''}
             onChange={handleChange}
-            className={`toolTesting-textarea ${error ? 'error' : ''}`}
+            className={`flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono ${error ? 'border-destructive' : ''}`}
             placeholder={parameter.type === 'object' ? 'Enter JSON object...' : 
                         parameter.type === 'array' ? 'Enter comma-separated values...' :
                         `Enter ${parameter.name}...`}
             rows={rows}
           />
           {(parameter.type === 'object' || parameter.type === 'array') && (
-            <div className="toolTesting-inputHint">
+            <div className="text-xs text-muted-foreground">
               {parameter.type === 'object' ? 'JSON object format' : 'Comma-separated values'}
             </div>
           )}
@@ -409,13 +410,13 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
 
     // Default text input with enhanced styling
     return (
-      <div className="toolTesting-textInputWrapper">
-        <input
+      <div className="space-y-1">
+        <Input
           type="text"
           {...commonProps}
           value={value || ''}
           onChange={handleChange}
-          className={`toolTesting-textInput ${error ? 'error' : ''}`}
+          className={error ? 'border-destructive' : ''}
           placeholder={`Enter ${parameter.name}...`}
         />
       </div>
@@ -423,22 +424,22 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
   };
 
   return (
-    <div className="parameter-field toolTesting-parameterField">
-      <label htmlFor={parameter.name} className="parameter-label toolTesting-parameterLabel">
+    <div className="space-y-2">
+      <Label htmlFor={parameter.name} className="flex items-center gap-1">
         {parameter.name}
-        {parameter.required && <span className="required-indicator toolTesting-requiredIndicator" aria-label="required">*</span>}
-      </label>
+        {parameter.required && <span className="text-destructive" aria-label="required">*</span>}
+      </Label>
 
       {renderInput()}
 
       {parameter.description && (
-        <p id={`${parameter.name}-desc`} className="parameter-description toolTesting-parameterDescription">
+        <p id={`${parameter.name}-desc`} className="text-xs text-muted-foreground">
           {parameter.description}
         </p>
       )}
 
       {error && (
-        <p id={`${parameter.name}-error`} className="parameter-error toolTesting-parameterError" role="alert">
+        <p id={`${parameter.name}-error`} className="text-xs font-medium text-destructive" role="alert">
           {error.message}
         </p>
       )}

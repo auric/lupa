@@ -21,27 +21,27 @@ const STATUS_CONFIG: Record<ExecutionStatus, StatusConfig> = {
   idle: {
     icon: '⭕',
     text: 'Ready',
-    className: 'status-idle'
+    className: 'text-muted-foreground'
   },
   running: {
     icon: '⏳',
     text: 'Executing...',
-    className: 'status-running'
+    className: 'text-blue-500'
   },
   completed: {
     icon: '✅',
     text: 'Completed',
-    className: 'status-completed'
+    className: 'text-green-500'
   },
   error: {
     icon: '❌',
     text: 'Error',
-    className: 'status-error'
+    className: 'text-destructive'
   },
   cancelled: {
     icon: '🚫',
     text: 'Cancelled',
-    className: 'status-cancelled'
+    className: 'text-muted-foreground'
   }
 };
 
@@ -62,18 +62,18 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = ({
 
   return (
     <div 
-      className={`status-indicator ${config.className} ${className}`.trim()}
+      className={`flex items-center gap-2 text-sm font-medium ${config.className} ${className}`.trim()}
       role="status"
       aria-label={`Status: ${config.text}`}
     >
       <span 
-        className={`status-icon ${status === 'running' ? 'pulse' : ''}`.trim()}
+        className={`text-base flex items-center justify-center ${status === 'running' ? 'animate-pulse' : ''}`.trim()}
         aria-hidden="true"
       >
         {config.icon}
       </span>
       {showText && (
-        <span className="status-text">
+        <span>
           {config.text}
         </span>
       )}
