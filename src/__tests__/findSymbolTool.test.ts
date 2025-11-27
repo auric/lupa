@@ -254,7 +254,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             expect(Array.isArray(parsedResult)).toBe(true);
             expect(parsedResult).toHaveLength(2);
             // Verify orchestration completed successfully
-            expect(parsedResult.every(r => r.hasOwnProperty('file_path'))).toBe(true);
+            expect(parsedResult.every((r: any) => r.hasOwnProperty('file_path'))).toBe(true);
         });
 
         it('should respect includeFullBody parameter in workflow', async () => {
