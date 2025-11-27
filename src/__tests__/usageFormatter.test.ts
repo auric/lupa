@@ -212,7 +212,7 @@ describe('UsageFormatter', () => {
         it('should handle single line document', () => {
             const singleLineDoc = {
                 getText: () => 'single line'
-            };
+            } as unknown as vscode.TextDocument;
 
             const range = new vscode.Range(
                 new vscode.Position(0, 0),
