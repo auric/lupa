@@ -19,16 +19,8 @@ export class UsageFormatter {
     range: vscode.Range,
     contextLines: string[]
   ): string {
-    // Use 1-based line numbers for better human readability
-    const startLine = range.start.line + 1;
-    const startCharacter = range.start.character;
-
     const usage = {
       file: filePath,
-      location: {
-        line: startLine,
-        character: startCharacter
-      },
       context: contextLines
     };
 
@@ -49,16 +41,10 @@ export class UsageFormatter {
     range: vscode.Range,
     error: unknown
   ): string {
-    const startLine = range.start.line + 1;
-    const startCharacter = range.start.character;
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     const errorUsage = {
       file: filePath,
-      location: {
-        line: startLine,
-        character: startCharacter
-      },
       error: `Could not read file content: ${errorMessage}`
     };
 

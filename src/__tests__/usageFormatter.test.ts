@@ -34,11 +34,9 @@ describe('UsageFormatter', () => {
             );
 
             expect(result).toContain('"file": "src/components/Button.tsx"');
-            expect(result).toContain('"location"');
-            expect(result).toContain('"line": 6'); // 1-based line numbers
-            expect(result).toContain('"character": 10');
-            expect(result).toContain('"context"'); // Context array
-            expect(result).toContain('const instance = new MyClass()'); // Context content
+            expect(result).toContain('"context"');
+            expect(result).toContain('const instance = new MyClass()');
+            expect(result).not.toContain('"location"');
         });
 
         it('should handle special characters in file path', () => {
@@ -75,9 +73,8 @@ describe('UsageFormatter', () => {
             );
 
             expect(result).toContain('"file": "src/error.ts"');
-            expect(result).toContain('"location"');
-            expect(result).toContain('"line": 3'); // 1-based
             expect(result).toContain('"error": "Could not read file content: File read failed"');
+            expect(result).not.toContain('"location"');
         });
 
         it('should handle non-Error objects', () => {

@@ -195,10 +195,9 @@ describe('FindUsagesTool', () => {
 
             expect(result).toBeDefined();
             expect(result.length).toBeGreaterThan(0);
-            // Check for JSON format instead of XML
             expect(result[0]).toContain('"file"');
-            expect(result[0]).toContain('"location"');
             expect(result[0]).toContain('"context"');
+            expect(result[0]).not.toContain('"location"');
         });
 
         it('should handle reference provider errors gracefully', async () => {
