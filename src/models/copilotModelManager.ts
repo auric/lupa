@@ -251,6 +251,51 @@ export class CopilotModelManager implements vscode.Disposable {
     }
 
     /**
+     * Wraps a thenable/promise with a timeout. If it doesn't resolve within
+     * the timeout period, it rejects with a timeout error.
+     * The timeout is properly cleaned up when either:
+     * - The request completes (success or failure)
+     * - The cancellation token fires
+     * @param thenable The thenable to wrap
+     * @param timeoutMs The timeout duration in milliseconds
+     * @param token The cancellation token
+     * @returns The result of the thenable if it completes in time
+     */
+    private async withTimeout<T>(
+        thenable: Thenable<T>,
+        timeoutMs: number,
+        token: vscode.CancellationToken
+    ): Promise<T> {
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error(
+                    `LLM request timed out after ${timeoutMs / 1000} seconds. ` +
+                    `The model may be overloaded. Please try again.`
+                ));
+            }, timeoutMs);
+        });
+
+        const cleanup = () => {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+        };
+
+        token.onCancellationRequested(cleanup);
+
+        try {
+            const result = await Promise.race([Promise.resolve(thenable), timeoutPromise]);
+            cleanup();
+            return result;
+        } catch (error) {
+            cleanup();
+            throw error;
+        }
+    }
+
+    /**
      * Send a request to the language model with tool-calling support
      */
     async sendRequest(request: ToolCallRequest, token: vscode.CancellationToken): Promise<ToolCallResponse> {
@@ -299,8 +344,12 @@ export class CopilotModelManager implements vscode.Disposable {
                 tools: request.tools || []
             };
 
-            // Send the request
-            const response = await model.sendRequest(messages, options, token);
+            // Send the request with timeout
+            const response = await this.withTimeout(
+                model.sendRequest(messages, options, token),
+                TokenConstants.LLM_REQUEST_TIMEOUT_MS,
+                token
+            );
 
             // Parse the response stream for both text and tool calls
             let responseText = '';
