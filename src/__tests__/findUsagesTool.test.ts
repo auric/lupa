@@ -383,4 +383,128 @@ describe('FindUsagesTool', () => {
             (vscode.Uri as any).joinPath = originalJoinPath;
         });
     });
+
+    describe('findSymbolPosition word boundary', () => {
+        it('should not match partial words - "get" should not match "targetValue"', async () => {
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'const targetValue = 42;\nfunction getter() {}\nconst widget = true;',
+                uri: { toString: () => 'file:///test.ts' }
+            });
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'get',
+                file_path: 'src/test.ts'
+            });
+
+            expect(result[0]).toContain('No usages found for symbol');
+        });
+
+        it('should match exact word - "User" should match standalone "User" but not "UserService"', async () => {
+            const mockDocument = {
+                getText: () => 'class UserService {}\nconst user: User = new User();',
+                uri: { toString: () => 'file:///test.ts' }
+            };
+
+            const mockReferences = [
+                {
+                    uri: { toString: () => 'file:///test.ts' },
+                    range: {
+                        start: { line: 1, character: 12 },
+                        end: { line: 1, character: 16 }
+                    }
+                }
+            ];
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
+
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
+                if (command === 'vscode.executeDefinitionProvider') {
+                    return Promise.resolve([{
+                        uri: { toString: () => 'file:///test.ts' },
+                        range: { contains: () => true }
+                    }]);
+                }
+                if (command === 'vscode.executeReferenceProvider') {
+                    return Promise.resolve(mockReferences);
+                }
+                return Promise.resolve([]);
+            });
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'User',
+                file_path: 'src/test.ts'
+            });
+
+            expect(result.length).toBeGreaterThan(0);
+            expect(result[0]).not.toContain('No usages found');
+        });
+
+        it('should handle special regex characters - "$scope" should work correctly', async () => {
+            const mockDocument = {
+                getText: () => 'const scope = 1;\nconst $scope = angular.scope;\n$scope.apply();',
+                uri: { toString: () => 'file:///test.ts' }
+            };
+
+            const mockReferences = [
+                {
+                    uri: { toString: () => 'file:///test.ts' },
+                    range: {
+                        start: { line: 1, character: 6 },
+                        end: { line: 1, character: 12 }
+                    }
+                }
+            ];
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
+
+            (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
+                if (command === 'vscode.executeDefinitionProvider') {
+                    return Promise.resolve([{
+                        uri: { toString: () => 'file:///test.ts' },
+                        range: { contains: () => true }
+                    }]);
+                }
+                if (command === 'vscode.executeReferenceProvider') {
+                    return Promise.resolve(mockReferences);
+                }
+                return Promise.resolve([]);
+            });
+
+            const result = await findUsagesTool.execute({
+                symbol_name: '$scope',
+                file_path: 'src/test.ts'
+            });
+
+            expect(result.length).toBeGreaterThan(0);
+            expect(result[0]).not.toContain('No usages found');
+        });
+
+        it('should not match "User" as part of "superUser"', async () => {
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'const superUser = true;\nconst userManager = null;',
+                uri: { toString: () => 'file:///test.ts' }
+            });
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'User',
+                file_path: 'src/test.ts'
+            });
+
+            expect(result[0]).toContain('No usages found for symbol');
+        });
+
+        it('should not match "id" in words like "width" or "hidden"', async () => {
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'const width = 100;\nconst hidden = false;\nconst valid = true;',
+                uri: { toString: () => 'file:///test.ts' }
+            });
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'id',
+                file_path: 'src/test.ts'
+            });
+
+            expect(result[0]).toContain('No usages found for symbol');
+        });
+    });
 });

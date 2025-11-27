@@ -48,7 +48,7 @@ export class FindUsagesTool extends BaseTool {
 
       // Convert relative path to absolute path
       const absolutePath = vscode.Uri.joinPath(workspaceFolder.uri, sanitizedFilePath);
-      
+
       let document: vscode.TextDocument;
       try {
         document = await vscode.workspace.openTextDocument(absolutePath);
@@ -85,7 +85,7 @@ export class FindUsagesTool extends BaseTool {
           try {
             const refDocument = await vscode.workspace.openTextDocument(reference.uri);
             const relativeFilePath = vscode.workspace.asRelativePath(reference.uri);
-            
+
             // Extract context lines around the reference
             const contextText = this.formatter.extractContextLines(
               refDocument,
@@ -126,6 +126,28 @@ export class FindUsagesTool extends BaseTool {
   }
 
   /**
+   * Find the index of a symbol as a whole word in a line.
+   * Uses word boundaries that correctly handle symbols starting/ending with non-word characters.
+   * @param line The line of text to search
+   * @param symbolName The symbol name to find
+   * @returns The index of the symbol in the line, or -1 if not found
+   */
+  private findWholeWordIndex(line: string, symbolName: string): number {
+    const escaped = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const firstChar = symbolName[0];
+    const lastChar = symbolName[symbolName.length - 1];
+    const isFirstWordChar = /\w/.test(firstChar);
+    const isLastWordChar = /\w/.test(lastChar);
+
+    const prefix = isFirstWordChar ? '\\b' : '(?<![\\w])';
+    const suffix = isLastWordChar ? '\\b' : '(?![\\w])';
+
+    const regex = new RegExp(`${prefix}${escaped}${suffix}`);
+    const match = regex.exec(line);
+    return match ? match.index : -1;
+  }
+
+  /**
    * Find the position of a symbol within a document
    * @param document The VS Code text document
    * @param symbolName The name of the symbol to find
@@ -138,11 +160,11 @@ export class FindUsagesTool extends BaseTool {
     // Look for the symbol in the document
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const symbolIndex = line.indexOf(symbolName);
+      const symbolIndex = this.findWholeWordIndex(line, symbolName);
 
       if (symbolIndex !== -1) {
         const position = new vscode.Position(lineIndex, symbolIndex);
-        
+
         // Verify this is actually a symbol definition by checking if definition provider returns this location
         try {
           const definitions = await vscode.commands.executeCommand<vscode.Location[]>(
@@ -152,7 +174,7 @@ export class FindUsagesTool extends BaseTool {
           );
 
           // If we get back the same location, this is likely the definition
-          if (definitions && definitions.some(def => 
+          if (definitions && definitions.some(def =>
             def.uri.toString() === document.uri.toString() &&
             def.range.contains(position)
           )) {
@@ -167,7 +189,7 @@ export class FindUsagesTool extends BaseTool {
     // If no definition found, return the first occurrence as fallback
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      const symbolIndex = line.indexOf(symbolName);
+      const symbolIndex = this.findWholeWordIndex(line, symbolName);
 
       if (symbolIndex !== -1) {
         return new vscode.Position(lineIndex, symbolIndex);
