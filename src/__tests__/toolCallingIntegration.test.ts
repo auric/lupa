@@ -7,6 +7,18 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+    return {
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    } as WorkspaceSettingsService;
+}
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -57,6 +69,7 @@ describe('Tool-Calling Integration Tests', () => {
     let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
+    let mockWorkspaceSettings: WorkspaceSettingsService;
     let findSymbolTool: FindSymbolTool;
     let tokenSource: vscode.CancellationTokenSource;
     let mockGitOperationsManager: Mocked<GitOperationsManager>;
@@ -65,7 +78,8 @@ describe('Tool-Calling Integration Tests', () => {
     beforeEach(() => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
-        toolExecutor = new ToolExecutor(toolRegistry);
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         mockGitOperationsManager = {
@@ -89,7 +103,8 @@ describe('Tool-Calling Integration Tests', () => {
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any
+            mockPromptGenerator as any,
+            mockWorkspaceSettings
         );
 
         // Clear all mocks

@@ -7,6 +7,18 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+    return {
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    } as WorkspaceSettingsService;
+}
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -51,6 +63,7 @@ describe('SearchForPatternTool Integration Tests', () => {
     let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
+    let mockWorkspaceSettings: WorkspaceSettingsService;
     let searchForPatternTool: SearchForPatternTool;
     let mockReadFile: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
@@ -59,7 +72,8 @@ describe('SearchForPatternTool Integration Tests', () => {
     beforeEach(() => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
-        toolExecutor = new ToolExecutor(toolRegistry);
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
@@ -81,7 +95,8 @@ describe('SearchForPatternTool Integration Tests', () => {
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any
+            mockPromptGenerator as any,
+            mockWorkspaceSettings
         );
 
         // Get mock references

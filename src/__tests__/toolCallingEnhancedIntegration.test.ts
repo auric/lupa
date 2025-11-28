@@ -8,6 +8,18 @@ import { PromptGenerator } from '../models/promptGenerator';
 import { TokenConstants } from '../models/tokenConstants';
 import { ReadFileTool } from '../tools/readFileTool';
 import { ToolRegistry } from '../models/toolRegistry';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+  return {
+    getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+    getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+    getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+  } as WorkspaceSettingsService;
+}
 
 // Mock VS Code
 vi.mock('vscode');
@@ -88,7 +100,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
       mockConversationManager as any,
       mockToolExecutor as any,
       mockCopilotModelManager as any,
-      mockPromptGenerator as any
+      mockPromptGenerator as any,
+      createMockWorkspaceSettings()
     );
 
     vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {

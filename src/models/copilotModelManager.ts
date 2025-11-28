@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { Log } from '../services/loggingService';
 import { TokenConstants } from './tokenConstants';
 import { ToolCallRequest, ToolCallResponse, ToolCall } from '../types/modelTypes';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 /**
  * Model information
@@ -40,15 +40,18 @@ export class CopilotModelManager implements vscode.Disposable {
     private lastModelRefresh: number = 0;
     private readonly cacheLifetimeMs = TokenConstants.DEFAULT_CACHE_LIFETIME_MS;
 
-    /**
-     * Create a new model manager
-     */
-    constructor(private readonly workspaceSettingsService: WorkspaceSettingsService) {
+    constructor(
+        private readonly settings: WorkspaceSettingsService
+    ) {
         // Watch for model changes
         vscode.lm.onDidChangeChatModels(() => {
             // Clear cache when available models change
             this.modelCache = null;
         });
+    }
+
+    private get requestTimeoutMs(): number {
+        return this.settings.getRequestTimeoutSeconds() * 1000;
     }
 
     /**
@@ -91,10 +94,10 @@ export class CopilotModelManager implements vscode.Disposable {
      */
     async selectModel(options?: ModelSelectionOptions): Promise<vscode.LanguageModelChat> {
         try {
-            // Check if we should load model preferences from workspace settings
-            if (!options && this.workspaceSettingsService) {
-                const savedFamily = this.workspaceSettingsService.getPreferredModelFamily();
-                const savedVersion = this.workspaceSettingsService.getPreferredModelVersion();
+            // Check if we should load model preferences from settings
+            if (!options) {
+                const savedFamily = this.settings.getPreferredModelFamily();
+                const savedVersion = this.settings.getPreferredModelVersion();
 
                 if (savedFamily) {
                     options = {
@@ -123,11 +126,11 @@ export class CopilotModelManager implements vscode.Disposable {
             const [model] = models;
             this.currentModel = model;
 
-            // Save selected model to settings if we're using workspace settings
-            if (this.workspaceSettingsService && options?.family) {
-                this.workspaceSettingsService.setPreferredModelFamily(options.family);
+            // Save selected model to settings
+            if (options?.family) {
+                this.settings.setPreferredModelFamily(options.family);
                 if (options.version) {
-                    this.workspaceSettingsService.setPreferredModelVersion(options.version);
+                    this.settings.setPreferredModelVersion(options.version);
                 }
             }
 
@@ -347,7 +350,7 @@ export class CopilotModelManager implements vscode.Disposable {
             // Send the request with timeout
             const response = await this.withTimeout(
                 model.sendRequest(messages, options, token),
-                TokenConstants.LLM_REQUEST_TIMEOUT_MS,
+                this.requestTimeoutMs,
                 token
             );
 

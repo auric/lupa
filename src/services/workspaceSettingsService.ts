@@ -35,6 +35,21 @@ export interface WorkspaceSettings {
     enableEmbeddingLspAlgorithm?: boolean;
 
     /**
+     * Maximum number of tool calls per analysis session (default: 50)
+     */
+    maxToolCalls?: number;
+
+    /**
+     * Maximum conversation iterations before forcing final answer (default: 10)
+     */
+    maxIterations?: number;
+
+    /**
+     * Timeout in seconds for LLM requests (default: 60)
+     */
+    requestTimeoutSeconds?: number;
+
+    /**
      * Other workspace-specific settings can be added here
      */
     [key: string]: any;
@@ -48,6 +63,16 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     private settings: WorkspaceSettings = {};
     private settingsPath: string | null = null;
     private saveDebounceTimeout: NodeJS.Timeout | null = null;
+
+    // Single source of truth for analysis limit defaults
+    public static readonly DEFAULT_MAX_TOOL_CALLS = 50;
+    public static readonly DEFAULT_MAX_ITERATIONS = 10;
+    public static readonly DEFAULT_REQUEST_TIMEOUT_SECONDS = 60;
+
+    // Valid ranges for clamping
+    public static readonly MAX_TOOL_CALLS_RANGE = { min: 10, max: 200 } as const;
+    public static readonly MAX_ITERATIONS_RANGE = { min: 3, max: 30 } as const;
+    public static readonly REQUEST_TIMEOUT_RANGE = { min: 10, max: 300 } as const;
 
     /**
      * Creates a new WorkspaceSettingsService
@@ -276,6 +301,64 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      */
     public setEmbeddingLspAlgorithmEnabled(enabled: boolean): void {
         this.settings.enableEmbeddingLspAlgorithm = enabled;
+        this.debouncedSaveSettings();
+    }
+
+    /**
+     * Get the maximum number of tool calls per analysis session
+     */
+    public getMaxToolCalls(): number {
+        return this.settings.maxToolCalls ?? WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS;
+    }
+
+    /**
+     * Set the maximum number of tool calls per analysis session
+     */
+    public setMaxToolCalls(value: number): void {
+        const { min, max } = WorkspaceSettingsService.MAX_TOOL_CALLS_RANGE;
+        this.settings.maxToolCalls = Math.max(min, Math.min(max, value));
+        this.debouncedSaveSettings();
+    }
+
+    /**
+     * Get the maximum conversation iterations
+     */
+    public getMaxIterations(): number {
+        return this.settings.maxIterations ?? WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS;
+    }
+
+    /**
+     * Set the maximum conversation iterations
+     */
+    public setMaxIterations(value: number): void {
+        const { min, max } = WorkspaceSettingsService.MAX_ITERATIONS_RANGE;
+        this.settings.maxIterations = Math.max(min, Math.min(max, value));
+        this.debouncedSaveSettings();
+    }
+
+    /**
+     * Get the request timeout in seconds
+     */
+    public getRequestTimeoutSeconds(): number {
+        return this.settings.requestTimeoutSeconds ?? WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS;
+    }
+
+    /**
+     * Set the request timeout in seconds
+     */
+    public setRequestTimeoutSeconds(value: number): void {
+        const { min, max } = WorkspaceSettingsService.REQUEST_TIMEOUT_RANGE;
+        this.settings.requestTimeoutSeconds = Math.max(min, Math.min(max, value));
+        this.debouncedSaveSettings();
+    }
+
+    /**
+     * Reset all analysis limit settings to their defaults
+     */
+    public resetAnalysisLimitsToDefaults(): void {
+        delete this.settings.maxToolCalls;
+        delete this.settings.maxIterations;
+        delete this.settings.requestTimeoutSeconds;
         this.debouncedSaveSettings();
     }
 

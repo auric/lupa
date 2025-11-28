@@ -6,7 +6,19 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { fdir } from 'fdir';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+    return {
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    } as WorkspaceSettingsService;
+}
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -96,6 +108,7 @@ describe('FindFileTool Integration Tests', () => {
     let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
+    let mockWorkspaceSettings: WorkspaceSettingsService;
     let findFileTool: FindFilesByPatternTool;
     let mockReadFile: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
@@ -104,7 +117,8 @@ describe('FindFileTool Integration Tests', () => {
     beforeEach(() => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
-        toolExecutor = new ToolExecutor(toolRegistry);
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
@@ -126,7 +140,8 @@ describe('FindFileTool Integration Tests', () => {
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any
+            mockPromptGenerator as any,
+            mockWorkspaceSettings
         );
 
         mockReadFile = vscode.workspace.fs.readFile as ReturnType<typeof vi.fn>;

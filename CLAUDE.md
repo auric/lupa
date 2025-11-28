@@ -328,6 +328,23 @@ The extension provides these VS Code commands:
 - `lupa.selectEmbeddingModel` - Select embedding model
 - `lupa.startContinuousIndexing` - Start background indexing
 - `lupa.stopContinuousIndexing` - Stop background indexing
+- `lupa.resetAnalysisLimits` - Reset analysis limits to default values
+
+## Configurable Analysis Limits
+
+The following limits are configurable via `WorkspaceSettingsService` and persisted to `.vscode/lupa.json`:
+
+| Setting                 | Default | Range  | Description                                                 |
+| ----------------------- | ------- | ------ | ----------------------------------------------------------- |
+| `maxToolCalls`          | 50      | 10-200 | Maximum tool calls per analysis session                     |
+| `maxIterations`         | 10      | 3-30   | Maximum conversation iterations before forcing final answer |
+| `requestTimeoutSeconds` | 60      | 10-300 | Timeout in seconds for LLM requests                         |
+
+**Notes:**
+
+- Static defaults are defined in `WorkspaceSettingsService` as single source of truth
+- Setter methods automatically clamp values to valid ranges
+- Use `lupa.resetAnalysisLimits` command to reset all limits to defaults
 
 ## Debugging
 

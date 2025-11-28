@@ -4,6 +4,7 @@ import { EmbeddingModelCoordinator } from './embeddingModelCoordinator';
 import { CopilotModelCoordinator } from './copilotModelCoordinator';
 import { DatabaseOrchestrator } from './databaseOrchestrator';
 import { IServiceRegistry } from '../services/serviceManager';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 /**
  * CommandRegistry handles all VS Code command registration
@@ -66,6 +67,11 @@ export class CommandRegistry implements vscode.Disposable {
             this.services.indexingService.showIndexingManagementOptions()
         );
 
+        // Settings commands
+        this.registerCommand('lupa.resetAnalysisLimits', () =>
+            this.resetAnalysisLimitsToDefaults()
+        );
+
         // Development-only commands - only register in development mode
         if (this.context.extensionMode === vscode.ExtensionMode.Development) {
             // Tool testing interface command
@@ -78,6 +84,19 @@ export class CommandRegistry implements vscode.Disposable {
                 this.showTestWebview()
             );
         }
+    }
+
+    /**
+     * Reset analysis limits to their default values
+     */
+    private resetAnalysisLimitsToDefaults(): void {
+        this.services.workspaceSettings.resetAnalysisLimitsToDefaults();
+        vscode.window.showInformationMessage(
+            'Analysis limits reset to defaults: ' +
+            `Max Tool Calls: ${WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS}, ` +
+            `Max Iterations: ${WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS}, ` +
+            `Request Timeout: ${WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS}s`
+        );
     }
 
     /**
@@ -295,8 +314,8 @@ private async analyzeWithLanguageModel(
         const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
         // Calculate context allocation tokens
-        const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens + 
-            allocation.userMessagesTokens + allocation.assistantMessagesTokens + 
+        const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens +
+            allocation.userMessagesTokens + allocation.assistantMessagesTokens +
             allocation.responsePrefillTokens + allocation.messageOverheadTokens + allocation.otherTokens;
         const contextAllocationTokens = Math.max(0, allocation.totalAvailableTokens - nonContextTokens);
 

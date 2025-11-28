@@ -39,9 +39,10 @@ The overall architecture consists of these primary layers:
 
 - Contains specialized services for specific functionality domains.
 - Implements the core business logic of the extension.
-- **ConversationManager** (`src/services/conversationManager.ts`): Manages the history of the conversation with the LLM, including user, assistant, and tool messages.
-- **ToolExecutor** (`src/services/toolExecutor.ts`): Executes tools requested by the LLM with rate limiting (50 calls per session), validating requests against schemas and running tools in parallel.
-- **ToolRegistry** (`src/services/toolRegistry.ts`): Registry of available tools for LLM-driven code exploration.
+- **ConversationManager** (`src/models/conversationManager.ts`): Manages the history of the conversation with the LLM, including user, assistant, and tool messages.
+- **ToolExecutor** (`src/models/toolExecutor.ts`): Executes tools requested by the LLM with configurable rate limiting (default: 50 calls per session, configurable via `WorkspaceSettingsService`), validating requests against schemas and running tools in parallel.
+- **ToolRegistry** (`src/models/toolRegistry.ts`): Registry of available tools for LLM-driven code exploration.
+- **WorkspaceSettingsService** (`src/services/workspaceSettingsService.ts`): Persists workspace-specific settings to `.vscode/lupa.json`, including configurable analysis limits (maxToolCalls, maxIterations, requestTimeoutSeconds).
 - Other services manage resources and state for specific domains and communicate with other services through well-defined interfaces.
 
 #### 1.1.3a Tools Layer

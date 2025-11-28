@@ -2,6 +2,7 @@ import { ToolRegistry } from './toolRegistry';
 import { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 /**
  * Interface for tool execution requests
@@ -28,13 +29,14 @@ export interface ToolExecutionResult {
  */
 export class ToolExecutor {
   private toolCallCount = 0;
-  private readonly maxToolCalls: number;
 
   constructor(
     private toolRegistry: ToolRegistry,
-    maxToolCalls: number = ToolConstants.MAX_TOOL_CALLS_PER_SESSION
-  ) {
-    this.maxToolCalls = maxToolCalls;
+    private workspaceSettings: WorkspaceSettingsService
+  ) { }
+
+  private get maxToolCalls(): number {
+    return this.workspaceSettings.getMaxToolCalls();
   }
 
   /**
@@ -171,7 +173,7 @@ export class ToolExecutor {
     try {
       // Convert result to string for size measurement
       let resultString: string;
-      
+
       if (Array.isArray(result)) {
         // For array results, join them to measure total size
         resultString = result.join('\n\n');

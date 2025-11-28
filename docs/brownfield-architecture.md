@@ -69,10 +69,11 @@ It is critical to distinguish between the two types of models used in this proje
 ```text
 project-root/
 ├── src/
-│   ├── services/         # Core logic, services (e.g., IndexingService, ContextProvider)
+│   ├── services/         # Core logic, services (e.g., IndexingService, ContextProvider, WorkspaceSettingsService)
 │   ├── coordinators/     # High-level orchestration (e.g., AnalysisOrchestrator)
 │   ├── workers/          # Code for worker processes (e.g., embeddingGeneratorWorker.ts)
-│   ├── models/           # LLM management (copilotModelManager.ts)
+│   ├── models/           # LLM management (copilotModelManager.ts), tool execution (toolExecutor.ts, toolRegistry.ts)
+│   ├── tools/            # Individual tools for LLM-driven code exploration (FindSymbolTool, ReadFileTool, etc.)
 │   ├── webview/          # React UI source code (components, hooks, styles)
 │   ├── types/            # TypeScript type definitions
 │   └── config/           # Configuration files (e.g., treeSitterQueries.ts)

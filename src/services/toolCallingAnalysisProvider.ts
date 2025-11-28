@@ -14,6 +14,7 @@ import type {
 import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
+import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -26,8 +27,13 @@ export class ToolCallingAnalysisProvider {
     private conversationManager: ConversationManager,
     private toolExecutor: ToolExecutor,
     private copilotModelManager: CopilotModelManager,
-    private promptGenerator: PromptGenerator
+    private promptGenerator: PromptGenerator,
+    private workspaceSettings: WorkspaceSettingsService
   ) { }
+
+  private get maxIterations(): number {
+    return this.workspaceSettings.getMaxIterations();
+  }
 
   /**
    * Analyze a diff using the LLM with tool-calling capabilities.
@@ -80,10 +86,9 @@ export class ToolCallingAnalysisProvider {
    * @returns Promise resolving to the final analysis result
    */
   private async conversationLoop(systemPrompt: string, token: vscode.CancellationToken): Promise<string> {
-    const maxIterations = 10; // Prevent infinite loops
     let iteration = 0;
 
-    while (iteration < maxIterations) {
+    while (iteration < this.maxIterations) {
       iteration++;
       Log.info(`Conversation iteration ${iteration}`);
 
@@ -185,7 +190,7 @@ export class ToolCallingAnalysisProvider {
         );
 
         // If this is the last iteration, return the error
-        if (iteration >= maxIterations) {
+        if (iteration >= this.maxIterations) {
           return errorMessage;
         }
       }

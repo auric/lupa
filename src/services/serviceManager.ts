@@ -248,13 +248,14 @@ export class ServiceManager implements vscode.Disposable {
 
         // Initialize tool-calling services
         this.services.toolRegistry = new ToolRegistry();
-        this.services.toolExecutor = new ToolExecutor(this.services.toolRegistry);
+        this.services.toolExecutor = new ToolExecutor(this.services.toolRegistry, this.services.workspaceSettings!);
         this.services.conversationManager = new ConversationManager();
         this.services.toolCallingAnalysisProvider = new ToolCallingAnalysisProvider(
             this.services.conversationManager,
             this.services.toolExecutor,
             this.services.copilotModelManager!,
-            this.services.promptGenerator!
+            this.services.promptGenerator!,
+            this.services.workspaceSettings!
         );
 
         // Register available tools

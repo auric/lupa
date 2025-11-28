@@ -12,10 +12,6 @@ export class TokenConstants {
     static readonly DEFAULT_MAX_INPUT_TOKENS = 8000;
     static readonly DEFAULT_CACHE_LIFETIME_MS = 5 * 60 * 1000; // 5 minutes
 
-    // Request timeout
-    static readonly LLM_REQUEST_TIMEOUT_MS = 60 * 1000; // 60 seconds
-
-
     // Truncation constants
     static readonly TRUNCATION_MESSAGES = {
         CONTEXT: '\n\n[Context truncated to fit token limit. Some information might be missing.]',

@@ -5,6 +5,18 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+    return {
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    } as WorkspaceSettingsService;
+}
 
 // Mock vscode with more realistic behavior
 vi.mock('vscode', async () => {
@@ -97,7 +109,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
         // Set up tool registry and executor for integration testing
         toolRegistry = new ToolRegistry();
         toolRegistry.registerTool(getSymbolsOverviewTool);
-        toolExecutor = new ToolExecutor(toolRegistry);
+        toolExecutor = new ToolExecutor(toolRegistry, createMockWorkspaceSettings());
 
         vi.clearAllMocks();
     });
@@ -241,7 +253,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             });
 
             const mockDocument = { getText: vi.fn().mockReturnValue('class Calculator {}') };
-            
+
             mockSymbolExtractor.extractSymbolsWithContext.mockResolvedValue({
                 symbols: [
                     {
@@ -341,7 +353,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                     }
                 ]
             }));
-            
+
             mockSymbolExtractor.getDirectorySymbols.mockResolvedValue(manyFileResults);
 
             const start = Date.now();

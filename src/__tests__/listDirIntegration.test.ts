@@ -6,6 +6,18 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ListDirTool } from '../tools/listDirTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+    return {
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    } as WorkspaceSettingsService;
+}
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -56,6 +68,7 @@ describe('ListDirTool Integration Tests', () => {
     let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
+    let mockWorkspaceSettings: WorkspaceSettingsService;
     let listDirTool: ListDirTool;
     let mockReadDirectory: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
@@ -65,7 +78,8 @@ describe('ListDirTool Integration Tests', () => {
     beforeEach(() => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
-        toolExecutor = new ToolExecutor(toolRegistry);
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
@@ -87,7 +101,8 @@ describe('ListDirTool Integration Tests', () => {
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any
+            mockPromptGenerator as any,
+            mockWorkspaceSettings
         );
 
         mockReadDirectory = vscode.workspace.fs.readDirectory as ReturnType<typeof vi.fn>;

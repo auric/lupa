@@ -1,28 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { TokenConstants } from '../models/tokenConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing with a specific timeout
+ */
+function createMockSettings(timeoutSeconds: number): WorkspaceSettingsService {
+    return {
+        getPreferredModelFamily: vi.fn().mockReturnValue(undefined),
+        getPreferredModelVersion: vi.fn().mockReturnValue(undefined),
+        setPreferredModelFamily: vi.fn(),
+        setPreferredModelVersion: vi.fn(),
+        getRequestTimeoutSeconds: vi.fn().mockReturnValue(timeoutSeconds),
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+    } as unknown as WorkspaceSettingsService;
+}
 
 describe('CopilotModelManager timeout', () => {
     let modelManager: CopilotModelManager;
-    let mockWorkspaceSettingsService: WorkspaceSettingsService;
+    let mockSettings: WorkspaceSettingsService;
     let mockModel: any;
     let cancellationTokenSource: vscode.CancellationTokenSource;
 
-    // Store original timeout value to restore later
-    const originalTimeout = TokenConstants.LLM_REQUEST_TIMEOUT_MS;
-
     beforeEach(() => {
-        // Use a very short timeout for tests (100ms instead of 60s)
-        (TokenConstants as any).LLM_REQUEST_TIMEOUT_MS = 100;
-
-        mockWorkspaceSettingsService = {
-            getPreferredModelFamily: vi.fn().mockReturnValue(null),
-            getPreferredModelVersion: vi.fn().mockReturnValue(null),
-            setPreferredModelFamily: vi.fn(),
-            setPreferredModelVersion: vi.fn(),
-        } as unknown as WorkspaceSettingsService;
+        // Use a very short timeout for tests (100ms = 0.1s instead of 60s)
+        mockSettings = createMockSettings(0.1);
 
         mockModel = {
             id: 'test-model',
@@ -36,13 +40,11 @@ describe('CopilotModelManager timeout', () => {
 
         vi.mocked(vscode.lm.selectChatModels).mockResolvedValue([mockModel]);
 
-        modelManager = new CopilotModelManager(mockWorkspaceSettingsService);
+        modelManager = new CopilotModelManager(mockSettings);
         cancellationTokenSource = new vscode.CancellationTokenSource();
     });
 
     afterEach(() => {
-        // Restore original timeout
-        (TokenConstants as any).LLM_REQUEST_TIMEOUT_MS = originalTimeout;
         vi.clearAllMocks();
     });
 

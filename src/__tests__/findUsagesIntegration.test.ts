@@ -5,6 +5,18 @@ import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+    return {
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    } as WorkspaceSettingsService;
+}
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -59,13 +71,15 @@ describe('FindUsages Integration Tests', () => {
     let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
+    let mockWorkspaceSettings: WorkspaceSettingsService;
     let findUsagesTool: FindUsagesTool;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
-        toolExecutor = new ToolExecutor(toolRegistry);
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         // Initialize tools
@@ -77,7 +91,8 @@ describe('FindUsages Integration Tests', () => {
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any
+            mockPromptGenerator as any,
+            mockWorkspaceSettings
         );
 
         // Clear all mocks

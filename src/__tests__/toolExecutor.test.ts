@@ -2,7 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolExecutor, ToolExecutionRequest } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { z } from 'zod';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing with a specific max tool calls limit
+ */
+function createMockSettings(maxToolCalls: number): WorkspaceSettingsService {
+  return {
+    getMaxToolCalls: () => maxToolCalls,
+    getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+    getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+  } as WorkspaceSettingsService;
+}
 
 // Mock tools for testing
 class MockSuccessTool implements ITool {
@@ -63,13 +75,15 @@ class MockDelayTool implements ITool {
 describe('ToolExecutor', () => {
   let toolExecutor: ToolExecutor;
   let toolRegistry: ToolRegistry;
+  let mockSettings: WorkspaceSettingsService;
   let successTool: MockSuccessTool;
   let errorTool: MockErrorTool;
   let delayTool: MockDelayTool;
 
   beforeEach(() => {
     toolRegistry = new ToolRegistry();
-    toolExecutor = new ToolExecutor(toolRegistry);
+    mockSettings = createMockSettings(WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS);
+    toolExecutor = new ToolExecutor(toolRegistry, mockSettings);
     successTool = new MockSuccessTool();
     errorTool = new MockErrorTool();
     delayTool = new MockDelayTool();
@@ -271,7 +285,7 @@ describe('ToolExecutor', () => {
 
   describe('Rate Limiting', () => {
     it('should allow tool calls under the limit', async () => {
-      const limitedExecutor = new ToolExecutor(toolRegistry, 3);
+      const limitedExecutor = new ToolExecutor(toolRegistry, createMockSettings(3));
 
       const result1 = await limitedExecutor.executeTool('success_tool', { message: 'test1' });
       const result2 = await limitedExecutor.executeTool('success_tool', { message: 'test2' });
@@ -284,7 +298,7 @@ describe('ToolExecutor', () => {
     });
 
     it('should reject tool calls exceeding the limit', async () => {
-      const limitedExecutor = new ToolExecutor(toolRegistry, 3);
+      const limitedExecutor = new ToolExecutor(toolRegistry, createMockSettings(3));
 
       // Make 3 successful calls
       await limitedExecutor.executeTool('success_tool', { message: 'test1' });
@@ -302,7 +316,7 @@ describe('ToolExecutor', () => {
     });
 
     it('should track call count correctly', async () => {
-      const limitedExecutor = new ToolExecutor(toolRegistry, 10);
+      const limitedExecutor = new ToolExecutor(toolRegistry, createMockSettings(10));
 
       await limitedExecutor.executeTool('success_tool', { message: 'test1' });
       expect(limitedExecutor.getToolCallCount()).toBe(1);
@@ -314,8 +328,11 @@ describe('ToolExecutor', () => {
       expect(limitedExecutor.getToolCallCount()).toBe(3);
     });
 
-    it('should use default limit from ToolConstants', async () => {
-      const defaultExecutor = new ToolExecutor(toolRegistry);
+    it('should use settings with default limit', async () => {
+      const defaultExecutor = new ToolExecutor(
+        toolRegistry,
+        createMockSettings(WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS)
+      );
 
       expect(defaultExecutor.getToolCallCount()).toBe(0);
 

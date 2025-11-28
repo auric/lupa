@@ -5,7 +5,19 @@ import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProv
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { DiffHunk } from '../types/contextTypes';
+
+/**
+ * Create a mock WorkspaceSettingsService for testing
+ */
+function createMockWorkspaceSettings(): WorkspaceSettingsService {
+    return {
+        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
+        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    } as WorkspaceSettingsService;
+}
 
 vi.mock('vscode');
 
@@ -93,7 +105,8 @@ index 1234567..abcdefg 100644
             mockConversationManager,
             mockToolExecutor,
             mockCopilotModelManager,
-            mockPromptGenerator
+            mockPromptGenerator,
+            createMockWorkspaceSettings()
         );
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
             const listeners: Array<(e: any) => any> = [];
