@@ -38,6 +38,9 @@ import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { ReadFileTool } from '../tools/readFileTool';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
+import { ThinkAboutContextTool } from '../tools/thinkAboutContextTool';
+import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
+import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
 
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
@@ -314,6 +317,10 @@ export class ServiceManager implements vscode.Disposable {
             // Register the SearchForPatternTool (Search for Pattern functionality)
             const searchForPatternTool = new SearchForPatternTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(searchForPatternTool);
+
+            this.services.toolRegistry!.registerTool(new ThinkAboutContextTool());
+            this.services.toolRegistry!.registerTool(new ThinkAboutTaskTool());
+            this.services.toolRegistry!.registerTool(new ThinkAboutCompletionTool());
 
             Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
         } catch (error) {

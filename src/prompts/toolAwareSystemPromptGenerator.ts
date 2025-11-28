@@ -4,7 +4,7 @@ import { ITool } from '../tools/ITool';
 /**
  * Tool-aware system prompt generator that creates comprehensive prompts for code review
  * with dynamic tool discovery and strategic usage guidance.
- * 
+ *
  * Follows Anthropic prompt engineering best practices:
  * - Clear role definition in system parameter
  * - Strategic tool guidance with specific use cases
@@ -40,7 +40,7 @@ ${responseStructure}`;
         return `You are an Expert Senior Software Engineer specializing in comprehensive code review and security analysis. You have extensive experience in:
 
 - Security vulnerability identification and mitigation strategies
-- Performance optimization and architectural assessment  
+- Performance optimization and architectural assessment
 - Code quality evaluation and maintainability improvement
 - Cross-language best practices and modern design patterns
 - Technical mentorship and actionable feedback delivery
@@ -135,16 +135,31 @@ You have access to powerful tools that help you understand the codebase deeply. 
 - **get_symbols_overview**: To understand the high-level structure of files or directories before diving into specifics.
 - **list_directory**: To explore project organization and discover related files or modules.
 - **find_file**: To locate specific files by name or pattern (e.g., tests, configs, related components).
-- **get_hover**: Last resort for quick type information when other tools don't provide sufficient context for a specific position.
+
+**Self-Reflection Tools:**
+Use these tools to improve your analysis quality and prevent common mistakes:
+
+- **think_about_context**: Call after gathering context with other tools. Pause to verify you have sufficient and relevant information before proceeding. Helps prevent premature conclusions.
+- **think_about_task**: Call before drawing conclusions. Verify you're still focused on the actual PR changes and haven't drifted into analyzing unrelated code.
+- **think_about_completion**: Call before providing your final review. Verify your analysis is complete, balanced, and actionable.
+
+<self_reflection_workflow>
+1. Gather context → call think_about_context → verify sufficiency
+2. Analyze changes → call think_about_task → verify focus
+3. Prepare review → call think_about_completion → verify completeness
+</self_reflection_workflow>
 
 **Analysis Strategy:**
 1. **Start Broad**: Use \`get_symbols_overview\` to understand the context
 2. **Go Deep**: Use \`find_symbol\` for detailed understanding of changed code
-3. **Assess Impact**: Use \`find_usages\` to understand ripple effects
-4. **Find Patterns**: Use \`search_for_pattern\` to identify broader issues
-5. **Explore Related**: Use \`find_file\` and \`list_directory\` to discover related code
+3. **Reflect on Context**: Use \`think_about_context\` to verify you have enough information
+4. **Assess Impact**: Use \`find_usages\` to understand ripple effects
+5. **Find Patterns**: Use \`search_for_pattern\` to identify broader issues
+6. **Verify Focus**: Use \`think_about_task\` before drawing conclusions
+7. **Explore Related**: Use \`find_file\` and \`list_directory\` to discover related code
+8. **Final Check**: Use \`think_about_completion\` before submitting your review
 
-**Proactive Approach**: Don't wait to be asked - if you see something unfamiliar or potentially concerning, use tools immediately to investigate.`;
+**Proactive Approach**: Don't wait to be asked - if you see something unfamiliar or potentially concerning, use tools immediately to investigate. Use self-reflection tools to ensure quality.`;
     }
 
     /**
@@ -178,7 +193,7 @@ Think step-by-step through your analysis:
 Structure your analysis using these XML tags (all support full markdown):
 
 - **<thinking>**: Your step-by-step reasoning and tool usage rationale
-- **<suggestion_security>**: Security recommendations and vulnerability identification  
+- **<suggestion_security>**: Security recommendations and vulnerability identification
 - **<suggestion_performance>**: Performance optimizations and efficiency improvements
 - **<suggestion_maintainability>**: Code organization, readability, long-term maintenance
 - **<suggestion_reliability>**: Error handling, edge cases, system robustness
