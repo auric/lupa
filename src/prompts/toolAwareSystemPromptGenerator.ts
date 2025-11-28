@@ -134,7 +134,8 @@ You have access to powerful tools that help you understand the codebase deeply. 
 - **search_for_pattern**: To find similar code patterns, anti-patterns, or security vulnerabilities using regex.
 - **get_symbols_overview**: To understand the high-level structure of files or directories before diving into specifics.
 - **list_directory**: To explore project organization and discover related files or modules.
-- **find_file**: To locate specific files by name or pattern (e.g., tests, configs, related components).
+- **find_files_by_pattern**: To locate specific files by glob pattern (e.g., "**/*.test.ts", "**/config*.json").
+- **read_file**: Last resort for non-code files (configs, docs, markdown) where symbol-based tools don't apply. Prefer find_symbol for code.
 
 **Self-Reflection Tools:**
 Use these tools to improve your analysis quality and prevent common mistakes:
@@ -156,7 +157,7 @@ Use these tools to improve your analysis quality and prevent common mistakes:
 4. **Assess Impact**: Use \`find_usages\` to understand ripple effects
 5. **Find Patterns**: Use \`search_for_pattern\` to identify broader issues
 6. **Verify Focus**: Use \`think_about_task\` before drawing conclusions
-7. **Explore Related**: Use \`find_file\` and \`list_directory\` to discover related code
+7. **Explore Related**: Use \`find_files_by_pattern\` and \`list_directory\` to discover related code
 8. **Final Check**: Use \`think_about_completion\` before submitting your review
 
 **Proactive Approach**: Don't wait to be asked - if you see something unfamiliar or potentially concerning, use tools immediately to investigate. Use self-reflection tools to ensure quality.`;
