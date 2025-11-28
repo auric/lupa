@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { z } from 'zod';
 import { ToolExecutor, ToolExecutionRequest } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { z } from 'zod';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max tool calls limit
@@ -11,8 +12,8 @@ import { z } from 'zod';
 function createMockSettings(maxToolCalls: number): WorkspaceSettingsService {
   return {
     getMaxToolCalls: () => maxToolCalls,
-    getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
-    getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
+    getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
   } as WorkspaceSettingsService;
 }
 
@@ -82,7 +83,7 @@ describe('ToolExecutor', () => {
 
   beforeEach(() => {
     toolRegistry = new ToolRegistry();
-    mockSettings = createMockSettings(WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS);
+    mockSettings = createMockSettings(ANALYSIS_LIMITS.maxToolCalls.default);
     toolExecutor = new ToolExecutor(toolRegistry, mockSettings);
     successTool = new MockSuccessTool();
     errorTool = new MockErrorTool();
@@ -331,7 +332,7 @@ describe('ToolExecutor', () => {
     it('should use settings with default limit', async () => {
       const defaultExecutor = new ToolExecutor(
         toolRegistry,
-        createMockSettings(WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS)
+        createMockSettings(ANALYSIS_LIMITS.maxToolCalls.default)
       );
 
       expect(defaultExecutor.getToolCallCount()).toBe(0);

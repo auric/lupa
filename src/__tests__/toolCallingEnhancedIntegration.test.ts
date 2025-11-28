@@ -9,15 +9,16 @@ import { TokenConstants } from '../models/tokenConstants';
 import { ReadFileTool } from '../tools/readFileTool';
 import { ToolRegistry } from '../models/toolRegistry';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
  */
 function createMockWorkspaceSettings(): WorkspaceSettingsService {
   return {
-    getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
-    getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
-    getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+    getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
+    getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
+    getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
   } as WorkspaceSettingsService;
 }
 

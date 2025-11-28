@@ -1,0 +1,181 @@
+import { describe, it, expect } from 'vitest';
+import { z } from 'zod/v4';
+import { WorkspaceSettingsSchema, ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { EmbeddingModel } from '../services/embeddingModelSelectionService';
+
+describe('WorkspaceSettingsSchema', () => {
+    describe('valid settings', () => {
+        it('should accept empty object and apply defaults', () => {
+            const result = WorkspaceSettingsSchema.safeParse({});
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.enableEmbeddingLspAlgorithm).toBe(false);
+                expect(result.data.maxToolCalls).toBe(ANALYSIS_LIMITS.maxToolCalls.default);
+                expect(result.data.maxIterations).toBe(ANALYSIS_LIMITS.maxIterations.default);
+                expect(result.data.requestTimeoutSeconds).toBe(ANALYSIS_LIMITS.requestTimeoutSeconds.default);
+                expect(result.data.logLevel).toBe('info');
+                expect(result.data.logOutputTarget).toBe('console');
+            }
+        });
+
+        it('should accept all valid properties and preserve them', () => {
+            const validSettings = {
+                selectedEmbeddingModel: EmbeddingModel.JinaEmbeddings,
+                lastIndexingTimestamp: 1732800000000,
+                preferredModelFamily: 'gpt-4',
+                preferredModelVersion: '0613',
+                enableEmbeddingLspAlgorithm: true,
+                maxToolCalls: 100,
+                maxIterations: 20,
+                requestTimeoutSeconds: 120,
+                logLevel: 'debug' as const,
+                logOutputTarget: 'channel' as const,
+            };
+
+            const result = WorkspaceSettingsSchema.safeParse(validSettings);
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data).toEqual(validSettings);
+            }
+        });
+
+        it('should accept boundary values for numeric limits', () => {
+            const lowerBoundarySettings = {
+                maxToolCalls: ANALYSIS_LIMITS.maxToolCalls.min,
+                maxIterations: ANALYSIS_LIMITS.maxIterations.min,
+                requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.min,
+            };
+
+            const result = WorkspaceSettingsSchema.safeParse(lowerBoundarySettings);
+            expect(result.success).toBe(true);
+
+            const upperBoundarySettings = {
+                maxToolCalls: ANALYSIS_LIMITS.maxToolCalls.max,
+                maxIterations: ANALYSIS_LIMITS.maxIterations.max,
+                requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.max,
+            };
+
+            const upperResult = WorkspaceSettingsSchema.safeParse(upperBoundarySettings);
+            expect(upperResult.success).toBe(true);
+        });
+
+        it('should preserve unknown properties via loose schema', () => {
+            const settingsWithExtra = {
+                maxToolCalls: 50,
+                customProperty: 'custom-value',
+                nestedObject: { foo: 'bar' },
+            };
+
+            const result = WorkspaceSettingsSchema.safeParse(settingsWithExtra);
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.customProperty).toBe('custom-value');
+                expect(result.data.nestedObject).toEqual({ foo: 'bar' });
+            }
+        });
+
+        it('should accept valid log settings', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                logLevel: 'debug',
+                logOutputTarget: 'console',
+            });
+            expect(result.success).toBe(true);
+        });
+    });
+
+    describe('invalid settings', () => {
+        it('should reject invalid embedding model', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                selectedEmbeddingModel: 'invalid-model',
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject maxToolCalls below minimum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxToolCalls: 5,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject maxToolCalls above maximum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxToolCalls: 250,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject maxIterations below minimum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxIterations: 1,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject maxIterations above maximum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxIterations: ANALYSIS_LIMITS.maxIterations.max + 1,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject requestTimeoutSeconds below minimum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                requestTimeoutSeconds: 5,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject requestTimeoutSeconds above maximum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                requestTimeoutSeconds: 500,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject negative lastIndexingTimestamp', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                lastIndexingTimestamp: -1,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject wrong types', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxToolCalls: 'fifty',
+                enableEmbeddingLspAlgorithm: 'yes',
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject invalid logLevel', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                logLevel: 'verbose',
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject invalid logOutputTarget', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                logOutputTarget: 'file',
+            });
+            expect(result.success).toBe(false);
+        });
+    });
+
+    describe('error formatting', () => {
+        it('should provide readable error messages', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxToolCalls: ANALYSIS_LIMITS.maxToolCalls.min - 1,
+                maxIterations: ANALYSIS_LIMITS.maxIterations.max + 1,
+            });
+
+            expect(result.success).toBe(false);
+            if (!result.success) {
+                const formatted = z.prettifyError(result.error);
+                expect(formatted).toContain('maxToolCalls');
+                expect(formatted).toContain('maxIterations');
+            }
+        });
+    });
+});

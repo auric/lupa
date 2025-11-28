@@ -1,78 +1,21 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { z } from 'zod/v4';
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
+import { WorkspaceSettingsSchema, WorkspaceSettings, ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
-/**
- * Workspace settings for PR Analyzer
- */
-export interface WorkspaceSettings {
-    /**
-     * Selected embedding model for this workspace
-     */
-    selectedEmbeddingModel?: EmbeddingModel;
-
-    /**
-     * Last indexing timestamp
-     */
-    lastIndexingTimestamp?: number;
-
-    /**
-     * Preferred language model family
-     */
-    preferredModelFamily?: string;
-
-    /**
-     * Preferred language model version
-     */
-    preferredModelVersion?: string;
-
-    /**
-     * Enable embedding-based LSP algorithm (legacy approach)
-     * When false (default), uses new tool-calling approach for context retrieval
-     */
-    enableEmbeddingLspAlgorithm?: boolean;
-
-    /**
-     * Maximum number of tool calls per analysis session (default: 50)
-     */
-    maxToolCalls?: number;
-
-    /**
-     * Maximum conversation iterations before forcing final answer (default: 10)
-     */
-    maxIterations?: number;
-
-    /**
-     * Timeout in seconds for LLM requests (default: 60)
-     */
-    requestTimeoutSeconds?: number;
-
-    /**
-     * Other workspace-specific settings can be added here
-     */
-    [key: string]: any;
-}
+const getDefaultSettings = (): WorkspaceSettings => WorkspaceSettingsSchema.parse({});
 
 /**
  * Service for persisting and loading workspace-specific settings
  */
 export class WorkspaceSettingsService implements vscode.Disposable {
     private static readonly SETTINGS_FILENAME = 'lupa.json';
-    private settings: WorkspaceSettings = {};
+    private settings: WorkspaceSettings = getDefaultSettings();
     private settingsPath: string | null = null;
     private saveDebounceTimeout: NodeJS.Timeout | null = null;
-
-    // Single source of truth for analysis limit defaults
-    public static readonly DEFAULT_MAX_TOOL_CALLS = 50;
-    public static readonly DEFAULT_MAX_ITERATIONS = 10;
-    public static readonly DEFAULT_REQUEST_TIMEOUT_SECONDS = 60;
-
-    // Valid ranges for clamping
-    public static readonly MAX_TOOL_CALLS_RANGE = { min: 10, max: 200 } as const;
-    public static readonly MAX_ITERATIONS_RANGE = { min: 3, max: 30 } as const;
-    public static readonly REQUEST_TIMEOUT_RANGE = { min: 10, max: 300 } as const;
 
     /**
      * Creates a new WorkspaceSettingsService
@@ -152,16 +95,24 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         try {
             if (fs.existsSync(this.settingsPath)) {
                 const data = fs.readFileSync(this.settingsPath, 'utf-8');
-                this.settings = JSON.parse(data);
+                const parsed = JSON.parse(data);
+                const result = WorkspaceSettingsSchema.safeParse(parsed);
+
+                if (result.success) {
+                    this.settings = result.data;
+                } else {
+                    const errorMessages = z.prettifyError(result.error);
+                    Log.error(`Invalid settings in ${this.settingsPath}: ${errorMessages}. Resetting to defaults.`);
+                    this.settings = getDefaultSettings();
+                    this.saveSettings();
+                }
             } else {
-                // Initialize with default settings
-                this.settings = {};
+                this.settings = getDefaultSettings();
                 this.saveSettings();
             }
         } catch (error) {
             Log.error(`Failed to load settings: ${error instanceof Error ? error.message : String(error)}`);
-            // Initialize with default settings on error
-            this.settings = {};
+            this.settings = getDefaultSettings();
         }
     }
 
@@ -210,8 +161,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * @param key Setting key
      * @param defaultValue Default value if setting is not found
      */
-    public getSetting<T>(key: string, defaultValue: T): T {
-        return this.settings[key] !== undefined ? this.settings[key] : defaultValue;
+    public getSetting<K extends keyof WorkspaceSettings>(key: K, defaultValue: NonNullable<WorkspaceSettings[K]>): NonNullable<WorkspaceSettings[K]> {
+        const value = this.settings[key];
+        return value !== undefined ? value as NonNullable<WorkspaceSettings[K]> : defaultValue;
     }
 
     /**
@@ -219,7 +171,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * @param key Setting key
      * @param value Setting value
      */
-    public setSetting<T>(key: string, value: T): void {
+    public setSetting<K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]): void {
         this.settings[key] = value;
         this.debouncedSaveSettings();
     }
@@ -289,10 +241,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
     /**
      * Get whether embedding-based LSP algorithm is enabled
-     * @returns true if enabled, false (default) if disabled
      */
     public isEmbeddingLspAlgorithmEnabled(): boolean {
-        return this.settings.enableEmbeddingLspAlgorithm || false;
+        return this.settings.enableEmbeddingLspAlgorithm;
     }
 
     /**
@@ -308,57 +259,30 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Get the maximum number of tool calls per analysis session
      */
     public getMaxToolCalls(): number {
-        return this.settings.maxToolCalls ?? WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS;
-    }
-
-    /**
-     * Set the maximum number of tool calls per analysis session
-     */
-    public setMaxToolCalls(value: number): void {
-        const { min, max } = WorkspaceSettingsService.MAX_TOOL_CALLS_RANGE;
-        this.settings.maxToolCalls = Math.max(min, Math.min(max, value));
-        this.debouncedSaveSettings();
+        return this.settings.maxToolCalls;
     }
 
     /**
      * Get the maximum conversation iterations
      */
     public getMaxIterations(): number {
-        return this.settings.maxIterations ?? WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS;
-    }
-
-    /**
-     * Set the maximum conversation iterations
-     */
-    public setMaxIterations(value: number): void {
-        const { min, max } = WorkspaceSettingsService.MAX_ITERATIONS_RANGE;
-        this.settings.maxIterations = Math.max(min, Math.min(max, value));
-        this.debouncedSaveSettings();
+        return this.settings.maxIterations;
     }
 
     /**
      * Get the request timeout in seconds
      */
     public getRequestTimeoutSeconds(): number {
-        return this.settings.requestTimeoutSeconds ?? WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS;
-    }
-
-    /**
-     * Set the request timeout in seconds
-     */
-    public setRequestTimeoutSeconds(value: number): void {
-        const { min, max } = WorkspaceSettingsService.REQUEST_TIMEOUT_RANGE;
-        this.settings.requestTimeoutSeconds = Math.max(min, Math.min(max, value));
-        this.debouncedSaveSettings();
+        return this.settings.requestTimeoutSeconds;
     }
 
     /**
      * Reset all analysis limit settings to their defaults
      */
     public resetAnalysisLimitsToDefaults(): void {
-        delete this.settings.maxToolCalls;
-        delete this.settings.maxIterations;
-        delete this.settings.requestTimeoutSeconds;
+        this.settings.maxToolCalls = ANALYSIS_LIMITS.maxToolCalls.default;
+        this.settings.maxIterations = ANALYSIS_LIMITS.maxIterations.default;
+        this.settings.requestTimeoutSeconds = ANALYSIS_LIMITS.requestTimeoutSeconds.default;
         this.debouncedSaveSettings();
     }
 
@@ -366,15 +290,12 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Clear all workspace settings (except for selected models)
      */
     public clearWorkspaceSettings(): void {
-        // Keep the selected models to maintain compatibility
         const selectedEmbeddingModel = this.settings.selectedEmbeddingModel;
         const preferredModelFamily = this.settings.preferredModelFamily;
         const preferredModelVersion = this.settings.preferredModelVersion;
 
-        // Reset settings
-        this.settings = {};
+        this.settings = getDefaultSettings();
 
-        // Restore selected models
         if (selectedEmbeddingModel) {
             this.settings.selectedEmbeddingModel = selectedEmbeddingModel;
         }
@@ -395,7 +316,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Use with caution - changing model may cause incompatibility with existing data
      */
     public resetAllSettings(): void {
-        this.settings = {};
+        this.settings = getDefaultSettings();
         this.saveSettings();
     }
 

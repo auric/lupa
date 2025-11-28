@@ -8,15 +8,16 @@ import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
  */
 function createMockWorkspaceSettings(): WorkspaceSettingsService {
     return {
-        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
-        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
-        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
+        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
     } as WorkspaceSettingsService;
 }
 

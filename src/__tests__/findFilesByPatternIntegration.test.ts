@@ -7,6 +7,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import { fdir } from 'fdir';
 
 /**
@@ -14,9 +15,9 @@ import { fdir } from 'fdir';
  */
 function createMockWorkspaceSettings(): WorkspaceSettingsService {
     return {
-        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
-        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
-        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
+        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
     } as WorkspaceSettingsService;
 }
 

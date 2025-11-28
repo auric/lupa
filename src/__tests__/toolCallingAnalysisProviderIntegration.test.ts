@@ -6,6 +6,7 @@ import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import type { DiffHunk } from '../types/contextTypes';
 
 /**
@@ -13,9 +14,9 @@ import type { DiffHunk } from '../types/contextTypes';
  */
 function createMockWorkspaceSettings(): WorkspaceSettingsService {
     return {
-        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
-        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
-        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
+        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
     } as WorkspaceSettingsService;
 }
 

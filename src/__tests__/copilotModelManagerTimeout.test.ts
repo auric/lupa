@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific timeout
@@ -13,8 +14,8 @@ function createMockSettings(timeoutSeconds: number): WorkspaceSettingsService {
         setPreferredModelFamily: vi.fn(),
         setPreferredModelVersion: vi.fn(),
         getRequestTimeoutSeconds: vi.fn().mockReturnValue(timeoutSeconds),
-        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
-        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
+        getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
     } as unknown as WorkspaceSettingsService;
 }
 

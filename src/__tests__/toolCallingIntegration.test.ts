@@ -8,15 +8,16 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
  */
 function createMockWorkspaceSettings(): WorkspaceSettingsService {
     return {
-        getMaxToolCalls: () => WorkspaceSettingsService.DEFAULT_MAX_TOOL_CALLS,
-        getMaxIterations: () => WorkspaceSettingsService.DEFAULT_MAX_ITERATIONS,
-        getRequestTimeoutSeconds: () => WorkspaceSettingsService.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
+        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
     } as WorkspaceSettingsService;
 }
 
@@ -338,7 +339,10 @@ describe('Tool-Calling Integration Tests', () => {
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
             expect(result).toContain('maximum iterations');
-            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(10); // Max iterations
+            // Uses configured max iterations from WorkspaceSettingsService
+            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
+                ANALYSIS_LIMITS.maxIterations.default
+            );
         });
     });
 
