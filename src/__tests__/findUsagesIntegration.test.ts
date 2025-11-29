@@ -199,7 +199,7 @@ describe('FindUsages Integration Tests', () => {
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class MyClass {}';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toBe('Based on the tool results, I found 2 usages of MyClass.');
+            expect(result.analysis).toBe('Based on the tool results, I found 2 usages of MyClass.');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify the tool was called correctly (should be called at least once with reference provider)
@@ -258,7 +258,7 @@ describe('FindUsages Integration Tests', () => {
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class UnusedClass {}';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toBe('No usages found for this class, it appears to be unused.');
+            expect(result.analysis).toBe('No usages found for this class, it appears to be unused.');
 
             // Verify the "no usages" message was returned
             const history = conversationManager.getHistory();
@@ -327,7 +327,7 @@ describe('FindUsages Integration Tests', () => {
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+class ClassA {}\n+class ClassB {}';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toBe('Both classes have one usage each.');
+            expect(result.analysis).toBe('Both classes have one usage each.');
             expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(4); // Two tools × (1 definition + 1 reference call each) = 4 calls
 
             // Verify both tool results are in conversation history
@@ -363,7 +363,7 @@ describe('FindUsages Integration Tests', () => {
             const diff = 'diff --git a/src/test.ts b/src/test.ts\n+// some change';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toBe('I encountered an error finding usages for that symbol.');
+            expect(result.analysis).toBe('I encountered an error finding usages for that symbol.');
 
             // Verify error message was passed to LLM
             const history = conversationManager.getHistory();

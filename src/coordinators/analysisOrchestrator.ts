@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AnalysisMode } from '../types/modelTypes';
+import type { ToolCallsData } from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 
 /**
@@ -67,6 +68,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
                 let analysis: string;
                 let context: string;
+                let toolCallsData: ToolCallsData | undefined;
 
                 if (useEmbeddingLspAlgorithm) {
                     // Use legacy embedding-based LSP algorithm
@@ -96,9 +98,10 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                     // Use new tool-calling approach
                     progress.report({ message: 'Using new tool-calling analysis...', increment: 10 });
 
-                    analysis = await this.services.toolCallingAnalysisProvider.analyze(diffText, token);
-                    // For tool-calling approach, context is retrieved dynamically during conversation
-                    context = 'Context retrieved dynamically via tool calls during analysis.';
+                    const result = await this.services.toolCallingAnalysisProvider.analyze(diffText, token);
+                    analysis = result.analysis;
+                    toolCallsData = result.toolCalls;
+                    context = '';
 
                     progress.report({ message: 'Tool-calling analysis completed', increment: 70 });
                 }
@@ -110,7 +113,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 const title = `PR Analysis: ${refName}`;
 
                 // Display the results in a webview
-                this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis);
+                this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis, toolCallsData);
                 progress.report({ message: 'Analysis displayed', increment: 5 });
             });
 

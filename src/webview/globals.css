@@ -7,6 +7,7 @@
 @import "./styles/diff.css";
 @import "./styles/copy-button.css";
 @import "./styles/file-link.css";
+@import "./styles/toolCalls.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -140,6 +141,8 @@ body,
 
 .vscode-tab-content {
   @apply flex-1 m-0 p-3 focus-visible:outline-none;
+  background-color: var(--vscode-editor-background);
+  overflow: auto;
 }
 
 @theme inline {

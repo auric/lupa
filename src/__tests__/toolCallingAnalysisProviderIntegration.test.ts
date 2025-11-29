@@ -214,7 +214,7 @@ index 1234567..abcdefg 100644
             }]);
 
             // Verify final result
-            expect(result).toBe('Final analysis based on tool results');
+            expect(result.analysis).toBe('Final analysis based on tool results');
         });
 
         it('should generate comprehensive system prompt with available tools', async () => {
@@ -271,7 +271,7 @@ index 1234567..abcdefg 100644
 
             const result = await provider.analyze(sampleDiff, tokenSource.token);
 
-            expect(result).toBe('Analysis despite tool error');
+            expect(result.analysis).toBe('Analysis despite tool error');
             expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
                 'call_1',
                 'Error executing tool \'find_symbol\': Tool execution failed'
@@ -298,7 +298,7 @@ index 1234567..abcdefg 100644
             const result = await provider.analyze(sampleDiff, tokenSource.token);
 
             // Should still complete despite malformed arguments
-            expect(result).toBe('Final result');
+            expect(result.analysis).toBe('Final result');
             expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([{
                 name: 'find_symbol',
                 args: {} // Empty object for malformed JSON
@@ -310,8 +310,8 @@ index 1234567..abcdefg 100644
 
             const result = await provider.analyze(sampleDiff, tokenSource.token);
 
-            expect(result).toContain('Error during analysis');
-            expect(result).toContain('LLM service unavailable');
+            expect(result.analysis).toContain('Error during analysis');
+            expect(result.analysis).toContain('LLM service unavailable');
         });
     });
 

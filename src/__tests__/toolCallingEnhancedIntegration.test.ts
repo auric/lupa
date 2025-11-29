@@ -171,7 +171,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(smallDiff, tokenSource.token);
 
-      expect(result).toBe('Final analysis based on available context');
+      expect(result.analysis).toBe('Final analysis based on available context');
       expect(mockConversationManager.clearHistory).toHaveBeenCalled();
       // Verify that user message was added (content may vary based on implementation)
       expect(mockConversationManager.addUserMessage).toHaveBeenCalled();
@@ -194,7 +194,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(smallDiff, tokenSource.token);
 
-      expect(result).toBe('Final analysis with limited context');
+      expect(result.analysis).toBe('Final analysis with limited context');
       // Verify that user message was added (content may vary based on implementation)
       expect(mockConversationManager.addUserMessage).toHaveBeenCalled();
     });
@@ -237,7 +237,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(smallDiff, tokenSource.token);
 
-      expect(result).toBe('Analysis based on error message');
+      expect(result.analysis).toBe('Analysis based on error message');
       expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
         'call_1',
         expect.stringContaining(TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE)
@@ -262,7 +262,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
       const doesntMatterDiff = 'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
       const result = await analysisProvider.analyze(doesntMatterDiff, tokenSource.token);
 
-      expect(result).toBe('Analysis of truncated diff without tools');
+      expect(result.analysis).toBe('Analysis of truncated diff without tools');
 
       // Should generate system prompt with no tools
       expect(mockPromptGenerator.generateToolAwareSystemPrompt).toHaveBeenCalledWith([]);
@@ -302,7 +302,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(reasonableDiff, tokenSource.token);
 
-      expect(result).toBe('Analysis with tools available');
+      expect(result.analysis).toBe('Analysis with tools available');
 
       // Should generate system prompt with tools available
       expect(mockPromptGenerator.generateToolAwareSystemPrompt).toHaveBeenCalledWith(mockTools);
@@ -350,7 +350,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(diff, tokenSource.token);
 
-      expect(result).toBe('Based on the file content, here is my analysis: The function was renamed from old() to new().');
+      expect(result.analysis).toBe('Based on the file content, here is my analysis: The function was renamed from old() to new().');
 
       // Verify conversation flow
       expect(mockConversationManager.clearHistory).toHaveBeenCalled();
@@ -383,7 +383,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(diff, tokenSource.token);
 
-      expect(result).toBe('Analysis after error recovery');
+      expect(result.analysis).toBe('Analysis after error recovery');
       expect(mockConversationManager.addAssistantMessage).toHaveBeenCalledWith(
         expect.stringContaining('I encountered an error')
       );
@@ -409,7 +409,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(diff, tokenSource.token);
 
-      expect(result).toBe('Analysis reached maximum iterations. The conversation may be incomplete.');
+      expect(result.analysis).toBe('Analysis reached maximum iterations. The conversation may be incomplete.');
     });
   });
 
@@ -438,7 +438,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(diff, tokenSource.token);
 
-      expect(result).toBe('Analysis despite tool failure');
+      expect(result.analysis).toBe('Analysis despite tool failure');
       expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
         'call_1',
         "Error executing tool 'broken_tool': Tool execution failed"
@@ -469,7 +469,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(diff, tokenSource.token);
 
-      expect(result).toBe('Analysis with malformed tool call handled');
+      expect(result.analysis).toBe('Analysis with malformed tool call handled');
     });
   });
 });

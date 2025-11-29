@@ -182,8 +182,8 @@ describe('ListDirTool Integration Tests', () => {
             const diff = 'diff --git a/src/index.js b/src/index.js\n+console.log("hello");';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('Based on the directory listing');
-            expect(result).toContain('project structure');
+            expect(result.analysis).toContain('Based on the directory listing');
+            expect(result.analysis).toContain('project structure');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify tool was called with correct arguments
@@ -239,8 +239,8 @@ describe('ListDirTool Integration Tests', () => {
             const diff = 'diff --git a/src/components/NewComponent.jsx b/src/components/NewComponent.jsx\n+export default NewComponent;';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('recursive listing');
-            expect(result).toContain('React project');
+            expect(result.analysis).toContain('recursive listing');
+            expect(result.analysis).toContain('React project');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
         });
 
@@ -268,7 +268,7 @@ describe('ListDirTool Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+console.log("test");';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('error accessing the directory');
+            expect(result.analysis).toContain('error accessing the directory');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify error was passed to LLM
@@ -303,7 +303,7 @@ describe('ListDirTool Integration Tests', () => {
             const diff = 'diff --git a/config.js b/config.js\n+const config = {};';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('cannot access directories outside');
+            expect(result.analysis).toContain('cannot access directories outside');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify security error was passed to LLM
@@ -347,8 +347,8 @@ describe('ListDirTool Integration Tests', () => {
             const diff = 'diff --git a/src/utils.js b/src/utils.js\n+export const helper = () => {};';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('well-organized codebase');
-            expect(result).toContain('src and test directories');
+            expect(result.analysis).toContain('well-organized codebase');
+            expect(result.analysis).toContain('src and test directories');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify all tools were executed

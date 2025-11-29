@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import AnalysisView from './AnalysisView';
+import type { ToolCallsData } from '../types/toolCallTypes';
 import './globals.css';
 
 // Type for the data that will be injected by the extension
@@ -9,6 +10,7 @@ interface AnalysisData {
     diffText: string;
     context: string;
     analysis: string;
+    toolCalls: ToolCallsData | null;
 }
 
 // Extend the Window interface to include our injected data
@@ -42,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 diffText={analysisData.diffText}
                 context={analysisData.context}
                 analysis={analysisData.analysis}
+                toolCalls={analysisData.toolCalls}
             />
         </React.StrictMode>
     );
@@ -64,6 +67,7 @@ if (document.readyState === 'loading') {
                         diffText={analysisData.diffText}
                         context={analysisData.context}
                         analysis={analysisData.analysis}
+                        toolCalls={analysisData.toolCalls}
                     />
                 </React.StrictMode>
             );

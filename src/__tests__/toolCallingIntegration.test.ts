@@ -154,7 +154,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+console.log("hello");';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toBe('This is a straightforward analysis without tool calls.');
+            expect(result.analysis).toBe('This is a straightforward analysis without tool calls.');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(1);
 
             // Verify conversation history
@@ -207,7 +207,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+const obj = new MyClass();';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('Based on the symbol definition');
+            expect(result.analysis).toContain('Based on the symbol definition');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify conversation flow
@@ -263,7 +263,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+MyClass and myFunction usage';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('Analysis complete based on both definitions');
+            expect(result.analysis).toContain('Analysis complete based on both definitions');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify multiple tool responses in conversation
@@ -301,7 +301,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+// some change';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('I could not find the symbol');
+            expect(result.analysis).toContain('I could not find the symbol');
 
             // Verify tool error is captured in conversation
             const history = conversationManager.getHistory();
@@ -316,8 +316,8 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+console.log("test");';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('Error during analysis');
-            expect(result).toContain('LLM service unavailable');
+            expect(result.analysis).toContain('Error during analysis');
+            expect(result.analysis).toContain('LLM service unavailable');
         });
 
         it('should prevent infinite loops with max iterations', async () => {
@@ -338,7 +338,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+// change';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('maximum iterations');
+            expect(result.analysis).toContain('maximum iterations');
             // Uses configured max iterations from WorkspaceSettingsService
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 ANALYSIS_LIMITS.maxIterations.default
@@ -390,7 +390,7 @@ describe('Tool-Calling Integration Tests', () => {
             const diff = 'diff --git a/test.js b/test.js\n+// test';
             const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
 
-            expect(result).toContain('Handling the error gracefully');
+            expect(result.analysis).toContain('Handling the error gracefully');
 
             // Should still complete despite malformed JSON
             const history = conversationManager.getHistory();

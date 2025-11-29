@@ -11,6 +11,11 @@ import type {
   ToolCallMessage,
   ToolCall
 } from '../types/modelTypes';
+import type {
+  ToolCallRecord,
+  ToolCallsData,
+  ToolCallingAnalysisResult
+} from '../types/toolCallTypes';
 import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
@@ -22,6 +27,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  */
 export class ToolCallingAnalysisProvider {
   private tokenValidator: TokenValidator | null = null;
+  private toolCallRecords: ToolCallRecord[] = [];
 
   constructor(
     private conversationManager: ConversationManager,
@@ -38,9 +44,15 @@ export class ToolCallingAnalysisProvider {
   /**
    * Analyze a diff using the LLM with tool-calling capabilities.
    * @param diff The diff content to analyze
-   * @returns Promise resolving to the analysis result
+   * @returns Promise resolving to the analysis result with tool call history
    */
-  async analyze(diff: string, token: vscode.CancellationToken): Promise<string> {
+  async analyze(diff: string, token: vscode.CancellationToken): Promise<ToolCallingAnalysisResult> {
+    // Reset tool call records for new analysis
+    this.toolCallRecords = [];
+    let analysisCompleted = false;
+    let analysisError: string | undefined;
+    let analysisText = '';
+
     try {
       Log.info('Starting analysis with tool-calling support');
 
@@ -68,16 +80,40 @@ export class ToolCallingAnalysisProvider {
       this.conversationManager.addUserMessage(userMessage);
 
       // Start the conversation loop with the LLM
-      const result = await this.conversationLoop(systemPrompt, token);
+      analysisText = await this.conversationLoop(systemPrompt, token);
+      analysisCompleted = true;
 
       Log.info('Analysis completed successfully');
-      return result;
 
     } catch (error) {
-      const errorMessage = `Error during analysis: ${error instanceof Error ? error.message : String(error)}`;
+      analysisError = error instanceof Error ? error.message : String(error);
+      const errorMessage = `Error during analysis: ${analysisError}`;
       Log.error(errorMessage);
-      return errorMessage;
+      analysisText = errorMessage;
     }
+
+    return this.buildAnalysisResult(analysisText, analysisCompleted, analysisError);
+  }
+
+  private buildAnalysisResult(
+    analysis: string,
+    completed: boolean,
+    error: string | undefined
+  ): ToolCallingAnalysisResult {
+    const successfulCalls = this.toolCallRecords.filter(r => r.success).length;
+    const failedCalls = this.toolCallRecords.filter(r => !r.success).length;
+
+    return {
+      analysis,
+      toolCalls: {
+        calls: [...this.toolCallRecords],
+        totalCalls: this.toolCallRecords.length,
+        successfulCalls,
+        failedCalls,
+        analysisCompleted: completed,
+        analysisError: error
+      }
+    };
   }
 
   /**
@@ -205,14 +241,12 @@ export class ToolCallingAnalysisProvider {
    */
   private async handleToolCalls(toolCalls: ToolCall[]): Promise<void> {
     const toolRequests: ToolExecutionRequest[] = toolCalls.map(call => {
-      let parsedArgs: any = {};
+      let parsedArgs: Record<string, unknown> = {};
 
       try {
-        // Parse the JSON string arguments
         parsedArgs = JSON.parse(call.function.arguments);
       } catch (error) {
         Log.error(`Failed to parse tool arguments for ${call.function.name}: ${call.function.arguments}`);
-        // Leave as empty object - the tool's Zod schema will handle validation and provide proper error
       }
 
       return {
@@ -221,26 +255,46 @@ export class ToolCallingAnalysisProvider {
       };
     });
 
-    // Execute tools in parallel
+    const startTime = Date.now();
     const results = await this.toolExecutor.executeTools(toolRequests);
+    const endTime = Date.now();
+    const avgDuration = results.length > 0 ? Math.floor((endTime - startTime) / results.length) : 0;
 
-    // Add tool results to the conversation
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       const toolCall = toolCalls[i];
       const toolCallId = toolCall.id || `tool_call_${i}`;
+      const request = toolRequests[i];
 
       let content: string;
+      let resultData: string | Record<string, unknown>;
+
       if (result.success) {
-        // Format the tool result for the LLM
-        content = Array.isArray(result.result)
-          ? result.result.join('\n\n')
-          : typeof result.result === 'string'
-            ? result.result
-            : JSON.stringify(result.result, null, 2);
+        if (Array.isArray(result.result)) {
+          content = result.result.join('\n\n');
+          resultData = content;
+        } else if (typeof result.result === 'string') {
+          content = result.result;
+          resultData = result.result;
+        } else {
+          content = JSON.stringify(result.result, null, 2);
+          resultData = result.result as Record<string, unknown>;
+        }
       } else {
         content = `Error executing tool '${result.name}': ${result.error}`;
+        resultData = content;
       }
+
+      this.toolCallRecords.push({
+        id: toolCallId,
+        toolName: result.name,
+        arguments: request.args as Record<string, unknown>,
+        result: resultData,
+        success: result.success,
+        error: result.error,
+        durationMs: avgDuration,
+        timestamp: Date.now()
+      });
 
       this.conversationManager.addToolMessage(toolCallId, content);
     }

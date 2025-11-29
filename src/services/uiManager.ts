@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { StatusBarService } from './statusBarService';
 import { AnalysisMode } from '../types/modelTypes';
+import type { ToolCallsData } from '../types/toolCallTypes';
 import { Log } from './loggingService';
 import type {
     WebviewMessageType,
@@ -98,7 +99,14 @@ export class UIManager {
     /**
      * Generate PR analysis with HTML that loads React app
      */
-    public generatePRAnalysisHtml(title: string, diffText: string, context: string, analysis: string, panel: vscode.WebviewPanel): string {
+    public generatePRAnalysisHtml(
+        title: string,
+        diffText: string,
+        context: string,
+        analysis: string,
+        panel: vscode.WebviewPanel,
+        toolCalls: ToolCallsData | undefined
+    ): string {
         // Strip output tags before sending to frontend
         const cleanedAnalysis = this.stripOutputTags(analysis);
 
@@ -111,7 +119,7 @@ export class UIManager {
         const mainScriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
             this.extensionContext.extensionUri, 'dist', 'webview', 'main.js'
         ));
-        
+
         const mainStylesUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
             this.extensionContext.extensionUri, 'dist', 'webview', 'main.css'
         ));
@@ -166,7 +174,8 @@ export class UIManager {
                     title: ${JSON.stringify(titleTruncated)},
                     diffText: ${JSON.stringify(diffText)},
                     context: ${JSON.stringify(context)},
-                    analysis: ${JSON.stringify(cleanedAnalysis)}
+                    analysis: ${JSON.stringify(cleanedAnalysis)},
+                    toolCalls: ${JSON.stringify(toolCalls ?? null)}
                 };
 
                 // Inject initial theme data
@@ -214,7 +223,13 @@ export class UIManager {
     /**
      * Display analysis results in a webview
      */
-    public displayAnalysisResults(title: string, diffText: string, context: string, analysis: string): vscode.WebviewPanel {
+    public displayAnalysisResults(
+        title: string,
+        diffText: string,
+        context: string,
+        analysis: string,
+        toolCalls: ToolCallsData | undefined = undefined
+    ): vscode.WebviewPanel {
         const panel = vscode.window.createWebviewPanel(
             'prAnalyzerResults',
             title,
@@ -222,7 +237,7 @@ export class UIManager {
             { enableScripts: true }
         );
 
-        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel);
+        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel, toolCalls);
 
         // Set up message listeners for webview communication
         this.setupWebviewMessageHandlers(panel.webview);
