@@ -1,12 +1,11 @@
-import * as vscode from 'vscode';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { FileDiscoverer } from '../utils/fileDiscoverer';
+import { RipgrepSearchService, RipgrepFileResult } from '../services/ripgrepSearchService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
@@ -21,34 +20,8 @@ function createMockWorkspaceSettings(): WorkspaceSettingsService {
     } as WorkspaceSettingsService;
 }
 
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
-    return {
-        ...actualVscode,
-        workspace: {
-            workspaceFolders: [
-                {
-                    uri: {
-                        fsPath: '/test/workspace'
-                    }
-                }
-            ],
-            fs: {
-                readFile: vi.fn()
-            }
-        },
-        Uri: {
-            file: vi.fn((filePath) => ({ fsPath: filePath, toString: () => filePath }))
-        }
-    };
-});
-
-// Mock FileDiscoverer
-vi.mock('../utils/fileDiscoverer', () => ({
-    FileDiscoverer: {
-        discoverFiles: vi.fn()
-    }
-}));
+// Mock RipgrepSearchService
+vi.mock('../services/ripgrepSearchService');
 
 const mockCopilotModelManager = {
     sendRequest: vi.fn()
@@ -66,11 +39,16 @@ describe('SearchForPatternTool Integration Tests', () => {
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let searchForPatternTool: SearchForPatternTool;
-    let mockReadFile: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
+    let mockRipgrepService: {
+        search: Mock;
+        formatResults: Mock;
+    };
 
     beforeEach(() => {
+        vi.clearAllMocks();
+
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
@@ -85,7 +63,15 @@ describe('SearchForPatternTool Integration Tests', () => {
 
         mockGitOperationsManager = {
             getRepository: mockGetRepository
-        } as any;
+        } as unknown as GitOperationsManager;
+
+        // Setup RipgrepSearchService mock
+        mockRipgrepService = {
+            search: vi.fn(),
+            formatResults: vi.fn()
+        };
+
+        vi.mocked(RipgrepSearchService).mockImplementation(() => mockRipgrepService as unknown as RipgrepSearchService);
 
         // Initialize tools
         searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);
@@ -95,40 +81,33 @@ describe('SearchForPatternTool Integration Tests', () => {
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
             toolExecutor,
-            mockCopilotModelManager as any,
-            mockPromptGenerator as any,
+            mockCopilotModelManager as never,
+            mockPromptGenerator as never,
             mockWorkspaceSettings
         );
-
-        // Get mock references
-        mockReadFile = vi.mocked(vscode.workspace.fs.readFile);
-
-        // Clear mocks but preserve implementations
-        vi.clearAllMocks();
-
-        // Re-setup essential mocks after clearing
-        mockGetRepository.mockReturnValue({
-            rootUri: {
-                fsPath: '/test/git-repo'
-            }
-        });
     });
 
     describe('End-to-End Tool-Calling Workflow', () => {
         it('should execute search_for_pattern tool through ToolExecutor', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/index.ts', 'src/utils.ts'],
-                truncated: false,
-                totalFound: 2
-            });
+            const mockResults: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/index.ts',
+                    matches: [
+                        { filePath: 'src/index.ts', lineNumber: 1, content: 'export class MainClass {', isContext: false }
+                    ]
+                },
+                {
+                    filePath: 'src/utils.ts',
+                    matches: [
+                        { filePath: 'src/utils.ts', lineNumber: 1, content: 'export class UtilClass {', isContext: false }
+                    ]
+                }
+            ];
 
-            mockReadFile.mockImplementation((uri) => {
-                const content = uri.fsPath.includes('index.ts')
-                    ? 'export class MainClass {\n  constructor() {}\n}\nfunction helper() {}'
-                    : 'export class UtilClass {\n  static method() {}\n}';
-                return Promise.resolve(Buffer.from(content));
-            });
+            mockRipgrepService.search.mockResolvedValue(mockResults);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== src/index.ts ===\n1: export class MainClass {\n\n=== src/utils.ts ===\n1: export class UtilClass {'
+            );
 
             // Execute the tool directly through ToolExecutor with new parameter names
             const toolCall = {
@@ -151,12 +130,9 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(result).toContain('1: export class UtilClass {');
         });
 
-
-
-
         it('should handle error cases gracefully', async () => {
-            // Test FileDiscoverer error
-            vi.mocked(FileDiscoverer.discoverFiles).mockRejectedValue(new Error('File discovery failed'));
+            // Test RipgrepSearchService error
+            mockRipgrepService.search.mockRejectedValue(new Error('ripgrep error'));
 
             const toolCall = {
                 name: 'search_for_pattern',
@@ -192,7 +168,7 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(vscodeTools.inputSchema).toBeDefined();
 
             // Verify schema has correct LLM-optimized parameter names
-            const properties = (vscodeTools.inputSchema as any).properties;
+            const properties = (vscodeTools.inputSchema as Record<string, unknown>).properties as Record<string, unknown>;
             expect(properties.pattern).toBeDefined();
             expect(properties.include_files).toBeDefined();
             expect(properties.exclude_files).toBeDefined();

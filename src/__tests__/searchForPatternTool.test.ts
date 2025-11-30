@@ -1,65 +1,36 @@
-import * as vscode from 'vscode';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { FileDiscoverer } from '../utils/fileDiscoverer';
-import { CodeFileDetector } from '../utils/codeFileDetector';
+import { RipgrepSearchService, RipgrepFileResult } from '../services/ripgrepSearchService';
 
-// Mock vscode
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
-    return {
-        ...actualVscode,
-        workspace: {
-            fs: {
-                readFile: vi.fn()
-            }
-        },
-        Uri: {
-            file: vi.fn((path) => ({
-                fsPath: path,
-                toString: () => `file://${path}`
-            }))
-        }
-    };
-});
-
-// Mock FileDiscoverer
-vi.mock('../utils/fileDiscoverer', () => ({
-    FileDiscoverer: {
-        discoverFiles: vi.fn()
-    }
-}));
-
-// Mock CodeFileDetector
-vi.mock('../utils/codeFileDetector', () => ({
-    CodeFileDetector: {
-        filterCodeFiles: vi.fn()
-    }
-}));
+// Mock RipgrepSearchService
+vi.mock('../services/ripgrepSearchService');
 
 describe('SearchForPatternTool', () => {
     let searchForPatternTool: SearchForPatternTool;
-    let mockGitOperationsManager: any;
-    let mockReadFile: ReturnType<typeof vi.fn>;
+    let mockGitOperationsManager: Partial<GitOperationsManager>;
+    let mockRipgrepService: {
+        search: Mock;
+        formatResults: Mock;
+    };
 
     beforeEach(() => {
+        vi.clearAllMocks();
+
         mockGitOperationsManager = {
             getRepository: vi.fn().mockReturnValue({
                 rootUri: { fsPath: '/test/git-repo' }
             })
         };
 
-        searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);
-        mockReadFile = vi.mocked(vscode.workspace.fs.readFile);
+        mockRipgrepService = {
+            search: vi.fn(),
+            formatResults: vi.fn()
+        };
 
-        // Clear all mocks
-        vi.clearAllMocks();
+        vi.mocked(RipgrepSearchService).mockImplementation(() => mockRipgrepService as unknown as RipgrepSearchService);
 
-        // Re-setup essential mocks
-        mockGitOperationsManager.getRepository.mockReturnValue({
-            rootUri: { fsPath: '/test/git-repo' }
-        });
+        searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager as GitOperationsManager);
     });
 
     describe('Tool Configuration', () => {
@@ -71,11 +42,9 @@ describe('SearchForPatternTool', () => {
         it('should have valid schema with all required fields', () => {
             const schema = searchForPatternTool.schema;
 
-            // Test required field only
             const validInput = { pattern: 'class.*{' };
             expect(schema.safeParse(validInput).success).toBe(true);
 
-            // Test with all optional fields
             const fullInput = {
                 pattern: 'function.*\\(',
                 include_files: '*.ts',
@@ -87,7 +56,6 @@ describe('SearchForPatternTool', () => {
             };
             expect(schema.safeParse(fullInput).success).toBe(true);
 
-            // Test validation (empty pattern rejection)
             expect(schema.safeParse({ pattern: '' }).success).toBe(false);
         });
 
@@ -97,40 +65,39 @@ describe('SearchForPatternTool', () => {
             expect(vscodeTools.description).toContain('flexible search for arbitrary patterns');
             expect(vscodeTools.inputSchema).toBeDefined();
 
-            // Verify schema properties use LLM-optimized parameter names
-            const schema = vscodeTools.inputSchema as any;
-            expect(schema.properties.pattern).toBeDefined();
-            expect(schema.properties.include_files).toBeDefined();
-            expect(schema.properties.search_path).toBeDefined();
-            expect(schema.properties.lines_before).toBeDefined();
-            expect(schema.properties.lines_after).toBeDefined();
-            expect(schema.properties.only_code_files).toBeDefined();
-            expect(schema.properties.case_sensitive).toBeDefined();
+            const schema = vscodeTools.inputSchema as Record<string, unknown>;
+            const properties = schema.properties as Record<string, unknown>;
+            expect(properties.pattern).toBeDefined();
+            expect(properties.include_files).toBeDefined();
+            expect(properties.search_path).toBeDefined();
+            expect(properties.lines_before).toBeDefined();
+            expect(properties.lines_after).toBeDefined();
+            expect(properties.only_code_files).toBeDefined();
+            expect(properties.case_sensitive).toBeDefined();
         });
     });
 
     describe('Pattern Search Functionality', () => {
         it('should find pattern matches in files with proper formatting', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/index.ts', 'src/utils.ts'],
-                truncated: false,
-                totalFound: 2
-            });
-
-            // Mock file contents
-            const mockFileContents = new Map([
-                ['/test/git-repo/src/index.ts', 'export class MyClass {\n  constructor() {}\n}\nfunction test() {}'],
-                ['/test/git-repo/src/utils.ts', 'export function utilFunction() {\n  return true;\n}\nclass UtilClass {}']
-            ]);
-
-            mockReadFile.mockImplementation((uri) => {
-                const content = mockFileContents.get(uri.fsPath);
-                if (content) {
-                    return Promise.resolve(Buffer.from(content));
+            const mockResults: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/index.ts',
+                    matches: [
+                        { filePath: 'src/index.ts', lineNumber: 1, content: 'export class MyClass {', isContext: false }
+                    ]
+                },
+                {
+                    filePath: 'src/utils.ts',
+                    matches: [
+                        { filePath: 'src/utils.ts', lineNumber: 4, content: 'class UtilClass {}', isContext: false }
+                    ]
                 }
-                throw new Error('File not found');
-            });
+            ];
+
+            mockRipgrepService.search.mockResolvedValue(mockResults);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== src/index.ts ===\n1: export class MyClass {\n\n=== src/utils.ts ===\n4: class UtilClass {}'
+            );
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{'
@@ -145,15 +112,22 @@ describe('SearchForPatternTool', () => {
         });
 
         it('should handle context lines extraction', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test.ts'],
-                truncated: false,
-                totalFound: 1
-            });
+            const mockResults: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/test.ts',
+                    matches: [
+                        { filePath: 'src/test.ts', lineNumber: 1, content: 'line 1', isContext: true },
+                        { filePath: 'src/test.ts', lineNumber: 2, content: 'class TestClass {', isContext: false },
+                        { filePath: 'src/test.ts', lineNumber: 3, content: 'line 3', isContext: true },
+                        { filePath: 'src/test.ts', lineNumber: 4, content: 'line 4', isContext: true }
+                    ]
+                }
+            ];
 
-            const testContent = 'line 1\nclass TestClass {\nline 3\nline 4\nline 5';
-            mockReadFile.mockResolvedValue(Buffer.from(testContent));
+            mockRipgrepService.search.mockResolvedValue(mockResults);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== src/test.ts ===\n1: line 1\n2: class TestClass {\n3: line 3\n4: line 4'
+            );
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
@@ -163,24 +137,36 @@ describe('SearchForPatternTool', () => {
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
-            expect(result.data).toContain('1: line 1'); // before
-            expect(result.data).toContain('2: class TestClass {'); // match
-            expect(result.data).toContain('3: line 3'); // after
-            expect(result.data).toContain('4: line 4'); // after
+            expect(result.data).toContain('1: line 1');
+            expect(result.data).toContain('2: class TestClass {');
+            expect(result.data).toContain('3: line 3');
+            expect(result.data).toContain('4: line 4');
+
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pattern: 'class.*{',
+                    linesBefore: 1,
+                    linesAfter: 2
+                })
+            );
         });
 
         it('should handle case sensitivity', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test.ts'],
-                truncated: false,
-                totalFound: 1
-            });
+            const mockResultsInsensitive: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/test.ts',
+                    matches: [
+                        { filePath: 'src/test.ts', lineNumber: 1, content: 'Class TestClass {', isContext: false },
+                        { filePath: 'src/test.ts', lineNumber: 2, content: 'class TestClass {', isContext: false }
+                    ]
+                }
+            ];
 
-            const testContent = 'Class TestClass {\nclass TestClass {';
-            mockReadFile.mockResolvedValue(Buffer.from(testContent));
+            mockRipgrepService.search.mockResolvedValue(mockResultsInsensitive);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== src/test.ts ===\n1: Class TestClass {\n2: class TestClass {'
+            );
 
-            // Case insensitive (default)
             let result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
                 case_sensitive: false
@@ -189,7 +175,23 @@ describe('SearchForPatternTool', () => {
             expect(result.data).toContain('1: Class TestClass {');
             expect(result.data).toContain('2: class TestClass {');
 
-            // Case sensitive
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({ caseSensitive: false })
+            );
+
+            vi.clearAllMocks();
+            const mockResultsSensitive: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/test.ts',
+                    matches: [
+                        { filePath: 'src/test.ts', lineNumber: 2, content: 'class TestClass {', isContext: false }
+                    ]
+                }
+            ];
+
+            mockRipgrepService.search.mockResolvedValue(mockResultsSensitive);
+            mockRipgrepService.formatResults.mockReturnValue('=== src/test.ts ===\n2: class TestClass {');
+
             result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
                 case_sensitive: true
@@ -197,27 +199,33 @@ describe('SearchForPatternTool', () => {
             expect(result.success).toBe(true);
             expect(result.data).toContain('2: class TestClass {');
             expect(result.data).not.toContain('1: Class TestClass {');
+
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({ caseSensitive: true })
+            );
         });
 
         it('should handle only_code_files filtering', async () => {
-            // Mock FileDiscoverer to return mixed file types
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/code.ts', 'README.md', 'config.json'],
-                truncated: false,
-                totalFound: 3
-            });
+            const mockResults: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/code.ts',
+                    matches: [
+                        { filePath: 'src/code.ts', lineNumber: 1, content: 'class Test {}', isContext: false }
+                    ]
+                }
+            ];
 
-            // Mock CodeFileDetector to filter to code files only
-            vi.mocked(CodeFileDetector.filterCodeFiles).mockReturnValue(['src/code.ts']);
-
-            mockReadFile.mockResolvedValue(Buffer.from('class Test {}'));
+            mockRipgrepService.search.mockResolvedValue(mockResults);
+            mockRipgrepService.formatResults.mockReturnValue('=== src/code.ts ===\n1: class Test {}');
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
                 only_code_files: true
             });
 
-            expect(CodeFileDetector.filterCodeFiles).toHaveBeenCalledWith(['src/code.ts', 'README.md', 'config.json']);
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({ codeFilesOnly: true })
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -225,14 +233,7 @@ describe('SearchForPatternTool', () => {
         });
 
         it('should return no matches when pattern not found', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test.ts'],
-                truncated: false,
-                totalFound: 1
-            });
-
-            mockReadFile.mockResolvedValue(Buffer.from('const variable = "test";'));
+            mockRipgrepService.search.mockResolvedValue([]);
 
             const result = await searchForPatternTool.execute({
                 pattern: 'nonexistentpattern'
@@ -244,83 +245,58 @@ describe('SearchForPatternTool', () => {
     });
 
     describe('Error Handling', () => {
-        it('should handle invalid regex patterns', async () => {
-            // Mock FileDiscoverer to return files (error should occur before file processing)
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test.ts'],
-                truncated: false,
-                totalFound: 1
-            });
+        it('should handle ripgrep errors for invalid regex patterns', async () => {
+            mockRipgrepService.search.mockRejectedValue(new Error('ripgrep error: regex parse error'));
 
             const result = await searchForPatternTool.execute({
                 pattern: '[invalid regex'
             });
 
-            const errorResult = result as { error: string };
-            expect(errorResult.error).toBeDefined();
-            expect(errorResult.error).toContain('Invalid regex pattern');
+            expect(result.success).toBe(false);
+            expect(result.error).toBeDefined();
+            expect(result.error).toContain('Pattern search failed');
         });
 
-        it('should handle FileDiscoverer errors', async () => {
-            vi.mocked(FileDiscoverer.discoverFiles).mockRejectedValue(new Error('File discovery failed'));
+        it('should handle ripgrep spawn errors', async () => {
+            mockRipgrepService.search.mockRejectedValue(new Error('Failed to spawn ripgrep'));
 
             const result = await searchForPatternTool.execute({
                 pattern: 'test'
             });
 
-            const errorResult = result as { error: string };
-            expect(errorResult.error).toBeDefined();
-            expect(errorResult.error).toContain('Pattern search failed');
+            expect(result.success).toBe(false);
+            expect(result.error).toBeDefined();
+            expect(result.error).toContain('Pattern search failed');
         });
 
         it('should handle git repository access errors', async () => {
-            mockGitOperationsManager.getRepository.mockReturnValue(null);
+            (mockGitOperationsManager.getRepository as Mock).mockReturnValue(null);
 
             const result = await searchForPatternTool.execute({
                 pattern: 'test'
             });
 
-            const errorResult = result as { error: string };
-            expect(errorResult.error).toContain('Git repository not found');
-        });
-
-        it('should handle file read errors gracefully', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test.ts', 'src/error.ts'],
-                truncated: false,
-                totalFound: 2
-            });
-
-            mockReadFile.mockImplementation((uri) => {
-                if (uri.fsPath.includes('error.ts')) {
-                    throw new Error('Permission denied');
-                }
-                return Promise.resolve(Buffer.from('class Test {}'));
-            });
-
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{'
-            });
-
-            // Should skip unreadable files and process readable ones
-            expect(result.success).toBe(true);
-            expect(result.data).toBeDefined();
-            expect(result.data).toContain('src/test.ts');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Git repository not found');
         });
     });
 
     describe('Output Formatting', () => {
         it('should format matches grouped by file with line numbers', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test.ts'],
-                truncated: false,
-                totalFound: 1
-            });
+            const mockResults: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/test.ts',
+                    matches: [
+                        { filePath: 'src/test.ts', lineNumber: 1, content: 'class First {}', isContext: false },
+                        { filePath: 'src/test.ts', lineNumber: 2, content: 'class Second {}', isContext: false }
+                    ]
+                }
+            ];
 
-            const testContent = 'class First {}\nclass Second {}\nfunction other() {}';
-            mockReadFile.mockResolvedValue(Buffer.from(testContent));
+            mockRipgrepService.search.mockResolvedValue(mockResults);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== src/test.ts ===\n1: class First {}\n2: class Second {}'
+            );
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{'
@@ -331,19 +307,25 @@ describe('SearchForPatternTool', () => {
             expect(result.data).toContain('src/test.ts');
             expect(result.data).toContain('1: class First {}');
             expect(result.data).toContain('2: class Second {}');
-            expect(result.data).not.toContain('function other()');
         });
 
         it('should group consecutive matches intelligently', async () => {
-            // Mock FileDiscoverer to return test files
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test.ts'],
-                truncated: false,
-                totalFound: 1
-            });
+            const mockResults: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/test.ts',
+                    matches: [
+                        { filePath: 'src/test.ts', lineNumber: 2, content: 'class First {', isContext: false },
+                        { filePath: 'src/test.ts', lineNumber: 3, content: 'line3', isContext: true },
+                        { filePath: 'src/test.ts', lineNumber: 4, content: 'class Second {', isContext: false },
+                        { filePath: 'src/test.ts', lineNumber: 5, content: 'line5', isContext: true }
+                    ]
+                }
+            ];
 
-            const testContent = 'line1\nclass First {\nline3\nclass Second {\nline5';
-            mockReadFile.mockResolvedValue(Buffer.from(testContent));
+            mockRipgrepService.search.mockResolvedValue(mockResults);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== src/test.ts ===\n2: class First {\n3: line3\n4: class Second {\n5: line5'
+            );
 
             const result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
@@ -354,27 +336,62 @@ describe('SearchForPatternTool', () => {
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
             expect(result.data).toContain('src/test.ts');
-            // Should contain both matches with their context, grouped intelligently
             expect(result.data).toContain('2: class First {');
             expect(result.data).toContain('4: class Second {');
         });
-        it('should handle truncated file discovery results', async () => {
-            // Mock FileDiscoverer to return truncated results
-            vi.mocked(FileDiscoverer.discoverFiles).mockResolvedValue({
-                files: ['src/test1.ts', 'src/test2.ts'],
-                truncated: true,
-                totalFound: 500
+    });
+
+    describe('Search Options', () => {
+        it('should pass include_files glob pattern to ripgrep', async () => {
+            mockRipgrepService.search.mockResolvedValue([]);
+
+            await searchForPatternTool.execute({
+                pattern: 'test',
+                include_files: '*.ts'
             });
 
-            mockReadFile.mockResolvedValue(Buffer.from('class Test {}'));
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({ includeGlob: '*.ts' })
+            );
+        });
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{'
+        it('should pass exclude_files glob pattern to ripgrep', async () => {
+            mockRipgrepService.search.mockResolvedValue([]);
+
+            await searchForPatternTool.execute({
+                pattern: 'test',
+                exclude_files: '*test*'
             });
 
-            expect(result.success).toBe(true);
-            expect(result.data).toBeDefined();
-            expect(result.data).toContain('Search was limited');
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({ excludeGlob: '*test*' })
+            );
+        });
+
+        it('should pass search_path to ripgrep', async () => {
+            mockRipgrepService.search.mockResolvedValue([]);
+
+            await searchForPatternTool.execute({
+                pattern: 'test',
+                search_path: 'src/components'
+            });
+
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({ searchPath: 'src/components' })
+            );
+        });
+
+        it('should not pass searchPath when search_path is "."', async () => {
+            mockRipgrepService.search.mockResolvedValue([]);
+
+            await searchForPatternTool.execute({
+                pattern: 'test',
+                search_path: '.'
+            });
+
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({ searchPath: undefined })
+            );
         });
     });
 });
