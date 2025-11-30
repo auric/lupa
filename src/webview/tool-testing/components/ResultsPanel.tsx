@@ -7,6 +7,7 @@ import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 import type { ToolTestSession } from '../../types/toolTestingTypes';
 import type { ExecutionStatus } from './StatusIndicator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
+import { ScrollArea } from '../../../components/ui/scroll-area';
 
 interface ResultsPanelProps {
   session: ToolTestSession | null;
@@ -75,12 +76,12 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
       {/* Results Header */}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between shrink-0">
         <StatusIndicator status={executionStatus} />
-        
+
         <div className="flex items-center gap-4 text-muted-foreground">
           {isExecuting ? (
-            <LiveTimer 
-              isRunning={true} 
-              className="font-mono" 
+            <LiveTimer
+              isRunning={true}
+              className="font-mono"
             />
           ) : session.executionTime ? (
             <span className="font-mono">
@@ -94,9 +95,9 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
       </div>
 
       {/* Results Content */}
-      <div className="flex-1 flex overflow-hidden flex-col">
+      <div className="flex-1 flex overflow-hidden flex-col min-h-0">
         {session.status === 'error' && session.error ? (
-          <div className="flex-1 overflow-y-auto">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="p-4">
               <div className="bg-destructive/10 border border-destructive/20 rounded-md p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -115,18 +116,18 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
                 </pre>
               </div>
             </div>
-          </div>
+          </ScrollArea>
         ) : session.results && session.results.length > 0 ? (
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="flex-1 flex flex-col">
             <div className="border-b border-border bg-muted/20">
               <TabsList className="h-9 bg-transparent p-0 w-full justify-start">
-                <TabsTrigger 
-                  value="output" 
+                <TabsTrigger
+                  value="output"
                   className="h-9 rounded-none border-t border-transparent px-4 data-[state=active]:border-primary data-[state=active]:bg-background data-[state=active]:shadow-none relative top-[1px]"
                 >
                   Output
                 </TabsTrigger>
-                <TabsTrigger 
+                <TabsTrigger
                   value="raw"
                   className="h-9 rounded-none border-t border-transparent px-4 data-[state=active]:border-primary data-[state=active]:bg-background data-[state=active]:shadow-none relative top-[1px]"
                 >
@@ -134,10 +135,10 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
                 </TabsTrigger>
               </TabsList>
             </div>
-            
-            <div className="flex-1 overflow-hidden">
-              <TabsContent value="output" className="h-full m-0 p-0 border-none">
-                <div className="h-full overflow-y-auto">
+
+            <div className="flex-1 overflow-hidden min-h-0 relative">
+              <TabsContent value="output" className="absolute inset-0 m-0 p-0 border-none data-[state=inactive]:hidden">
+                <ScrollArea className="h-full">
                   <div className="p-4 space-y-4">
                     {session.results.map((result, index) => (
                       <div key={result.id || index} className="relative group">
@@ -156,10 +157,10 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
                       </div>
                     ))}
                   </div>
-                </div>
+                </ScrollArea>
               </TabsContent>
-              <TabsContent value="raw" className="h-full m-0 p-0 border-none">
-                <div className="h-full overflow-y-auto">
+              <TabsContent value="raw" className="absolute inset-0 m-0 p-0 border-none data-[state=inactive]:hidden">
+                <ScrollArea className="h-full">
                   <div className="p-4 relative group">
                     <div className="absolute right-4 top-4 opacity-0 group-hover:opacity-100 transition-opacity">
                       <CopyButton
@@ -174,7 +175,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
                       </code>
                     </pre>
                   </div>
-                </div>
+                </ScrollArea>
               </TabsContent>
             </div>
           </Tabs>

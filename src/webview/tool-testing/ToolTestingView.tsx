@@ -135,8 +135,8 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-hidden">
-              <TabsContent value="parameters" className="h-full m-0 p-0 border-none">
+            <div className="flex-1 overflow-hidden relative">
+              <TabsContent value="parameters" className="absolute inset-0 m-0 p-0 border-none data-[state=inactive]:hidden">
                 <ParameterInputPanel
                   toolInfo={currentToolInfo}
                   initialParameters={initialParameters}
@@ -146,7 +146,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
                   onCancel={cancelExecution}
                 />
               </TabsContent>
-              <TabsContent value="results" className="h-full m-0 p-0 border-none">
+              <TabsContent value="results" className="absolute inset-0 m-0 p-0 border-none data-[state=inactive]:hidden">
                 <ResultsPanel
                   session={currentSession}
                   isExecuting={isExecuting}

@@ -4,6 +4,7 @@ import { Checkbox } from '../../../components/ui/checkbox';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { Button } from '../../../components/ui/button';
+import { ScrollArea } from '../../../components/ui/scroll-area';
 
 interface ParameterInputPanelProps {
   toolInfo: ToolInfo | undefined;
@@ -116,20 +117,50 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
     }));
   }, []);
 
+  const parseParameterValue = useCallback((value: any, paramType: string): any => {
+    if (value === '' || value === null || value === undefined) {
+      return value;
+    }
+
+    if (paramType === 'array' && typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed.startsWith('[')) {
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          // Fall through to comma-separated parsing
+        }
+      }
+      return trimmed
+        .split(',')
+        .map(item => item.trim())
+        .filter(item => item.length > 0);
+    }
+
+    if (paramType === 'object' && typeof value === 'string') {
+      try {
+        return JSON.parse(value.trim());
+      } catch {
+        return value;
+      }
+    }
+
+    return value;
+  }, []);
+
   const handleExecute = useCallback(async () => {
     if (!toolInfo || isExecuting) return;
 
-    // Filter out empty optional parameters
     const filteredParams = Object.entries(parameters).reduce((acc, [key, value]) => {
       const paramInfo = parameterInfos.find(p => p.name === key);
       if (paramInfo?.required || (value !== '' && value !== null && value !== undefined)) {
-        acc[key] = value;
+        acc[key] = parseParameterValue(value, paramInfo?.type || 'string');
       }
       return acc;
     }, {} as Record<string, any>);
 
     await onExecute(filteredParams);
-  }, [toolInfo, isExecuting, parameters, parameterInfos, onExecute]);
+  }, [toolInfo, isExecuting, parameters, parameterInfos, onExecute, parseParameterValue]);
 
   const handleClearForm = useCallback(() => {
     const clearedParams = parameterInfos.reduce((acc, param) => {
@@ -169,9 +200,9 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-6">
           {/* Tool Info Header */}
           <div className="mb-6 pb-6 border-b border-border">
@@ -232,7 +263,7 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
             )}
           </form>
         </div>
-      </div>
+      </ScrollArea>
 
       {/* Fixed Action Footer */}
       <div className="p-4 border-t border-border bg-background flex gap-2 justify-end shrink-0">
@@ -344,8 +375,8 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
               {parameter.validation?.min !== undefined && parameter.validation?.max !== undefined
                 ? `Range: ${parameter.validation.min} - ${parameter.validation.max}`
                 : parameter.validation?.min !== undefined
-                ? `Min: ${parameter.validation.min}`
-                : `Max: ${parameter.validation.max}`
+                  ? `Min: ${parameter.validation.min}`
+                  : `Max: ${parameter.validation.max}`
               }
             </div>
           )}
@@ -354,10 +385,10 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
     }
 
     // File path inputs - detect common file path parameter names
-    const isFilePathParam = parameter.name.toLowerCase().includes('path') || 
-                           parameter.name.toLowerCase().includes('file') ||
-                           parameter.description?.toLowerCase().includes('path') ||
-                           parameter.description?.toLowerCase().includes('file');
+    const isFilePathParam = parameter.name.toLowerCase().includes('path') ||
+      parameter.name.toLowerCase().includes('file') ||
+      parameter.description?.toLowerCase().includes('path') ||
+      parameter.description?.toLowerCase().includes('file');
 
     if (isFilePathParam) {
       return (
@@ -379,11 +410,11 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
 
     // Large text inputs - use textarea for content, text, or multi-line fields
     const isLargeText = parameter.name.toLowerCase().includes('content') ||
-                       parameter.name.toLowerCase().includes('text') ||
-                       parameter.name.toLowerCase().includes('message') ||
-                       parameter.name.toLowerCase().includes('description') ||
-                       parameter.type === 'array' ||
-                       parameter.type === 'object';
+      parameter.name.toLowerCase().includes('text') ||
+      parameter.name.toLowerCase().includes('message') ||
+      parameter.name.toLowerCase().includes('description') ||
+      parameter.type === 'array' ||
+      parameter.type === 'object';
 
     if (isLargeText) {
       const rows = parameter.type === 'object' ? 5 : 3;
@@ -394,9 +425,9 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
             value={value || ''}
             onChange={handleChange}
             className={`flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 font-mono ${error ? 'border-destructive' : ''}`}
-            placeholder={parameter.type === 'object' ? 'Enter JSON object...' : 
-                        parameter.type === 'array' ? 'Enter comma-separated values...' :
-                        `Enter ${parameter.name}...`}
+            placeholder={parameter.type === 'object' ? 'Enter JSON object...' :
+              parameter.type === 'array' ? 'Enter comma-separated values...' :
+                `Enter ${parameter.name}...`}
             rows={rows}
           />
           {(parameter.type === 'object' || parameter.type === 'array') && (
