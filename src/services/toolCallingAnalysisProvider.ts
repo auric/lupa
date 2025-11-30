@@ -199,9 +199,7 @@ export class ToolCallingAnalysisProvider {
 
         // Check if the LLM wants to call tools
         if (response.toolCalls && response.toolCalls.length > 0) {
-          Log.info(`Processing ${response.toolCalls.length} tool calls`);
-
-          // Execute the requested tools
+          // Execute the requested tools (toolExecutor handles logging)
           await this.handleToolCalls(response.toolCalls);
 
           // Continue the conversation loop to get the LLM's response after tool execution

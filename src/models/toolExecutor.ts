@@ -4,6 +4,7 @@ import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ToolResult } from '../types/toolResultTypes';
+import { Log } from '../services/loggingService';
 
 /**
  * Interface for tool execution requests
@@ -41,15 +42,36 @@ export class ToolExecutor {
   }
 
   /**
+   * Format arguments for logging, truncating long values
+   */
+  private formatArgsForLog(args: any): string {
+    try {
+      const formatted = JSON.stringify(args, (_key, value) => {
+        if (typeof value === 'string' && value.length > 100) {
+          return value.substring(0, 100) + '...';
+        }
+        return value;
+      });
+      return formatted.length > 200 ? formatted.substring(0, 200) + '...' : formatted;
+    } catch {
+      return '[unable to serialize]';
+    }
+  }
+
+  /**
    * Execute a single tool with the provided arguments.
    * @param name The name of the tool to execute
    * @param args The arguments to pass to the tool
    * @returns Promise resolving to the tool execution result
    */
   async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
+    const startTime = Date.now();
     this.toolCallCount++;
 
+    Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
+
     if (this.toolCallCount > this.maxToolCalls) {
+      Log.warn(`Tool '${name}' ✗ rate limit exceeded (${this.toolCallCount}/${this.maxToolCalls}) | args: ${this.formatArgsForLog(args)}`);
       return {
         name,
         success: false,
@@ -61,6 +83,7 @@ export class ToolExecutor {
       const tool = this.toolRegistry.getTool(name);
 
       if (!tool) {
+        Log.warn(`Tool '${name}' ✗ not found in registry | args: ${this.formatArgsForLog(args)}`);
         return {
           name,
           success: false,
@@ -69,17 +92,26 @@ export class ToolExecutor {
       }
 
       const toolResult = await tool.execute(args);
+      const elapsed = Date.now() - startTime;
 
       // Validate response size only for successful results with data
       if (toolResult.success && toolResult.data) {
         const validationResult = this.validateResponseSize(toolResult.data, name);
         if (!validationResult.isValid) {
+          Log.warn(`Tool '${name}' ✗ response too large (${toolResult.data.length} chars) [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`);
           return {
             name,
             success: false,
             error: validationResult.errorMessage
           };
         }
+      }
+
+      if (toolResult.success) {
+        const resultSize = toolResult.data?.length ?? 0;
+        Log.info(`Tool '${name}' ✓ (${resultSize} chars) [${elapsed}ms]`);
+      } else {
+        Log.info(`Tool '${name}' ✗ ${toolResult.error ?? 'unknown error'} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`);
       }
 
       return {
@@ -89,10 +121,13 @@ export class ToolExecutor {
         error: toolResult.error
       };
     } catch (error) {
+      const elapsed = Date.now() - startTime;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      Log.error(`Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`);
       return {
         name,
         success: false,
-        error: error instanceof Error ? error.message : String(error)
+        error: errorMsg
       };
     }
   }
@@ -107,6 +142,10 @@ export class ToolExecutor {
       return [];
     }
 
+    const toolNames = requests.map(r => r.name).join(', ');
+    Log.debug(`Executing ${requests.length} tools in parallel: ${toolNames}`);
+    const startTime = Date.now();
+
     // Execute all tools in parallel using Promise.all
     const executionPromises = requests.map(request =>
       this.executeTool(request.name, request.args)
@@ -114,6 +153,10 @@ export class ToolExecutor {
 
     try {
       const results = await Promise.all(executionPromises);
+      const elapsed = Date.now() - startTime;
+      const succeeded = results.filter(r => r.success).length;
+      const failed = results.length - succeeded;
+      Log.info(`Parallel execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`);
       return results;
     } catch (error) {
       // This shouldn't happen since executeTool catches errors,
@@ -129,6 +172,13 @@ export class ToolExecutor {
    * @returns Promise resolving to an array of tool execution results
    */
   async executeToolsSequentially(requests: ToolExecutionRequest[]): Promise<ToolExecutionResult[]> {
+    if (requests.length === 0) {
+      return [];
+    }
+
+    const toolNames = requests.map(r => r.name).join(', ');
+    Log.debug(`Executing ${requests.length} tools sequentially: ${toolNames}`);
+    const startTime = Date.now();
     const results: ToolExecutionResult[] = [];
 
     for (const request of requests) {
@@ -138,6 +188,11 @@ export class ToolExecutor {
       // If a tool fails and it's critical, you could break here
       // For now, we continue execution regardless of individual failures
     }
+
+    const elapsed = Date.now() - startTime;
+    const succeeded = results.filter(r => r.success).length;
+    const failed = results.length - succeeded;
+    Log.info(`Sequential execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`);
 
     return results;
   }
