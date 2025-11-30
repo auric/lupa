@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { z } from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
+import { ToolResult } from '../types/toolResultTypes';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
@@ -39,8 +40,8 @@ class MockAnalysisTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<string[]> {
-        return [`Symbol definition for ${args.symbolName}`];
+    async execute(args: any): Promise<ToolResult> {
+        return { success: true, data: `Symbol definition for ${args.symbolName}` };
     }
 }
 
