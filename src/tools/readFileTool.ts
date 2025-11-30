@@ -6,6 +6,7 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { OutputFormatter } from '../utils/outputFormatter';
 
 /**
  * Tool that reads file content with support for partial content reading.
@@ -117,11 +118,6 @@ export class ReadFileTool extends BaseTool {
    * @returns Formatted string with file header and numbered lines
    */
   private formatFileContent(filePath: string, lines: string[], startLine: number): string {
-    const formattedLines = lines.map((line, index) => {
-      const lineNumber = startLine + index;
-      return `${lineNumber}: ${line}`;
-    });
-
-    return `=== ${filePath} ===\n${formattedLines.join('\n')}`;
+    return OutputFormatter.formatFileContent({ filePath, lines, startLine });
   }
 }

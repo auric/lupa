@@ -9,18 +9,11 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolMatcher, type SymbolMatch, type BasicSymbolMatch } from '../utils/symbolMatcher';
 import { SymbolFormatter } from '../utils/symbolFormatter';
+import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import ignore from 'ignore';
-
-interface FormattedSymbol {
-  symbol_name: string;
-  kind: string;
-  name_path: string;
-  file_path: string;
-  body?: string;
-}
 
 // Timeout constants
 const SYMBOL_SEARCH_TIMEOUT = 5000; // 5 seconds total
@@ -121,9 +114,7 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
       const formattedResults = await this.formatSymbolResults(symbols, includeBody ?? false, includeChildren ?? false, includeKinds, excludeKinds);
 
-      const resultString = JSON.stringify(formattedResults, null, 2);
-
-      return toolSuccess(resultString);
+      return toolSuccess(formattedResults);
 
     } catch (error) {
       return toolError(error instanceof Error ? error.message : String(error));
@@ -500,7 +491,7 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
 
   /**
-   * Format symbol results for output
+   * Format symbol results for output as plain string (consistent with read_file format)
    */
   private async formatSymbolResults(
     symbols: SymbolMatch[],
@@ -508,50 +499,49 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     includeChildren: boolean,
     includeKinds: number[] | undefined,
     excludeKinds: number[] | undefined
-  ): Promise<FormattedSymbol[]> {
-    const results: FormattedSymbol[] = [];
+  ): Promise<string> {
+    const formattedBlocks: string[] = [];
 
     for (const match of symbols) {
-      let body: string | undefined;
+      const symbolKind = SymbolFormatter.getSymbolKindName(match.symbol.kind);
 
+      let bodyLines: string[] | undefined;
+      let startLine = 1;
       if (includeBody && match.document) {
         try {
           const symbolRange = this.getSymbolRange(match.symbol);
           let finalRange: vscode.Range;
 
           if (this.isSymbolInformation(match.symbol)) {
-            // SymbolInformation: range is incomplete, use SymbolRangeExpander
             finalRange = await this.rangeExpander.getFullSymbolRange(match.document, symbolRange);
           } else {
-            // DocumentSymbol: range is already complete, use as-is
             finalRange = symbolRange;
           }
 
           const rawBody = match.document.getText(finalRange);
-          body = this.formatBodyWithLineNumbers(rawBody, finalRange.start.line + 1);
+          bodyLines = rawBody.split('\n');
+          startLine = finalRange.start.line + 1;
         } catch (error) {
           Log.debug(`Failed to extract body for symbol ${match.symbol.name}:`, error);
-          // Don't include body if extraction fails
         }
       }
 
-      results.push({
-        symbol_name: match.symbol.name,
-        kind: SymbolFormatter.getSymbolKindName(match.symbol.kind),
-        name_path: match.namePath,
-        file_path: match.filePath,
-        ...(body && { body })
+      const block = OutputFormatter.formatSymbolContent({
+        filePath: match.filePath,
+        symbolName: match.symbol.name,
+        symbolKind,
+        namePath: match.namePath,
+        bodyLines,
+        startLine
       });
+      formattedBlocks.push(block);
 
-      // Add children if requested and available
       if (includeChildren && match.document) {
         let childrenToProcess: vscode.DocumentSymbol[] = [];
 
         if (this.isDocumentSymbol(match.symbol) && match.symbol.children) {
-          // Already have DocumentSymbol with children
           childrenToProcess = match.symbol.children;
         } else if (this.isSymbolInformation(match.symbol)) {
-          // Need to fetch DocumentSymbol to get children
           const symbolRange = this.getSymbolRange(match.symbol);
           const documentSymbol = await this.fetchDocumentSymbolForRange(match.document, symbolRange);
           if (documentSymbol && documentSymbol.children) {
@@ -570,32 +560,36 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
           );
 
           for (const childSymbol of childSymbols) {
-            let childBody: string | undefined;
+            const childKind = SymbolFormatter.getSymbolKindName(childSymbol.symbol.kind);
 
+            let childBodyLines: string[] | undefined;
+            let childStartLine = 1;
             if (includeBody) {
               try {
-                // Children are always DocumentSymbol, so use exact range (no expansion needed)
                 const childSymbolRange = this.getSymbolRange(childSymbol.symbol);
                 const rawChildBody = match.document.getText(childSymbolRange);
-                childBody = this.formatBodyWithLineNumbers(rawChildBody, childSymbolRange.start.line + 1);
+                childBodyLines = rawChildBody.split('\n');
+                childStartLine = childSymbolRange.start.line + 1;
               } catch (error) {
                 Log.debug(`Failed to extract body for child symbol ${childSymbol.symbol.name}:`, error);
               }
             }
 
-            results.push({
-              symbol_name: childSymbol.symbol.name,
-              kind: SymbolFormatter.getSymbolKindName(childSymbol.symbol.kind),
-              name_path: childSymbol.namePath,
-              file_path: childSymbol.filePath,
-              ...(childBody && { body: childBody })
+            const childBlock = OutputFormatter.formatSymbolContent({
+              filePath: childSymbol.filePath,
+              symbolName: childSymbol.symbol.name,
+              symbolKind: childKind,
+              namePath: childSymbol.namePath,
+              bodyLines: childBodyLines,
+              startLine: childStartLine
             });
+            formattedBlocks.push(childBlock);
           }
         }
       }
     }
 
-    return results;
+    return formattedBlocks.join('\n\n');
   }
 
   /**

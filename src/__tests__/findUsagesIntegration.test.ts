@@ -216,7 +216,7 @@ describe('FindUsages Integration Tests', () => {
 
             // Find the tool result message
             const toolResultMessage = history.find(msg =>
-                msg.role === 'tool' && msg.content?.includes('"file"')
+                msg.role === 'tool' && msg.content?.includes('===')
             );
             expect(toolResultMessage).toBeDefined();
         });
@@ -333,7 +333,7 @@ describe('FindUsages Integration Tests', () => {
             // Verify both tool results are in conversation history
             const history = conversationManager.getHistory();
             const toolResultMessages = history.filter(msg =>
-                msg.role === 'tool' && msg.content?.includes('"file"')
+                msg.role === 'tool' && msg.content?.includes('===')
             );
             expect(toolResultMessages).toHaveLength(2); // Two separate tool result messages
         });
@@ -464,7 +464,7 @@ describe('FindUsages Integration Tests', () => {
             // Verify context includes the expected lines
             const history = conversationManager.getHistory();
             const toolResultMessage = history.find(msg =>
-                msg.role === 'tool' && msg.content?.includes('"context"')
+                msg.role === 'tool' && msg.content?.includes('===')
             );
 
             expect(toolResultMessage?.content).toContain('2: line2');

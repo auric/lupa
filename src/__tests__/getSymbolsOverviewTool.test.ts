@@ -178,7 +178,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             const result = await getSymbolsOverviewTool.execute({ path: 'src/test.ts' });
 
             expect(result.success).toBe(true);
-            expect(result.data).toEqual('src/test.ts:\n1: MyClass (class)\n13: myFunction (function)');
+            expect(result.data).toEqual('=== src/test.ts ===\n1: MyClass (class)\n13: myFunction (function)');
         });
 
         it('should handle single file with no symbols', async () => {
@@ -227,7 +227,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
             expect(result.success).toBe(true);
-            expect(result.data).toEqual('src/test1.ts:\n1: Class1 (class)\n\nsrc/test2.js:\n1: function1 (function)');
+            expect(result.data).toEqual('=== src/test1.ts ===\n1: Class1 (class)\n\n=== src/test2.js ===\n1: function1 (function)');
         });
 
         it('should handle directory with nested structure', async () => {
@@ -249,7 +249,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
             expect(result.success).toBe(true);
-            expect(result.data).toEqual('src/services/service1.ts:\n1: ServiceClass (class)');
+            expect(result.data).toEqual('=== src/services/service1.ts ===\n1: ServiceClass (class)');
         });
 
         it('should handle SymbolInformation format', async () => {
@@ -272,7 +272,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             const result = await getSymbolsOverviewTool.execute({ path: 'src/interface.ts' });
 
             expect(result.success).toBe(true);
-            expect(result.data).toEqual('src/interface.ts:\n1: MyInterface (interface)');
+            expect(result.data).toEqual('=== src/interface.ts ===\n1: MyInterface (interface)');
         });
 
         it('should handle path not found error', async () => {
@@ -323,7 +323,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
             expect(result.success).toBe(true);
-            expect(result.data).toEqual('src/component.ts:\n1: Component (class)\n\nsrc/script.js:\n1: script (function)');
+            expect(result.data).toEqual('=== src/component.ts ===\n1: Component (class)\n\n=== src/script.js ===\n1: script (function)');
         });
     });
 
@@ -355,7 +355,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             const result = await getSymbolsOverviewTool.execute({ path: 'src/test.ts' });
 
             expect(result.success).toBe(true);
-            expect(result.data).toEqual('src/test.ts:\n1: MyClass (class)\n7: MyInterface (interface)\n10: MyEnum (enum)\n14: myFunction (function)\n17: myVariable (variable)\n18: myConstant (constant)');
+            expect(result.data).toEqual('=== src/test.ts ===\n1: MyClass (class)\n7: MyInterface (interface)\n10: MyEnum (enum)\n14: myFunction (function)\n17: myVariable (variable)\n18: myConstant (constant)');
         });
     });
 });

@@ -238,7 +238,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             expect(results).toHaveLength(1);
             expect(results[0].success).toBe(true);
             expect(typeof results[0].result).toBe('string');
-            expect(results[0].result).toContain('src/index.ts:');
+            expect(results[0].result).toContain('=== src/index.ts ===');
             expect(results[0].result).toContain('App (class)');
             expect(results[0].result).toContain('main (function)');
             expect(results[0].result).toContain('AuthToken (interface)');

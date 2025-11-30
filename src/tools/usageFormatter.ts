@@ -1,17 +1,18 @@
 import * as vscode from 'vscode';
+import { OutputFormatter } from '../utils/outputFormatter';
 
 /**
- * Utility class for formatting symbol usage references into structured JSON output
- * optimized for LLM parsing and understanding with minimal token usage.
+ * Utility class for formatting symbol usage references into plain string output
+ * consistent with read_file format for LLM parsing.
  */
 export class UsageFormatter {
   /**
-   * Format a symbol usage reference into structured JSON format for LLM consumption
+   * Format a symbol usage reference into structured format for LLM consumption
    * @param filePath The relative file path containing the usage
    * @param symbolName The name of the symbol being used (removed from output to avoid redundancy)
    * @param range The range of the symbol usage
-   * @param contextLines The lines around the usage for context
-   * @returns JSON string representing the symbol usage
+   * @param contextLines The lines around the usage for context (already formatted with line numbers)
+   * @returns Formatted string representing the symbol usage
    */
   formatUsage(
     filePath: string,
@@ -19,12 +20,8 @@ export class UsageFormatter {
     range: vscode.Range,
     contextLines: string[]
   ): string {
-    const usage = {
-      file: filePath,
-      context: contextLines
-    };
-
-    return JSON.stringify(usage, null, 2);
+    // contextLines are already formatted as "lineNumber: content", use pre-formatted version
+    return OutputFormatter.formatPreformattedContent(filePath, contextLines);
   }
 
   /**
@@ -33,7 +30,7 @@ export class UsageFormatter {
    * @param symbolName The name of the symbol
    * @param range The range of the symbol usage
    * @param error The error that occurred
-   * @returns JSON string with error information
+   * @returns Formatted string with error information
    */
   formatErrorUsage(
     filePath: string,
@@ -42,13 +39,7 @@ export class UsageFormatter {
     error: unknown
   ): string {
     const errorMessage = error instanceof Error ? error.message : String(error);
-
-    const errorUsage = {
-      file: filePath,
-      error: `Could not read file content: ${errorMessage}`
-    };
-
-    return JSON.stringify(errorUsage, null, 2);
+    return OutputFormatter.formatErrorLocation(filePath, `Could not read file content: ${errorMessage}`);
   }
 
   /**

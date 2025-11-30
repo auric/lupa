@@ -167,13 +167,9 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(Array.isArray(parsedResult)).toBe(true);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0]).toHaveProperty('file_path');
-            expect(parsedResult[0].symbol_name).toBe('MyClass');
-            expect(parsedResult[0]).toHaveProperty('body');
-            expect(parsedResult[0].body).toContain('1: class MyClass {');
+            expect(result.data).toContain('=== test.ts [MyClass - class] ===');
+            expect(result.data).toContain('Name Path: MyClass');
+            expect(result.data).toContain('1: class MyClass {');
             // Integration test: verify complete workflow when symbols are found
         });
 
@@ -250,11 +246,10 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const result = await findSymbolTool.execute({ name_path: 'test' });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(Array.isArray(parsedResult)).toBe(true);
-            expect(parsedResult).toHaveLength(2);
-            // Verify orchestration completed successfully
-            expect(parsedResult.every((r: any) => r.hasOwnProperty('file_path'))).toBe(true);
+            expect(result.data).toContain('=== test.ts [test -');
+            // Verify orchestration completed successfully - should contain both symbols
+            expect(result.data).toContain('function]');
+            expect(result.data).toContain('class]');
         });
 
         it('should respect includeFullBody parameter in workflow', async () => {
@@ -311,10 +306,9 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(resultFalse.success).toBe(true);
-            const parsedFalse = JSON.parse(resultFalse.data!);
-            expect(parsedFalse).toHaveLength(1);
-            expect(parsedFalse[0]).toHaveProperty('file_path');
-            expect(parsedFalse[0]).not.toHaveProperty('body');
+            expect(resultFalse.data).toContain('=== test.ts [MyClass - class] ===');
+            expect(resultFalse.data).toContain('Name Path: MyClass');
+            expect(resultFalse.data).not.toContain('1: class MyClass {}');
 
             // Test include_body: true
             const resultTrue = await findSymbolTool.execute({
@@ -323,11 +317,9 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(resultTrue.success).toBe(true);
-            const parsedTrue = JSON.parse(resultTrue.data!);
-            expect(parsedTrue).toHaveLength(1);
-            expect(parsedTrue[0]).toHaveProperty('file_path');
-            expect(parsedTrue[0]).toHaveProperty('body');
-            expect(parsedTrue[0].body).toContain('1: class MyClass {}');
+            expect(resultTrue.data).toContain('=== test.ts [MyClass - class] ===');
+            expect(resultTrue.data).toContain('Name Path: MyClass');
+            expect(resultTrue.data).toContain('1: class MyClass {}');
         });
     });
 
@@ -389,7 +381,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const result = await findSymbolTool.execute({ name_path: 'MyClass' });
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('"symbol_name": "MyClass"');
+            expect(result.data).toContain('=== test.ts [MyClass - class] ===');
+            expect(result.data).toContain('Name Path: MyClass');
             // Integration test: verify error handled gracefully when file can't be read
         });
 
@@ -481,12 +474,10 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0]).toHaveProperty('body');
+            expect(result.data).toContain('=== test.ts [Shutdown() - method] ===');
             // Should use expanded range from SymbolRangeExpander for SymbolInformation
-            expect(parsedResult[0].body).toContain('1: void FWGCApiModuleImpl::Shutdown() {');
-            expect(parsedResult[0].body).toContain('3: }');
+            expect(result.data).toContain('1: void FWGCApiModuleImpl::Shutdown() {');
+            expect(result.data).toContain('3: }');
         });
 
         it('should handle DocumentSymbol body extraction using direct range', async () => {
@@ -542,12 +533,10 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0]).toHaveProperty('body');
+            expect(result.data).toContain('=== test.ts [MyClass - class] ===');
             // Should use direct range for DocumentSymbol (no expansion needed)
-            expect(parsedResult[0].body).toContain('1: class MyClass {');
-            expect(parsedResult[0].body).toContain('5: }');
+            expect(result.data).toContain('1: class MyClass {');
+            expect(result.data).toContain('5: }');
         });
 
         it('should fetch DocumentSymbol for SymbolInformation children access', async () => {
@@ -623,9 +612,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1); // Only MyClass found via workspace search
-            expect(parsedResult[0].symbol_name).toBe('MyClass');
+            expect(result.data).toContain('=== test.ts [MyClass - class] ===');
+            expect(result.data).toContain('Name Path: MyClass');
             // Test verifies that DocumentSymbol is fetched for SymbolInformation (even if children aren't included in this specific test scenario)
         });
     });
@@ -674,10 +662,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0].name_path).toBe('FWGCApiModuleImpl/Shutdown');
-            expect(parsedResult[0].symbol_name).toBe('Shutdown()');
+            expect(result.data).toContain('Name Path: FWGCApiModuleImpl/Shutdown');
+            expect(result.data).toContain('[Shutdown() - method]');
             // Should use detail property as container context at top level
         });
 
@@ -735,10 +721,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0].name_path).toBe('FWGCApiModuleImpl/Shutdown');
-            expect(parsedResult[0].symbol_name).toBe('Shutdown()');
+            expect(result.data).toContain('Name Path: FWGCApiModuleImpl/Shutdown');
+            expect(result.data).toContain('[Shutdown() - method]');
             // Should ignore detail="declaration" and use proper hierarchy
         });
 
@@ -785,10 +769,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0].name_path).toBe('Service/init');
-            expect(parsedResult[0].symbol_name).toBe('init()');
+            expect(result.data).toContain('Name Path: Service/init');
+            expect(result.data).toContain('[init() - method]');
             // Should use useful detail for container context in flat .cpp files
         });
     });
@@ -849,10 +831,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const result = await findSymbolTool.execute({ name_path: '/MyClass/method' });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0].name_path).toBe('MyClass/method');
-            expect(parsedResult[0].symbol_name).toBe('method');
+            expect(result.data).toContain('Name Path: MyClass/method');
+            expect(result.data).toContain('[method - method]');
         });
 
         it('should handle relative path matching ("MyClass/method")', async () => {
@@ -920,10 +900,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const result = await findSymbolTool.execute({ name_path: 'MyClass/method' });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0].name_path).toBe('MyClass/method');
-            expect(parsedResult[0].symbol_name).toBe('method');
+            expect(result.data).toContain('Name Path: MyClass/method');
+            expect(result.data).toContain('[method - method]');
         });
 
         it('should handle include_children parameter', async () => {
@@ -958,9 +936,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1); // Only MyClass from workspace search
-            expect(parsedResult[0].symbol_name).toBe('MyClass');
+            expect(result.data).toContain('=== test.ts [MyClass - class] ===');
+            expect(result.data).toContain('Name Path: MyClass');
             // Note: This test demonstrates workspace search behavior - children inclusion happens in formatSymbolResults
         });
     });
@@ -1043,11 +1020,9 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0]).toHaveProperty('body');
+            expect(result.data).toContain('[method() - method]');
             // Should find the most specific (innermost) DocumentSymbol that matches the range
-            expect(parsedResult[0].body).toContain('method() {}');
+            expect(result.data).toContain('method() {}');
         });
 
         it('should handle symbols with empty containerName but present detail property', async () => {
@@ -1101,10 +1076,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0].name_path).toBe('helper'); // Should not include detail as container when containerName is empty
-            expect(parsedResult[0].symbol_name).toBe('helper()');
+            expect(result.data).toContain('Name Path: helper'); // Should not include detail as container when containerName is empty
+            expect(result.data).toContain('[helper() - function]');
         });
 
         it('should handle VS Code object toJSON behavior differences', async () => {
@@ -1159,9 +1132,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             expect(result.success).toBe(true);
-            const parsedResult = JSON.parse(result.data!);
-            expect(parsedResult).toHaveLength(1);
-            expect(parsedResult[0].name_path).toBe('MyClass/method');
+            expect(result.data).toContain('Name Path: MyClass/method');
             // Should work despite detail property being hidden from JSON.stringify due to custom toJSON
             // Note: toJSON method exists but may not be called in all scenarios
         });

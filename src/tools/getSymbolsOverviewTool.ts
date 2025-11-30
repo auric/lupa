@@ -7,6 +7,7 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { CodeFileUtils } from '../utils/codeFileUtils';
+import { OutputFormatter } from '../utils/outputFormatter';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
@@ -134,8 +135,10 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
         );
 
         if (result.formatted) {
-          allResults.push(`${relativePath}:`);
-          allResults.push(result.formatted);
+          allResults.push(OutputFormatter.formatSymbolOverview({
+            filePath: relativePath,
+            content: result.formatted
+          }));
           totalSymbolCount += result.symbolCount;
           anyTruncated = anyTruncated || result.truncated;
         }
@@ -169,23 +172,19 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
           );
 
           if (result.formatted) {
-            allResults.push(`${filePath}:`);
-            allResults.push(result.formatted);
-            allResults.push('');
+            allResults.push(OutputFormatter.formatSymbolOverview({
+              filePath,
+              content: result.formatted
+            }));
             totalSymbolCount += result.symbolCount;
             anyTruncated = anyTruncated || result.truncated;
           }
         }
       }
-
-      // Remove trailing empty line
-      if (allResults.length > 0 && allResults[allResults.length - 1] === '') {
-        allResults.pop();
-      }
     }
 
     return {
-      content: allResults.join('\n'),
+      content: allResults.join('\n\n'),
       symbolCount: totalSymbolCount,
       truncated: anyTruncated
     };

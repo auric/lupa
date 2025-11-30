@@ -200,8 +200,8 @@ describe('FindUsagesTool', () => {
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
-            expect(result.data).toContain('"file"');
-            expect(result.data).toContain('"context"');
+            expect(result.data).toContain('=== relative/path/file.ts ===');
+            expect(result.data).toContain('3: }');
             expect(result.data).not.toContain('"location"');
         });
 
@@ -330,7 +330,7 @@ describe('FindUsagesTool', () => {
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
-            expect(result.data).toContain('"error": "Could not read file content');
+            expect(result.data).toContain('Error: Could not read file content');
         });
 
         it('should respect contextLines parameter', async () => {
@@ -366,9 +366,9 @@ describe('FindUsagesTool', () => {
             });
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('"context"');
+            expect(result.data).toContain('=== relative/path/file.ts ===');
             // Should include line before and after the reference line
-            expect(result.data).toContain('line2');
+            expect(result.data).toContain('2: line2');
             expect(result.data).toContain('line4');
         });
     });

@@ -33,8 +33,8 @@ describe('UsageFormatter', () => {
                 ['  5: const instance = new MyClass();', '  6: return instance;']
             );
 
-            expect(result).toContain('"file": "src/components/Button.tsx"');
-            expect(result).toContain('"context"');
+            expect(result).toContain('=== src/components/Button.tsx ===');
+            expect(result).toContain('5: const instance = new MyClass()');
             expect(result).toContain('const instance = new MyClass()');
             expect(result).not.toContain('"location"');
         });
@@ -52,8 +52,8 @@ describe('UsageFormatter', () => {
                 ['context line']
             );
 
-            expect(result).toContain('"file": "src/test<file>.ts"'); // JSON preserves original characters
-            expect(result).toContain('"context"'); // Should include context array
+            expect(result).toContain('=== src/test<file>.ts ==='); // Header format preserves original characters
+            expect(result).toContain('context line'); // Should include context lines
         });
     });
 
@@ -72,8 +72,8 @@ describe('UsageFormatter', () => {
                 error
             );
 
-            expect(result).toContain('"file": "src/error.ts"');
-            expect(result).toContain('"error": "Could not read file content: File read failed"');
+            expect(result).toContain('=== src/error.ts ===');
+            expect(result).toContain('Error: Could not read file content: File read failed');
             expect(result).not.toContain('"location"');
         });
 
@@ -90,7 +90,7 @@ describe('UsageFormatter', () => {
                 'String error message'
             );
 
-            expect(result).toContain('"error": "Could not read file content: String error message"');
+            expect(result).toContain('Error: Could not read file content: String error message');
         });
 
         it('should handle special characters in error messages', () => {
@@ -106,7 +106,7 @@ describe('UsageFormatter', () => {
                 'Error with <brackets> & ampersands'
             );
 
-            expect(result).toContain('"error": "Could not read file content: Error with <brackets> & ampersands"');
+            expect(result).toContain('Error: Could not read file content: Error with <brackets> & ampersands');
         });
     });
 
