@@ -51,10 +51,9 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
   schema = z.object({
     name_path: z.string().min(1, 'Name path cannot be empty').describe(
-      'Hierarchical symbol path pattern supporting: ' +
-      '"MyClass" - finds all classes named MyClass anywhere; ' +
-      '"MyClass/method" - finds method inside MyClass (MyClass can be nested); ' +
-      '"/MyClass/method" - finds method inside top-level MyClass only'
+      'Symbol identifier path (NOT full signature). Use only the name without parameters, return types, or templates. ' +
+      'Examples: "MyClass" (not "MyClass<T>"), "calculate" (not "calculate(int, string)"), "Shutdown" (not "Shutdown(const FString&)"). ' +
+      'Hierarchical paths: "MyClass/method" finds method inside MyClass; "/MyClass/method" finds method in top-level MyClass only.'
     ),
     relative_path: z.string().default('.').optional().describe(
       'Search scope: "." for entire workspace, or specific path like "src/components" or "src/file.ts"'
