@@ -266,30 +266,16 @@ export class ToolCallingAnalysisProvider {
       const toolCallId = toolCall.id || `tool_call_${i}`;
       const request = toolRequests[i];
 
-      let content: string;
-      let resultData: string | Record<string, unknown>;
-
-      if (result.success) {
-        if (Array.isArray(result.result)) {
-          content = result.result.join('\n\n');
-          resultData = content;
-        } else if (typeof result.result === 'string') {
-          content = result.result;
-          resultData = result.result;
-        } else {
-          content = JSON.stringify(result.result, null, 2);
-          resultData = result.result as Record<string, unknown>;
-        }
-      } else {
-        content = `Error executing tool '${result.name}': ${result.error}`;
-        resultData = content;
-      }
+      // result.result is now always a string (or undefined for failures)
+      const content = result.success && result.result
+        ? result.result
+        : `Error: ${result.error || 'Unknown error'}`;
 
       this.toolCallRecords.push({
         id: toolCallId,
         toolName: result.name,
         arguments: request.args as Record<string, unknown>,
-        result: resultData,
+        result: content,
         success: result.success,
         error: result.error,
         durationMs: avgDuration,

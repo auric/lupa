@@ -96,7 +96,7 @@ describe('FindUsagesTool', () => {
             });
 
             expect(result).toBeDefined();
-            expect(Array.isArray(result)).toBe(true);
+            expect(result.success).toBeDefined();
         });
 
         it('should handle empty symbol name', async () => {
@@ -105,7 +105,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result).toEqual(['Error: Symbol name cannot be empty']);
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Symbol name cannot be empty');
         });
 
         it('should handle empty file path', async () => {
@@ -114,7 +115,8 @@ describe('FindUsagesTool', () => {
                 file_path: ''
             });
 
-            expect(result).toEqual(['Error: File path cannot be empty']);
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('File path cannot be empty');
         });
 
         it('should handle missing workspace folder', async () => {
@@ -125,7 +127,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result).toEqual(['Error: No workspace folder is open']);
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No workspace folder is open');
         });
 
         it('should handle file not found error', async () => {
@@ -136,8 +139,9 @@ describe('FindUsagesTool', () => {
                 file_path: 'nonexistent.ts'
             });
 
-            expect(result[0]).toContain('Error: Could not open file');
-            expect(result[0]).toContain('File not found');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Could not open file');
+            expect(result.error).toContain('File not found');
         });
 
         it('should handle symbol not found in document', async () => {
@@ -151,7 +155,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result[0]).toContain('No usages found for symbol');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No usages found for symbol');
         });
 
         it('should find and format symbol usages with context', async () => {
@@ -193,11 +198,11 @@ describe('FindUsagesTool', () => {
                 context_line_count: 1
             });
 
-            expect(result).toBeDefined();
-            expect(result.length).toBeGreaterThan(0);
-            expect(result[0]).toContain('"file"');
-            expect(result[0]).toContain('"context"');
-            expect(result[0]).not.toContain('"location"');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('"file"');
+            expect(result.data).toContain('"context"');
+            expect(result.data).not.toContain('"location"');
         });
 
         it('should handle reference provider errors gracefully', async () => {
@@ -218,7 +223,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result[0]).toContain('Error executing reference provider');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Error executing reference provider');
         });
 
         it('should deduplicate references correctly', async () => {
@@ -259,7 +265,9 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result.length).toBe(1); // Should deduplicate to single result
+            // Should deduplicate and return success with data
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
         });
 
         it('should handle includeDeclaration parameter', async () => {
@@ -320,8 +328,9 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result).toBeDefined();
-            expect(result[0]).toContain('"error": "Could not read file content');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('"error": "Could not read file content');
         });
 
         it('should respect contextLines parameter', async () => {
@@ -356,10 +365,11 @@ describe('FindUsagesTool', () => {
                 context_line_count: 1
             });
 
-            expect(result[0]).toContain('"context"');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('"context"');
             // Should include line before and after the reference line
-            expect(result[0]).toContain('line2');
-            expect(result[0]).toContain('line4');
+            expect(result.data).toContain('line2');
+            expect(result.data).toContain('line4');
         });
     });
 
@@ -376,7 +386,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result[0]).toContain('Error finding symbol usages');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Error finding symbol usages');
 
             // Restore original function
             (vscode.Uri as any).joinPath = originalJoinPath;
@@ -395,7 +406,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result[0]).toContain('No usages found for symbol');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No usages found for symbol');
         });
 
         it('should match exact word - "User" should match standalone "User" but not "UserService"', async () => {
@@ -434,8 +446,9 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result.length).toBeGreaterThan(0);
-            expect(result[0]).not.toContain('No usages found');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).not.toContain('No usages found');
         });
 
         it('should handle special regex characters - "$scope" should work correctly', async () => {
@@ -474,8 +487,9 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result.length).toBeGreaterThan(0);
-            expect(result[0]).not.toContain('No usages found');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).not.toContain('No usages found');
         });
 
         it('should not match "User" as part of "superUser"', async () => {
@@ -489,7 +503,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result[0]).toContain('No usages found for symbol');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No usages found for symbol');
         });
 
         it('should not match "id" in words like "width" or "hidden"', async () => {
@@ -503,7 +518,8 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
-            expect(result[0]).toContain('No usages found for symbol');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No usages found for symbol');
         });
     });
 });

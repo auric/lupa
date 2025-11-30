@@ -183,10 +183,9 @@ describe('FindFileTool Integration Tests', () => {
             expect(toolCallResults).toHaveLength(1);
             expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(true);
-            expect(toolCallResults[0].result).toEqual([
-                'components/Button.tsx',
-                'components/Input.tsx'
-            ]);
+            expect(toolCallResults[0].result).toEqual(
+                'components/Button.tsx\ncomponents/Input.tsx'
+            );
         });
 
 
@@ -207,10 +206,9 @@ describe('FindFileTool Integration Tests', () => {
             }]);
 
             expect(toolCallResults[0].name).toBe('find_files_by_pattern');
-            expect(toolCallResults[0].success).toBe(true);
-            expect(toolCallResults[0].result).toEqual([
-                'Unable to find files matching pattern \'*.js\' in directory \'restricted\': File discovery failed: Permission denied'
-            ]);
+            expect(toolCallResults[0].success).toBe(false);
+            expect(toolCallResults[0].error).toContain('Unable to find files');
+            expect(toolCallResults[0].error).toContain('Permission denied');
         });
 
 

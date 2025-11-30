@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BaseTool } from './baseTool';
+import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 
 /**
  * Self-reflection tool that prompts the LLM to evaluate gathered context.
@@ -14,8 +15,8 @@ export class ThinkAboutContextTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<string> {
-        return `<context_reflection>
+    async execute(): Promise<ToolResult<string>> {
+        return toolSuccess(`<context_reflection>
 <section name="sufficiency">
 Ask yourself:
 - Do I have context for ALL changed files in the diff?
@@ -48,6 +49,6 @@ Identify what's missing:
 <next_action>
 If gaps exist: Use find_symbol, find_usages, or search_for_pattern to gather more context.
 If context is sufficient: Proceed with analysis, being explicit about findings.
-</next_action>`;
+</next_action>`);
     }
 }

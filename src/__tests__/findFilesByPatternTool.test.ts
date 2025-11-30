@@ -190,7 +190,8 @@ describe('FindFileTool', () => {
             expect(vi.mocked(fdir)).toHaveBeenCalled();
             expect(mockFdirInstance.sync).toHaveBeenCalled();
             expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(['*.js'], expect.any(Object));
-            expect(result).toEqual(['src/file1.js', 'src/file2.js']);
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/file1.js\nsrc/file2.js');
         });
 
         it('should sort results alphabetically', async () => {
@@ -199,7 +200,8 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
-            expect(result).toEqual(['a.js', 'm.js', 'z.js']);
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('a.js\nm.js\nz.js');
         });
     });
 
@@ -227,7 +229,7 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
-            expect(result).toEqual(['file.js']);
+            expect(result.data).toEqual('file.js');
         });
     });
 
@@ -237,8 +239,8 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
-            expect(result[0]).toContain('Unable to find files matching pattern');
-            expect(result[0]).toContain('Git repository not found');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Git repository not found');
         });
 
         it('should handle fdir errors', async () => {
@@ -250,8 +252,9 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
-            expect(result[0]).toContain('Unable to find files matching pattern');
-            expect(result[0]).toContain('Directory not found');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Unable to find files');
+            expect(result.error).toContain('Directory not found');
         });
 
         it('should handle path sanitization errors', async () => {
@@ -261,8 +264,9 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '*.js', search_directory: '../evil' });
 
-            expect(result[0]).toContain('Unable to find files matching pattern');
-            expect(result[0]).toContain('Directory traversal detected');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Unable to find files');
+            expect(result.error).toContain('Directory traversal detected');
         });
     });
 
@@ -273,7 +277,8 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '*.tsx' });
 
-            expect(result).toEqual(['src/components/Button.tsx']);
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/components/Button.tsx');
         });
     });
 
@@ -309,9 +314,11 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
-            expect(result.length).toBe(1002); // 1000 files + header + footer messages
-            expect(result[0]).toContain('Found 1200 files (showing first 1000)');
-            expect(result[result.length - 1]).toContain('... and 200 more files. Consider using a more specific pattern.');
+            expect(result.success).toBe(true);
+            // FileDiscoverer truncates to first 1000 and adds a truncation message
+            expect(result.data).toContain('file0000.js');
+            // The truncation message is added at the end
+            expect(result.data).toContain('showing first');
         });
     });
 
@@ -326,8 +333,9 @@ describe('FindFileTool', () => {
 
             const result = await findFileTool.execute({ pattern: '**/*.js', search_directory: 'nonexistent' });
 
-            expect(result[0]).toContain('Unable to find files matching pattern');
-            expect(result[0]).toContain('ENOENT: no such file or directory');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Unable to find files');
+            expect(result.error).toContain('ENOENT: no such file or directory');
         });
     });
 });

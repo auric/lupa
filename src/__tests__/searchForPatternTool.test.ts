@@ -52,10 +52,10 @@ describe('SearchForPatternTool', () => {
 
         searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);
         mockReadFile = vi.mocked(vscode.workspace.fs.readFile);
-        
+
         // Clear all mocks
         vi.clearAllMocks();
-        
+
         // Re-setup essential mocks
         mockGitOperationsManager.getRepository.mockReturnValue({
             rootUri: { fsPath: '/test/git-repo' }
@@ -136,14 +136,12 @@ describe('SearchForPatternTool', () => {
                 pattern: 'class.*{'
             });
 
-            expect(result).toHaveProperty('matches');
-            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches).toBeDefined();
-            expect(successResult.matches.length).toBeGreaterThan(0);
-            expect(successResult.matches[0].file_path).toBe('src/index.ts');
-            expect(successResult.matches[0].content).toContain('1: export class MyClass {');
-            expect(successResult.matches[1].file_path).toBe('src/utils.ts');
-            expect(successResult.matches[1].content).toContain('4: class UtilClass {}');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('src/index.ts');
+            expect(result.data).toContain('1: export class MyClass {');
+            expect(result.data).toContain('src/utils.ts');
+            expect(result.data).toContain('4: class UtilClass {}');
         });
 
         it('should handle context lines extraction', async () => {
@@ -163,12 +161,12 @@ describe('SearchForPatternTool', () => {
                 lines_after: 2
             });
 
-            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches).toBeDefined();
-            expect(successResult.matches[0].content).toContain('1: line 1'); // before
-            expect(successResult.matches[0].content).toContain('2: class TestClass {'); // match
-            expect(successResult.matches[0].content).toContain('3: line 3'); // after
-            expect(successResult.matches[0].content).toContain('4: line 4'); // after
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('1: line 1'); // before
+            expect(result.data).toContain('2: class TestClass {'); // match
+            expect(result.data).toContain('3: line 3'); // after
+            expect(result.data).toContain('4: line 4'); // after
         });
 
         it('should handle case sensitivity', async () => {
@@ -187,18 +185,18 @@ describe('SearchForPatternTool', () => {
                 pattern: 'class.*{',
                 case_sensitive: false
             });
-            let successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches[0].content).toContain('1: Class TestClass {');
-            expect(successResult.matches[0].content).toContain('2: class TestClass {');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('1: Class TestClass {');
+            expect(result.data).toContain('2: class TestClass {');
 
             // Case sensitive
             result = await searchForPatternTool.execute({
                 pattern: 'class.*{',
                 case_sensitive: true
             });
-            successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches[0].content).toContain('2: class TestClass {');
-            expect(successResult.matches[0].content).not.toContain('1: Class TestClass {');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('2: class TestClass {');
+            expect(result.data).not.toContain('1: Class TestClass {');
         });
 
         it('should handle only_code_files filtering', async () => {
@@ -208,7 +206,7 @@ describe('SearchForPatternTool', () => {
                 truncated: false,
                 totalFound: 3
             });
-            
+
             // Mock CodeFileDetector to filter to code files only
             vi.mocked(CodeFileDetector.filterCodeFiles).mockReturnValue(['src/code.ts']);
 
@@ -220,10 +218,10 @@ describe('SearchForPatternTool', () => {
             });
 
             expect(CodeFileDetector.filterCodeFiles).toHaveBeenCalledWith(['src/code.ts', 'README.md', 'config.json']);
-            
-            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches).toBeDefined();
-            expect(successResult.matches[0].file_path).toBe('src/code.ts');
+
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('src/code.ts');
         });
 
         it('should return no matches when pattern not found', async () => {
@@ -240,8 +238,8 @@ describe('SearchForPatternTool', () => {
                 pattern: 'nonexistentpattern'
             });
 
-            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches).toEqual([]);
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No matches found');
         });
     });
 
@@ -306,10 +304,9 @@ describe('SearchForPatternTool', () => {
             });
 
             // Should skip unreadable files and process readable ones
-            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches).toBeDefined();
-            expect(successResult.matches.length).toBe(1);
-            expect(successResult.matches[0].file_path).toBe('src/test.ts');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('src/test.ts');
         });
     });
 
@@ -329,12 +326,12 @@ describe('SearchForPatternTool', () => {
                 pattern: 'class.*{'
             });
 
-            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches).toBeDefined();
-            expect(successResult.matches[0].file_path).toBe('src/test.ts');
-            expect(successResult.matches[0].content).toContain('1: class First {}');
-            expect(successResult.matches[0].content).toContain('2: class Second {}');
-            expect(successResult.matches[0].content).not.toContain('function other()');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('src/test.ts');
+            expect(result.data).toContain('1: class First {}');
+            expect(result.data).toContain('2: class Second {}');
+            expect(result.data).not.toContain('function other()');
         });
 
         it('should group consecutive matches intelligently', async () => {
@@ -354,13 +351,12 @@ describe('SearchForPatternTool', () => {
                 lines_after: 1
             });
 
-            const successResult = result as { matches: Array<{ file_path: string; content: string }> };
-            expect(successResult.matches).toBeDefined();
-            expect(successResult.matches[0].file_path).toBe('src/test.ts');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('src/test.ts');
             // Should contain both matches with their context, grouped intelligently
-            const content = successResult.matches[0].content;
-            expect(content).toContain('2: class First {');
-            expect(content).toContain('4: class Second {');
+            expect(result.data).toContain('2: class First {');
+            expect(result.data).toContain('4: class Second {');
         });
         it('should handle truncated file discovery results', async () => {
             // Mock FileDiscoverer to return truncated results
@@ -376,10 +372,9 @@ describe('SearchForPatternTool', () => {
                 pattern: 'class.*{'
             });
 
-            const successResult = result as { matches: Array<{ file_path: string; content: string }>; message?: string };
-            expect(successResult.matches).toBeDefined();
-            expect(successResult.message).toContain('Search was limited to first');
-            expect(successResult.message).toContain('Consider using more specific filters');
+            expect(result.success).toBe(true);
+            expect(result.data).toBeDefined();
+            expect(result.data).toContain('Search was limited');
         });
     });
 });

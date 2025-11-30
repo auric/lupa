@@ -343,9 +343,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
       mockToolExecutor.executeTools.mockResolvedValue([{
         name: 'read_file',
         success: true,
-        result: [
-          '<file_content>\n  <file>src/test.ts</file>\n  <content>\n1: function new() {}\n2: // Additional context\n  </content>\n</file_content>'
-        ]
+        result: '<file_content>\n  <file>src/test.ts</file>\n  <content>\n1: function new() {}\n2: // Additional context\n  </content>\n</file_content>'
       }]);
 
       const result = await analysisProvider.analyze(diff, tokenSource.token);
@@ -441,7 +439,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
       expect(result.analysis).toBe('Analysis despite tool failure');
       expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
         'call_1',
-        "Error executing tool 'broken_tool': Tool execution failed"
+        'Error: Tool execution failed'
       );
     });
 

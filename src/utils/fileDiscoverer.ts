@@ -135,6 +135,9 @@ export class FileDiscoverer {
     // Setup picomatch options for cross-platform compatibility
     const picomatchOptions: PicomatchOptions = {
       windows: os.platform() === 'win32',
+      // matchBase allows patterns without slashes to match against basename
+      // e.g., "*.ts" matches "src/components/Button.ts" by matching "Button.ts"
+      matchBase: true,
     };
 
     // Build fdir crawler
@@ -147,16 +150,16 @@ export class FileDiscoverer {
 
     crawler = crawler.exclude((_dirName, dirPath) => {
       const relativePath = path.relative(gitRootDirectory, dirPath);
-      
+
       if (ig && ig.ignores(relativePath)) {
         return true;
       }
-      
+
       const posixPath = relativePath.replaceAll(path.sep, path.posix.sep);
       if (posixPath === '.git' || posixPath.startsWith('.git/') || posixPath.includes('/.git/')) {
         return true;
       }
-      
+
       return false;
     });
 

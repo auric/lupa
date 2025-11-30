@@ -166,8 +166,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: true
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(Array.isArray(parsedResult)).toBe(true);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0]).toHaveProperty('file_path');
@@ -249,8 +249,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             const result = await findSymbolTool.execute({ name_path: 'test' });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(Array.isArray(parsedResult)).toBe(true);
             expect(parsedResult).toHaveLength(2);
             // Verify orchestration completed successfully
@@ -310,8 +310,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: false
             });
 
-            expect(typeof resultFalse).toBe('string');
-            const parsedFalse = JSON.parse(resultFalse);
+            expect(resultFalse.success).toBe(true);
+            const parsedFalse = JSON.parse(resultFalse.data!);
             expect(parsedFalse).toHaveLength(1);
             expect(parsedFalse[0]).toHaveProperty('file_path');
             expect(parsedFalse[0]).not.toHaveProperty('body');
@@ -322,8 +322,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: true
             });
 
-            expect(typeof resultTrue).toBe('string');
-            const parsedTrue = JSON.parse(resultTrue);
+            expect(resultTrue.success).toBe(true);
+            const parsedTrue = JSON.parse(resultTrue.data!);
             expect(parsedTrue).toHaveLength(1);
             expect(parsedTrue[0]).toHaveProperty('file_path');
             expect(parsedTrue[0]).toHaveProperty('body');
@@ -334,8 +334,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
     describe('Error Handling Integration', () => {
         it('should handle input validation errors', async () => {
             const result = await findSymbolTool.execute({ name_path: '   ' });
-            expect(typeof result).toBe('string');
-            expect(result).toContain('Error: Symbol name cannot be empty');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Symbol name cannot be empty');
         });
 
         it('should handle symbol not found workflow', async () => {
@@ -348,8 +348,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             });
 
             const result = await findSymbolTool.execute({ name_path: 'NonExistentSymbol' });
-            expect(typeof result).toBe('string');
-            expect(result).toContain("Symbol 'NonExistentSymbol' not found");
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("Symbol 'NonExistentSymbol' not found");
         });
 
         it('should handle VS Code API failures gracefully', async () => {
@@ -357,8 +357,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             vi.mocked(vscode.commands.executeCommand).mockRejectedValue(new Error('API failed'));
 
             const result = await findSymbolTool.execute({ name_path: 'MyClass' });
-            expect(typeof result).toBe('string');
-            expect(result).toContain("Symbol 'MyClass' not found");
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("Symbol 'MyClass' not found");
         });
 
         it('should handle file reading errors in workflow', async () => {
@@ -388,8 +388,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             const result = await findSymbolTool.execute({ name_path: 'MyClass' });
 
-            expect(typeof result).toBe('string');
-            expect(result).toContain('"symbol_name": "MyClass"');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('"symbol_name": "MyClass"');
             // Integration test: verify error handled gracefully when file can't be read
         });
 
@@ -423,8 +423,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
             } as any);
 
             const result = await findSymbolTool.execute({ name_path: 'test' });
-            expect(typeof result).toBe('string');
-            expect(result).toContain("Symbol 'test' not found");
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("Symbol 'test' not found");
         });
     });
 
@@ -480,8 +480,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: true
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0]).toHaveProperty('body');
             // Should use expanded range from SymbolRangeExpander for SymbolInformation
@@ -541,8 +541,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: true
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0]).toHaveProperty('body');
             // Should use direct range for DocumentSymbol (no expansion needed)
@@ -622,8 +622,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_children: true
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1); // Only MyClass found via workspace search
             expect(parsedResult[0].symbol_name).toBe('MyClass');
             // Test verifies that DocumentSymbol is fetched for SymbolInformation (even if children aren't included in this specific test scenario)
@@ -673,8 +673,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 relative_path: 'impl.cpp'
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0].name_path).toBe('FWGCApiModuleImpl/Shutdown');
             expect(parsedResult[0].symbol_name).toBe('Shutdown()');
@@ -734,8 +734,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 relative_path: 'header.h'
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0].name_path).toBe('FWGCApiModuleImpl/Shutdown');
             expect(parsedResult[0].symbol_name).toBe('Shutdown()');
@@ -784,8 +784,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 relative_path: 'mixed.cpp'
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0].name_path).toBe('Service/init');
             expect(parsedResult[0].symbol_name).toBe('init()');
@@ -848,8 +848,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             const result = await findSymbolTool.execute({ name_path: '/MyClass/method' });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0].name_path).toBe('MyClass/method');
             expect(parsedResult[0].symbol_name).toBe('method');
@@ -919,8 +919,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             const result = await findSymbolTool.execute({ name_path: 'MyClass/method' });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0].name_path).toBe('MyClass/method');
             expect(parsedResult[0].symbol_name).toBe('method');
@@ -957,8 +957,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_children: true
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1); // Only MyClass from workspace search
             expect(parsedResult[0].symbol_name).toBe('MyClass');
             // Note: This test demonstrates workspace search behavior - children inclusion happens in formatSymbolResults
@@ -1042,8 +1042,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 include_body: true
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0]).toHaveProperty('body');
             // Should find the most specific (innermost) DocumentSymbol that matches the range
@@ -1100,8 +1100,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 name_path: 'helper'
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0].name_path).toBe('helper'); // Should not include detail as container when containerName is empty
             expect(parsedResult[0].symbol_name).toBe('helper()');
@@ -1158,8 +1158,8 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 relative_path: 'test.cpp'
             });
 
-            expect(typeof result).toBe('string');
-            const parsedResult = JSON.parse(result);
+            expect(result.success).toBe(true);
+            const parsedResult = JSON.parse(result.data!);
             expect(parsedResult).toHaveLength(1);
             expect(parsedResult[0].name_path).toBe('MyClass/method');
             // Should work despite detail property being hidden from JSON.stringify due to custom toJSON

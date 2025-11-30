@@ -42,34 +42,38 @@ describe('ThinkAboutContextTool', () => {
         it('should return reflection prompt with key sections', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('sufficiency');
-            expect(result).toContain('relevance');
-            expect(result).toContain('dependencies');
-            expect(result).toContain('gaps');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('sufficiency');
+            expect(result.data).toContain('relevance');
+            expect(result.data).toContain('dependencies');
+            expect(result.data).toContain('gaps');
         });
 
         it('should include XML-style structure tags', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('<context_reflection>');
-            expect(result).toContain('</context_reflection>');
-            expect(result).toContain('<section');
-            expect(result).toContain('</section>');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<context_reflection>');
+            expect(result.data).toContain('</context_reflection>');
+            expect(result.data).toContain('<section');
+            expect(result.data).toContain('</section>');
         });
 
         it('should include actionable next steps', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('<next_action>');
-            expect(result).toContain('</next_action>');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<next_action>');
+            expect(result.data).toContain('</next_action>');
         });
 
         it('should mention available tools for filling gaps', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('find_symbol');
-            expect(result).toContain('find_usages');
-            expect(result).toContain('search_for_pattern');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('find_symbol');
+            expect(result.data).toContain('find_usages');
+            expect(result.data).toContain('search_for_pattern');
         });
     });
 });
@@ -112,35 +116,39 @@ describe('ThinkAboutTaskTool', () => {
         it('should return reflection prompt with key sections', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('scope');
-            expect(result).toContain('completeness');
-            expect(result).toContain('actionability');
-            expect(result).toContain('balance');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('scope');
+            expect(result.data).toContain('completeness');
+            expect(result.data).toContain('actionability');
+            expect(result.data).toContain('balance');
         });
 
         it('should include XML-style structure tags', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('<task_alignment>');
-            expect(result).toContain('</task_alignment>');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<task_alignment>');
+            expect(result.data).toContain('</task_alignment>');
         });
 
         it('should include review categories checklist', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('<review_categories>');
-            expect(result).toContain('Bugs');
-            expect(result).toContain('Security');
-            expect(result).toContain('Performance');
-            expect(result).toContain('Code quality');
-            expect(result).toContain('Test coverage');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<review_categories>');
+            expect(result.data).toContain('Bugs');
+            expect(result.data).toContain('Security');
+            expect(result.data).toContain('Performance');
+            expect(result.data).toContain('Code quality');
+            expect(result.data).toContain('Test coverage');
         });
 
         it('should include actionable next steps', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('<next_action>');
-            expect(result).toContain('</next_action>');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<next_action>');
+            expect(result.data).toContain('</next_action>');
         });
     });
 });
@@ -183,49 +191,55 @@ describe('ThinkAboutCompletionTool', () => {
         it('should return completion verification prompt', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('coverage');
-            expect(result).toContain('issue_categories');
-            expect(result).toContain('feedback_quality');
-            expect(result).toContain('prioritization');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('coverage');
+            expect(result.data).toContain('issue_categories');
+            expect(result.data).toContain('feedback_quality');
+            expect(result.data).toContain('prioritization');
         });
 
         it('should include XML-style structure tags', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('<completion_verification>');
-            expect(result).toContain('</completion_verification>');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<completion_verification>');
+            expect(result.data).toContain('</completion_verification>');
         });
 
         it('should include checklists for verification', async () => {
             const result = await tool.execute();
 
-            expect(result).toMatch(/\[ \]/);
-            expect(result).toContain('Bugs');
-            expect(result).toContain('Security');
-            expect(result).toContain('Performance');
+            expect(result.success).toBe(true);
+            expect(result.data).toMatch(/\[ \]/);
+            expect(result.data).toContain('Bugs');
+            expect(result.data).toContain('Security');
+            expect(result.data).toContain('Performance');
         });
 
         it('should include constructiveness section', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('constructiveness');
-            expect(result).toContain('well-written code');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('constructiveness');
+            expect(result.data).toContain('well-written code');
         });
 
         it('should include structured final review format', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('Summary');
-            expect(result).toContain('Critical issues');
-            expect(result).toContain('Suggestions');
-            expect(result).toContain('Positive observations');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('Summary');
+            expect(result.data).toContain('Critical issues');
+            expect(result.data).toContain('Suggestions');
+            expect(result.data).toContain('Positive observations');
         });
 
         it('should include actionable next steps', async () => {
             const result = await tool.execute();
 
-            expect(result).toContain('<next_action>');
-            expect(result).toContain('</next_action>');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<next_action>');
+            expect(result.data).toContain('</next_action>');
         });
     });
 });
@@ -240,10 +254,11 @@ describe('Think Tools Integration', () => {
 
         for (const tool of tools) {
             const result = await tool.execute();
-            expect(result).toContain('<');
-            expect(result).toContain('>');
-            expect(result).toContain('</');
-            expect(result).toContain('<next_action>');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('<');
+            expect(result.data).toContain('>');
+            expect(result.data).toContain('</');
+            expect(result.data).toContain('<next_action>');
         }
     });
 

@@ -11,6 +11,7 @@ import { SymbolMatcher, type SymbolMatch, type BasicSymbolMatch } from '../utils
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { readGitignore } from '../utils/gitUtils';
 import { Log } from '../services/loggingService';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import ignore from 'ignore';
 
 interface FormattedSymbol {
@@ -80,10 +81,10 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     )
   });
 
-  async execute(args: z.infer<typeof this.schema>): Promise<string> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
     const validationResult = this.schema.safeParse(args);
     if (!validationResult.success) {
-      return `Error: ${validationResult.error.issues.map(e => e.message).join(', ')}`;
+      return toolError(validationResult.error.issues.map(e => e.message).join(', '));
     }
 
     try {
@@ -101,7 +102,7 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
 
       const pathSegments = this.parseNamePath(namePath);
       if (pathSegments.length === 0) {
-        return `Error: Symbol name cannot be empty`;
+        return toolError('Symbol name cannot be empty');
       }
 
       let symbols: SymbolMatch[] = [];
@@ -115,17 +116,17 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
       }
 
       if (symbols.length === 0) {
-        return `Symbol '${namePath}' not found`;
+        return toolError(`Symbol '${namePath}' not found`);
       }
 
       const formattedResults = await this.formatSymbolResults(symbols, includeBody ?? false, includeChildren ?? false, includeKinds, excludeKinds);
 
       const resultString = JSON.stringify(formattedResults, null, 2);
 
-      return resultString;
+      return toolSuccess(resultString);
 
     } catch (error) {
-      return `Error: ${error instanceof Error ? error.message : String(error)}`;
+      return toolError(error instanceof Error ? error.message : String(error));
     }
   }
 

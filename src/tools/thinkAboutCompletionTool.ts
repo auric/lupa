@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BaseTool } from './baseTool';
+import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 
 /**
  * Self-reflection tool that prompts the LLM to verify analysis completeness.
@@ -14,8 +15,8 @@ export class ThinkAboutCompletionTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<string> {
-        return `<completion_verification>
+    async execute(): Promise<ToolResult<string>> {
+        return toolSuccess(`<completion_verification>
 <section name="coverage">
 Verify all files reviewed:
 [ ] Analyzed every file in the diff
@@ -61,6 +62,6 @@ If complete: Provide final review with clear structure:
 2. Critical issues (if any)
 3. Suggestions for improvement
 4. Positive observations
-</next_action>`;
+</next_action>`);
     }
 }

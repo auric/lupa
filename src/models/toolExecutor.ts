@@ -3,6 +3,7 @@ import { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ToolResult, isToolResult } from '../types/toolResultTypes';
 
 /**
  * Interface for tool execution requests
@@ -18,7 +19,7 @@ export interface ToolExecutionRequest {
 export interface ToolExecutionResult {
   name: string;
   success: boolean;
-  result?: any;
+  result?: string;
   error?: string;
 }
 
@@ -67,22 +68,28 @@ export class ToolExecutor {
         };
       }
 
-      const result = await tool.execute(args);
+      const toolResult = await tool.execute(args);
 
-      // Validate response size
-      const validationResult = this.validateResponseSize(result, name);
-      if (!validationResult.isValid) {
-        return {
-          name,
-          success: false,
-          error: validationResult.errorMessage
-        };
+      // Unwrap ToolResult to ToolExecutionResult
+      const { success, data, error } = this.unwrapToolResult(toolResult);
+
+      // Validate response size only for successful results with data
+      if (success && data) {
+        const validationResult = this.validateResponseSize(data, name);
+        if (!validationResult.isValid) {
+          return {
+            name,
+            success: false,
+            error: validationResult.errorMessage
+          };
+        }
       }
 
       return {
         name,
-        success: true,
-        result
+        success,
+        result: data,
+        error
       };
     } catch (error) {
       return {
@@ -91,6 +98,38 @@ export class ToolExecutor {
         error: error instanceof Error ? error.message : String(error)
       };
     }
+  }
+
+  /**
+   * Unwrap a ToolResult into its components.
+   * Handles both new ToolResult objects and legacy return values for backward compatibility.
+   */
+  private unwrapToolResult(result: ToolResult<string> | any): { success: boolean; data?: string; error?: string } {
+    if (isToolResult(result)) {
+      return {
+        success: result.success,
+        data: result.data as string | undefined,
+        error: result.error
+      };
+    }
+
+    // Legacy fallback: treat any non-ToolResult as success with stringified data
+    // This shouldn't happen after full migration, but provides safety during transition
+    let stringResult: string;
+    if (Array.isArray(result)) {
+      stringResult = result.join('\n');
+    } else if (typeof result === 'string') {
+      stringResult = result;
+    } else if (result && typeof result === 'object') {
+      stringResult = JSON.stringify(result, null, 2);
+    } else {
+      stringResult = String(result);
+    }
+
+    return {
+      success: true,
+      data: stringResult
+    };
   }
 
   /**
@@ -165,33 +204,17 @@ export class ToolExecutor {
 
   /**
    * Validate the size of a tool response
-   * @param result The result returned by the tool
+   * @param result The result string returned by the tool
    * @param toolName Name of the tool for error messages
    * @returns Validation result with error message if invalid
    */
-  private validateResponseSize(result: any, toolName: string): { isValid: boolean; errorMessage?: string } {
+  private validateResponseSize(result: string, toolName: string): { isValid: boolean; errorMessage?: string } {
     try {
-      // Convert result to string for size measurement
-      let resultString: string;
-
-      if (Array.isArray(result)) {
-        // For array results, join them to measure total size
-        resultString = result.join('\n\n');
-      } else if (typeof result === 'string') {
-        resultString = result;
-      } else if (result && typeof result === 'object') {
-        // For object results, stringify them
-        resultString = JSON.stringify(result, null, 2);
-      } else {
-        // For other types, convert to string
-        resultString = String(result);
-      }
-
       // Check if result exceeds maximum allowed size
-      if (resultString.length > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
+      if (result.length > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
         return {
           isValid: false,
-          errorMessage: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool '${toolName}' returned ${resultString.length} characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`
+          errorMessage: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool '${toolName}' returned ${result.length} characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`
         };
       }
 

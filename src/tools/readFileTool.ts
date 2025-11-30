@@ -5,6 +5,7 @@ import { BaseTool } from './baseTool';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
  * Tool that reads file content with support for partial content reading.
@@ -27,17 +28,17 @@ export class ReadFileTool extends BaseTool {
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
     try {
       const { file_path, start_line, line_count } = args;
 
       // Sanitize the file path to prevent directory traversal attacks
       const sanitizedPath = PathSanitizer.sanitizePath(file_path);
-      
+
       // Get git root directory
       const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
       if (!gitRootDirectory) {
-        return [this.formatError('Git repository not found')];
+        return toolError('Git repository not found');
       }
 
       // Construct absolute file path
@@ -48,7 +49,7 @@ export class ReadFileTool extends BaseTool {
       try {
         await vscode.workspace.fs.stat(fileUri);
       } catch (error) {
-        return [this.formatError(`File not found: ${sanitizedPath}`)];
+        return toolError(`File not found: ${sanitizedPath}`);
       }
 
       // Read file content
@@ -57,7 +58,7 @@ export class ReadFileTool extends BaseTool {
         const contentBytes = await vscode.workspace.fs.readFile(fileUri);
         fileContent = Buffer.from(contentBytes).toString('utf8');
       } catch (error) {
-        return [this.formatError(`Failed to read file ${sanitizedPath}: ${error instanceof Error ? error.message : String(error)}`)];
+        return toolError(`Failed to read file ${sanitizedPath}: ${error instanceof Error ? error.message : String(error)}`);
       }
 
       const lines = fileContent.split('\n');
@@ -66,19 +67,19 @@ export class ReadFileTool extends BaseTool {
       // Handle full file reading
       if (!start_line && !line_count) {
         if (fileContent.length > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
-          return [this.formatError(
+          return toolError(
             `File too large (${fileContent.length} characters). ` +
             `Maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS} characters. ` +
             `Please use start_line and line_count parameters to read specific sections.`
-          )];
+          );
         }
-        return [this.formatFileContent(sanitizedPath, lines, 1)];
+        return toolSuccess(this.formatFileContent(sanitizedPath, lines, 1));
       }
 
       // Handle partial file reading
       const actualStartLine = start_line || 1;
       if (actualStartLine > totalLines) {
-        return [this.formatError(`Start line ${actualStartLine} exceeds file length (${totalLines} lines)`)];
+        return toolError(`Start line ${actualStartLine} exceeds file length (${totalLines} lines)`);
       }
 
       // Calculate end line
@@ -92,51 +93,35 @@ export class ReadFileTool extends BaseTool {
       const selectedLines = lines.slice(actualStartLine - 1, endLine);
 
       // Check response size before formatting
-      const estimatedSize = selectedLines.join('\n').length + 200; // Add overhead for JSON
+      const estimatedSize = selectedLines.join('\n').length + 100;
       if (estimatedSize > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
-        return [this.formatError(
+        return toolError(
           `Selected content too large (estimated ${estimatedSize} characters). ` +
           `Maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS} characters. ` +
-          `Please reduce lineCount parameter.`
-        )];
+          `Please reduce line_count parameter.`
+        );
       }
 
-      return [this.formatFileContent(sanitizedPath, selectedLines, actualStartLine)];
+      return toolSuccess(this.formatFileContent(sanitizedPath, selectedLines, actualStartLine));
 
     } catch (error) {
-      const errorMessage = `Error reading file: ${error instanceof Error ? error.message : String(error)}`;
-      return [this.formatError(errorMessage)];
+      return toolError(`Unexpected error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
-   * Format file content as JSON with line numbers in the format "lineNumber: content"
+   * Format file content with header and line numbers
    * @param filePath File path for display
    * @param lines Array of lines to format
    * @param startLine Starting line number
-   * @returns JSON string with content
+   * @returns Formatted string with file header and numbered lines
    */
   private formatFileContent(filePath: string, lines: string[], startLine: number): string {
-    // Format content with line numbers using the standard "lineNumber: content" format
-    const content = lines.map((line, index) => {
+    const formattedLines = lines.map((line, index) => {
       const lineNumber = startLine + index;
       return `${lineNumber}: ${line}`;
     });
 
-    const fileContent = {
-      file: filePath,
-      content: content
-    };
-
-    return JSON.stringify(fileContent, null, 2);
-  }
-
-  /**
-   * Format an error result when file reading fails
-   * @param error The error message
-   * @returns Simple string error message
-   */
-  private formatError(error: string): string {
-    return `Error reading file: ${error}`;
+    return `=== ${filePath} ===\n${formattedLines.join('\n')}`;
   }
 }

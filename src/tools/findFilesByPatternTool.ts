@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
  * Tool that finds files matching glob patterns within a directory.
@@ -16,14 +17,6 @@ import { FileDiscoverer } from '../utils/fileDiscoverer';
  * - {a,b,c} matches any of the patterns in the braces
  */
 
-// Examples for LLM usage:
-// - "*.js" - all JavaScript files in search directory
-// - "**/*.ts" - all TypeScript files recursively
-// - "src/**/*.{js,ts}" - all JS/TS files in src directory recursively
-// - "test?.js" - test1.js, testA.js, etc.
-// - "README*" - README files with any extension
-
-
 export class FindFilesByPatternTool extends BaseTool {
   name = 'find_files_by_pattern';
   description = 'Find files matching glob patterns within a directory. Supports wildcards (*.js), recursive search (**/*.ts), multiple extensions (*.{js,ts}). Automatically respects .gitignore rules. Returns relative paths from project root.';
@@ -37,38 +30,36 @@ export class FindFilesByPatternTool extends BaseTool {
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
     try {
       const { pattern, search_directory: searchPath } = args;
 
       const gitRepo = this.gitOperationsManager.getRepository();
       if (!gitRepo) {
-        throw new Error('Git repository not found');
+        return toolError('Git repository not found');
       }
 
-      // Use FileDiscoverer to find files matching the pattern
       const result = await FileDiscoverer.discoverFiles(gitRepo, {
         searchPath: searchPath || '.',
         includePattern: pattern,
         respectGitignore: true
       });
 
-      // Handle truncated results
-      if (result.truncated) {
-        return [
-          `Found ${result.totalFound} files (showing first ${result.files.length}):`,
-          ...result.files,
-          `... and ${result.totalFound - result.files.length} more files. Consider using a more specific pattern.`
-        ];
+      if (result.files.length === 0) {
+        return toolError(`No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'`);
       }
 
-      return result.files.length === 0
-        ? [`No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'`]
-        : result.files;
+      let output = result.files.join('\n');
+
+      if (result.truncated) {
+        output += `\n\n[Found ${result.totalFound} files, showing first ${result.files.length}. Consider using a more specific pattern.]`;
+      }
+
+      return toolSuccess(output);
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return [`Unable to find files matching pattern '${args.pattern}' in directory '${args.search_directory || '.'}': ${errorMessage}`];
+      return toolError(`Unable to find files: ${errorMessage}`);
     }
   }
 

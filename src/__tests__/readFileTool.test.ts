@@ -5,6 +5,7 @@ import { ReadFileTool } from '../tools/readFileTool';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
+import { ToolResult } from '../types/toolResultTypes';
 
 // Mock VS Code
 vi.mock('vscode', () => ({
@@ -98,7 +99,8 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
-      expect(result).toEqual(['Error reading file: Git repository not found']);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Git repository not found');
     });
 
     it('should return error when file not found', async () => {
@@ -106,7 +108,8 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'nonexistent.ts' });
 
-      expect(result[0]).toContain('Error reading file: File not found: nonexistent.ts');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('File not found: nonexistent.ts');
     });
 
     it('should read full file successfully', async () => {
@@ -115,12 +118,11 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
-      expect(result).toHaveLength(1);
-      expect(result[0]).toContain('"file": "test.ts"');
-      expect(result[0]).toContain('"content"');
-      expect(result[0]).toContain('1: line 1');
-      expect(result[0]).toContain('2: line 2');
-      expect(result[0]).toContain('3: line 3');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('=== test.ts ===');
+      expect(result.data).toContain('1: line 1');
+      expect(result.data).toContain('2: line 2');
+      expect(result.data).toContain('3: line 3');
     });
 
     it('should read partial file with startLine and lineCount', async () => {
@@ -133,10 +135,11 @@ describe('ReadFileTool', () => {
         line_count: 2
       });
 
-      expect(result[0]).toContain('2: line 2');
-      expect(result[0]).toContain('3: line 3');
-      expect(result[0]).not.toContain('1: line 1');
-      expect(result[0]).not.toContain('4: line 4');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('2: line 2');
+      expect(result.data).toContain('3: line 3');
+      expect(result.data).not.toContain('1: line 1');
+      expect(result.data).not.toContain('4: line 4');
     });
 
     it('should handle startLine beyond file length', async () => {
@@ -148,7 +151,8 @@ describe('ReadFileTool', () => {
         start_line: 10
       });
 
-      expect(result[0]).toContain('Error reading file: Start line 10 exceeds file length (2 lines)');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Start line 10 exceeds file length (2 lines)');
     });
 
     it('should limit line count to maximum allowed', async () => {
@@ -161,8 +165,8 @@ describe('ReadFileTool', () => {
         line_count: 250
       });
 
-      // Should be limited to MAX_FILE_READ_LINES
-      const lines = result[0].split('\n').filter(line => line.match(/^\d+: /));
+      expect(result.success).toBe(true);
+      const lines = result.data!.split('\n').filter((line: string) => line.match(/^\d+: /));
       expect(lines.length).toBeLessThanOrEqual(TokenConstants.MAX_FILE_READ_LINES);
     });
 
@@ -172,8 +176,9 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'large.ts' });
 
-      expect(result[0]).toContain('Error reading file: File too large');
-      expect(result[0]).toContain('Please use start_line and line_count parameters');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('File too large');
+      expect(result.error).toContain('Please use start_line and line_count parameters');
     });
 
     it('should handle read errors gracefully', async () => {
@@ -181,7 +186,8 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
-      expect(result[0]).toContain('Error reading file: Failed to read file test.ts: Permission denied');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Failed to read file test.ts: Permission denied');
     });
 
     it('should sanitize file paths', async () => {
@@ -201,7 +207,6 @@ describe('ReadFileTool', () => {
     });
 
     it('should handle partial file reading with size check', async () => {
-      // Create content that would be too large when formatted but acceptable when limited
       const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1} with some content`);
       const fileContent = lines.join('\n');
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
@@ -212,10 +217,11 @@ describe('ReadFileTool', () => {
         line_count: 10
       });
 
-      expect(result[0]).toContain('"content"');
-      expect(result[0]).toContain('1: line 1 with some content');
-      expect(result[0]).toContain('10: line 10 with some content');
-      expect(result[0]).not.toContain('11: line 11');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('=== test.ts ===');
+      expect(result.data).toContain('1: line 1 with some content');
+      expect(result.data).toContain('10: line 10 with some content');
+      expect(result.data).not.toContain('11: line 11');
     });
 
     it('should use default startLine when not provided', async () => {
@@ -227,9 +233,10 @@ describe('ReadFileTool', () => {
         line_count: 2
       });
 
-      expect(result[0]).toContain('1: line 1');
-      expect(result[0]).toContain('2: line 2');
-      expect(result[0]).not.toContain('3: line 3');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('1: line 1');
+      expect(result.data).toContain('2: line 2');
+      expect(result.data).not.toContain('3: line 3');
     });
 
     it('should handle empty files', async () => {
@@ -237,8 +244,8 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'empty.ts' });
 
-      expect(result[0]).toContain('"file": "empty.ts"');
-      expect(result[0]).toContain('"content"');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('=== empty.ts ===');
     });
 
     it('should properly handle special characters in file content', async () => {
@@ -247,9 +254,8 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
-      // Content should contain the original characters in JSON format
-      expect(result[0]).toContain('"content"');
-      expect(result[0]).toContain('<div>test & data</div>');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('<div>test & data</div>');
     });
 
     it('should handle files with only newlines', async () => {
@@ -258,14 +264,15 @@ describe('ReadFileTool', () => {
 
       const result = await readFileTool.execute({ file_path: 'newlines.ts' });
 
-      expect(result[0]).toContain('1: ');
-      expect(result[0]).toContain('2: ');
-      expect(result[0]).toContain('3: ');
-      expect(result[0]).toContain('4: '); // Empty line after last newline
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('1: ');
+      expect(result.data).toContain('2: ');
+      expect(result.data).toContain('3: ');
+      expect(result.data).toContain('4: ');
     });
   });
 
-  describe('JSON formatting', () => {
+  describe('output formatting', () => {
     beforeEach(() => {
       mockGitOperationsManager.getRepository.mockReturnValue({
         rootUri: { fsPath: '/project/root' }
@@ -273,25 +280,27 @@ describe('ReadFileTool', () => {
       mockWorkspaceFs.stat.mockResolvedValue({});
     });
 
-    it('should format output with proper JSON structure', async () => {
+    it('should format output with file header and line numbers', async () => {
       const fileContent = 'function test() {\n  return "hello";\n}';
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
-      expect(result[0]).toContain('"file": "test.ts"');
-      expect(result[0]).toContain('"content"');
-      expect(result[0]).toContain('1: function test() {');
-      expect(result[0]).toContain('2:   return \\"hello\\";');
-      expect(result[0]).toContain('3: }');
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('=== test.ts ===');
+      expect(result.data).toContain('1: function test() {');
+      expect(result.data).toContain('2:   return "hello";');
+      expect(result.data).toContain('3: }');
     });
 
-    it('should format error output correctly', async () => {
+    it('should return error with proper structure', async () => {
       mockGitOperationsManager.getRepository.mockReturnValue(null);
 
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
-      expect(result[0]).toContain('Error reading file: Git repository not found');
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Git repository not found');
+      expect(result.data).toBeUndefined();
     });
   });
 });

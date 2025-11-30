@@ -21,6 +21,15 @@ export interface HierarchyFormatOptions {
 }
 
 /**
+ * Result from formatting symbols with hierarchy
+ */
+export interface FormattedSymbolsResult {
+  formatted: string;
+  symbolCount: number;
+  truncated: boolean;
+}
+
+/**
  * Static utility class for symbol formatting and kind conversion operations.
  * Provides centralized logic for converting between VS Code SymbolKind and string representations.
  */
@@ -118,29 +127,36 @@ export class SymbolFormatter {
 
   /**
    * Format symbols with hierarchy support for enhanced GetSymbolsOverviewTool
-   * Returns a single string with newlines using lineNumber: symbolName format
+   * Returns formatted string with newlines using lineNumber: symbolName format
    * @param symbols - Array of DocumentSymbols
    * @param document - TextDocument for body extraction and line numbers
    * @param options - Formatting options
-   * @returns Single string with newline-separated symbols
+   * @returns Object with formatted string, symbol count, and truncation status
    */
   static formatSymbolsWithHierarchy(
     symbols: vscode.DocumentSymbol[],
     document: vscode.TextDocument | undefined,
     options: HierarchyFormatOptions
-  ): string {
+  ): FormattedSymbolsResult {
     const lines: string[] = [];
     let symbolCount = 0;
+    let truncated = false;
 
     const processSymbols = (
       symbolList: vscode.DocumentSymbol[],
       currentDepth: number = 0
     ): void => {
-      if (symbolCount >= options.maxSymbols) return;
+      if (symbolCount >= options.maxSymbols) {
+        truncated = true;
+        return;
+      }
       if (options.maxDepth >= 0 && currentDepth > options.maxDepth) return;
 
       for (const symbol of symbolList) {
-        if (symbolCount >= options.maxSymbols) break;
+        if (symbolCount >= options.maxSymbols) {
+          truncated = true;
+          break;
+        }
 
         // Apply kind filtering
         if (options.excludeKinds?.includes(symbol.kind)) continue;
@@ -162,7 +178,7 @@ export class SymbolFormatter {
             const body = document.getText(symbol.range);
             const bodyLines = body.split('\n');
             const bodyIndent = options.showHierarchy ? '  '.repeat(currentDepth + 1) : '  ';
-            
+
             // Add first few lines of body with proper indentation
             for (let i = 0; i < Math.min(bodyLines.length, 5); i++) {
               const line = bodyLines[i];
@@ -171,7 +187,7 @@ export class SymbolFormatter {
                 lines.push(`${bodyLineNumber}: ${bodyIndent}${line.trim()}`);
               }
             }
-            
+
             if (bodyLines.length > 5) {
               lines.push(`${lineNumber + 5}: ${bodyIndent}... (truncated)`);
             }
@@ -188,10 +204,12 @@ export class SymbolFormatter {
     };
 
     processSymbols(symbols);
-    return lines.join('\n');
-  }
-
-  /**
+    return {
+      formatted: lines.join('\n'),
+      symbolCount,
+      truncated
+    };
+  }  /**
    * Get all available symbol kind names for validation or UI purposes
    * @returns Array of all supported symbol kind string names
    */

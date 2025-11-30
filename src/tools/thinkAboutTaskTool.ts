@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BaseTool } from './baseTool';
+import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 
 /**
  * Self-reflection tool that prompts the LLM to verify task alignment.
@@ -14,8 +15,8 @@ export class ThinkAboutTaskTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<string> {
-        return `<task_alignment>
+    async execute(): Promise<ToolResult<string>> {
+        return toolSuccess(`<task_alignment>
 <section name="scope">
 Verify your focus:
 - Am I reviewing what was ACTUALLY changed in this PR?
@@ -58,6 +59,6 @@ Have you evaluated each category?
 <next_action>
 If off-track: Refocus on the actual changes in the diff.
 If on-track: Proceed with conclusions, organized by priority.
-</next_action>`;
+</next_action>`);
     }
 }

@@ -177,7 +177,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/test.ts' });
 
-            expect(result).toEqual('src/test.ts:\n1: MyClass (class)\n13: myFunction (function)');
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/test.ts:\n1: MyClass (class)\n13: myFunction (function)');
         });
 
         it('should handle single file with no symbols', async () => {
@@ -199,7 +200,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/empty.ts' });
 
-            expect(result).toEqual('No symbols found');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No symbols found');
         });
 
         it('should handle directory with multiple files', async () => {
@@ -224,7 +226,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
-            expect(result).toEqual('src/test1.ts:\n1: Class1 (class)\n\nsrc/test2.js:\n1: function1 (function)');
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/test1.ts:\n1: Class1 (class)\n\nsrc/test2.js:\n1: function1 (function)');
         });
 
         it('should handle directory with nested structure', async () => {
@@ -245,7 +248,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
-            expect(result).toEqual('src/services/service1.ts:\n1: ServiceClass (class)');
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/services/service1.ts:\n1: ServiceClass (class)');
         });
 
         it('should handle SymbolInformation format', async () => {
@@ -267,7 +271,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/interface.ts' });
 
-            expect(result).toEqual('src/interface.ts:\n1: MyInterface (interface)');
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/interface.ts:\n1: MyInterface (interface)');
         });
 
         it('should handle path not found error', async () => {
@@ -275,7 +280,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'nonexistent/path' });
 
-            expect(result).toEqual("Error getting symbols overview: Failed to get symbols overview for 'nonexistent/path': Path 'nonexistent/path' not found");
+            expect(result.success).toBe(false);
+            expect(result.error).toContain("Path 'nonexistent/path' not found");
         });
 
         it('should handle git repository not found', async () => {
@@ -295,7 +301,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await toolWithoutRepo.execute({ path: 'src/test.ts' });
 
-            expect(result).toEqual("Error getting symbols overview: Failed to get symbols overview for 'src/test.ts': Git repository not found");
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Git repository not found');
         });
 
         it('should filter code files correctly', async () => {
@@ -315,7 +322,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src' });
 
-            expect(result).toEqual('src/component.ts:\n1: Component (class)\n\nsrc/script.js:\n1: script (function)');
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/component.ts:\n1: Component (class)\n\nsrc/script.js:\n1: script (function)');
         });
     });
 
@@ -346,7 +354,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const result = await getSymbolsOverviewTool.execute({ path: 'src/test.ts' });
 
-            expect(result).toEqual('src/test.ts:\n1: MyClass (class)\n7: MyInterface (interface)\n10: MyEnum (enum)\n14: myFunction (function)\n17: myVariable (variable)\n18: myConstant (constant)');
+            expect(result.success).toBe(true);
+            expect(result.data).toEqual('src/test.ts:\n1: MyClass (class)\n7: MyInterface (interface)\n10: MyEnum (enum)\n14: myFunction (function)\n17: myVariable (variable)\n18: myConstant (constant)');
         });
     });
 });

@@ -6,6 +6,7 @@ import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { readGitignore } from '../utils/gitUtils';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -26,7 +27,7 @@ export class ListDirTool extends BaseTool {
     super();
   };
 
-  async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
     try {
       const { relative_path, recursive } = args;
 
@@ -36,11 +37,14 @@ export class ListDirTool extends BaseTool {
       // List directory contents with ignore pattern support
       const result = await this.callListDir(sanitizedPath, recursive);
 
-      // Format the output as a simple list of strings
-      return this.formatOutput(result);
+      // Format the output as a single string
+      const output = this.formatOutput(result);
+
+      // Empty directory is a valid state (success)
+      return toolSuccess(output || '(empty directory)');
 
     } catch (error) {
-      return [`Error listing directory: ${error instanceof Error ? error.message : String(error)}`];
+      return toolError(`Error listing directory: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -92,9 +96,9 @@ export class ListDirTool extends BaseTool {
   }
 
   /**
-   * Formats the output as a simple list of strings
+   * Formats the output as a single string with directories and files
    */
-  private formatOutput(result: { dirs: string[], files: string[] }): string[] {
+  private formatOutput(result: { dirs: string[], files: string[] }): string {
     const output: string[] = [];
 
     // Add directories first, sorted
@@ -109,6 +113,6 @@ export class ListDirTool extends BaseTool {
       output.push(file);
     }
 
-    return output;
+    return output.join('\n');
   }
 }

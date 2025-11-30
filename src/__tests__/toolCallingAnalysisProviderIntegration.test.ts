@@ -274,7 +274,7 @@ index 1234567..abcdefg 100644
             expect(result.analysis).toBe('Analysis despite tool error');
             expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
                 'call_1',
-                'Error executing tool \'find_symbol\': Tool execution failed'
+                'Error: Tool execution failed'
             );
         });
 

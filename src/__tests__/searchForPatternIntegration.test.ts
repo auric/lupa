@@ -144,13 +144,11 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results).toHaveLength(1);
             expect(results[0].name).toBe('search_for_pattern');
             expect(results[0].success).toBe(true);
-            const result = results[0].result as { matches: Array<{ file_path: string; content: string }> };
-            expect(result.matches).toBeDefined();
-            expect(result.matches.length).toBe(2);
-            expect(result.matches[0].file_path).toBe('src/index.ts');
-            expect(result.matches[0].content).toContain('1: export class MainClass {');
-            expect(result.matches[1].file_path).toBe('src/utils.ts');
-            expect(result.matches[1].content).toContain('1: export class UtilClass {');
+            const result = results[0].result as string;
+            expect(result).toContain('src/index.ts');
+            expect(result).toContain('1: export class MainClass {');
+            expect(result).toContain('src/utils.ts');
+            expect(result).toContain('1: export class UtilClass {');
         });
 
 
@@ -169,10 +167,9 @@ describe('SearchForPatternTool Integration Tests', () => {
 
             const results = await toolExecutor.executeTools([toolCall]);
             expect(results[0].name).toBe('search_for_pattern');
-            expect(results[0].success).toBe(true);
-            const errorResult = results[0].result as { error: string };
-            expect(errorResult.error).toBeDefined();
-            expect(errorResult.error).toContain('Pattern search failed');
+            expect(results[0].success).toBe(false);
+            expect(results[0].error).toBeDefined();
+            expect(results[0].error).toContain('Pattern search failed');
         });
     });
 

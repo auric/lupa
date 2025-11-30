@@ -2,6 +2,7 @@ import { z } from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { UsageFormatter } from './usageFormatter';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
  * Tool that finds all usages of a code symbol using VS Code's reference provider.
@@ -24,7 +25,7 @@ export class FindUsagesTool extends BaseTool {
       .describe('Number of context lines to include around each usage (0-10, default: 2)'),
   });
 
-  async execute(args: z.infer<typeof this.schema>): Promise<string[]> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
     try {
       const { symbol_name, file_path, should_include_declaration, context_line_count } = args;
 
@@ -33,17 +34,17 @@ export class FindUsagesTool extends BaseTool {
       const sanitizedFilePath = file_path.trim();
 
       if (!sanitizedSymbolName) {
-        return ['Error: Symbol name cannot be empty'];
+        return toolError('Symbol name cannot be empty');
       }
 
       if (!sanitizedFilePath) {
-        return ['Error: File path cannot be empty'];
+        return toolError('File path cannot be empty');
       }
 
       // Get the document containing the symbol definition
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
       if (!workspaceFolder) {
-        return ['Error: No workspace folder is open'];
+        return toolError('No workspace folder is open');
       }
 
       // Convert relative path to absolute path
@@ -53,13 +54,13 @@ export class FindUsagesTool extends BaseTool {
       try {
         document = await vscode.workspace.openTextDocument(absolutePath);
       } catch (error) {
-        return [`Error: Could not open file '${sanitizedFilePath}': ${error instanceof Error ? error.message : String(error)}`];
+        return toolError(`Could not open file '${sanitizedFilePath}': ${error instanceof Error ? error.message : String(error)}`);
       }
 
       // Find the symbol position in the document to use as starting point
       const symbolPosition = await this.findSymbolPosition(document, sanitizedSymbolName);
       if (!symbolPosition) {
-        return [this.formatter.formatNoUsagesMessage(sanitizedSymbolName, sanitizedFilePath)];
+        return toolError(`No usages found for symbol '${sanitizedSymbolName}' in file '${sanitizedFilePath}'`);
       }
 
       try {
@@ -72,7 +73,7 @@ export class FindUsagesTool extends BaseTool {
         );
 
         if (!references || references.length === 0) {
-          return [this.formatter.formatNoUsagesMessage(sanitizedSymbolName, sanitizedFilePath)];
+          return toolError(`No usages found for symbol '${sanitizedSymbolName}' in file '${sanitizedFilePath}'`);
         }
 
         // Remove duplicates based on URI and range
@@ -114,14 +115,14 @@ export class FindUsagesTool extends BaseTool {
           }
         }
 
-        return formattedUsages;
+        return toolSuccess(formattedUsages.join('\n\n'));
 
       } catch (error) {
-        return [`Error executing reference provider: ${error instanceof Error ? error.message : String(error)}`];
+        return toolError(`Error executing reference provider: ${error instanceof Error ? error.message : String(error)}`);
       }
 
     } catch (error) {
-      return [`Error finding symbol usages: ${error instanceof Error ? error.message : String(error)}`];
+      return toolError(`Error finding symbol usages: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

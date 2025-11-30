@@ -313,9 +313,8 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             const results = await toolExecutor.executeTools(toolCalls);
 
             expect(results).toHaveLength(1);
-            expect(results[0].success).toBe(true);
-            expect(results[0].result).toContain("Error getting symbols overview");
-            expect(results[0].result).toContain("Path 'nonexistent/file.ts' not found");
+            expect(results[0].success).toBe(false);
+            expect(results[0].error).toContain("Path 'nonexistent/file.ts' not found");
         });
 
         it('should handle invalid tool arguments', async () => {
@@ -363,7 +362,8 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
 
             // Should complete in reasonable time (less than 1 second for this test)
             expect(duration).toBeLessThan(1000);
-            expect(result).toContain('TestClass (class)'); // Should have results
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('TestClass (class)'); // Should have results
         });
     });
 

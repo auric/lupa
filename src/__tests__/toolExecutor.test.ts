@@ -5,6 +5,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max tool calls limit
@@ -31,8 +32,8 @@ class MockSuccessTool implements ITool {
     };
   }
 
-  async execute(args: any) {
-    return `Success: ${args.message}`;
+  async execute(args: any): Promise<ToolResult<string>> {
+    return toolSuccess(`Success: ${args.message}`);
   }
 }
 
@@ -49,7 +50,7 @@ class MockErrorTool implements ITool {
     };
   }
 
-  async execute(args: any) {
+  async execute(args: any): Promise<ToolResult<string>> {
     throw new Error('Simulated tool error');
   }
 }
@@ -67,9 +68,9 @@ class MockDelayTool implements ITool {
     };
   }
 
-  async execute(args: any) {
+  async execute(args: any): Promise<ToolResult<string>> {
     await new Promise(resolve => setTimeout(resolve, args.delay));
-    return `Delayed by ${args.delay}ms`;
+    return toolSuccess(`Delayed by ${args.delay}ms`);
   }
 }
 
@@ -250,20 +251,21 @@ describe('ToolExecutor', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle tool returning null/undefined', async () => {
-      // Mock a tool that returns undefined
-      const nullTool: ITool = {
-        name: 'null_tool',
-        description: 'Returns null',
+    it('should handle tool returning toolError result', async () => {
+      // Mock a tool that returns an error result (not throwing)
+      const errorResultTool: ITool = {
+        name: 'error_result_tool',
+        description: 'Returns error result',
         schema: z.object({}),
-        getVSCodeTool: () => ({ name: 'null_tool', description: 'test', inputSchema: {} }),
-        execute: async () => undefined
+        getVSCodeTool: () => ({ name: 'error_result_tool', description: 'test', inputSchema: {} }),
+        execute: async (): Promise<ToolResult<string>> => toolError('Something went wrong')
       };
 
-      toolRegistry.registerTool(nullTool);
+      toolRegistry.registerTool(errorResultTool);
 
-      const result = await toolExecutor.executeTool('null_tool', {});
-      expect(result.success).toBe(true);
+      const result = await toolExecutor.executeTool('error_result_tool', {});
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Something went wrong');
       expect(result.result).toBeUndefined();
     });
 
@@ -273,7 +275,7 @@ describe('ToolExecutor', () => {
         description: 'Throws non-Error',
         schema: z.object({}),
         getVSCodeTool: () => ({ name: 'weird_error_tool', description: 'test', inputSchema: {} }),
-        execute: async () => { throw 'string error'; }
+        execute: async (): Promise<ToolResult<string>> => { throw 'string error'; }
       };
 
       toolRegistry.registerTool(weirdErrorTool);

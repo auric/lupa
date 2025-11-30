@@ -119,8 +119,8 @@ describe('ListDirTool', () => {
                     recursive: false
                 });
 
-                expect(result).toHaveLength(1);
-                expect(result[0]).toContain('Invalid path: Directory traversal detected');
+                expect(result.success).toBe(false);
+                expect(result.error).toContain('Invalid path: Directory traversal detected');
             }
         });
 
@@ -138,8 +138,8 @@ describe('ListDirTool', () => {
                     recursive: false
                 });
 
-                expect(result).toHaveLength(1);
-                expect(result[0]).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
+                expect(result.success).toBe(false);
+                expect(result.error).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
             }
         });
 
@@ -159,8 +159,8 @@ describe('ListDirTool', () => {
                     recursive: false
                 });
 
-                expect(result).toHaveLength(1);
-                expect(result[0]).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
+                expect(result.success).toBe(false);
+                expect(result.error).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
             }
         });
 
@@ -181,8 +181,8 @@ describe('ListDirTool', () => {
                     recursive: false
                 });
 
-                expect(result).toHaveLength(1);
-                expect(result[0]).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
+                expect(result.success).toBe(false);
+                expect(result.error).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
             }
         });
 
@@ -204,8 +204,9 @@ describe('ListDirTool', () => {
                     recursive: false
                 });
 
-                // Should not return error message
-                expect(result).toEqual([]);
+                // Should return success with empty directory message
+                expect(result.success).toBe(true);
+                expect(result.data).toBe('(empty directory)');
             }
         });
 
@@ -218,8 +219,9 @@ describe('ListDirTool', () => {
                 recursive: false
             });
 
-            // Should not return error (path gets normalized to src/utils)
-            expect(result).toEqual([]);
+            // Should return success (path gets normalized to src/utils)
+            expect(result.success).toBe(true);
+            expect(result.data).toBe('(empty directory)');
         });
     });
 
@@ -240,12 +242,8 @@ describe('ListDirTool', () => {
             });
 
             // Should return directories first (with /), then files, all sorted
-            expect(result).toEqual([
-                'src/subdir/',
-                'src/README.md',
-                'src/file1.ts',
-                'src/file2.js'
-            ]);
+            expect(result.success).toBe(true);
+            expect(result.data).toBe('src/subdir/\nsrc/README.md\nsrc/file1.ts\nsrc/file2.js');
         });
 
         it('should handle recursive listing', async () => {
@@ -270,13 +268,12 @@ describe('ListDirTool', () => {
                 recursive: true
             });
 
-            expect(result).toEqual([
-                'src/subdir/',
-                'src/subdir/nested/',
-                'src/file1.ts',
-                'src/subdir/nested/deep.json',
-                'src/subdir/subfile.js'
-            ]);
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('src/subdir/');
+            expect(result.data).toContain('src/subdir/nested/');
+            expect(result.data).toContain('src/file1.ts');
+            expect(result.data).toContain('src/subdir/nested/deep.json');
+            expect(result.data).toContain('src/subdir/subfile.js');
         });
 
         it('should handle root directory listing', async () => {
@@ -292,10 +289,8 @@ describe('ListDirTool', () => {
                 recursive: false
             });
 
-            expect(result).toEqual([
-                'src/',
-                'package.json'
-            ]);
+            expect(result.success).toBe(true);
+            expect(result.data).toBe('src/\npackage.json');
         });
     });
 
@@ -308,9 +303,9 @@ describe('ListDirTool', () => {
                 recursive: false
             });
 
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain('Error listing directory');
-            expect(result[0]).toContain('Permission denied');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Error listing directory');
+            expect(result.error).toContain('Permission denied');
         });
 
         it('should handle missing git repository', async () => {
@@ -322,8 +317,8 @@ describe('ListDirTool', () => {
                 recursive: false
             });
 
-            expect(result).toHaveLength(1);
-            expect(result[0]).toContain('Error listing directory');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Error listing directory');
         });
 
         it('should handle subdirectory read errors in recursive mode', async () => {
@@ -345,9 +340,10 @@ describe('ListDirTool', () => {
             });
 
             // Should continue processing and include accessible directories
-            expect(result).toContain('gooddir/');
-            expect(result).toContain('gooddir/subfile.js');
-            expect(result).toContain('file1.ts');
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('gooddir/');
+            expect(result.data).toContain('gooddir/subfile.js');
+            expect(result.data).toContain('file1.ts');
         });
     });
 });

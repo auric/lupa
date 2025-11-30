@@ -7,6 +7,7 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { CodeFileUtils } from '../utils/codeFileUtils';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
  * Enhanced tool that provides a configurable overview of symbols in a file or directory.
@@ -38,11 +39,10 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<string> {
-    // Validate arguments against schema - let validation errors bubble up
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
     const validationResult = this.schema.safeParse(args);
     if (!validationResult.success) {
-      throw new Error(validationResult.error.issues.map(e => e.message).join(', '));
+      return toolError(validationResult.error.issues.map(e => e.message).join(', '));
     }
 
     try {
@@ -63,20 +63,31 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
       // Sanitize the relative path to prevent directory traversal attacks
       const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
 
+      const effectiveMaxSymbols = maxSymbols || 100;
+
       // Get symbols overview using enhanced utilities
-      const result = await this.getEnhancedSymbolsOverview(sanitizedPath, {
+      const { content, symbolCount, truncated } = await this.getEnhancedSymbolsOverview(sanitizedPath, {
         maxDepth: maxDepth || 0,
         showHierarchy: showHierarchy ?? true,
         includeBody: includeBody || false,
-        maxSymbols: maxSymbols || 100,
+        maxSymbols: effectiveMaxSymbols,
         includeKinds,
         excludeKinds
       });
 
-      return result;
+      if (symbolCount === 0) {
+        return toolError(`No symbols found in '${sanitizedPath}'`);
+      }
+
+      let result = content;
+      if (truncated) {
+        result += `\n\n[Output limited to ${effectiveMaxSymbols} symbols. Use more specific path or filters to see more.]`;
+      }
+
+      return toolSuccess(result);
 
     } catch (error) {
-      return `Error getting symbols overview: ${error instanceof Error ? error.message : String(error)}`;
+      return toolError(`Failed to get symbols overview: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -84,7 +95,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
    * Get enhanced symbols overview for the specified path using new utilities
    */
   private async getEnhancedSymbolsOverview(
-    relativePath: string, 
+    relativePath: string,
     options: {
       maxDepth: number;
       showHierarchy: boolean;
@@ -93,81 +104,91 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
       includeKinds?: number[];
       excludeKinds?: number[];
     }
-  ): Promise<string> {
-    try {
-      const gitRootDirectory = this.symbolExtractor.getGitRootPath();
-      if (!gitRootDirectory) {
-        throw new Error('Git repository not found');
+  ): Promise<{ content: string; symbolCount: number; truncated: boolean }> {
+    const gitRootDirectory = this.symbolExtractor.getGitRootPath();
+    if (!gitRootDirectory) {
+      throw new Error('Git repository not found');
+    }
+
+    const targetPath = path.join(gitRootDirectory, relativePath);
+    const stat = await this.symbolExtractor.getPathStat(targetPath);
+
+    if (!stat) {
+      throw new Error(`Path '${relativePath}' not found`);
+    }
+
+    const allResults: string[] = [];
+    let totalSymbolCount = 0;
+    let anyTruncated = false;
+
+    if (stat.type === vscode.FileType.File) {
+      // Single file - get its symbols with enhanced formatting
+      const fileUri = vscode.Uri.file(targetPath);
+      const { symbols, document } = await this.symbolExtractor.extractSymbolsWithContext(fileUri);
+
+      if (symbols.length > 0 && 'children' in symbols[0]) {
+        const result = SymbolFormatter.formatSymbolsWithHierarchy(
+          symbols as vscode.DocumentSymbol[],
+          document,
+          options
+        );
+
+        if (result.formatted) {
+          allResults.push(`${relativePath}:`);
+          allResults.push(result.formatted);
+          totalSymbolCount += result.symbolCount;
+          anyTruncated = anyTruncated || result.truncated;
+        }
       }
+    } else if (stat.type === vscode.FileType.Directory) {
+      // Directory - get symbols from all files using SymbolExtractor
+      const directoryResults = await this.symbolExtractor.getDirectorySymbols(targetPath, relativePath);
 
-      const targetPath = path.join(gitRootDirectory, relativePath);
-      const stat = await this.symbolExtractor.getPathStat(targetPath);
-      
-      if (!stat) {
-        throw new Error(`Path '${relativePath}' not found`);
-      }
+      // Sort results by file path for consistent output
+      const sortedResults = directoryResults.sort((a, b) => a.filePath.localeCompare(b.filePath));
 
-      const allResults: string[] = [];
+      for (const { filePath, symbols } of sortedResults) {
+        if (symbols.length === 0) continue;
+        if (totalSymbolCount >= options.maxSymbols) {
+          anyTruncated = true;
+          break;
+        }
 
-      if (stat.type === vscode.FileType.File) {
-        // Single file - get its symbols with enhanced formatting
-        const fileUri = vscode.Uri.file(targetPath);
-        const { symbols, document } = await this.symbolExtractor.extractSymbolsWithContext(fileUri);
-        
+        // Get document for body extraction if needed
+        const fullPath = path.join(gitRootDirectory, filePath);
+        const fileUri = vscode.Uri.file(fullPath);
+        const document = options.includeBody ? await this.symbolExtractor.getTextDocument(fileUri) : undefined;
+
+        // Only process DocumentSymbols for hierarchy (SymbolInformation doesn't have hierarchy)
         if (symbols.length > 0 && 'children' in symbols[0]) {
-          const formattedOutput = SymbolFormatter.formatSymbolsWithHierarchy(
+          const remainingSymbols = options.maxSymbols - totalSymbolCount;
+          const result = SymbolFormatter.formatSymbolsWithHierarchy(
             symbols as vscode.DocumentSymbol[],
             document,
-            options
+            { ...options, maxSymbols: remainingSymbols }
           );
-          
-          if (formattedOutput) {
-            allResults.push(`${relativePath}:`);
-            allResults.push(formattedOutput);
+
+          if (result.formatted) {
+            allResults.push(`${filePath}:`);
+            allResults.push(result.formatted);
+            allResults.push('');
+            totalSymbolCount += result.symbolCount;
+            anyTruncated = anyTruncated || result.truncated;
           }
-        }
-      } else if (stat.type === vscode.FileType.Directory) {
-        // Directory - get symbols from all files using SymbolExtractor
-        const directoryResults = await this.symbolExtractor.getDirectorySymbols(targetPath, relativePath);
-        
-        // Sort results by file path for consistent output
-        const sortedResults = directoryResults.sort((a, b) => a.filePath.localeCompare(b.filePath));
-        
-        for (const { filePath, symbols } of sortedResults) {
-          if (symbols.length === 0) continue;
-          
-          // Get document for body extraction if needed
-          const fullPath = path.join(gitRootDirectory, filePath);
-          const fileUri = vscode.Uri.file(fullPath);
-          const document = options.includeBody ? await this.symbolExtractor.getTextDocument(fileUri) : undefined;
-          
-          // Only process DocumentSymbols for hierarchy (SymbolInformation doesn't have hierarchy)
-          if (symbols.length > 0 && 'children' in symbols[0]) {
-            const formattedOutput = SymbolFormatter.formatSymbolsWithHierarchy(
-              symbols as vscode.DocumentSymbol[],
-              document,
-              options
-            );
-            
-            if (formattedOutput) {
-              allResults.push(`${filePath}:`);
-              allResults.push(formattedOutput);
-              allResults.push(''); // Empty line between files
-            }
-          }
-        }
-        
-        // Remove trailing empty line
-        if (allResults.length > 0 && allResults[allResults.length - 1] === '') {
-          allResults.pop();
         }
       }
 
-      return allResults.length > 0 ? allResults.join('\n') : 'No symbols found';
-
-    } catch (error) {
-      throw new Error(`Failed to get symbols overview for '${relativePath}': ${error instanceof Error ? error.message : String(error)}`);
+      // Remove trailing empty line
+      if (allResults.length > 0 && allResults[allResults.length - 1] === '') {
+        allResults.pop();
+      }
     }
+
+    return {
+      content: allResults.join('\n'),
+      symbolCount: totalSymbolCount,
+      truncated: anyTruncated
+    };
   }
 
 }

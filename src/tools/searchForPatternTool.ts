@@ -5,14 +5,11 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
 import { CodeFileDetector } from '../utils/codeFileDetector';
 import { Repository } from '../types/vscodeGitExtension';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
-interface SearchForPatternResult {
-  matches: Array<{ file_path: string; content: string }>;
-  message?: string;
-}
-
-interface SearchForPatternError {
-  error: string;
+interface SearchMatch {
+  file_path: string;
+  content: string;
 }
 
 /**
@@ -71,12 +68,10 @@ Files can be restricted very flexibly. Use only_code_files=true for code symbols
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<SearchForPatternResult | SearchForPatternError> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
     const validationResult = this.schema.safeParse(args);
     if (!validationResult.success) {
-      return {
-        error: `Invalid parameters: ${validationResult.error.issues.map(e => e.message).join(', ')}`
-      };
+      return toolError(`Invalid parameters: ${validationResult.error.issues.map(e => e.message).join(', ')}`);
     }
 
     try {
@@ -93,7 +88,7 @@ Files can be restricted very flexibly. Use only_code_files=true for code symbols
 
       const gitRepo = this.gitOperationsManager.getRepository();
       if (!gitRepo) {
-        return { error: 'Git repository not found' };
+        return toolError('Git repository not found');
       }
 
       // Step 1: Discover files to search
@@ -102,7 +97,7 @@ Files can be restricted very flexibly. Use only_code_files=true for code symbols
         includePattern: include_files || undefined,
         excludePattern: exclude_files || undefined,
         respectGitignore: true,
-        maxResults: 1000, // Prevent excessive processing
+        maxResults: 1000,
         timeoutMs: 30000
       });
 
@@ -114,10 +109,7 @@ Files can be restricted very flexibly. Use only_code_files=true for code symbols
       }
 
       if (filesToSearch.length === 0) {
-        return {
-          matches: [],
-          message: 'No files found matching the specified criteria'
-        };
+        return toolError('No files found matching the specified criteria');
       }
 
       // Step 3: Search for pattern in discovered files
@@ -130,19 +122,35 @@ Files can be restricted very flexibly. Use only_code_files=true for code symbols
         caseSensitive: case_sensitive
       });
 
-      // Step 4: Format and return results
-      return {
-        matches: matches,
-        ...(fileDiscoveryResult.truncated && {
-          message: `Search was limited to first ${fileDiscoveryResult.files.length} files. Consider using more specific filters.`
-        })
-      };
+      if (matches.length === 0) {
+        return toolError(`No matches found for pattern '${pattern}'`);
+      }
+
+      // Step 4: Format results as string
+      let result = this.formatMatchesAsString(matches);
+
+      if (fileDiscoveryResult.truncated) {
+        result += `\n\n[Search was limited to first ${fileDiscoveryResult.files.length} files. Consider using more specific filters.]`;
+      }
+
+      return toolSuccess(result);
 
     } catch (error) {
-      return {
-        error: `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
-      };
+      return toolError(`Pattern search failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Format matches as a readable string
+   */
+  private formatMatchesAsString(matches: SearchMatch[]): string {
+    const lines: string[] = [];
+    for (const match of matches) {
+      lines.push(`=== ${match.file_path} ===`);
+      lines.push(match.content);
+      lines.push('');
+    }
+    return lines.join('\n').trim();
   }
 
   /**
