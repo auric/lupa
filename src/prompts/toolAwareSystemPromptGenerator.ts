@@ -150,6 +150,14 @@ Use these tools to improve your analysis quality and prevent common mistakes:
 3. Prepare review → call think_about_completion → verify completeness
 </self_reflection_workflow>
 
+**Parallel Tool Execution:**
+You can call **multiple tools simultaneously** in a single response when the calls are independent. This is more efficient than sequential calls. For example:
+- Call \`find_symbol\` for multiple different symbols at once
+- Call \`get_symbols_overview\` for several files simultaneously
+- Call \`find_usages\` for different functions in parallel
+
+When analyzing a diff, identify all the symbols you need to understand and request them together rather than one at a time.
+
 **Analysis Strategy:**
 1. **Start Broad**: Use \`get_symbols_overview\` to understand the context
 2. **Go Deep**: Use \`find_symbol\` for detailed understanding of changed code
