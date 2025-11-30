@@ -29,7 +29,7 @@ export class ReadFileTool extends BaseTool {
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
     try {
       const { file_path, start_line, line_count } = args;
 

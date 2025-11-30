@@ -1,12 +1,13 @@
 /**
  * Standard result interface for all tool executions.
  * Provides consistent success/failure reporting across all tools.
+ * Data is always string since LLM tool responses are text-based.
  */
-export interface ToolResult<T = unknown> {
+export interface ToolResult {
     /** Whether the tool execution achieved its intended goal */
     success: boolean;
     /** The result data when successful */
-    data?: T;
+    data?: string;
     /** Error message when success is false */
     error?: string;
 }
@@ -24,13 +25,13 @@ export function isToolResult(value: unknown): value is ToolResult {
 /**
  * Helper to create a successful ToolResult
  */
-export function toolSuccess<T>(data: T): ToolResult<T> {
+export function toolSuccess(data: string): ToolResult {
     return { success: true, data };
 }
 
 /**
  * Helper to create a failed ToolResult
  */
-export function toolError(error: string): ToolResult<never> {
+export function toolError(error: string): ToolResult {
     return { success: false, error };
 }

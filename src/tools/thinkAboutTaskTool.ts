@@ -15,7 +15,7 @@ export class ThinkAboutTaskTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<ToolResult<string>> {
+    async execute(): Promise<ToolResult> {
         return toolSuccess(`<task_alignment>
 <section name="scope">
 Verify your focus:

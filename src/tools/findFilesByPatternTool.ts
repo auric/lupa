@@ -30,7 +30,7 @@ export class FindFilesByPatternTool extends BaseTool {
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
     try {
       const { pattern, search_directory: searchPath } = args;
 

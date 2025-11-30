@@ -32,7 +32,7 @@ class MockSuccessTool implements ITool {
     };
   }
 
-  async execute(args: any): Promise<ToolResult<string>> {
+  async execute(args: any): Promise<ToolResult> {
     return toolSuccess(`Success: ${args.message}`);
   }
 }
@@ -50,7 +50,7 @@ class MockErrorTool implements ITool {
     };
   }
 
-  async execute(args: any): Promise<ToolResult<string>> {
+  async execute(args: any): Promise<ToolResult> {
     throw new Error('Simulated tool error');
   }
 }
@@ -68,7 +68,7 @@ class MockDelayTool implements ITool {
     };
   }
 
-  async execute(args: any): Promise<ToolResult<string>> {
+  async execute(args: any): Promise<ToolResult> {
     await new Promise(resolve => setTimeout(resolve, args.delay));
     return toolSuccess(`Delayed by ${args.delay}ms`);
   }
@@ -258,7 +258,7 @@ describe('ToolExecutor', () => {
         description: 'Returns error result',
         schema: z.object({}),
         getVSCodeTool: () => ({ name: 'error_result_tool', description: 'test', inputSchema: {} }),
-        execute: async (): Promise<ToolResult<string>> => toolError('Something went wrong')
+        execute: async (): Promise<ToolResult> => toolError('Something went wrong')
       };
 
       toolRegistry.registerTool(errorResultTool);
@@ -275,7 +275,7 @@ describe('ToolExecutor', () => {
         description: 'Throws non-Error',
         schema: z.object({}),
         getVSCodeTool: () => ({ name: 'weird_error_tool', description: 'test', inputSchema: {} }),
-        execute: async (): Promise<ToolResult<string>> => { throw 'string error'; }
+        execute: async (): Promise<ToolResult> => { throw 'string error'; }
       };
 
       toolRegistry.registerTool(weirdErrorTool);

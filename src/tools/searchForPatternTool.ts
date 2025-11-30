@@ -68,7 +68,7 @@ Files can be restricted very flexibly. Use only_code_files=true for code symbols
     super();
   }
 
-  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
     const validationResult = this.schema.safeParse(args);
     if (!validationResult.success) {
       return toolError(`Invalid parameters: ${validationResult.error.issues.map(e => e.message).join(', ')}`);

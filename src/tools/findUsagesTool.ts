@@ -25,7 +25,7 @@ export class FindUsagesTool extends BaseTool {
       .describe('Number of context lines to include around each usage (0-10, default: 2)'),
   });
 
-  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
     try {
       const { symbol_name, file_path, should_include_declaration, context_line_count } = args;
 

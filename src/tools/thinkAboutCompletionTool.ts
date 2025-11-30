@@ -15,7 +15,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<ToolResult<string>> {
+    async execute(): Promise<ToolResult> {
         return toolSuccess(`<completion_verification>
 <section name="coverage">
 Verify all files reviewed:

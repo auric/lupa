@@ -15,7 +15,7 @@ export class ThinkAboutContextTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<ToolResult<string>> {
+    async execute(): Promise<ToolResult> {
         return toolSuccess(`<context_reflection>
 <section name="sufficiency">
 Ask yourself:

@@ -3,7 +3,7 @@ import { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ToolResult, isToolResult } from '../types/toolResultTypes';
+import { ToolResult } from '../types/toolResultTypes';
 
 /**
  * Interface for tool execution requests
@@ -70,12 +70,9 @@ export class ToolExecutor {
 
       const toolResult = await tool.execute(args);
 
-      // Unwrap ToolResult to ToolExecutionResult
-      const { success, data, error } = this.unwrapToolResult(toolResult);
-
       // Validate response size only for successful results with data
-      if (success && data) {
-        const validationResult = this.validateResponseSize(data, name);
+      if (toolResult.success && toolResult.data) {
+        const validationResult = this.validateResponseSize(toolResult.data, name);
         if (!validationResult.isValid) {
           return {
             name,
@@ -87,9 +84,9 @@ export class ToolExecutor {
 
       return {
         name,
-        success,
-        result: data,
-        error
+        success: toolResult.success,
+        result: toolResult.data,
+        error: toolResult.error
       };
     } catch (error) {
       return {
@@ -98,38 +95,6 @@ export class ToolExecutor {
         error: error instanceof Error ? error.message : String(error)
       };
     }
-  }
-
-  /**
-   * Unwrap a ToolResult into its components.
-   * Handles both new ToolResult objects and legacy return values for backward compatibility.
-   */
-  private unwrapToolResult(result: ToolResult<string> | any): { success: boolean; data?: string; error?: string } {
-    if (isToolResult(result)) {
-      return {
-        success: result.success,
-        data: result.data as string | undefined,
-        error: result.error
-      };
-    }
-
-    // Legacy fallback: treat any non-ToolResult as success with stringified data
-    // This shouldn't happen after full migration, but provides safety during transition
-    let stringResult: string;
-    if (Array.isArray(result)) {
-      stringResult = result.join('\n');
-    } else if (typeof result === 'string') {
-      stringResult = result;
-    } else if (result && typeof result === 'object') {
-      stringResult = JSON.stringify(result, null, 2);
-    } else {
-      stringResult = String(result);
-    }
-
-    return {
-      success: true,
-      data: stringResult
-    };
   }
 
   /**

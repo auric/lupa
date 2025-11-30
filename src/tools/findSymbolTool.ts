@@ -73,7 +73,7 @@ The tool supports filtering by symbol kinds and can be restricted to specific fi
     )
   });
 
-  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult<string>> {
+  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
     const validationResult = this.schema.safeParse(args);
     if (!validationResult.success) {
       return toolError(validationResult.error.issues.map(e => e.message).join(', '));
