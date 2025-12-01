@@ -71,6 +71,9 @@ You have access to powerful tools that help you understand the codebase deeply. 
         // Add strategic usage guidance
         toolSection += `\n\n### Strategic Tool Usage\n\n${this.generateToolUsageStrategies()}`;
 
+        // Add tool constraints/limits
+        toolSection += `\n\n### Tool Constraints\n\n${this.generateToolConstraints()}`;
+
         return toolSection;
     }
 
@@ -169,6 +172,37 @@ When analyzing a diff, identify all the symbols you need to understand and reque
 8. **Final Check**: Use \`think_about_completion\` before submitting your review
 
 **Proactive Approach**: Don't wait to be asked - if you see something unfamiliar or potentially concerning, use tools immediately to investigate. Use self-reflection tools to ensure quality.`;
+    }
+
+    /**
+     * Generate tool constraints and limits guidance
+     */
+    private generateToolConstraints(): string {
+        return `**read_file Limits:**
+- Maximum 200 lines per call
+- For larger files, use pagination with \`start_line\` parameter
+- Specify exact ranges with \`start_line\` + \`end_line\` or \`start_line\` + \`line_count\`
+- If you need lines 1-400: call with start_line=1, end_line=200, then start_line=201, end_line=400
+- Prefer \`find_symbol\` for code - it extracts complete function/class bodies regardless of length
+
+**Response Size Limits:**
+- Tool responses are limited to ~20,000 characters
+- If a response is truncated, it will indicate where to continue
+- Use more specific parameters to get focused results
+
+**Context Window Awareness:**
+- Tool responses include context usage status when above 50%
+- Format: \`[Context: X% used. Y tokens remaining]\`
+- At 80%+, you'll see a warning to wrap up soon
+- When you see high context usage, prioritize essential information and prepare your final analysis
+- Old tool results may be automatically removed when context fills up
+
+**Efficient Context Gathering:**
+1. Use \`get_symbols_overview\` first to understand file structure
+2. Use \`find_symbol\` for code - gets complete definitions without line limits
+3. Reserve \`read_file\` for non-code files (configs, markdown, data files)
+4. For large files, read in chunks using start_line pagination
+5. Monitor context usage and wrap up before hitting limits`;
     }
 
     /**

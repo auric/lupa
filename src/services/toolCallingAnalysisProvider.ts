@@ -264,16 +264,18 @@ export class ToolCallingAnalysisProvider {
       const toolCallId = toolCall.id || `tool_call_${i}`;
       const request = toolRequests[i];
 
-      // result.result is now always a string (or undefined for failures)
-      const content = result.success && result.result
+      const baseContent = result.success && result.result
         ? result.result
         : `Error: ${result.error || 'Unknown error'}`;
+
+      const contextStatus = await this.getContextStatusSuffix();
+      const content = baseContent + contextStatus;
 
       this.toolCallRecords.push({
         id: toolCallId,
         toolName: result.name,
         arguments: request.args as Record<string, unknown>,
-        result: content,
+        result: baseContent,
         success: result.success,
         error: result.error,
         durationMs: avgDuration,
@@ -281,6 +283,42 @@ export class ToolCallingAnalysisProvider {
       });
 
       this.conversationManager.addToolMessage(toolCallId, content);
+    }
+  }
+
+  /**
+   * Get context usage status as a suffix to append to tool responses.
+   * Helps the LLM understand how much context it has remaining.
+   */
+  private async getContextStatusSuffix(): Promise<string> {
+    if (!this.tokenValidator) {
+      return '';
+    }
+
+    try {
+      const systemPrompt = this.promptGenerator.generateToolAwareSystemPrompt(
+        this.toolExecutor.getAvailableTools()
+      );
+      const messages = this.conversationManager.getHistory().map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        toolCalls: msg.toolCalls,
+        toolCallId: msg.toolCallId
+      }));
+
+      const validation = await this.tokenValidator.validateTokens(messages, systemPrompt);
+      const usagePercent = Math.round((validation.totalTokens / validation.maxTokens) * 100);
+      const remainingTokens = validation.maxTokens - validation.totalTokens;
+
+      if (usagePercent >= 80) {
+        return `\n\n⚠️ [Context: ${usagePercent}% used (${validation.totalTokens}/${validation.maxTokens} tokens). ${remainingTokens} remaining - consider wrapping up soon]`;
+      } else if (usagePercent >= 50) {
+        return `\n\n[Context: ${usagePercent}% used. ${remainingTokens} tokens remaining]`;
+      }
+      return '';
+    } catch (error) {
+      Log.error('Error calculating context status:', error);
+      return '';
     }
   }
 
