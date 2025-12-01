@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { parseDiff } from 'react-diff-view';
+import React, { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useTheme } from './hooks/useTheme';
 import { useCopyToClipboard } from './hooks/useCopyToClipboard';
@@ -41,22 +40,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
-
-    // Parse diff using react-diff-view
-    const diffFiles = useMemo(() => {
-        if (!diffText) return [];
-
-        console.time('Diff parsing');
-        try {
-            const files = parseDiff(diffText);
-            console.timeEnd('Diff parsing');
-            return files;
-        } catch (error) {
-            console.error('Error parsing diff:', error);
-            console.timeEnd('Diff parsing');
-            return [];
-        }
-    }, [diffText]);
 
     const viewType = windowWidth > 1024 ? 'split' : 'unified';
 
@@ -101,7 +84,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
                 </TabsContent>
 
                 <TabsContent value="changes" className="vscode-tab-content flex-1 min-h-0 overflow-auto bg-background">
-                    <DiffTab diffFiles={diffFiles} viewType={viewType} />
+                    <DiffTab diffText={diffText} viewType={viewType} />
                 </TabsContent>
             </Tabs>
         </div>

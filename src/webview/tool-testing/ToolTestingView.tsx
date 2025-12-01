@@ -7,12 +7,11 @@ import { useTheme } from '../hooks/useTheme';
 import { useToolExecution } from '../hooks/useToolExecution';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { ScrollArea } from '../../components/ui/scroll-area';
 import type {
   ToolTestingViewProps,
   ToolInfo
 } from '../types/toolTestingTypes';
-import './styles/styles.css';
+import './styles/toolTesting.css';
 
 const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   initialTool,

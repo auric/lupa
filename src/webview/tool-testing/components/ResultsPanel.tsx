@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CopyButton } from '../../components/CopyButton';
-import { JsonViewer } from './JsonViewer';
+import { JsonViewer } from '../../components/JsonViewer';
 import { LiveTimer } from './LiveTimer';
 import { StatusIndicator } from './StatusIndicator';
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';

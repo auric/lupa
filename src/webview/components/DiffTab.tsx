@@ -1,14 +1,29 @@
 import React, { memo, useMemo } from 'react';
-import { Diff, Hunk, tokenize, markEdits } from 'react-diff-view';
+import { Diff, Hunk, tokenize, markEdits, parseDiff } from 'react-diff-view';
 import 'react-diff-view/style/index.css';
 
 interface DiffTabProps {
-    diffFiles: any[];
+    diffText: string;
     viewType: 'split' | 'unified';
 }
 
-export const DiffTab = memo<DiffTabProps>(({ diffFiles, viewType }) => {
+export const DiffTab = memo<DiffTabProps>(({ diffText, viewType }) => {
     console.time('Diff tab render');
+
+    const diffFiles = useMemo(() => {
+        if (!diffText) return [];
+
+        console.time('Diff parsing');
+        try {
+            const files = parseDiff(diffText);
+            console.timeEnd('Diff parsing');
+            return files;
+        } catch (error) {
+            console.error('Error parsing diff:', error);
+            console.timeEnd('Diff parsing');
+            return [];
+        }
+    }, [diffText]);
 
     if (diffFiles.length === 0) {
         return <div className="text-center text-muted-foreground p-8">No changes to display</div>;

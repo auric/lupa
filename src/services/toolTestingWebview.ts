@@ -17,7 +17,7 @@ export class ToolTestingWebviewService {
         private readonly gitRepositoryRoot: string,
         private readonly toolRegistry: ToolRegistry,
         private readonly toolExecutor: ToolExecutor
-    ) {}
+    ) { }
 
     /**
      * Open tool testing interface in a webview
@@ -188,7 +188,7 @@ export class ToolTestingWebviewService {
         try {
             // Get real tools from ToolRegistry
             const tools = this.toolRegistry.getAllTools();
-            
+
             const toolInfos: ToolInfo[] = tools.map(tool => ({
                 name: tool.name,
                 description: tool.description,

@@ -75,13 +75,18 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         fileName: (_format, entryName) => `${entryName}.js`,
     };
 
+    // Webview entry points - exclude toolTesting from production builds
+    const webviewInputs: Record<string, string> = isProduction
+        ? { main: resolve(__dirname, 'src/webview/main.tsx') }
+        : {
+            main: resolve(__dirname, 'src/webview/main.tsx'),
+            toolTesting: resolve(__dirname, 'src/webview/tool-testing/toolTesting.tsx')
+        };
+
     // Webview app configuration (browser-like)
     const webviewBuildConfig: BuildOptions = {
         rollupOptions: {
-            input: {
-                main: resolve(__dirname, 'src/webview/main.tsx'),
-                toolTesting: resolve(__dirname, 'src/webview/tool-testing/index.tsx')
-            },
+            input: webviewInputs,
             output: {
                 inlineDynamicImports: false,
                 entryFileNames: 'webview/[name].js',

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import './styles/styles.css';
+import './styles/toolTesting.css';
 import ToolTestingView from './ToolTestingView';
 
 // Extend Window interface for our webview data
@@ -43,12 +43,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const root = createRoot(container);
-  
+
   try {
     root.render(<ToolTestingApp />);
   } catch (error) {
     console.error('Failed to render tool testing interface:', error);
-    
+
     // Fallback error display
     container.innerHTML = `
       <div style="
