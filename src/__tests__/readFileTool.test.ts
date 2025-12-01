@@ -67,16 +67,26 @@ describe('ReadFileTool', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should validate line count is within limits', () => {
+    it('should reject both end_line and line_count specified together', () => {
       const result = readFileTool.schema.safeParse({
         file_path: 'test.ts',
         start_line: 1,
-        line_count: TokenConstants.MAX_FILE_READ_LINES + 1
+        end_line: 100,
+        line_count: 50
       });
       expect(result.success).toBe(false);
     });
 
-    it('should accept valid parameters', () => {
+    it('should accept valid parameters with end_line', () => {
+      const result = readFileTool.schema.safeParse({
+        file_path: 'src/test.ts',
+        start_line: 10,
+        end_line: 50
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept valid parameters with line_count', () => {
       const result = readFileTool.schema.safeParse({
         file_path: 'src/test.ts',
         start_line: 10,
@@ -119,7 +129,7 @@ describe('ReadFileTool', () => {
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toContain('=== test.ts ===');
+      expect(result.data).toContain('=== test.ts (lines 1-3 of 3) ===');
       expect(result.data).toContain('1: line 1');
       expect(result.data).toContain('2: line 2');
       expect(result.data).toContain('3: line 3');
@@ -142,6 +152,39 @@ describe('ReadFileTool', () => {
       expect(result.data).not.toContain('4: line 4');
     });
 
+    it('should read partial file with startLine and endLine', async () => {
+      const fileContent = 'line 1\nline 2\nline 3\nline 4\nline 5';
+      mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
+
+      const result = await readFileTool.execute({
+        file_path: 'test.ts',
+        start_line: 2,
+        end_line: 4
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data).toContain('(lines 2-4 of 5)');
+      expect(result.data).toContain('2: line 2');
+      expect(result.data).toContain('3: line 3');
+      expect(result.data).toContain('4: line 4');
+      expect(result.data).not.toContain('1: line 1');
+      expect(result.data).not.toContain('5: line 5');
+    });
+
+    it('should return error when end_line is less than start_line', async () => {
+      const fileContent = 'line 1\nline 2\nline 3';
+      mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
+
+      const result = await readFileTool.execute({
+        file_path: 'test.ts',
+        start_line: 3,
+        end_line: 1
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('end_line (1) must be >= start_line (3)');
+    });
+
     it('should handle startLine beyond file length', async () => {
       const fileContent = 'line 1\nline 2';
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
@@ -155,7 +198,7 @@ describe('ReadFileTool', () => {
       expect(result.error).toBe('Start line 10 exceeds file length (2 lines)');
     });
 
-    it('should limit line count to maximum allowed', async () => {
+    it('should return error when line_count exceeds maximum', async () => {
       const fileContent = Array.from({ length: 300 }, (_, i) => `line ${i + 1}`).join('\n');
       mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
 
@@ -165,9 +208,37 @@ describe('ReadFileTool', () => {
         line_count: 250
       });
 
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('exceeds maximum of 200');
+    });
+
+    it('should return error when end_line range exceeds maximum', async () => {
+      const fileContent = Array.from({ length: 400 }, (_, i) => `line ${i + 1}`).join('\n');
+      mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
+
+      const result = await readFileTool.execute({
+        file_path: 'test.ts',
+        start_line: 1,
+        end_line: 400
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('exceeds maximum of 200');
+      expect(result.error).toContain('Split into multiple calls');
+    });
+
+    it('should truncate with metadata when only start_line provided and file is large', async () => {
+      const fileContent = Array.from({ length: 300 }, (_, i) => `line ${i + 1}`).join('\n');
+      mockWorkspaceFs.readFile.mockResolvedValue(Buffer.from(fileContent));
+
+      const result = await readFileTool.execute({
+        file_path: 'test.ts',
+        start_line: 1
+      });
+
       expect(result.success).toBe(true);
-      const lines = result.data!.split('\n').filter((line: string) => line.match(/^\d+: /));
-      expect(lines.length).toBeLessThanOrEqual(TokenConstants.MAX_FILE_READ_LINES);
+      expect(result.data).toContain('(lines 1-200 of 300)');
+      expect(result.data).toContain('[Truncated: 100 more lines. Use start_line=201 to continue]');
     });
 
     it('should return error for files exceeding size limit', async () => {
@@ -177,8 +248,7 @@ describe('ReadFileTool', () => {
       const result = await readFileTool.execute({ file_path: 'large.ts' });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('File too large');
-      expect(result.error).toContain('Please use start_line and line_count parameters');
+      expect(result.error).toContain('too large');
     });
 
     it('should handle read errors gracefully', async () => {
@@ -218,7 +288,7 @@ describe('ReadFileTool', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data).toContain('=== test.ts ===');
+      expect(result.data).toContain('(lines 1-10 of 100)');
       expect(result.data).toContain('1: line 1 with some content');
       expect(result.data).toContain('10: line 10 with some content');
       expect(result.data).not.toContain('11: line 11');
@@ -245,7 +315,7 @@ describe('ReadFileTool', () => {
       const result = await readFileTool.execute({ file_path: 'empty.ts' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toContain('=== empty.ts ===');
+      expect(result.data).toContain('empty.ts');
     });
 
     it('should properly handle special characters in file content', async () => {
@@ -287,7 +357,7 @@ describe('ReadFileTool', () => {
       const result = await readFileTool.execute({ file_path: 'test.ts' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toContain('=== test.ts ===');
+      expect(result.data).toContain('=== test.ts (lines 1-3 of 3) ===');
       expect(result.data).toContain('1: function test() {');
       expect(result.data).toContain('2:   return "hello";');
       expect(result.data).toContain('3: }');

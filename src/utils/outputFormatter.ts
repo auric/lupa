@@ -15,6 +15,12 @@ export interface FileContentOptions {
     lines: string[];
     /** Starting line number (1-based) */
     startLine?: number;
+    /** Ending line number (1-based, inclusive) - for metadata display */
+    endLine?: number;
+    /** Total lines in the file - for metadata display */
+    totalLines?: number;
+    /** Whether content was truncated due to limits */
+    wasTruncated?: boolean;
 }
 
 export interface SymbolContentOptions {
@@ -41,19 +47,30 @@ export interface SymbolOverviewOptions {
 
 export class OutputFormatter {
     /**
-     * Format file content with standard header and line numbers.
+     * Format file content with standard header, line numbers, and optional metadata.
      * Used by: read_file tool
      *
      * Output format:
-     * === path/to/file.ts ===
+     * === path/to/file.ts (lines 1-50 of 200) ===
      * 1: line content
      * 2: line content
+     * ...
+     * [Truncated: use start_line=51 to continue reading]
      */
     static formatFileContent(options: FileContentOptions): string {
-        const { filePath, lines, startLine = 1 } = options;
-        const header = this.formatFileHeader(filePath);
+        const { filePath, lines, startLine = 1, endLine, totalLines, wasTruncated } = options;
+
+        const header = this.formatFileHeaderWithMetadata(filePath, startLine, endLine, totalLines);
         const numberedLines = this.formatLinesWithNumbers(lines, startLine);
-        return `${header}\n${numberedLines}`;
+
+        const parts = [header, numberedLines];
+
+        if (wasTruncated && endLine !== undefined && totalLines !== undefined && endLine < totalLines) {
+            const nextStartLine = endLine + 1;
+            parts.push(`\n[Truncated: ${totalLines - endLine} more lines. Use start_line=${nextStartLine} to continue]`);
+        }
+
+        return parts.join('\n');
     }
 
     /**
@@ -144,6 +161,21 @@ export class OutputFormatter {
      * Format standard file header: === {filePath} ===
      */
     private static formatFileHeader(filePath: string): string {
+        return `=== ${filePath} ===`;
+    }
+
+    /**
+     * Format file header with optional line range metadata: === {filePath} (lines X-Y of Z) ===
+     */
+    private static formatFileHeaderWithMetadata(
+        filePath: string,
+        startLine: number,
+        endLine: number | undefined,
+        totalLines: number | undefined
+    ): string {
+        if (endLine !== undefined && totalLines !== undefined) {
+            return `=== ${filePath} (lines ${startLine}-${endLine} of ${totalLines}) ===`;
+        }
         return `=== ${filePath} ===`;
     }
 
