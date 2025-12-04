@@ -9,291 +9,364 @@ Copy the prompt below to have Claude Code implement the subagent tool feature.
 ```
 Implement a subagent tool for the Lupa VS Code extension that allows the main LLM to spawn isolated investigation agents during PR analysis. This is similar to Claude Code's Task tool and GitHub Copilot's runSubagent feature.
 
-## Design Philosophy
+Read `docs/SUBAGENT_TOOL_IMPLEMENTATION_PLAN.md` for full architectural context.
 
-**Trust the LLM to describe its own tasks.** We do NOT use rigid categories like "security" or "performance" - the LLM knows what it needs to investigate and should describe it in natural language. Guidance for smaller/weaker LLMs comes from the system prompt (with examples), not from restrictive parameters.
+## Code Quality Requirements (CRITICAL)
+
+Write high-quality TypeScript code that:
+
+**SOLID Principles:**
+- **Single Responsibility**: Each class/function does ONE thing
+- **Dependency Inversion**: Depend on abstractions, inject dependencies
+
+**DRY:**
+- Extract shared logic into reusable components
+- ConversationRunner must be extracted from ToolCallingAnalysisProvider for reuse
+- No duplicating the conversation loop between main analysis and subagent
+
+**Comments:**
+- NO obvious comments like `// Get user` before `getUser()`
+- YES to explaining WHY: `// Filter run_subagent to prevent infinite recursion`
+- JSDoc for public APIs only
+
+**Code Style:**
+- Small functions (typically <20 lines)
+- Names reveal intent (no `temp`, `data`, single-letter vars except loops)
+- Leverage TypeScript types, avoid `any`
+- Follow existing codebase patterns
 
 ## Background
 
-The codebase already has a robust tool-calling system on the `feature/tool-calls` branch with:
-- ToolRegistry for registering tools
-- ToolExecutor for executing tools with rate limiting
-- ToolCallingAnalysisProvider for the main conversation loop
-- ConversationManager for managing message history
-- Multiple tools (find_symbol, find_usages, search_for_pattern, etc.)
-
-Read the implementation plan at `docs/SUBAGENT_TOOL_IMPLEMENTATION_PLAN.md` for full context.
+The `feature/tool-calls` branch has:
+- ToolRegistry, ToolExecutor, ConversationManager
+- ToolCallingAnalysisProvider with the conversation loop (needs extraction)
+- Multiple tools (find_symbol, find_usages, etc.)
 
 ## Implementation Tasks
 
-### Task 1: Create Subagent Types (`src/types/subagentTypes.ts`)
+### Phase 0: DRY Refactoring (DO THIS FIRST)
 
-Create a new types file with a **simplified interface** - no enum for focus areas:
+**Before adding subagents, extract the reusable conversation loop:**
+
+#### Task 0.1: Create ConversationRunner (`src/models/conversationRunner.ts`)
+
+Extract the conversation loop from ToolCallingAnalysisProvider:
 
 ```typescript
-/**
- * Task definition for spawning a subagent
- * Intentionally simple - the LLM describes tasks in natural language
- */
-export interface SubagentTaskDefinition {
-  task: string;            // Detailed investigation task (required)
-  context?: string;        // Relevant context from parent analysis
-  maxToolCalls?: number;   // Limit subagent tool calls (default: 8)
+export interface ConversationRunnerConfig {
+  systemPrompt: string;
+  maxIterations: number;
 }
 
 /**
- * Result returned by a subagent
+ * Runs a tool-calling conversation loop.
+ * Extracted for reuse by both main analysis and subagents.
  */
+export class ConversationRunner {
+  constructor(
+    private modelManager: CopilotModelManager,
+    private toolExecutor: ToolExecutor
+  ) {}
+
+  async run(
+    config: ConversationRunnerConfig,
+    conversation: ConversationManager,
+    token: CancellationToken
+  ): Promise<string> {
+    // Move conversationLoop() logic here
+    // Accept conversation as parameter (not internal state)
+    // Return final response content
+  }
+}
+```
+
+#### Task 0.2: Refactor ToolCallingAnalysisProvider
+
+Make it a thin wrapper that uses ConversationRunner:
+
+```typescript
+// Before: has its own conversationLoop() method
+// After: delegates to conversationRunner.run()
+
+async analyze(diff: string, token: CancellationToken): Promise<string> {
+  this.conversationManager.clearHistory();
+  // ... setup code ...
+
+  return this.conversationRunner.run(
+    { systemPrompt, maxIterations: 10 },
+    this.conversationManager,
+    token
+  );
+}
+```
+
+**Verify all existing tests still pass before continuing.**
+
+### Phase 1: Subagent Types & Constants
+
+#### Task 1.1: Add types to existing `src/types/modelTypes.ts`
+
+```typescript
+export interface SubagentTask {
+  task: string;
+  context?: string;
+  maxToolCalls?: number;
+}
+
 export interface SubagentResult {
   success: boolean;
-  findings: string;        // Detailed findings with evidence
-  summary: string;         // 2-3 sentence executive summary
-  answer?: string;         // Direct answer if task posed a question
+  findings: string;
+  summary: string;
+  answer?: string;
   toolCallsMade: number;
   error?: string;
 }
 ```
 
-### Task 2: Create Subagent Constants (`src/models/subagentConstants.ts`)
+**No new file** - add to existing types file.
 
-Create configuration constants with **helpful error messages** that guide the LLM:
+#### Task 1.2: Add constants to existing `src/models/toolConstants.ts`
 
 ```typescript
-export const SubagentConstants = {
-  // Execution limits
-  MAX_SUBAGENTS_PER_SESSION: 5,
-  MAX_TOOL_CALLS_PER_SUBAGENT: 15,
+export const SubagentLimits = {
+  MAX_PER_SESSION: 5,
+  MAX_TOOL_CALLS: 15,
   DEFAULT_TOOL_CALLS: 8,
-  MIN_TASK_LENGTH: 30,  // Minimum characters for task description
+  MIN_TASK_LENGTH: 30,
+  TIMEOUT_MS: 60_000,
+  DISALLOWED_TOOLS: ['run_subagent'] as const,
+} as const;
 
-  // Token management
-  MAX_SUBAGENT_CONTEXT_CHARS: 32000,
-  RESERVED_CHARS_FOR_RESULT: 4000,
-
-  // Tool access - prevent recursive spawning
-  DISALLOWED_TOOLS: ['run_subagent'],
-
-  // Timeouts
-  SUBAGENT_TIMEOUT_MS: 60000,
-
-  // Error messages that help the LLM improve
-  ERROR_MESSAGES: {
-    MAX_SUBAGENTS_EXCEEDED: (max: number) =>
-      `Maximum subagents (${max}) reached. Use direct tools for remaining investigations.`,
-
-    TASK_TOO_BRIEF: (minLength: number) =>
-      `Task description too brief (minimum ${minLength} characters).\n\n` +
-      `Good tasks include:\n` +
-      `- WHAT to investigate (specific question)\n` +
-      `- WHERE to look (files, directories, symbols)\n` +
-      `- WHAT to return (expected deliverables)\n\n` +
-      `Example: "Investigate error handling in src/api/handlers/. ` +
-      `Check if endpoints have try-catch and return appropriate HTTP status codes. ` +
-      `Return: List of handlers with weak error handling."`,
-
-    SUBAGENT_TIMEOUT: (timeoutMs: number) =>
-      `Subagent timed out after ${timeoutMs / 1000}s. Break into smaller tasks.`,
-
-    SUBAGENT_FAILED: (error: string) => `Subagent failed: ${error}`,
-  }
-};
+export const SubagentErrors = {
+  maxExceeded: (max: number) =>
+    `Maximum subagents (${max}) reached. Use direct tools instead.`,
+  taskTooShort: (min: number) =>
+    `Task too brief (${min}+ chars). Include: WHAT, WHERE, WHAT TO RETURN.`,
+  timeout: (ms: number) =>
+    `Subagent timed out after ${ms / 1000}s. Break into smaller tasks.`,
+  failed: (err: string) => `Subagent failed: ${err}`,
+} as const;
 ```
 
-### Task 3: Create SubagentPromptGenerator (`src/prompts/subagentPromptGenerator.ts`)
+### Phase 2: Subagent Components
 
-Create a prompt generator that creates **intelligent, task-agnostic prompts**:
+#### Task 2.1: Create SubagentPromptGenerator (`src/prompts/subagentPromptGenerator.ts`)
+
+Single responsibility: generate subagent system prompts.
 
 ```typescript
 export class SubagentPromptGenerator {
-  /**
-   * Generate system prompt for a subagent
-   * The prompt is intelligent enough to handle any task type
-   */
-  generateSystemPrompt(
-    task: SubagentTaskDefinition,
-    availableTools: ITool[]
-  ): string {
-    // Build dynamic tool list (excluding run_subagent)
+  generateSystemPrompt(task: SubagentTask, tools: ITool[]): string {
+    // Dynamic tool list (filter run_subagent)
     // Include task and context
-    // Define response format with <findings>, <summary>, <answer> tags
-    // Give proactive tool usage guidance
+    // Define <findings>, <summary>, <answer> response format
   }
 }
 ```
 
-The subagent prompt should be smart enough to:
-1. Parse the task to identify what's needed
-2. Use tools proactively to investigate
-3. Handle vague tasks by gathering clarifying context
-4. Return structured results
+#### Task 2.2: Create SubagentExecutor (`src/services/subagentExecutor.ts`)
 
-### Task 4: Create SubagentExecutor Service (`src/services/subagentExecutor.ts`)
+**Thin wrapper** - uses ConversationRunner, does NOT duplicate loop logic:
 
-Create the core execution service:
+```typescript
+export class SubagentExecutor {
+  constructor(
+    private conversationRunner: ConversationRunner,
+    private toolRegistry: ToolRegistry,
+    private promptGenerator: SubagentPromptGenerator
+  ) {}
 
-1. Accept SubagentTaskDefinition and cancellation token
-2. Create **isolated ConversationManager** instance (key for context isolation!)
-3. Generate subagent-specific system prompt
-4. **Filter tool registry** to exclude run_subagent (prevent recursion)
-5. Execute conversation loop similar to ToolCallingAnalysisProvider:
-   - Maximum tool calls from task definition
-   - Handle tool calls within subagent
-   - Track tool calls made count
-6. **Parse response** for <findings>, <summary>, <answer> XML tags
-7. Return SubagentResult with findings and metadata
-8. Handle timeouts and errors gracefully
+  async execute(task: SubagentTask, token: CancellationToken): Promise<SubagentResult> {
+    // 1. Create fresh ConversationManager (isolation!)
+    // 2. Filter tools (remove run_subagent)
+    // 3. Generate prompt
+    // 4. Delegate to conversationRunner.run() - NO LOOP DUPLICATION
+    // 5. Parse <findings>, <summary>, <answer> from response
+  }
 
-Key methods:
-- `executeSubagent(task, token): Promise<SubagentResult>`
-- `createFilteredToolRegistry(): ToolRegistry` (without run_subagent)
-- `parseSubagentResponse(response): {findings, summary, answer}`
+  private filterTools(): ITool[] {
+    // Remove run_subagent to prevent recursion
+  }
 
-### Task 5: Create RunSubagentTool (`src/tools/runSubagentTool.ts`)
+  private parseResponse(response: string): { findings: string; summary: string; answer?: string } {
+    // Extract XML tags from response
+  }
+}
+```
 
-Implement with **simplified 3-parameter schema**:
+#### Task 2.3: Create SubagentSessionManager (`src/services/subagentSessionManager.ts`)
+
+Tracks subagent usage per analysis session:
+
+```typescript
+export class SubagentSessionManager {
+  private count = 0;
+
+  canSpawn(): boolean {
+    return this.count < SubagentLimits.MAX_PER_SESSION;
+  }
+
+  recordSpawn(): void {
+    this.count++;
+  }
+
+  reset(): void {
+    this.count = 0;
+  }
+}
+```
+
+### Phase 3: Tool Implementation
+
+#### Task 3.1: Create RunSubagentTool (`src/tools/runSubagentTool.ts`)
 
 ```typescript
 export class RunSubagentTool extends BaseTool {
   name = 'run_subagent';
-  description = `Spawn an isolated agent to investigate a complex question.
+  description = `Spawn isolated agent for complex investigations.
 
-Use when you need deep investigation that would require many tool calls
-or would clutter your main context. The subagent works independently
-and returns focused findings.
-
-**When to use:**
-- Deep analysis spanning multiple files
-- Impact assessment across codebase
-- Complex pattern discovery
-
-**When NOT to use (use direct tools instead):**
-- Simple symbol lookups → find_symbol
-- Reading single files → read_file
-- Quick pattern searches → search_for_pattern`;
+Use when: deep multi-file analysis, impact assessment, pattern discovery.
+Don't use for: simple lookups (find_symbol), single file reads (read_file).`;
 
   schema = z.object({
     task: z.string()
-      .min(30, 'Task too brief. Include: what to investigate, where to look, what to return.')
-      .describe(
-        'Detailed investigation task. Good tasks include: ' +
-        '1) What to investigate, 2) Where to look, 3) What to return.'
-      ),
-    context: z.string().optional().describe(
-      'Relevant context: code snippets, file paths, findings so far'
-    ),
-    max_tool_calls: z.number().min(1).max(15).default(8).optional().describe(
-      'Maximum tool calls (default: 8). Increase for complex investigations.'
-    )
+      .min(SubagentLimits.MIN_TASK_LENGTH, SubagentErrors.taskTooShort(SubagentLimits.MIN_TASK_LENGTH))
+      .describe('Investigation task: WHAT to investigate, WHERE to look, WHAT to return'),
+    context: z.string().optional()
+      .describe('Relevant context: code snippets, file paths, findings'),
+    max_tool_calls: z.number().min(1).max(SubagentLimits.MAX_TOOL_CALLS)
+      .default(SubagentLimits.DEFAULT_TOOL_CALLS).optional()
+      .describe('Max tool calls (default: 8)')
   });
 
-  private subagentCount = 0;
+  constructor(
+    private executor: SubagentExecutor,
+    private sessionManager: SubagentSessionManager
+  ) { super(); }
 
-  async execute(args): Promise<string> {
-    // Validate task length with helpful error if too brief
-    // Check subagent count limit
-    // Build SubagentTaskDefinition
-    // Call subagentExecutor.executeSubagent()
-    // Format and return results
+  async execute(args: z.infer<typeof this.schema>): Promise<string> {
+    if (!this.sessionManager.canSpawn()) {
+      return SubagentErrors.maxExceeded(SubagentLimits.MAX_PER_SESSION);
+    }
+
+    this.sessionManager.recordSpawn();
+    const result = await this.executor.execute({
+      task: args.task,
+      context: args.context,
+      maxToolCalls: args.max_tool_calls
+    }, /* token */);
+
+    return this.formatResult(result);
+  }
+
+  private formatResult(result: SubagentResult): string {
+    // Format for parent LLM consumption
   }
 }
 ```
 
-**No focus_area parameter** - the LLM describes what it needs in the task string.
+### Phase 4: Registration & Wiring
 
-### Task 6: Register Tool in ServiceManager
+#### Task 4.1: Update ServiceManager
 
-Update `src/services/serviceManager.ts`:
-
-1. Import SubagentExecutor, SubagentPromptGenerator, and RunSubagentTool
-2. Add SubagentExecutor to IServiceRegistry interface
-3. Create SubagentPromptGenerator in Phase 4
-4. Create SubagentExecutor in Phase 4 (after tool registry, needs CopilotModelManager)
-5. Create and register RunSubagentTool in initializeTools()
-
-### Task 7: Update System Prompt (Critical for Weak LLMs)
-
-Update `src/prompts/toolAwareSystemPromptGenerator.ts`:
-
-This is **critical** - the system prompt teaches the LLM HOW to use subagents well.
-
-Add to `generateToolUsageStrategies()`:
+Add to `src/services/serviceManager.ts`:
 
 ```typescript
-**run_subagent**: Delegate complex investigations to an isolated agent.
+// In IServiceRegistry:
+conversationRunner: ConversationRunner;
+subagentExecutor: SubagentExecutor;
+subagentSessionManager: SubagentSessionManager;
 
-**When to use:**
-- Deep analysis spanning multiple files
-- Impact assessment requiring extensive usage tracing
-- Complex investigation that would clutter your context
+// In initializeHighLevelServices():
+this.services.conversationRunner = new ConversationRunner(
+  this.services.copilotModelManager,
+  this.services.toolExecutor
+);
 
-**When NOT to use (use direct tools):**
-- Simple symbol lookups → find_symbol
-- Reading single files → read_file
-- Quick pattern searches → search_for_pattern
+this.services.subagentSessionManager = new SubagentSessionManager();
 
-**Writing Effective Tasks:**
-Good tasks have three parts:
-1. WHAT to investigate (specific question)
-2. WHERE to look (files, directories, symbols)
-3. WHAT to return (deliverables you need)
+this.services.subagentExecutor = new SubagentExecutor(
+  this.services.conversationRunner,
+  this.services.toolRegistry,
+  new SubagentPromptGenerator()
+);
 
-**Examples:**
-✅ run_subagent(task: "Investigate JWT handling in src/auth/middleware.ts:
-   1. How does validateToken() verify signatures?
-   2. Is there timing-attack protection?
-   Return: Security issues with severity and line numbers.")
-
-❌ run_subagent(task: "Check the auth code")  // Too vague
-❌ run_subagent(task: "Read src/utils.ts")    // Use read_file instead
+// In initializeTools():
+const runSubagentTool = new RunSubagentTool(
+  this.services.subagentExecutor,
+  this.services.subagentSessionManager
+);
+this.services.toolRegistry.registerTool(runSubagentTool);
 ```
 
-### Task 8: Write Tests
+### Phase 5: System Prompt Updates
 
-Create test files:
+#### Task 5.1: Update ToolAwareSystemPromptGenerator
 
-1. `src/__tests__/subagentPromptGenerator.test.ts`
-   - Test prompt generation with various tasks
-   - Test context injection
-   - Test tool list filtering (run_subagent excluded)
+Add guidance to `generateToolUsageStrategies()`:
 
-2. `src/__tests__/subagentExecutor.test.ts`
-   - Test execution flow with mocked LLM
-   - Test tool call handling within subagent
-   - Test XML response parsing (<findings>, <summary>, <answer>)
-   - Test timeout handling
-   - Test max tool calls enforcement
+```markdown
+### run_subagent: Delegate Complex Investigations
 
-3. `src/__tests__/runSubagentTool.test.ts`
-   - Test schema validation
-   - Test min task length validation with helpful error
-   - Test subagent count limit
-   - Test result formatting
+Spawn isolated agent for multi-file investigations.
 
-## Important Implementation Notes
+**When to use:** Deep analysis, impact assessment, pattern discovery
+**Don't use for:** Simple lookups (find_symbol), single reads (read_file)
 
-1. **No Recursive Subagents**: Filter run_subagent from tool registry passed to SubagentExecutor
-2. **Isolated Context**: Each subagent gets a NEW ConversationManager instance
-3. **Helpful Errors**: When validation fails, return guidance on how to fix it
-4. **Task Validation**: Reject tasks < 30 chars with examples of good tasks
-5. **Logging**: Use Log service for debugging subagent execution flow
-6. **Proper Cleanup**: Clear subagent conversation after execution
+**Write good tasks:** Include WHAT to investigate, WHERE to look, WHAT to return
 
-## Testing the Implementation
+✅ "Investigate JWT handling in src/auth/. Check validation, timing protection.
+   Return: Security issues with severity."
+❌ "Check the auth code" (too vague)
+```
 
-After implementation:
-1. Run `npm run check-types` to verify TypeScript
-2. Run `npm run test` to run all tests
-3. Build extension with `npm run build`
-4. Test in VS Code extension host with a real PR analysis
+### Phase 6: Testing
 
-## Expected Behavior
+#### Task 6.1: Write tests
 
-When the LLM encounters a complex investigation task during PR analysis, it should:
-1. Recognize the investigation would require many tool calls
-2. Decide to delegate to a subagent with a **detailed task description**
-3. Receive back focused findings, summary, and optional answer
-4. Incorporate subagent findings into its main analysis
-5. Continue with the PR review using the gathered context
+1. `conversationRunner.test.ts` - Loop behavior, iteration limits
+2. `subagentExecutor.test.ts` - Isolation, filtering, parsing
+3. `runSubagentTool.test.ts` - Validation, session limits
+4. `subagentSessionManager.test.ts` - Count tracking
+
+## Code Quality Checklist
+
+Before submitting, verify:
+
+- [ ] **DRY**: ConversationRunner extracted, no loop duplication
+- [ ] **SOLID**: Each class has single responsibility
+- [ ] **No obvious comments**: Comments explain WHY, not WHAT
+- [ ] **Small functions**: Most under 20 lines
+- [ ] **Type safety**: No `any`, proper interfaces
+- [ ] **Tests pass**: `npm run test`
+- [ ] **Types check**: `npm run check-types`
+
+## Expected Architecture After Implementation
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              ToolCallingAnalysisProvider                      │
+│  (thin wrapper - orchestrates PR analysis)                    │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ uses
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   ConversationRunner                          │
+│  (EXTRACTED - reusable loop, no duplication)                  │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ also used by
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   SubagentExecutor                            │
+│  (thin wrapper - isolation + parsing)                         │
+└────────────────────────┬─────────────────────────────────────┘
+                         │ called by
+                         ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   RunSubagentTool                             │
+│  (the tool - delegates everything)                            │
+└──────────────────────────────────────────────────────────────┘
+```
 
 The LLM writes task descriptions naturally - no categories or rigid parameters.
 ```
@@ -309,112 +382,143 @@ The LLM writes task descriptions naturally - no categories or rigid parameters.
 
 ## Alternative: Phase-by-Phase Implementation
 
-If you prefer more control, you can split this into smaller prompts:
+If you prefer more control, split into smaller prompts. Each phase includes code quality requirements.
+
+### Phase 0 Prompt (CRITICAL - Do First)
+```
+Read docs/SUBAGENT_TOOL_IMPLEMENTATION_PLAN.md.
+
+**DRY REFACTORING**: Extract ConversationRunner from ToolCallingAnalysisProvider.
+
+Code Quality:
+- NO code duplication - this extraction enables reuse
+- Small functions (<20 lines)
+- No obvious comments
+
+Tasks:
+1. Create src/models/conversationRunner.ts
+   - Move conversationLoop() logic from ToolCallingAnalysisProvider
+   - Accept ConversationManager as parameter (not internal state)
+   - Configurable via ConversationRunnerConfig
+
+2. Refactor ToolCallingAnalysisProvider to use ConversationRunner
+   - Make it a thin wrapper that delegates to conversationRunner.run()
+
+Run npm run test - ALL existing tests must still pass before continuing.
+```
 
 ### Phase 1 Prompt
 ```
-Read docs/SUBAGENT_TOOL_IMPLEMENTATION_PLAN.md and implement Tasks 1-2:
-- Create src/types/subagentTypes.ts with SubagentTaskDefinition (task, context, maxToolCalls)
-  and SubagentResult (success, findings, summary, answer, toolCallsMade, error)
-- Create src/models/subagentConstants.ts with execution limits and helpful error messages
+Add subagent types and constants to EXISTING files (no new files):
 
-Note: No SubagentFocusArea enum - we trust the LLM to describe tasks naturally.
+Code Quality:
+- Use const assertions for type safety
+- Concise error messages that guide the LLM
 
-Run check-types after implementation.
+Tasks:
+1. Add to src/types/modelTypes.ts:
+   - SubagentTask interface (task, context, maxToolCalls)
+   - SubagentResult interface (success, findings, summary, answer, toolCallsMade, error)
+
+2. Add to src/models/toolConstants.ts:
+   - SubagentLimits object with MAX_PER_SESSION, MAX_TOOL_CALLS, etc.
+   - SubagentErrors object with error message functions
+
+Run check-types after.
 ```
 
 ### Phase 2 Prompt
 ```
-Implement Task 3: Create src/prompts/subagentPromptGenerator.ts
+Create SubagentPromptGenerator and SubagentSessionManager.
 
-Follow the pattern in src/prompts/toolAwareSystemPromptGenerator.ts. The subagent prompt generator should:
-1. Generate an intelligent system prompt from the task description
-2. Include context when provided
-3. List available tools (filter out run_subagent to prevent recursion)
-4. Define response format with <findings>, <summary>, and <answer> XML tags
-5. Give proactive tool usage guidance
+Code Quality:
+- Single responsibility per class
+- No business logic in prompt generator - just prompt construction
+- Comments explain WHY, not WHAT
 
-The prompt should be smart enough to handle ANY type of investigation task.
+Tasks:
+1. Create src/prompts/subagentPromptGenerator.ts
+   - generateSystemPrompt(task, tools) returns prompt string
+   - Filter run_subagent from tool list
+   - Define <findings>, <summary>, <answer> response format
 
-Run check-types after implementation.
+2. Create src/services/subagentSessionManager.ts
+   - Track count per session
+   - canSpawn(), recordSpawn(), reset() methods
+
+Run check-types after.
 ```
 
 ### Phase 3 Prompt
 ```
-Implement Task 4: Create src/services/subagentExecutor.ts
+Create SubagentExecutor as a THIN WRAPPER.
 
-Follow the pattern in src/services/toolCallingAnalysisProvider.ts. The SubagentExecutor should:
-1. Create isolated ConversationManager per subagent (key for context isolation!)
-2. Filter ToolRegistry to exclude run_subagent
-3. Execute a conversation loop with max tool calls limit
-4. Handle tool calls within subagent
-5. Parse response for <findings>, <summary>, <answer> XML tags
-6. Return SubagentResult
+Code Quality:
+- MUST use ConversationRunner (no loop duplication!)
+- Single responsibility: isolation and response parsing
+- Inject dependencies, don't create them
 
-Dependencies:
-- CopilotModelManager (for LLM calls)
-- ToolRegistry (filtered)
-- SubagentPromptGenerator
+Tasks:
+Create src/services/subagentExecutor.ts that:
+1. Creates fresh ConversationManager per execution (isolation)
+2. Filters run_subagent from tools
+3. Delegates to conversationRunner.run() - NO LOOP CODE
+4. Parses <findings>, <summary>, <answer> from response
 
-Run check-types after implementation.
+Dependencies: ConversationRunner, ToolRegistry, SubagentPromptGenerator
+
+Run check-types after.
 ```
 
 ### Phase 4 Prompt
 ```
-Implement Task 5: Create src/tools/runSubagentTool.ts
+Create RunSubagentTool and register in ServiceManager.
 
-Follow the pattern in src/tools/findSymbolTool.ts. The RunSubagentTool should:
-1. Extend BaseTool
-2. Define simplified 3-parameter Zod schema: task (min 30 chars), context, max_tool_calls
-3. Validate task length and return helpful error if too brief
-4. Track subagent count per session
-5. Call SubagentExecutor
-6. Format results for the main LLM
+Code Quality:
+- Tool delegates everything to SubagentExecutor
+- Use constants from SubagentLimits, not magic numbers
+- Dependency injection for executor and session manager
 
-NO focus_area parameter - the LLM describes what it needs in the task string.
+Tasks:
+1. Create src/tools/runSubagentTool.ts
+   - 3-parameter schema (task, context, max_tool_calls)
+   - Inject SubagentExecutor and SubagentSessionManager
+   - Return helpful error if session limit reached
 
-Run check-types after implementation.
+2. Update src/services/serviceManager.ts
+   - Add ConversationRunner, SubagentExecutor, SubagentSessionManager to registry
+   - Register RunSubagentTool
+
+Run check-types and npm run build after.
 ```
 
 ### Phase 5 Prompt
 ```
-Implement Task 6: Register the subagent tool in ServiceManager
+Update system prompt to guide LLM on subagent usage.
 
-Update src/services/serviceManager.ts:
-1. Add SubagentExecutor to IServiceRegistry
-2. Create SubagentPromptGenerator in initializeHighLevelServices()
-3. Create SubagentExecutor in initializeHighLevelServices()
-4. Register RunSubagentTool in initializeTools()
+This is CRITICAL for smaller/weaker LLMs - teach by example.
 
-Ensure no circular dependencies.
-Run check-types and npm run build after implementation.
+Update src/prompts/toolAwareSystemPromptGenerator.ts:
+1. Add run_subagent to generateToolUsageStrategies()
+2. Include when-to-use and when-not-to-use guidance
+3. Show good vs bad task examples
+4. Teach WHAT/WHERE/RETURN pattern
+
+Run check-types after.
 ```
 
 ### Phase 6 Prompt
 ```
-Implement Task 7: Update the system prompt in src/prompts/toolAwareSystemPromptGenerator.ts
+Write tests for the subagent system.
 
-This is CRITICAL for making subagents work with smaller/weaker LLMs.
+Tests to create:
+1. conversationRunner.test.ts - Loop behavior, iteration limits
+2. subagentPromptGenerator.test.ts - Prompt generation, tool filtering
+3. subagentExecutor.test.ts - Isolation, response parsing, error handling
+4. subagentSessionManager.test.ts - Count tracking, reset
+5. runSubagentTool.test.ts - Validation, session limits
 
-Add guidance for run_subagent tool:
-1. Add to generateToolUsageStrategies() with when-to-use and when-not-to-use guidance
-2. Add examples showing good vs bad task descriptions
-3. Teach the "WHAT/WHERE/RETURN" pattern for writing effective tasks
-4. Make clear that subagents are for complex investigations, not simple lookups
+Follow existing test patterns. Mock CopilotModelManager for unit tests.
 
-Run check-types after implementation.
-```
-
-### Phase 7 Prompt
-```
-Implement Task 8: Write tests for the subagent system
-
-Create:
-1. src/__tests__/subagentPromptGenerator.test.ts - Test prompt generation, context injection
-2. src/__tests__/subagentExecutor.test.ts - Test execution flow, XML parsing, timeouts
-3. src/__tests__/runSubagentTool.test.ts - Test validation, helpful errors, count limits
-
-Follow the testing patterns in existing test files.
-Mock the CopilotModelManager for unit tests.
-Run npm run test after implementation.
+Run npm run test after.
 ```
