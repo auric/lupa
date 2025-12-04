@@ -26,27 +26,47 @@ This document outlines the design and implementation plan for adding a **subagen
 3. **Focused Tasks**: Subagents can be specialized for specific investigation types
 4. **Parallel Processing**: Multiple investigations can run concurrently
 
+## Design Philosophy: Trust the LLM
+
+### Why No Rigid Categories?
+
+Early designs included a `SubagentFocusArea` enum (Security, Performance, Impact, etc.), but this was rejected because:
+
+1. **The parent LLM knows what it needs** - It identified the complex investigation; let it describe the task naturally
+2. **Artificial constraints limit flexibility** - "Find deprecated API usages and suggest migrations" doesn't fit predefined boxes
+3. **Categories don't improve results** - A "security" label doesn't make investigation better; a well-written task does
+4. **Matches Claude Code's approach** - Task tool just takes a prompt, guidance is in the system prompt
+
+### Handling Smaller/Weaker LLMs
+
+Instead of rigid parameters, we use:
+1. **Few-shot examples** in system prompt showing good vs bad task descriptions
+2. **Minimum length validation** with helpful error messages
+3. **Smart subagent system prompt** that can handle vague tasks by asking clarifying "questions" through tool usage
+
 ## Architecture Design
 
-### 1. Subagent Tool Interface
+### 1. Subagent Tool Interface (Simplified)
 
 ```typescript
-// src/tools/subagentTool.ts
+// src/types/subagentTypes.ts
 interface SubagentTaskDefinition {
-  taskDescription: string;       // Clear description of what to investigate
-  focusArea?: SubagentFocusArea; // Optional specialization
-  maxIterations?: number;        // Limit subagent iterations (default: 5)
-  tools?: string[];              // Subset of tools to make available
+  task: string;           // Detailed investigation task (the only required field)
+  context?: string;       // Relevant context from parent analysis
+  maxToolCalls?: number;  // Limit subagent tool calls (default: 8)
 }
 
-enum SubagentFocusArea {
-  SecurityAnalysis = 'security',
-  PerformanceAnalysis = 'performance',
-  ImpactAssessment = 'impact',
-  ContextGathering = 'context',
-  PatternSearch = 'patterns'
+interface SubagentResult {
+  success: boolean;
+  findings: string;       // Detailed findings with evidence
+  summary: string;        // 2-3 sentence executive summary
+  answer?: string;        // Direct answer if applicable
+  toolCallsMade: number;
+  error?: string;
 }
 ```
+
+**No SubagentFocusArea** - The LLM describes what it needs in natural language.
 
 ### 2. SubagentExecutor Service
 
@@ -57,13 +77,11 @@ New service that manages subagent lifecycle:
 class SubagentExecutor {
   constructor(
     private copilotModelManager: CopilotModelManager,
-    private toolRegistry: ToolRegistry,
-    private promptGenerator: PromptGenerator
+    private toolRegistry: ToolRegistry
   ) {}
 
   async executeSubagent(
     task: SubagentTaskDefinition,
-    parentContext?: string,  // Optional context from parent
     token: vscode.CancellationToken
   ): Promise<SubagentResult>
 }
@@ -71,136 +89,237 @@ class SubagentExecutor {
 
 ### 3. Subagent System Prompt Structure
 
-Each subagent receives a focused system prompt:
+Each subagent receives a focused, intelligent system prompt:
 
-```
-You are a specialized code analysis subagent focused on [FOCUS_AREA].
+```markdown
+You are a focused investigation subagent. Your job is to thoroughly investigate a specific question and return actionable findings.
 
-Your task: [TASK_DESCRIPTION]
+## Your Task
+[TASK_DESCRIPTION]
 
-Context from parent analysis (if provided):
-[PARENT_CONTEXT]
+## Context from Parent Analysis
+[CONTEXT_IF_PROVIDED - or "No additional context provided"]
 
-Available tools: [TOOL_LIST]
+## Available Tools
+[DYNAMIC_TOOL_LIST - excludes run_subagent]
 
-Instructions:
-1. Investigate the specific task assigned to you
-2. Use tools proactively to gather necessary information
-3. Provide a comprehensive, focused analysis
-4. Return findings in structured format
-5. Do NOT spawn additional subagents
+## Instructions
 
-Response Format:
+1. **Parse the Task**: Identify what needs to be investigated and what deliverables are expected
+
+2. **Investigate Systematically**:
+   - Start broad: Use get_symbols_overview or list_directory to orient yourself
+   - Go deep: Use find_symbol and read_file to understand specific code
+   - Trace impact: Use find_usages for ripple effects
+   - Find patterns: Use search_for_pattern for codebase-wide issues
+
+3. **Be Proactive**: If the task is unclear, use tools to gather context that helps clarify it
+
+4. **Return Structured Results**:
+
 <findings>
-[Your detailed findings here]
+Detailed findings with evidence:
+- Include file paths and line numbers
+- Quote relevant code snippets
+- Explain implications
 </findings>
 
 <summary>
-[Concise summary of key discoveries]
+2-3 sentence executive summary of the most important discoveries.
 </summary>
+
+<answer>
+If the task posed a specific question, provide a direct answer here.
+</answer>
 ```
 
-### 4. Tool Schema
+### 4. Tool Schema (Simplified)
 
 ```typescript
-const subagentToolSchema = z.object({
-  task_description: z.string().min(10).describe(
-    'Clear description of the investigation task. Be specific about what you want to discover.'
+// src/tools/runSubagentTool.ts
+const schema = z.object({
+  task: z.string()
+    .min(30, 'Task too brief. Include: what to investigate, where to look, what to return.')
+    .describe(
+      'Detailed investigation task. A good task includes: ' +
+      '1) What to investigate (specific question or concern), ' +
+      '2) Where to look (relevant files, directories, symbols), ' +
+      '3) What to return (expected deliverables).'
+    ),
+  context: z.string().optional().describe(
+    'Relevant context from your current analysis: code snippets, file paths, ' +
+    'findings so far, or symbol names that are relevant to this investigation.'
   ),
-  focus_area: z.enum([
-    'security', 'performance', 'impact', 'context', 'patterns'
-  ]).optional().describe(
-    'Optional specialization area for the subagent'
-  ),
-  parent_context: z.string().optional().describe(
-    'Relevant context to pass to the subagent (e.g., file path, symbol name, code snippet)'
-  ),
-  max_iterations: z.number().min(1).max(8).default(5).describe(
-    'Maximum iterations for subagent tool calls (default: 5)'
+  max_tool_calls: z.number().min(1).max(15).default(8).optional().describe(
+    'Maximum tool calls the subagent can make (default: 8). ' +
+    'Increase for complex investigations, decrease for focused lookups.'
   )
 });
 ```
+
+**Three parameters only** - task (required), context (optional), max_tool_calls (optional with default).
 
 ## Implementation Steps
 
 ### Phase 1: Core Subagent Infrastructure
 
-1. **Create SubagentResult type** (`src/types/subagentTypes.ts`)
-   - Result interface with findings, summary, tool calls made, tokens used
+1. **Create Subagent Types** (`src/types/subagentTypes.ts`)
+   - `SubagentTaskDefinition`: task, context, maxToolCalls
+   - `SubagentResult`: success, findings, summary, answer, toolCallsMade, error
 
-2. **Create SubagentPromptGenerator** (`src/prompts/subagentPromptGenerator.ts`)
-   - Generate focused system prompts for each subagent type
-   - Handle parent context injection
+2. **Create SubagentConstants** (`src/models/subagentConstants.ts`)
+   - Execution limits (max subagents, max tool calls, timeouts)
+   - Disallowed tools list (`['run_subagent']`)
+   - Error message templates
 
-3. **Create SubagentExecutor service** (`src/services/subagentExecutor.ts`)
-   - Manage isolated conversation context
-   - Execute subagent conversation loop
-   - Handle tool calls within subagent
-   - Return structured results
+3. **Create SubagentPromptGenerator** (`src/prompts/subagentPromptGenerator.ts`)
+   - Generate intelligent system prompt from task definition
+   - Inject context if provided
+   - Dynamically list available tools (excluding run_subagent)
+   - Define response format with XML tags
+
+4. **Create SubagentExecutor service** (`src/services/subagentExecutor.ts`)
+   - Create isolated ConversationManager per subagent
+   - Filter tool registry to exclude run_subagent
+   - Execute conversation loop with tool call handling
+   - Parse response for `<findings>`, `<summary>`, `<answer>` tags
+   - Return structured SubagentResult
 
 ### Phase 2: Subagent Tool Implementation
 
-4. **Create RunSubagentTool** (`src/tools/runSubagentTool.ts`)
-   - Implement ITool interface
-   - Define Zod schema for parameters
+5. **Create RunSubagentTool** (`src/tools/runSubagentTool.ts`)
+   - Extend BaseTool with simplified 3-parameter schema
+   - **Validate task quality** - reject tasks < 30 chars with helpful guidance
+   - Track subagent count per session
    - Execute via SubagentExecutor
-   - Format and return results
+   - Format results for parent LLM
 
-5. **Update ToolRegistry initialization** (`src/services/serviceManager.ts`)
-   - Register RunSubagentTool
-   - Inject required dependencies
+6. **Update ServiceManager** (`src/services/serviceManager.ts`)
+   - Add SubagentExecutor to IServiceRegistry
+   - Create and register RunSubagentTool in initializeTools()
 
-### Phase 3: Token Management & Safety
+### Phase 3: System Prompt Engineering (Critical for Weak LLMs)
 
-6. **Add subagent token budget**
-   - Reserve tokens for subagent responses in main context
-   - Limit subagent context window usage
-   - Track cumulative token usage across subagents
+7. **Update ToolAwareSystemPromptGenerator** with:
 
-7. **Add safety limits**
-   - Maximum subagents per analysis session
-   - Prevent subagents from spawning subagents
-   - Rate limiting for subagent calls
+   **Strategic guidance:**
+   ```markdown
+   ### run_subagent: Delegate Complex Investigations
 
-### Phase 4: System Prompt Updates
+   Spawn an isolated agent to investigate questions requiring multiple tool calls.
+   The subagent works independently and returns focused findings.
 
-8. **Update ToolAwareSystemPromptGenerator**
-   - Add strategic guidance for when to use subagents
-   - Document subagent capabilities and limitations
-   - Add few-shot examples showing proper subagent usage
+   **When to use:**
+   - Deep analysis spanning multiple files
+   - Impact assessment of changes
+   - Pattern discovery across codebase
+   - Complex dependency tracing
+
+   **When NOT to use (use direct tools instead):**
+   - Simple symbol lookups → find_symbol
+   - Reading single files → read_file
+   - Quick pattern searches → search_for_pattern
+   ```
+
+   **Few-shot examples showing good vs bad task descriptions:**
+   ```markdown
+   ✅ GOOD task (specific, actionable):
+   "Investigate security of JWT handling in src/auth/:
+   1. How does validateToken() verify signatures?
+   2. Is there timing-attack protection?
+   3. How are expired tokens handled?
+   Return: Security concerns with severity and line numbers."
+
+   ✅ GOOD task (clear scope and deliverables):
+   "Find all consumers of UserService.updateProfile(). For each:
+   note file path, error handling approach, and input validation.
+   Return: Impact assessment for changing the method signature."
+
+   ❌ BAD: "Check the auth code" (too vague)
+   ❌ BAD: "Look for bugs" (no direction)
+   ❌ BAD: "Read the user service" (use read_file instead)
+   ```
+
+### Phase 4: Safety & Token Management
+
+8. **Add safety limits:**
+   - Maximum 5 subagents per analysis session
+   - Prevent recursive subagent spawning (filter tool registry)
+   - Timeout per subagent (60 seconds default)
+
+9. **Task validation with helpful feedback:**
+   ```typescript
+   if (task.length < 30) {
+     return `Task too brief for effective investigation.
+
+     Good tasks include:
+     - WHAT to investigate (specific question)
+     - WHERE to look (files, directories, symbols)
+     - WHAT to return (expected deliverables)
+
+     Example: "Analyze error handling in src/api/handlers/.
+     Check if endpoints have proper try-catch and return appropriate
+     HTTP status codes. Return: List of handlers with weak error handling."`;
+   }
+   ```
 
 ## System Prompt Updates
+
+The key to making subagents work well (especially with smaller LLMs) is excellent system prompt engineering. The guidance teaches by example.
 
 ### Addition to Strategic Tool Usage
 
 ```markdown
-### Subagent Delegation Tool
+### run_subagent: Delegate Complex Investigations
 
-**run_subagent**: Spawn an isolated investigation subagent for complex analysis tasks.
+Spawn an isolated agent to thoroughly investigate a question. The subagent has its own
+context, uses tools independently, and returns focused findings to you.
 
 **When to use subagents:**
-- Deep security analysis of a specific code pattern or vulnerability
-- Impact assessment across multiple files/modules
-- Performance analysis requiring extensive codebase exploration
-- Gathering context about unfamiliar code areas
-- Pattern searching across the codebase
+- Deep analysis spanning multiple files or components
+- Impact assessment requiring extensive usage tracing
+- Complex investigation that would clutter your main context
+- When you need to "go deep" on a specific concern
 
-**When NOT to use subagents:**
-- Simple symbol lookups (use find_symbol directly)
-- Single file reads (use read_file directly)
-- Quick pattern searches (use search_for_pattern directly)
+**When NOT to use (use direct tools instead):**
+- Simple symbol lookups → use find_symbol
+- Reading a single file → use read_file
+- Quick pattern search → use search_for_pattern
+- Basic directory exploration → use list_directory
 
-**Subagent Usage Strategy:**
-1. **Be Specific**: Provide clear, focused task descriptions
-2. **Pass Context**: Include relevant information from your current analysis
-3. **Choose Focus Area**: Select appropriate specialization when helpful
-4. **Combine Results**: Synthesize subagent findings with your own analysis
+**Writing Effective Tasks:**
 
-**Example Usage:**
-- "Investigate security implications of the new authentication flow in src/auth/"
-- "Assess impact of changing the UserService interface across all consumers"
-- "Find all usages of deprecated API patterns and suggest migration paths"
-- "Analyze performance characteristics of the new caching implementation"
+A good subagent task has three parts:
+1. WHAT to investigate (the specific question or concern)
+2. WHERE to look (relevant files, directories, or symbols)
+3. WHAT to return (the deliverables you need)
+
+**Examples:**
+
+✅ GOOD - Specific question with clear deliverables:
+run_subagent(
+  task: "Investigate JWT token handling in src/auth/middleware.ts:
+         1. How does validateToken() verify signatures?
+         2. Is there timing-attack protection in comparisons?
+         3. How are expired/invalid tokens handled?
+         Return: Security concerns with severity ratings and line numbers.",
+  context: "PR adds new auth middleware, concerned about token validation"
+)
+
+✅ GOOD - Impact assessment with scope:
+run_subagent(
+  task: "Find all callers of UserService.updateProfile() method.
+         For each caller, note: file path, whether it handles errors,
+         whether it validates input before calling.
+         Return: Impact assessment for changing method signature.",
+  context: "Considering adding required 'reason' parameter to updateProfile()"
+)
+
+❌ BAD - Too vague:
+run_subagent(task: "Check the auth code")
+
+❌ BAD - Should use direct tool:
+run_subagent(task: "Read src/utils/helper.ts")
 ```
 
 ### Few-Shot Example for Subagent Usage
@@ -209,17 +328,46 @@ const subagentToolSchema = z.object({
 <example>
 <scenario>Complex security analysis spanning multiple files</scenario>
 <analysis_approach>
-I see a new authentication middleware being added. This requires deep investigation across multiple auth-related files.
+I see a new authentication middleware being added. This requires deep investigation
+across multiple auth-related files - too many tool calls would clutter my context.
 
-Instead of making many sequential tool calls, I'll spawn a security-focused subagent:
+I'll spawn a subagent to investigate:
 
 run_subagent(
-  task_description: "Analyze the security implications of the new authentication middleware in src/middleware/auth.ts. Investigate: 1) How it handles token validation, 2) What sensitive data it exposes, 3) How it integrates with existing auth flow, 4) Potential bypass vectors",
-  focus_area: "security",
-  parent_context: "New middleware added at line 45: authenticateRequest()"
+  task: "Analyze security of the new authenticateRequest() middleware in
+         src/middleware/auth.ts. Investigate:
+         1) How it validates JWT tokens - check for timing attacks
+         2) What user data it extracts and where it's stored
+         3) How it handles invalid/expired tokens
+         4) Integration with existing auth flows in src/auth/
+         Return: Security concerns with severity (Critical/High/Medium/Low)
+         and specific code locations.",
+  context: "New middleware at line 45. PR description mentions 'faster auth'
+            which makes me concerned they may have skipped security checks.",
+  max_tool_calls: 12
 )
 
-The subagent will use tools to deeply investigate while I continue analyzing other aspects of the PR.
+While the subagent investigates auth deeply, I'll continue reviewing other
+aspects of the PR. I'll incorporate its findings into my final analysis.
+</analysis_approach>
+</example>
+
+<example>
+<scenario>Assessing impact of API change</scenario>
+<analysis_approach>
+The PR changes the return type of fetchUserData(). I need to find all consumers
+and assess whether they'll break.
+
+run_subagent(
+  task: "Find every place that calls fetchUserData() in the codebase.
+         For each call site:
+         - Note the file path and line number
+         - Check how the return value is used
+         - Determine if the new return type would break it
+         Return: List of call sites that need updates, prioritized by
+         complexity of required changes.",
+  context: "fetchUserData() changing from Promise<User> to Promise<User | null>"
+)
 </analysis_approach>
 </example>
 ```
@@ -247,19 +395,43 @@ src/
 export const SubagentConstants = {
   // Execution limits
   MAX_SUBAGENTS_PER_SESSION: 5,
-  MAX_ITERATIONS_PER_SUBAGENT: 8,
-  DEFAULT_ITERATIONS: 5,
+  MAX_TOOL_CALLS_PER_SUBAGENT: 15,
+  DEFAULT_TOOL_CALLS: 8,
+  MIN_TASK_LENGTH: 30,  // Minimum characters for task description
 
   // Token management
-  MAX_SUBAGENT_INPUT_TOKENS: 8000,
-  MAX_SUBAGENT_OUTPUT_TOKENS: 4000,
-  RESERVED_TOKENS_FOR_RESPONSE: 1000,
+  MAX_SUBAGENT_CONTEXT_CHARS: 32000,
+  RESERVED_CHARS_FOR_RESULT: 4000,
 
-  // Tool access
-  DISALLOWED_TOOLS: ['run_subagent'], // Prevent recursive spawning
+  // Tool access - prevent recursive spawning
+  DISALLOWED_TOOLS: ['run_subagent'],
 
   // Timeouts
   SUBAGENT_TIMEOUT_MS: 60000, // 1 minute per subagent
+
+  // Error messages with helpful guidance
+  ERROR_MESSAGES: {
+    MAX_SUBAGENTS_EXCEEDED: (max: number) =>
+      `Maximum subagents (${max}) reached for this session. ` +
+      `Use direct tools (find_symbol, read_file, search_for_pattern) for remaining investigations.`,
+
+    TASK_TOO_BRIEF: (minLength: number) =>
+      `Task description too brief (minimum ${minLength} characters).\n\n` +
+      `Good tasks include:\n` +
+      `- WHAT to investigate (specific question)\n` +
+      `- WHERE to look (files, directories, symbols)\n` +
+      `- WHAT to return (expected deliverables)\n\n` +
+      `Example: "Investigate error handling in src/api/handlers/. ` +
+      `Check if endpoints have try-catch blocks and return appropriate HTTP status codes. ` +
+      `Return: List of handlers with weak error handling and suggested fixes."`,
+
+    SUBAGENT_TIMEOUT: (timeoutMs: number) =>
+      `Subagent timed out after ${timeoutMs / 1000} seconds. ` +
+      `Consider breaking the task into smaller, more focused investigations.`,
+
+    SUBAGENT_FAILED: (error: string) =>
+      `Subagent investigation failed: ${error}`,
+  }
 };
 ```
 
