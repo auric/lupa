@@ -407,7 +407,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       const result = await analysisProvider.analyze(diff, tokenSource.token);
 
-      expect(result.analysis).toBe('Analysis reached maximum iterations. The conversation may be incomplete.');
+      expect(result.analysis).toBe('Conversation reached maximum iterations. The conversation may be incomplete.');
     });
   });
 

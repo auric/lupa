@@ -88,3 +88,33 @@ export interface ToolCallResponse {
     content: string | null;
     toolCalls?: ToolCall[];
 }
+
+/**
+ * Task definition for spawning an isolated subagent investigation.
+ */
+export interface SubagentTask {
+    /** Detailed investigation task description */
+    task: string;
+    /** Optional context from parent analysis */
+    context?: string;
+    /** Maximum tool calls the subagent can make */
+    maxToolCalls?: number;
+}
+
+/**
+ * Result from a completed subagent investigation.
+ */
+export interface SubagentResult {
+    /** Whether the subagent completed successfully */
+    success: boolean;
+    /** Detailed findings with evidence */
+    findings: string;
+    /** Executive summary of discoveries */
+    summary: string;
+    /** Direct answer if task posed a specific question */
+    answer?: string;
+    /** Number of tool calls made during investigation */
+    toolCallsMade: number;
+    /** Error message if success is false */
+    error?: string;
+}

@@ -33,3 +33,40 @@ export class ToolConstants {
 			`Rate limit exceeded: ${current} tool calls made, maximum ${max} per analysis session. Please refine your analysis approach.`,
 	} as const;
 }
+
+/**
+ * Limits for subagent execution.
+ * Prevents resource exhaustion while allowing meaningful investigations.
+ */
+export const SubagentLimits = {
+	/** Maximum subagents that can be spawned per analysis session */
+	MAX_PER_SESSION: 5,
+	/** Maximum tool calls a single subagent can make */
+	MAX_TOOL_CALLS: 150,
+	/** Default tool calls if not specified */
+	DEFAULT_TOOL_CALLS: ToolConstants.MAX_TOOL_CALLS_PER_SESSION,
+	/** Minimum task length to ensure meaningful instructions */
+	MIN_TASK_LENGTH: 30,
+	/** Timeout for subagent execution in milliseconds */
+	TIMEOUT_MS: 60_000,
+	/** Tools that subagents cannot access to prevent recursion */
+	DISALLOWED_TOOLS: ['run_subagent'] as const,
+} as const;
+
+/**
+ * Error messages for subagent execution failures.
+ * Provides actionable feedback to guide the LLM to improve requests.
+ */
+export const SubagentErrors = {
+	maxExceeded: (max: number) =>
+		`Maximum subagents (${max}) reached for this session. Use direct tools for remaining investigations.`,
+
+	taskTooShort: (min: number) =>
+		`Task too brief (${min}+ chars needed). Include: WHAT to investigate, WHERE to look, WHAT to return.`,
+
+	timeout: (ms: number) =>
+		`Subagent timed out after ${ms / 1000}s. Break into smaller, more focused tasks.`,
+
+	failed: (error: string) =>
+		`Subagent failed: ${error}`,
+} as const;

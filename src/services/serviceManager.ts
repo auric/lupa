@@ -41,6 +41,12 @@ import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { ThinkAboutContextTool } from '../tools/thinkAboutContextTool';
 import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
+import { RunSubagentTool } from '../tools/runSubagentTool';
+
+// Subagent services
+import { SubagentExecutor } from './subagentExecutor';
+import { SubagentSessionManager } from './subagentSessionManager';
+import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
@@ -77,6 +83,10 @@ export interface IServiceRegistry {
     toolExecutor: ToolExecutor;
     conversationManager: ConversationManager;
     toolCallingAnalysisProvider: ToolCallingAnalysisProvider;
+
+    // Subagent services
+    subagentExecutor: SubagentExecutor;
+    subagentSessionManager: SubagentSessionManager;
 
     // Complex services
     indexingService: IndexingService;
@@ -261,7 +271,16 @@ export class ServiceManager implements vscode.Disposable {
             this.services.workspaceSettings!
         );
 
-        // Register available tools
+        // Initialize subagent services
+        this.services.subagentSessionManager = new SubagentSessionManager();
+        this.services.subagentExecutor = new SubagentExecutor(
+            this.services.copilotModelManager!,
+            this.services.toolRegistry,
+            new SubagentPromptGenerator(),
+            this.services.workspaceSettings!
+        );
+
+        // Register available tools (including subagent tool)
         this.initializeTools();
 
         // Initialize tool testing webview service
@@ -321,6 +340,13 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(new ThinkAboutContextTool());
             this.services.toolRegistry!.registerTool(new ThinkAboutTaskTool());
             this.services.toolRegistry!.registerTool(new ThinkAboutCompletionTool());
+
+            // Register the RunSubagentTool for delegating complex investigations
+            const runSubagentTool = new RunSubagentTool(
+                this.services.subagentExecutor!,
+                this.services.subagentSessionManager!
+            );
+            this.services.toolRegistry!.registerTool(runSubagentTool);
 
             Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
         } catch (error) {

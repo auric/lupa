@@ -1,19 +1,12 @@
 import * as vscode from 'vscode';
 import { ConversationManager } from '../models/conversationManager';
-import {
-  ToolExecutor,
-  type ToolExecutionRequest
-} from '../models/toolExecutor';
+import { ToolExecutor } from '../models/toolExecutor';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { TokenValidator } from '../models/tokenValidator';
-import type {
-  ToolCallMessage,
-  ToolCall
-} from '../types/modelTypes';
+import { ConversationRunner, type ToolCallHandler } from '../models/conversationRunner';
 import type {
   ToolCallRecord,
-  ToolCallsData,
   ToolCallingAnalysisResult
 } from '../types/toolCallTypes';
 import { TokenConstants } from '../models/tokenConstants';
@@ -28,6 +21,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
 export class ToolCallingAnalysisProvider {
   private tokenValidator: TokenValidator | null = null;
   private toolCallRecords: ToolCallRecord[] = [];
+  private conversationRunner: ConversationRunner;
 
   constructor(
     private conversationManager: ConversationManager,
@@ -35,7 +29,9 @@ export class ToolCallingAnalysisProvider {
     private copilotModelManager: CopilotModelManager,
     private promptGenerator: PromptGenerator,
     private workspaceSettings: WorkspaceSettingsService
-  ) { }
+  ) {
+    this.conversationRunner = new ConversationRunner(copilotModelManager, toolExecutor);
+  }
 
   private get maxIterations(): number {
     return this.workspaceSettings.getMaxIterations();
@@ -49,6 +45,7 @@ export class ToolCallingAnalysisProvider {
   async analyze(diff: string, token: vscode.CancellationToken): Promise<ToolCallingAnalysisResult> {
     // Reset tool call records for new analysis
     this.toolCallRecords = [];
+    this.conversationRunner.reset();
     let analysisCompleted = false;
     let analysisError: string | undefined;
     let analysisText = '';
@@ -79,8 +76,34 @@ export class ToolCallingAnalysisProvider {
 
       this.conversationManager.addUserMessage(userMessage);
 
-      // Start the conversation loop with the LLM
-      analysisText = await this.conversationLoop(systemPrompt, token);
+      // Create handler to record tool calls and provide context status
+      const handler: ToolCallHandler = {
+        onToolCallComplete: (toolCallId, toolName, args, result, success, error, durationMs) => {
+          this.toolCallRecords.push({
+            id: toolCallId,
+            toolName,
+            arguments: args,
+            result,
+            success,
+            error,
+            durationMs: durationMs ?? 0,
+            timestamp: Date.now()
+          });
+        },
+        getContextStatusSuffix: () => this.getContextStatusSuffix()
+      };
+
+      // Run conversation loop using extracted ConversationRunner
+      analysisText = await this.conversationRunner.run(
+        {
+          systemPrompt,
+          maxIterations: this.maxIterations,
+          tools: availableTools
+        },
+        this.conversationManager,
+        token,
+        handler
+      );
       analysisCompleted = true;
 
       Log.info('Analysis completed successfully');
@@ -117,176 +140,6 @@ export class ToolCallingAnalysisProvider {
   }
 
   /**
-   * Main conversation loop that handles LLM interactions and tool calls.
-   * @param systemPrompt The system prompt to use for the conversation
-   * @returns Promise resolving to the final analysis result
-   */
-  private async conversationLoop(systemPrompt: string, token: vscode.CancellationToken): Promise<string> {
-    let iteration = 0;
-
-    while (iteration < this.maxIterations) {
-      iteration++;
-      Log.info(`Conversation iteration ${iteration}`);
-
-      try {
-        // Get available tools for the LLM
-        const availableTools = this.toolExecutor.getAvailableTools();
-        const vscodeTools = availableTools.map(tool => tool.getVSCodeTool());
-
-        // Prepare messages for the LLM
-        let messages = this.prepareMessagesForLLM(systemPrompt);
-
-        // Initialize token validator if not already done
-        if (!this.tokenValidator) {
-          const currentModel = await this.copilotModelManager.getCurrentModel();
-          this.tokenValidator = new TokenValidator(currentModel);
-        }
-
-        // Validate token count and clean up context if needed
-        const validation = await this.tokenValidator.validateTokens(
-          messages.slice(1), // Exclude system prompt from validation
-          systemPrompt
-        );
-
-        if (validation.suggestedAction === 'request_final_answer') {
-          // Context window is full, request final answer
-          this.conversationManager.addUserMessage(
-            'Context window is full. Please provide your final analysis based on the information you have gathered so far.'
-          );
-          messages = this.prepareMessagesForLLM(systemPrompt);
-        } else if (validation.suggestedAction === 'remove_old_context') {
-          // Clean up old context
-          const cleanup = await this.tokenValidator.cleanupContext(
-            messages.slice(1), // Exclude system prompt
-            systemPrompt
-          );
-
-          // Update conversation manager with cleaned messages
-          this.conversationManager.clearHistory();
-          for (const message of cleanup.cleanedMessages) {
-            if (message.role === 'user') {
-              this.conversationManager.addUserMessage(message.content || '');
-            } else if (message.role === 'assistant') {
-              this.conversationManager.addAssistantMessage(message.content, message.toolCalls);
-            } else if (message.role === 'tool') {
-              this.conversationManager.addToolMessage(message.toolCallId || '', message.content || '');
-            }
-          }
-
-          messages = this.prepareMessagesForLLM(systemPrompt);
-
-          if (cleanup.contextFullMessageAdded) {
-            Log.info(`Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`);
-          }
-        }
-
-        // Send request to the LLM
-        const response = await this.copilotModelManager.sendRequest({
-          messages,
-          tools: vscodeTools
-        }, token);
-
-        if (token.isCancellationRequested) {
-          Log.info('Analysis cancelled by user');
-          return 'Analysis cancelled by user';
-        }
-
-        // Add assistant response to conversation
-        this.conversationManager.addAssistantMessage(
-          response.content || null,
-          response.toolCalls
-        );
-
-        // Check if the LLM wants to call tools
-        if (response.toolCalls && response.toolCalls.length > 0) {
-          // Execute the requested tools (toolExecutor handles logging)
-          await this.handleToolCalls(response.toolCalls);
-
-          // Continue the conversation loop to get the LLM's response after tool execution
-          continue;
-        }
-
-        // If no tool calls, we have the final response
-        return response.content || 'Analysis completed but no content returned.';
-
-      } catch (error) {
-        const errorMessage = `Error in conversation iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
-        Log.error(errorMessage);
-
-        // For certain errors (like LLM service unavailable), re-throw to be handled by outer catch
-        if (error instanceof Error && error.message.includes('service unavailable')) {
-          throw error;
-        }
-
-        // Add error to conversation and try to continue
-        this.conversationManager.addAssistantMessage(
-          `I encountered an error: ${errorMessage}. Let me try to continue the analysis.`
-        );
-
-        // If this is the last iteration, return the error
-        if (iteration >= this.maxIterations) {
-          return errorMessage;
-        }
-      }
-    }
-
-    return 'Analysis reached maximum iterations. The conversation may be incomplete.';
-  }
-
-  /**
-   * Handle tool calls from the LLM by executing them and adding results to the conversation.
-   * @param toolCalls Array of tool calls to execute
-   */
-  private async handleToolCalls(toolCalls: ToolCall[]): Promise<void> {
-    const toolRequests: ToolExecutionRequest[] = toolCalls.map(call => {
-      let parsedArgs: Record<string, unknown> = {};
-
-      try {
-        parsedArgs = JSON.parse(call.function.arguments);
-      } catch (error) {
-        Log.error(`Failed to parse tool arguments for ${call.function.name}: ${call.function.arguments}`);
-      }
-
-      return {
-        name: call.function.name,
-        args: parsedArgs
-      };
-    });
-
-    const startTime = Date.now();
-    const results = await this.toolExecutor.executeTools(toolRequests);
-    const endTime = Date.now();
-    const avgDuration = results.length > 0 ? Math.floor((endTime - startTime) / results.length) : 0;
-
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      const toolCall = toolCalls[i];
-      const toolCallId = toolCall.id || `tool_call_${i}`;
-      const request = toolRequests[i];
-
-      const baseContent = result.success && result.result
-        ? result.result
-        : `Error: ${result.error || 'Unknown error'}`;
-
-      const contextStatus = await this.getContextStatusSuffix();
-      const content = baseContent + contextStatus;
-
-      this.toolCallRecords.push({
-        id: toolCallId,
-        toolName: result.name,
-        arguments: request.args as Record<string, unknown>,
-        result: baseContent,
-        success: result.success,
-        error: result.error,
-        durationMs: avgDuration,
-        timestamp: Date.now()
-      });
-
-      this.conversationManager.addToolMessage(toolCallId, content);
-    }
-  }
-
-  /**
    * Get context usage status as a suffix to append to tool responses.
    * Helps the LLM understand how much context it has remaining.
    */
@@ -320,35 +173,6 @@ export class ToolCallingAnalysisProvider {
       Log.error('Error calculating context status:', error);
       return '';
     }
-  }
-
-  /**
-   * Prepare messages for the LLM by converting conversation history to the expected format.
-   * @param systemPrompt The system prompt to include
-   * @returns Array of messages formatted for the LLM
-   */
-  private prepareMessagesForLLM(systemPrompt: string): ToolCallMessage[] {
-    const messages: ToolCallMessage[] = [
-      {
-        role: 'system',
-        content: systemPrompt,
-        toolCalls: undefined,
-        toolCallId: undefined
-      }
-    ];
-
-    // Add conversation history
-    const history = this.conversationManager.getHistory();
-    for (const message of history) {
-      messages.push({
-        role: message.role,
-        content: message.content,
-        toolCalls: message.toolCalls,
-        toolCallId: message.toolCallId
-      });
-    }
-
-    return messages;
   }
 
   /**

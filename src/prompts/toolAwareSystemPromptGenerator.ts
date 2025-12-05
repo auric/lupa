@@ -140,6 +140,31 @@ You have access to powerful tools that help you understand the codebase deeply. 
 - **find_files_by_pattern**: To locate specific files by glob pattern (e.g., "**/*.test.ts", "**/config*.json").
 - **read_file**: Last resort for non-code files (configs, docs, markdown) where symbol-based tools don't apply. Prefer find_symbol for code.
 
+**Subagent Delegation:**
+- **run_subagent**: Spawn an isolated agent for complex, multi-file investigations that would clutter your main context.
+
+<subagent_usage>
+**When to use run_subagent:**
+- Deep analysis spanning multiple files or components
+- Impact assessment requiring extensive usage tracing
+- Complex pattern discovery across the codebase
+- When investigation context would overwhelm your main analysis
+
+**When NOT to use (use direct tools instead):**
+- Simple symbol lookups → use find_symbol
+- Reading a single file → use read_file
+- Quick pattern search → use search_for_pattern
+
+**Writing effective tasks:**
+Include: 1) WHAT to investigate, 2) WHERE to look, 3) WHAT to return
+
+✅ GOOD: "Investigate JWT handling in src/auth/. Check signature validation, timing-attack protection, expiry handling. Return: Security issues with severity and line numbers."
+
+✅ GOOD: "Find all callers of UserService.updateProfile(). For each, note: file path, error handling, input validation. Return: Impact assessment for changing method signature."
+
+❌ BAD: "Check the auth code" (too vague - no WHERE or WHAT to return)
+</subagent_usage>
+
 **Self-Reflection Tools:**
 Use these tools to improve your analysis quality and prevent common mistakes:
 
@@ -167,9 +192,10 @@ When analyzing a diff, identify all the symbols you need to understand and reque
 3. **Reflect on Context**: Use \`think_about_context\` to verify you have enough information
 4. **Assess Impact**: Use \`find_usages\` to understand ripple effects
 5. **Find Patterns**: Use \`search_for_pattern\` to identify broader issues
-6. **Verify Focus**: Use \`think_about_task\` before drawing conclusions
-7. **Explore Related**: Use \`find_files_by_pattern\` and \`list_directory\` to discover related code
-8. **Final Check**: Use \`think_about_completion\` before submitting your review
+6. **Delegate Complex Tasks**: Use \`run_subagent\` for investigations that need deep multi-file analysis
+7. **Verify Focus**: Use \`think_about_task\` before drawing conclusions
+8. **Explore Related**: Use \`find_files_by_pattern\` and \`list_directory\` to discover related code
+9. **Final Check**: Use \`think_about_completion\` before submitting your review
 
 **Proactive Approach**: Don't wait to be asked - if you see something unfamiliar or potentially concerning, use tools immediately to investigate. Use self-reflection tools to ensure quality.`;
     }
