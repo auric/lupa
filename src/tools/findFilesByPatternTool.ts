@@ -22,7 +22,7 @@ export class FindFilesByPatternTool extends BaseTool {
   description = 'Find files matching glob patterns within a directory. Supports wildcards (*.js), recursive search (**/*.ts), multiple extensions (*.{js,ts}). Automatically respects .gitignore rules. Returns relative paths from project root.';
 
   schema = z.object({
-    pattern: z.string().min(1, 'Search pattern cannot be empty').describe('Glob pattern to match files: "*.js" (JS files), "**/*.test.ts" (test files recursively), "src/**/*.{js,ts}" (JS/TS in src directory), "README*" (README files)'),
+    pattern: z.string().min(1, 'Search pattern cannot be empty').describe('Glob pattern to match files: "*.js" (JS files), "**/*.test.ts" (test files recursively), "src/**/*.{js,ts}" (JS/TS in src directory), "README*" (README files), remember to add `**/` for recursive search in subdirectories.'),
     search_directory: z.string().default('.').optional().describe('Directory to search within, relative to project root. Use "." for entire project, "src" for src folder, "tests" for test directory (default: ".")')
   });
 

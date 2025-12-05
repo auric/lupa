@@ -3,8 +3,8 @@ import { EmbeddingModel } from '../services/embeddingModelSelectionService';
 import { LOG_LEVELS, OUTPUT_TARGETS } from './loggingTypes';
 
 export const ANALYSIS_LIMITS = {
-    maxToolCalls: { default: 50, min: 10, max: 200 },
-    maxIterations: { default: 40, min: 3, max: 100 },
+    maxToolCalls: { default: 100, min: 10, max: 200 },
+    maxIterations: { default: 100, min: 3, max: 200 },
     requestTimeoutSeconds: { default: 60, min: 10, max: 300 },
 } as const;
 

@@ -18,7 +18,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  * Responsibilities:
  * - Create isolated conversation context per investigation
  * - Filter tools to prevent infinite recursion
- * - Parse structured response format
+ * - Return raw response for parent LLM to interpret
  */
 export class SubagentExecutor {
     constructor(
@@ -30,16 +30,26 @@ export class SubagentExecutor {
 
     /**
      * Execute an isolated subagent investigation.
+     * @param task The investigation task
+     * @param token Cancellation token
+     * @param subagentId Unique ID for this subagent (for logging)
      */
     async execute(
         task: SubagentTask,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        subagentId: number
     ): Promise<SubagentResult> {
         const startTime = Date.now();
         let toolCallsMade = 0;
 
+        // Create short task label for logging (first 50 chars of task)
+        const taskLabel = task.task.length > 50
+            ? task.task.substring(0, 50).replace(/\s+/g, ' ').trim() + '...'
+            : task.task.replace(/\s+/g, ' ').trim();
+        const logLabel = `Subagent #${subagentId}`;
+
         try {
-            Log.info(`Subagent starting: ${task.task.substring(0, 100)}...`);
+            Log.info(`${logLabel} Starting: "${taskLabel}"`);
 
             // Create isolated conversation and tool executor for this subagent
             const conversation = new ConversationManager();
@@ -48,8 +58,9 @@ export class SubagentExecutor {
             const toolExecutor = new ToolExecutor(filteredRegistry, this.workspaceSettings);
             const conversationRunner = new ConversationRunner(this.modelManager, toolExecutor);
 
-            // Generate subagent-specific prompt
-            const systemPrompt = this.promptGenerator.generateSystemPrompt(task, filteredTools);
+            // Generate subagent-specific prompt using workspace settings for limits
+            const maxIterations = task.maxToolCalls ?? this.workspaceSettings.getMaxIterations();
+            const systemPrompt = this.promptGenerator.generateSystemPrompt(task, filteredTools, maxIterations);
 
             // Add initial user message with the task
             conversation.addUserMessage(`Please investigate: ${task.task}`);
@@ -59,13 +70,13 @@ export class SubagentExecutor {
                 toolCallsMade++;
             };
 
-            // Run the conversation loop
-            const maxIterations = task.maxToolCalls ?? SubagentLimits.DEFAULT_TOOL_CALLS;
+            // Run the conversation loop with labeled logging
             const response = await conversationRunner.run(
                 {
                     systemPrompt,
                     maxIterations,
-                    tools: filteredTools
+                    tools: filteredTools,
+                    label: logLabel
                 },
                 conversation,
                 token,
@@ -73,27 +84,22 @@ export class SubagentExecutor {
             );
 
             const duration = Date.now() - startTime;
-            Log.info(`Subagent completed in ${duration}ms with ${toolCallsMade} tool calls`);
+            Log.info(`${logLabel} Completed in ${duration}ms with ${toolCallsMade} tool calls`);
 
-            // Parse the structured response
-            const parsed = this.parseResponse(response);
-
+            // Return raw response - parent LLM can interpret it naturally
             return {
                 success: true,
-                findings: parsed.findings || response,
-                summary: parsed.summary || 'Investigation completed.',
-                answer: parsed.answer,
+                response,
                 toolCallsMade
             };
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            Log.error(`Subagent failed: ${errorMessage}`);
+            Log.error(`${logLabel} Failed: ${errorMessage}`);
 
             return {
                 success: false,
-                findings: '',
-                summary: '',
+                response: '',
                 toolCallsMade,
                 error: errorMessage
             };
@@ -118,25 +124,5 @@ export class SubagentExecutor {
             registry.registerTool(tool);
         }
         return registry;
-    }
-
-    /**
-     * Parse the structured response from the subagent.
-     * Extracts <findings>, <summary>, and <answer> tags.
-     */
-    private parseResponse(response: string): {
-        findings?: string;
-        summary?: string;
-        answer?: string;
-    } {
-        const findingsMatch = response.match(/<findings>([\s\S]*?)<\/findings>/i);
-        const summaryMatch = response.match(/<summary>([\s\S]*?)<\/summary>/i);
-        const answerMatch = response.match(/<answer>([\s\S]*?)<\/answer>/i);
-
-        return {
-            findings: findingsMatch?.[1]?.trim(),
-            summary: summaryMatch?.[1]?.trim(),
-            answer: answerMatch?.[1]?.trim()
-        };
     }
 }

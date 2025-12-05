@@ -344,7 +344,8 @@ export class ServiceManager implements vscode.Disposable {
             // Register the RunSubagentTool for delegating complex investigations
             const runSubagentTool = new RunSubagentTool(
                 this.services.subagentExecutor!,
-                this.services.subagentSessionManager!
+                this.services.subagentSessionManager!,
+                this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(runSubagentTool);
 

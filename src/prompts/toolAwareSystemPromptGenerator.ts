@@ -140,30 +140,31 @@ You have access to powerful tools that help you understand the codebase deeply. 
 - **find_files_by_pattern**: To locate specific files by glob pattern (e.g., "**/*.test.ts", "**/config*.json").
 - **read_file**: Last resort for non-code files (configs, docs, markdown) where symbol-based tools don't apply. Prefer find_symbol for code.
 
-**Subagent Delegation:**
-- **run_subagent**: Spawn an isolated agent for complex, multi-file investigations that would clutter your main context.
+<subagent_delegation>
+## Subagent Delegation (IMPORTANT)
 
-<subagent_usage>
-**When to use run_subagent:**
-- Deep analysis spanning multiple files or components
-- Impact assessment requiring extensive usage tracing
-- Complex pattern discovery across the codebase
-- When investigation context would overwhelm your main analysis
+**run_subagent** spawns an isolated investigation agent. This is a POWERFUL tool - use it proactively!
 
-**When NOT to use (use direct tools instead):**
-- Simple symbol lookups → use find_symbol
-- Reading a single file → use read_file
-- Quick pattern search → use search_for_pattern
+### MANDATORY: Use subagents when:
+- PR touches **3+ files** → spawn subagent(s) for component-specific deep dives
+- Any **security-sensitive code** (auth, crypto, permissions) → dedicated security investigation
+- **Cross-cutting concerns** (logging, error handling, validation) → pattern analysis subagent
+- **Complex business logic** → isolated investigation won't pollute your main context
 
-**Writing effective tasks:**
-Include: 1) WHAT to investigate, 2) WHERE to look, 3) WHAT to return
+### DO NOT use for simple tasks:
+- Single symbol lookup → use find_symbol directly
+- Reading one file → use read_file directly
+- Quick regex → use search_for_pattern directly
 
-✅ GOOD: "Investigate JWT handling in src/auth/. Check signature validation, timing-attack protection, expiry handling. Return: Security issues with severity and line numbers."
+### Writing effective tasks:
+ALWAYS include: 1) WHAT, 2) WHERE, 3) WHAT TO RETURN
 
-✅ GOOD: "Find all callers of UserService.updateProfile(). For each, note: file path, error handling, input validation. Return: Impact assessment for changing method signature."
+✅ GOOD: "Investigate error handling in src/api/controllers/. For each endpoint: check try/catch coverage, error response format, logging presence. Return: List of gaps with file:line references and severity."
 
-❌ BAD: "Check the auth code" (too vague - no WHERE or WHAT to return)
-</subagent_usage>
+✅ GOOD: "Trace all callers of PaymentService.processRefund(). Check: validation, error handling, idempotency, audit logging. Return: Impact assessment with risk ratings."
+
+❌ BAD: "Check the payment code" (too vague)
+</subagent_delegation>
 
 **Self-Reflection Tools:**
 Use these tools to improve your analysis quality and prevent common mistakes:
@@ -188,16 +189,17 @@ When analyzing a diff, identify all the symbols you need to understand and reque
 
 **Analysis Strategy:**
 1. **Start Broad**: Use \`get_symbols_overview\` to understand the context
-2. **Go Deep**: Use \`find_symbol\` for detailed understanding of changed code
-3. **Reflect on Context**: Use \`think_about_context\` to verify you have enough information
-4. **Assess Impact**: Use \`find_usages\` to understand ripple effects
-5. **Find Patterns**: Use \`search_for_pattern\` to identify broader issues
-6. **Delegate Complex Tasks**: Use \`run_subagent\` for investigations that need deep multi-file analysis
-7. **Verify Focus**: Use \`think_about_task\` before drawing conclusions
-8. **Explore Related**: Use \`find_files_by_pattern\` and \`list_directory\` to discover related code
-9. **Final Check**: Use \`think_about_completion\` before submitting your review
+2. **Assess Scope**: Count files in PR. If 3+ files, PLAN which subagent investigations to spawn
+3. **Go Deep**: Use \`find_symbol\` for detailed understanding of changed code
+4. **Spawn Subagents**: For complex/security-sensitive areas, delegate to \`run_subagent\` NOW
+5. **Reflect on Context**: Use \`think_about_context\` to verify you have enough information
+6. **Assess Impact**: Use \`find_usages\` to understand ripple effects
+7. **Find Patterns**: Use \`search_for_pattern\` to identify broader issues
+8. **Verify Focus**: Use \`think_about_task\` before drawing conclusions
+9. **Explore Related**: Use \`find_files_by_pattern\` and \`list_directory\` to discover related code
+10. **Final Check**: Use \`think_about_completion\` before submitting your review
 
-**Proactive Approach**: Don't wait to be asked - if you see something unfamiliar or potentially concerning, use tools immediately to investigate. Use self-reflection tools to ensure quality.`;
+**Proactive Approach**: Don't wait to be asked - if you see something unfamiliar or potentially concerning, use tools immediately to investigate. For multi-file PRs, spawning subagents early allows parallel investigation while you continue your main analysis.`;
     }
 
     /**

@@ -37,18 +37,15 @@ export class ToolConstants {
 /**
  * Limits for subagent execution.
  * Prevents resource exhaustion while allowing meaningful investigations.
+ * Note: Tool call limits come from WorkspaceSettingsService, not here.
  */
 export const SubagentLimits = {
 	/** Maximum subagents that can be spawned per analysis session */
 	MAX_PER_SESSION: 5,
-	/** Maximum tool calls a single subagent can make */
-	MAX_TOOL_CALLS: 150,
-	/** Default tool calls if not specified */
-	DEFAULT_TOOL_CALLS: ToolConstants.MAX_TOOL_CALLS_PER_SESSION,
 	/** Minimum task length to ensure meaningful instructions */
 	MIN_TASK_LENGTH: 30,
 	/** Timeout for subagent execution in milliseconds */
-	TIMEOUT_MS: 60_000,
+	TIMEOUT_MS: 120_000,
 	/** Tools that subagents cannot access to prevent recursion */
 	DISALLOWED_TOOLS: ['run_subagent'] as const,
 } as const;

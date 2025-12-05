@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
-import { SubagentLimits } from '../models/toolConstants';
 
 // Mock tool for testing
 const createMockTool = (name: string, description: string): ITool => ({
@@ -26,7 +25,7 @@ describe('SubagentPromptGenerator', () => {
                 task: 'Investigate the authentication flow in src/auth/'
             };
 
-            const prompt = generator.generateSystemPrompt(task, []);
+            const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('Investigate the authentication flow in src/auth/');
         });
@@ -37,20 +36,21 @@ describe('SubagentPromptGenerator', () => {
                 context: 'PR adds new JWT validation in auth.ts'
             };
 
-            const prompt = generator.generateSystemPrompt(task, []);
+            const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('PR adds new JWT validation in auth.ts');
             expect(prompt).toContain('Context from Parent Analysis');
         });
 
-        it('should indicate no context when not provided', () => {
+        it('should not include context section when not provided', () => {
             const task: SubagentTask = {
                 task: 'Check for security issues'
             };
 
-            const prompt = generator.generateSystemPrompt(task, []);
+            const prompt = generator.generateSystemPrompt(task, [], 10);
 
-            expect(prompt).toContain('No additional context provided');
+            // The context section header should not appear when no context is provided
+            expect(prompt).not.toContain('Context from Parent Analysis');
         });
 
         it('should list available tools', () => {
@@ -60,7 +60,7 @@ describe('SubagentPromptGenerator', () => {
             ];
 
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, tools);
+            const prompt = generator.generateSystemPrompt(task, tools, 10);
 
             expect(prompt).toContain('find_symbol');
             expect(prompt).toContain('Finds symbols in code');
@@ -70,43 +70,31 @@ describe('SubagentPromptGenerator', () => {
 
         it('should indicate when no tools are available', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, []);
+            const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('No tools available');
         });
 
-        it('should include the response structure tags', () => {
+        it('should include clear results instructions (not XML tags)', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, []);
+            const prompt = generator.generateSystemPrompt(task, [], 10);
 
-            expect(prompt).toContain('<findings>');
-            expect(prompt).toContain('</findings>');
-            expect(prompt).toContain('<summary>');
-            expect(prompt).toContain('</summary>');
-            expect(prompt).toContain('<answer>');
-            expect(prompt).toContain('</answer>');
+            // New simplified format - no XML tags
+            expect(prompt).toContain('Return Clear Results');
+            expect(prompt).toContain('What you found');
+            expect(prompt).toContain('Why it matters');
         });
 
-        it('should include tool call budget from task', () => {
-            const task: SubagentTask = {
-                task: 'Test task',
-                maxToolCalls: 12
-            };
-            const prompt = generator.generateSystemPrompt(task, []);
-
-            expect(prompt).toContain('12 calls');
-        });
-
-        it('should use default tool call budget when not specified', () => {
+        it('should include the maxIterations value in budget message', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, []);
+            const prompt = generator.generateSystemPrompt(task, [], 15);
 
-            expect(prompt).toContain(`${SubagentLimits.DEFAULT_TOOL_CALLS} calls`);
+            expect(prompt).toContain('15 iterations');
         });
 
         it('should include investigation instructions', () => {
             const task: SubagentTask = { task: 'Test task' };
-            const prompt = generator.generateSystemPrompt(task, []);
+            const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('Investigate Systematically');
             expect(prompt).toContain('Be Proactive');

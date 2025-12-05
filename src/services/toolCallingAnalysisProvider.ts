@@ -98,7 +98,8 @@ export class ToolCallingAnalysisProvider {
         {
           systemPrompt,
           maxIterations: this.maxIterations,
-          tools: availableTools
+          tools: availableTools,
+          label: 'Main Analysis'
         },
         this.conversationManager,
         token,

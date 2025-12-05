@@ -29,6 +29,12 @@ describe('SubagentSessionManager', () => {
             expect(sessionManager.getCount()).toBe(1);
         });
 
+        it('should return sequential IDs starting from 1', () => {
+            expect(sessionManager.recordSpawn()).toBe(1);
+            expect(sessionManager.recordSpawn()).toBe(2);
+            expect(sessionManager.recordSpawn()).toBe(3);
+        });
+
         it('should decrement remaining budget when spawning', () => {
             sessionManager.recordSpawn();
             expect(sessionManager.getRemainingBudget()).toBe(SubagentLimits.MAX_PER_SESSION - 1);
@@ -73,6 +79,15 @@ describe('SubagentSessionManager', () => {
             sessionManager.reset();
 
             expect(sessionManager.getCount()).toBe(0);
+        });
+
+        it('should reset IDs after reset', () => {
+            sessionManager.recordSpawn();
+            sessionManager.recordSpawn();
+            sessionManager.reset();
+
+            // IDs should restart from 1 after reset
+            expect(sessionManager.recordSpawn()).toBe(1);
         });
 
         it('should allow spawning after reset', () => {

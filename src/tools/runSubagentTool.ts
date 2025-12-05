@@ -7,6 +7,7 @@ import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import type { SubagentResult } from '../types/modelTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 /**
  * Tool that spawns isolated subagent investigations.
@@ -14,54 +15,63 @@ import { Log } from '../services/loggingService';
  */
 export class RunSubagentTool extends BaseTool {
     name = 'run_subagent';
-    description = `Spawn an isolated agent for complex, multi-file investigations.
+    description = `Spawn an isolated agent for complex, multi-file investigations. USE THIS for deep analysis to avoid cluttering your main context.
 
-**When to use:**
-- Deep analysis spanning multiple files or components
-- Impact assessment requiring extensive usage tracing
-- Complex pattern discovery across the codebase
-- When investigation would clutter your main context
+**STRONGLY RECOMMENDED when:**
+- PR touches 3+ files → delegate component-specific investigations
+- Need to trace impact across multiple modules
+- Security/performance concerns requiring deep code inspection
+- Complex dependency chains need tracing
 
-**When NOT to use (use direct tools instead):**
-- Simple symbol lookups → use find_symbol
-- Reading a single file → use read_file
-- Quick pattern search → use search_for_pattern
+**NOT needed for:**
+- Single symbol lookup → use find_symbol directly
+- Reading one file → use read_file directly
+- Quick regex search → use search_for_pattern directly
 
-**Writing effective tasks:**
-Include: 1) WHAT to investigate, 2) WHERE to look, 3) WHAT to return
+**Task format:** Include WHAT to investigate, WHERE to look, WHAT to return.
+Example: "Investigate error handling in src/api/. For each endpoint: check try/catch coverage, error response format, logging. Return: list of gaps with file:line references."`;
 
-Example: "Investigate JWT handling in src/auth/. Check signature validation, timing protection, expiry handling. Return: Security issues with severity and line numbers."`;
+    private maxIterationsFromSettings: number;
 
-    schema = z.object({
-        task: z.string()
-            .min(SubagentLimits.MIN_TASK_LENGTH, SubagentErrors.taskTooShort(SubagentLimits.MIN_TASK_LENGTH))
-            .describe(
-                'Detailed investigation task. Include: ' +
-                '1) WHAT to investigate (specific question or concern), ' +
-                '2) WHERE to look (relevant files, directories, symbols), ' +
-                '3) WHAT to return (expected deliverables).'
-            ),
-        context: z.string().optional().describe(
-            'Relevant context from your current analysis: code snippets, file paths, findings, or symbol names.'
-        ),
-        max_tool_calls: z.number()
-            .min(1)
-            .max(SubagentLimits.MAX_TOOL_CALLS)
-            .default(SubagentLimits.DEFAULT_TOOL_CALLS)
-            .optional()
-            .describe(
-                `Maximum tool calls for the subagent (default: ${SubagentLimits.DEFAULT_TOOL_CALLS}, max: ${SubagentLimits.MAX_TOOL_CALLS}). ` +
-                'Increase for complex investigations, decrease for focused lookups.'
-            )
-    });
+    schema: z.ZodObject<{
+        task: z.ZodString;
+        context: z.ZodOptional<z.ZodString>;
+        max_tool_calls: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
+    }>;
 
     private cancellationTokenSource: vscode.CancellationTokenSource | null = null;
 
     constructor(
         private readonly executor: SubagentExecutor,
-        private readonly sessionManager: SubagentSessionManager
+        private readonly sessionManager: SubagentSessionManager,
+        private readonly workspaceSettings: WorkspaceSettingsService
     ) {
         super();
+        this.maxIterationsFromSettings = this.workspaceSettings.getMaxIterations();
+
+        // Build schema with dynamic defaults from settings
+        this.schema = z.object({
+            task: z.string()
+                .min(SubagentLimits.MIN_TASK_LENGTH, SubagentErrors.taskTooShort(SubagentLimits.MIN_TASK_LENGTH))
+                .describe(
+                    'Detailed investigation task. Include: ' +
+                    '1) WHAT to investigate (specific question or concern), ' +
+                    '2) WHERE to look (relevant files, directories, symbols), ' +
+                    '3) WHAT to return (expected deliverables).'
+                ),
+            context: z.string().optional().describe(
+                'Relevant context from your current analysis: code snippets, file paths, findings, or symbol names.'
+            ),
+            max_tool_calls: z.number()
+                .min(1)
+                .max(this.maxIterationsFromSettings)
+                .default(this.maxIterationsFromSettings)
+                .optional()
+                .describe(
+                    `Maximum iterations for the subagent (default: ${this.maxIterationsFromSettings}). ` +
+                    'Increase for complex investigations, decrease for focused lookups.'
+                )
+        });
     }
 
     async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
@@ -78,9 +88,10 @@ Example: "Investigate JWT handling in src/auth/. Check signature validation, tim
             return toolError(SubagentErrors.maxExceeded(SubagentLimits.MAX_PER_SESSION));
         }
 
-        this.sessionManager.recordSpawn();
+        // Record spawn and get the subagent ID for logging
+        const subagentId = this.sessionManager.recordSpawn();
         const remaining = this.sessionManager.getRemainingBudget();
-        Log.info(`Subagent spawned (${this.sessionManager.getCount()}/${SubagentLimits.MAX_PER_SESSION}, ${remaining} remaining)`);
+        Log.info(`Subagent #${subagentId} spawned (${this.sessionManager.getCount()}/${SubagentLimits.MAX_PER_SESSION}, ${remaining} remaining)`);
 
         // Create cancellation token for timeout
         this.cancellationTokenSource = new vscode.CancellationTokenSource();
@@ -97,11 +108,12 @@ Example: "Investigate JWT handling in src/auth/. Check signature validation, tim
                     context,
                     maxToolCalls: max_tool_calls
                 },
-                this.cancellationTokenSource.token
+                this.cancellationTokenSource.token,
+                subagentId
             );
 
             clearTimeout(timeoutHandle);
-            return toolSuccess(this.formatResult(result));
+            return toolSuccess(this.formatResult(result, subagentId));
 
         } catch (error) {
             clearTimeout(timeoutHandle);
@@ -121,27 +133,15 @@ Example: "Investigate JWT handling in src/auth/. Check signature validation, tim
 
     /**
      * Format subagent result for parent LLM consumption.
+     * Returns the raw response with minimal metadata - parent LLM interprets naturally.
      */
-    private formatResult(result: SubagentResult): string {
+    private formatResult(result: SubagentResult, subagentId: number): string {
         if (!result.success) {
-            return `## Subagent Investigation Failed\n\nError: ${result.error}\n\nTool calls made: ${result.toolCallsMade}`;
+            return `## Subagent #${subagentId} Failed\n\nError: ${result.error}\n\nTool calls made: ${result.toolCallsMade}`;
         }
 
-        let output = `## Subagent Investigation Complete\n\n`;
-        output += `**Tool calls made:** ${result.toolCallsMade}\n\n`;
-
-        if (result.summary) {
-            output += `### Summary\n${result.summary}\n\n`;
-        }
-
-        if (result.findings) {
-            output += `### Detailed Findings\n${result.findings}\n\n`;
-        }
-
-        if (result.answer) {
-            output += `### Answer\n${result.answer}\n`;
-        }
-
-        return output;
+        return `## Subagent #${subagentId} Investigation Complete\n\n` +
+            `**Tool calls made:** ${result.toolCallsMade}\n\n` +
+            `---\n\n${result.response}`;
     }
 }

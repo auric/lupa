@@ -15,10 +15,12 @@ export class SubagentSessionManager {
     }
 
     /**
-     * Record that a subagent was spawned.
+     * Record that a subagent was spawned and return its ID.
+     * @returns The unique ID for this subagent (1, 2, 3, etc.)
      */
-    recordSpawn(): void {
+    recordSpawn(): number {
         this.count++;
+        return this.count;
     }
 
     /**

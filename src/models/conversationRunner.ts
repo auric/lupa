@@ -17,6 +17,8 @@ export interface ConversationRunnerConfig {
     maxIterations: number;
     /** Available tools for the LLM (empty array disables tools) */
     tools: ITool[];
+    /** Optional label for logging context (e.g., "Main Analysis", "Subagent #1: Security") */
+    label?: string;
 }
 
 /**
@@ -68,10 +70,11 @@ export class ConversationRunner {
         handler?: ToolCallHandler
     ): Promise<string> {
         let iteration = 0;
+        const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
 
         while (iteration < config.maxIterations) {
             iteration++;
-            Log.info(`Conversation iteration ${iteration}`);
+            Log.info(`${logPrefix} Iteration ${iteration}/${config.maxIterations}`);
 
             try {
                 const vscodeTools = config.tools.map(tool => tool.getVSCodeTool());
@@ -115,7 +118,7 @@ export class ConversationRunner {
                     messages = this.prepareMessagesForLLM(config.systemPrompt, conversation);
 
                     if (cleanup.contextFullMessageAdded) {
-                        Log.info(`Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`);
+                        Log.info(`${logPrefix} Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`);
                     }
                 }
 
@@ -125,7 +128,7 @@ export class ConversationRunner {
                 }, token);
 
                 if (token.isCancellationRequested) {
-                    Log.info('Conversation cancelled by user');
+                    Log.info(`${logPrefix} Cancelled by user`);
                     return 'Conversation cancelled by user';
                 }
 
@@ -135,14 +138,15 @@ export class ConversationRunner {
                 );
 
                 if (response.toolCalls && response.toolCalls.length > 0) {
-                    await this.handleToolCalls(response.toolCalls, conversation, handler);
+                    await this.handleToolCalls(response.toolCalls, conversation, handler, logPrefix);
                     continue;
                 }
 
+                Log.info(`${logPrefix} Completed successfully`);
                 return response.content || 'Conversation completed but no content returned.';
 
             } catch (error) {
-                const errorMessage = `Error in conversation iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
+                const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
                 Log.error(errorMessage);
 
                 // Re-throw service unavailable errors to be handled by caller
@@ -160,6 +164,7 @@ export class ConversationRunner {
             }
         }
 
+        Log.warn(`${logPrefix} Reached maximum iterations (${config.maxIterations})`);
         return 'Conversation reached maximum iterations. The conversation may be incomplete.';
     }
 
@@ -195,15 +200,20 @@ export class ConversationRunner {
     private async handleToolCalls(
         toolCalls: ToolCall[],
         conversation: ConversationManager,
-        handler?: ToolCallHandler
+        handler?: ToolCallHandler,
+        logPrefix = '[Conversation]'
     ): Promise<void> {
+        // Log which tools are being called
+        const toolNames = toolCalls.map(tc => tc.function.name).join(', ');
+        Log.info(`${logPrefix} Executing ${toolCalls.length} tool(s): ${toolNames}`);
+
         const toolRequests: ToolExecutionRequest[] = toolCalls.map(call => {
             let parsedArgs: Record<string, unknown> = {};
 
             try {
                 parsedArgs = JSON.parse(call.function.arguments);
             } catch (error) {
-                Log.error(`Failed to parse tool arguments for ${call.function.name}: ${call.function.arguments}`);
+                Log.error(`${logPrefix} Failed to parse args for ${call.function.name}: ${call.function.arguments}`);
             }
 
             return {

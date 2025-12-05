@@ -97,7 +97,7 @@ export interface SubagentTask {
     task: string;
     /** Optional context from parent analysis */
     context?: string;
-    /** Maximum tool calls the subagent can make */
+    /** Maximum tool calls the subagent can make (uses workspace setting if not specified) */
     maxToolCalls?: number;
 }
 
@@ -107,12 +107,8 @@ export interface SubagentTask {
 export interface SubagentResult {
     /** Whether the subagent completed successfully */
     success: boolean;
-    /** Detailed findings with evidence */
-    findings: string;
-    /** Executive summary of discoveries */
-    summary: string;
-    /** Direct answer if task posed a specific question */
-    answer?: string;
+    /** Raw response from the subagent - parent LLM interprets naturally */
+    response: string;
     /** Number of tool calls made during investigation */
     toolCallsMade: number;
     /** Error message if success is false */
