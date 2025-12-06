@@ -1,6 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
 import { rgPath } from '@vscode/ripgrep';
-import * as path from 'path';
 
 export interface RipgrepMatch {
     filePath: string;
@@ -89,16 +88,13 @@ const CODE_FILE_TYPES = [
 export class RipgrepSearchService {
     async search(options: RipgrepSearchOptions): Promise<RipgrepFileResult[]> {
         const args = this.buildArgs(options);
-        const searchDir = options.searchPath
-            ? path.join(options.cwd, options.searchPath)
-            : options.cwd;
 
         return new Promise((resolve, reject) => {
             const results = new Map<string, RipgrepMatch[]>();
             let stderr = '';
 
             const rg: ChildProcess = spawn(rgPath, args, {
-                cwd: searchDir,
+                cwd: options.cwd,
                 stdio: ['ignore', 'pipe', 'pipe']
             });
 
@@ -194,8 +190,8 @@ export class RipgrepSearchService {
 
         args.push('--regexp', options.pattern);
 
-        // Search current directory (will be the searchPath via cwd)
-        args.push('.');
+        // Search target: file path, directory path, or '.' for entire project
+        args.push(options.searchPath || '.');
 
         return args;
     }
