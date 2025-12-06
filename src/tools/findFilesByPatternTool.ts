@@ -46,7 +46,7 @@ export class FindFilesByPatternTool extends BaseTool {
       });
 
       if (result.files.length === 0) {
-        return toolError(`No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'`);
+        return toolError(`No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'. Did you forget to add '**/' for recursive search in subdirectories?`);
       }
 
       let output = result.files.join('\n');
