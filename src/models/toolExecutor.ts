@@ -3,7 +3,7 @@ import { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ToolResult } from '../types/toolResultTypes';
+import { ToolResult, ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 
 /**
@@ -22,6 +22,8 @@ export interface ToolExecutionResult {
   success: boolean;
   result?: string;
   error?: string;
+  /** Optional metadata for complex tool results (e.g., subagent nested tool calls) */
+  metadata?: ToolResultMetadata;
 }
 
 /**
@@ -118,7 +120,8 @@ export class ToolExecutor {
         name,
         success: toolResult.success,
         result: toolResult.data,
-        error: toolResult.error
+        error: toolResult.error,
+        metadata: toolResult.metadata
       };
     } catch (error) {
       const elapsed = Date.now() - startTime;

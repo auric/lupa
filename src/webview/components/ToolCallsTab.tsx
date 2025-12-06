@@ -29,11 +29,12 @@ const formatToolCallsAsMarkdown = (toolCalls: ToolCallsData): string => {
 
     lines.push('', '## Tool Calls', '');
 
-    toolCalls.calls.forEach((call, index) => {
+    const formatCall = (call: ToolCallRecord, prefix: string, isNested: boolean = false) => {
         const status = call.success ? '✅' : '❌';
         const duration = call.durationMs !== undefined ? ` (${call.durationMs}ms)` : '';
+        const headingLevel = isNested ? '####' : '###';
 
-        lines.push(`### ${index + 1}. ${status} ${call.toolName}${duration}`);
+        lines.push(`${headingLevel} ${prefix} ${status} ${call.toolName}${duration}`);
         lines.push('');
 
         lines.push('**Arguments:**');
@@ -58,6 +59,18 @@ const formatToolCallsAsMarkdown = (toolCalls: ToolCallsData): string => {
             }
         }
         lines.push('');
+
+        // Format nested calls if present (for subagent)
+        if (call.nestedCalls && call.nestedCalls.length > 0) {
+            lines.push('**Subagent Tool Calls:**', '');
+            call.nestedCalls.forEach((nestedCall, nestedIndex) => {
+                formatCall(nestedCall, `${prefix}.${nestedIndex + 1}`, true);
+            });
+        }
+    };
+
+    toolCalls.calls.forEach((call, index) => {
+        formatCall(call, `${index + 1}`);
     });
 
     return lines.join('\n');
@@ -66,6 +79,8 @@ const formatToolCallsAsMarkdown = (toolCalls: ToolCallsData): string => {
 interface ToolCallItemProps {
     call: ToolCallRecord;
     index: number;
+    prefix?: string;
+    isNested?: boolean;
 }
 
 const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
@@ -78,11 +93,16 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     </svg>
 );
 
-const ToolCallItem = memo<ToolCallItemProps>(({ call, index }) => {
+const ToolCallItem = memo<ToolCallItemProps>(({ call, index, prefix = '', isNested = false }) => {
     const [expanded, setExpanded] = useState(false);
+    const [nestedExpanded, setNestedExpanded] = useState(false);
 
     const handleToggle = useCallback(() => {
         setExpanded(prev => !prev);
+    }, []);
+
+    const handleNestedToggle = useCallback(() => {
+        setNestedExpanded(prev => !prev);
     }, []);
 
     const formatDuration = (ms: number | undefined): string => {
@@ -91,8 +111,11 @@ const ToolCallItem = memo<ToolCallItemProps>(({ call, index }) => {
         return `${(ms / 1000).toFixed(2)}s`;
     };
 
+    const displayIndex = prefix ? `${prefix}.${index + 1}` : `${index + 1}`;
+    const hasNestedCalls = call.nestedCalls && call.nestedCalls.length > 0;
+
     return (
-        <div className="tool-call-item">
+        <div className={`tool-call-item ${isNested ? 'tool-call-item--nested' : ''}`}>
             <div
                 className="tool-call-header"
                 onClick={handleToggle}
@@ -105,8 +128,13 @@ const ToolCallItem = memo<ToolCallItemProps>(({ call, index }) => {
                     className={`tool-call-status ${call.success ? 'tool-call-status--success' : 'tool-call-status--failed'}`}
                 />
                 <span className="tool-call-name">
-                    {index + 1}. {call.toolName}
+                    {displayIndex}. {call.toolName}
                 </span>
+                {hasNestedCalls && (
+                    <span className="tool-call-subagent-badge">
+                        {call.nestedCalls!.length} subagent calls
+                    </span>
+                )}
                 {call.durationMs !== undefined && (
                     <span className="tool-call-duration">
                         {formatDuration(call.durationMs)}
@@ -157,6 +185,33 @@ const ToolCallItem = memo<ToolCallItemProps>(({ call, index }) => {
                                     maxHeight="200px"
                                 />
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Nested tool calls from subagent */}
+                {hasNestedCalls && (
+                    <div className="tool-call-section tool-call-nested-section">
+                        <div
+                            className="tool-call-section-title tool-call-nested-header"
+                            onClick={handleNestedToggle}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => e.key === 'Enter' && handleNestedToggle()}
+                        >
+                            <ChevronIcon expanded={nestedExpanded} />
+                            Subagent Tool Calls ({call.nestedCalls!.length})
+                        </div>
+                        <div className={`tool-call-nested-list ${nestedExpanded ? 'tool-call-nested-list--expanded' : ''}`}>
+                            {call.nestedCalls!.map((nestedCall, nestedIndex) => (
+                                <ToolCallItem
+                                    key={nestedCall.id}
+                                    call={nestedCall}
+                                    index={nestedIndex}
+                                    prefix={displayIndex}
+                                    isNested={true}
+                                />
+                            ))}
                         </div>
                     </div>
                 )}

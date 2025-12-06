@@ -22,6 +22,8 @@ export interface ToolCallRecord {
     durationMs: number | undefined;
     /** Timestamp when the tool was called */
     timestamp: number;
+    /** Nested tool calls from subagent (only for run_subagent tool) */
+    nestedCalls?: ToolCallRecord[];
 }
 
 /**

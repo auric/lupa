@@ -235,3 +235,63 @@
 .tool-call-json-wrapper::-webkit-scrollbar-thumb:hover {
   background: var(--vscode-scrollbarSlider-hoverBackground);
 }
+
+/* Subagent badge showing nested call count */
+.tool-call-subagent-badge {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.75rem;
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-weight: 500;
+  margin-left: 0.25rem;
+}
+
+/* Nested tool call items (from subagents) */
+.tool-call-item--nested {
+  margin-left: 1rem;
+  border-left: 2px solid var(--vscode-focusBorder);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.tool-call-item--nested .tool-call-header {
+  background-color: transparent;
+}
+
+.tool-call-item--nested .tool-call-header:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+/* Nested section container */
+.tool-call-nested-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.tool-call-nested-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: pointer;
+  user-select: none;
+  padding: 0.25rem 0;
+}
+
+.tool-call-nested-header:hover {
+  color: var(--vscode-foreground);
+}
+
+.tool-call-nested-header .tool-call-chevron {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.tool-call-nested-list {
+  display: none;
+  margin-top: 0.5rem;
+}
+
+.tool-call-nested-list--expanded {
+  display: block;
+}

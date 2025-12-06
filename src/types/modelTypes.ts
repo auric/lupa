@@ -1,4 +1,5 @@
 import type { LanguageModelChatTool } from 'vscode';
+import type { ToolCallRecord } from './toolCallTypes';
 
 /**
  * Analysis mode for PR analysis
@@ -111,6 +112,8 @@ export interface SubagentResult {
     response: string;
     /** Number of tool calls made during investigation */
     toolCallsMade: number;
+    /** Detailed tool call records from the subagent (reuses ToolCallRecord for consistency) */
+    toolCalls: ToolCallRecord[];
     /** Error message if success is false */
     error?: string;
 }

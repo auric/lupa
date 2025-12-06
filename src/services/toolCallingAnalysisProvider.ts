@@ -78,7 +78,8 @@ export class ToolCallingAnalysisProvider {
 
       // Create handler to record tool calls and provide context status
       const handler: ToolCallHandler = {
-        onToolCallComplete: (toolCallId, toolName, args, result, success, error, durationMs) => {
+        onToolCallComplete: (toolCallId, toolName, args, result, success, error, durationMs, metadata) => {
+          // nestedToolCalls is already ToolCallRecord[] - pass directly
           this.toolCallRecords.push({
             id: toolCallId,
             toolName,
@@ -87,7 +88,8 @@ export class ToolCallingAnalysisProvider {
             success,
             error,
             durationMs: durationMs ?? 0,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            nestedCalls: metadata?.nestedToolCalls
           });
         },
         getContextStatusSuffix: () => this.getContextStatusSuffix()

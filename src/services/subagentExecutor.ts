@@ -7,6 +7,7 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { SubagentLimits } from '../models/toolConstants';
 import type { SubagentTask, SubagentResult } from '../types/modelTypes';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { ITool } from '../tools/ITool';
 import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
@@ -65,9 +66,28 @@ export class SubagentExecutor {
             // Add initial user message with the task
             conversation.addUserMessage(`Please investigate: ${task.task}`);
 
-            // Track tool calls made by the subagent
-            const onToolCallComplete = () => {
+            // Track tool calls made by the subagent with full details
+            const toolCalls: ToolCallRecord[] = [];
+            const onToolCallComplete = (
+                toolCallId: string,
+                toolName: string,
+                args: Record<string, unknown>,
+                result: string,
+                success: boolean,
+                error?: string,
+                durationMs?: number
+            ) => {
                 toolCallsMade++;
+                toolCalls.push({
+                    id: toolCallId,
+                    toolName,
+                    arguments: args,
+                    result,
+                    success,
+                    error,
+                    durationMs,
+                    timestamp: Date.now()
+                });
             };
 
             // Run the conversation loop with labeled logging
@@ -86,11 +106,12 @@ export class SubagentExecutor {
             const duration = Date.now() - startTime;
             Log.info(`${logLabel} Completed in ${duration}ms with ${toolCallsMade} tool calls`);
 
-            // Return raw response - parent LLM can interpret it naturally
+            // Return raw response with tool call details for webview display
             return {
                 success: true,
                 response,
-                toolCallsMade
+                toolCallsMade,
+                toolCalls
             };
 
         } catch (error) {
@@ -101,6 +122,7 @@ export class SubagentExecutor {
                 success: false,
                 response: '',
                 toolCallsMade,
+                toolCalls: [],
                 error: errorMessage
             };
         }

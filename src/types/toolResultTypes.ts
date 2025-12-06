@@ -1,3 +1,5 @@
+import type { ToolCallRecord } from './toolCallTypes';
+
 /**
  * Standard result interface for all tool executions.
  * Provides consistent success/failure reporting across all tools.
@@ -10,6 +12,16 @@ export interface ToolResult {
     data?: string;
     /** Error message when success is false */
     error?: string;
+    /** Optional metadata for complex tool results (e.g., subagent nested tool calls) */
+    metadata?: ToolResultMetadata;
+}
+
+/**
+ * Metadata for complex tool results
+ */
+export interface ToolResultMetadata {
+    /** Nested tool calls from subagent execution (reuses ToolCallRecord for consistency) */
+    nestedToolCalls?: ToolCallRecord[];
 }
 
 /**
@@ -25,8 +37,8 @@ export function isToolResult(value: unknown): value is ToolResult {
 /**
  * Helper to create a successful ToolResult
  */
-export function toolSuccess(data: string): ToolResult {
-    return { success: true, data };
+export function toolSuccess(data: string, metadata?: ToolResultMetadata): ToolResult {
+    return metadata ? { success: true, data, metadata } : { success: true, data };
 }
 
 /**

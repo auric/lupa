@@ -150,7 +150,8 @@ describe('ConversationRunner', () => {
                 'Found it',
                 true,
                 undefined,
-                expect.any(Number)
+                expect.any(Number),
+                undefined // metadata
             );
         });
 

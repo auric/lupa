@@ -113,7 +113,12 @@ Example: "Investigate error handling in src/api/. For each endpoint: check try/c
             );
 
             clearTimeout(timeoutHandle);
-            return toolSuccess(this.formatResult(result, subagentId));
+
+            // Include nested tool calls in metadata for webview display
+            return toolSuccess(
+                this.formatResult(result, subagentId),
+                { nestedToolCalls: result.toolCalls }
+            );
 
         } catch (error) {
             clearTimeout(timeoutHandle);

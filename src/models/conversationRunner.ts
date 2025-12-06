@@ -4,6 +4,7 @@ import { ToolExecutor, type ToolExecutionRequest } from './toolExecutor';
 import { CopilotModelManager } from './copilotModelManager';
 import { TokenValidator } from './tokenValidator';
 import type { ToolCallMessage, ToolCall } from '../types/modelTypes';
+import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
 
@@ -34,7 +35,8 @@ export interface ToolCallHandler {
         result: string,
         success: boolean,
         error?: string,
-        durationMs?: number
+        durationMs?: number,
+        metadata?: ToolResultMetadata
     ) => void;
 
     /** Called to get context status suffix for tool responses */
@@ -251,7 +253,8 @@ export class ConversationRunner {
                 baseContent,
                 result.success,
                 result.error,
-                avgDuration
+                avgDuration,
+                result.metadata
             );
 
             conversation.addToolMessage(toolCallId, content);
