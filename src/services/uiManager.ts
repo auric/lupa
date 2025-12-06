@@ -322,7 +322,7 @@ export class UIManager {
      */
     private async handleValidatePathMessage(payload: ValidatePathPayload, webview: vscode.Webview): Promise<void> {
         try {
-            Log.info(`Validating file path from webview: ${payload.filePath}`);
+            Log.debug(`Validating file path from webview: ${payload.filePath}`);
 
             let isValid = false;
             let resolvedPath: string | undefined;
@@ -380,10 +380,10 @@ export class UIManager {
                 payload: response
             });
 
-            Log.info(`Path validation result for ${payload.filePath}: ${isValid}${resolvedPath ? ` (resolved: ${resolvedPath})` : ''}`);
+            Log.debug(`Path validation result for ${payload.filePath}: ${isValid}${resolvedPath ? ` (resolved: ${resolvedPath})` : ''}`);
         } catch (error) {
             // File doesn't exist or access error
-            Log.info(`Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            Log.debug(`Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
             // Send negative validation result
             const response: PathValidationResultPayload = {
