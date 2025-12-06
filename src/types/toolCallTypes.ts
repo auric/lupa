@@ -53,3 +53,19 @@ export interface ToolCallingAnalysisResult {
     /** History of tool calls made during analysis */
     toolCalls: ToolCallsData;
 }
+
+/**
+ * Callback for reporting analysis progress to the UI.
+ * @param message - Human-readable status message
+ * @param incrementPercent - Optional percentage increment (small values like 0.1-1 work best for smooth progress)
+ */
+export type AnalysisProgressCallback = (message: string, incrementPercent?: number) => void;
+
+/**
+ * Context provider for subagent progress reporting.
+ * Returns the current main analysis iteration info for context-aware messages.
+ */
+export interface SubagentProgressContext {
+    getCurrentIteration: () => number;
+    getMaxIterations: () => number;
+}

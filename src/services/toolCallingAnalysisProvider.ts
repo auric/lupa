@@ -7,12 +7,15 @@ import { TokenValidator } from '../models/tokenValidator';
 import { ConversationRunner, type ToolCallHandler } from '../models/conversationRunner';
 import type {
   ToolCallRecord,
-  ToolCallingAnalysisResult
+  ToolCallingAnalysisResult,
+  AnalysisProgressCallback,
+  SubagentProgressContext
 } from '../types/toolCallTypes';
 import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
+import { SubagentExecutor } from './subagentExecutor';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -23,14 +26,26 @@ export class ToolCallingAnalysisProvider {
   private toolCallRecords: ToolCallRecord[] = [];
   private conversationRunner: ConversationRunner;
 
+  private currentIteration = 0;
+  private currentMaxIterations = 0;
+
   constructor(
     private conversationManager: ConversationManager,
     private toolExecutor: ToolExecutor,
     private copilotModelManager: CopilotModelManager,
     private promptGenerator: PromptGenerator,
-    private workspaceSettings: WorkspaceSettingsService
+    private workspaceSettings: WorkspaceSettingsService,
+    private subagentExecutor: SubagentExecutor | undefined = undefined
   ) {
     this.conversationRunner = new ConversationRunner(copilotModelManager, toolExecutor);
+  }
+
+  /**
+   * Set the subagent executor for progress context sharing.
+   * Called by ServiceManager after construction.
+   */
+  setSubagentExecutor(executor: SubagentExecutor): void {
+    this.subagentExecutor = executor;
   }
 
   private get maxIterations(): number {
@@ -38,25 +53,55 @@ export class ToolCallingAnalysisProvider {
   }
 
   /**
+   * Create progress context for subagent to reference main analysis iteration.
+   */
+  private createSubagentProgressContext(): SubagentProgressContext {
+    return {
+      getCurrentIteration: () => this.currentIteration,
+      getMaxIterations: () => this.currentMaxIterations
+    };
+  }
+
+  /**
    * Analyze a diff using the LLM with tool-calling capabilities.
    * @param diff The diff content to analyze
+   * @param token Cancellation token
+   * @param progressCallback Optional callback for reporting progress to UI
    * @returns Promise resolving to the analysis result with tool call history
    */
-  async analyze(diff: string, token: vscode.CancellationToken): Promise<ToolCallingAnalysisResult> {
-    // Reset tool call records for new analysis
+  async analyze(
+    diff: string,
+    token: vscode.CancellationToken,
+    progressCallback?: AnalysisProgressCallback
+  ): Promise<ToolCallingAnalysisResult> {
+    // Reset state for new analysis
     this.toolCallRecords = [];
     this.conversationRunner.reset();
+    this.currentIteration = 0;
+    this.currentMaxIterations = this.maxIterations;
+
     let analysisCompleted = false;
     let analysisError: string | undefined;
     let analysisText = '';
+    let toolCallCount = 0;
+
+    // Set up subagent progress callback with context
+    if (this.subagentExecutor && progressCallback) {
+      this.subagentExecutor.setProgressCallback(
+        progressCallback,
+        this.createSubagentProgressContext()
+      );
+    }
 
     try {
       Log.info('Starting analysis with tool-calling support');
+      progressCallback?.('Initializing analysis...', 0.5);
 
       // Clear previous conversation history for a fresh analysis
       this.conversationManager.clearHistory();
 
       // Check diff size and handle truncation/tool availability
+      progressCallback?.('Processing diff...', 0.5);
       const { processedDiff, toolsAvailable, toolsDisabledMessage } = await this.processDiffSize(diff);
 
       // Get available tools and generate system prompt based on tool availability
@@ -75,11 +120,17 @@ export class ToolCallingAnalysisProvider {
       }
 
       this.conversationManager.addUserMessage(userMessage);
+      progressCallback?.('Starting conversation with AI model...', 0.5);
 
-      // Create handler to record tool calls and provide context status
+      // Create handler to record tool calls and track iteration for subagent context
       const handler: ToolCallHandler = {
+        onIterationStart: (current, max) => {
+          this.currentIteration = current;
+          this.currentMaxIterations = max;
+          progressCallback?.(`Turn ${current}/${max}: Analyzing...`, 0.2);
+        },
         onToolCallComplete: (toolCallId, toolName, args, result, success, error, durationMs, metadata) => {
-          // nestedToolCalls is already ToolCallRecord[] - pass directly
+          toolCallCount++;
           this.toolCallRecords.push({
             id: toolCallId,
             toolName,
@@ -109,6 +160,7 @@ export class ToolCallingAnalysisProvider {
       );
       analysisCompleted = true;
 
+      progressCallback?.(`Analysis complete (${toolCallCount} tool calls)`, 2);
       Log.info('Analysis completed successfully');
 
     } catch (error) {
@@ -116,6 +168,9 @@ export class ToolCallingAnalysisProvider {
       const errorMessage = `Error during analysis: ${analysisError}`;
       Log.error(errorMessage);
       analysisText = errorMessage;
+    } finally {
+      // Clear subagent progress callback
+      this.subagentExecutor?.setProgressCallback(undefined, undefined);
     }
 
     return this.buildAnalysisResult(analysisText, analysisCompleted, analysisError);

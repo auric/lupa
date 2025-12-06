@@ -27,6 +27,9 @@ export interface ConversationRunnerConfig {
  * Enables the caller to record tool calls without ConversationRunner knowing about the specifics.
  */
 export interface ToolCallHandler {
+    /** Called when a tool execution starts */
+    onToolCallStart?: (toolName: string, toolIndex: number, totalTools: number) => void;
+
     /** Called after each tool call completes */
     onToolCallComplete?: (
         toolCallId: string,
@@ -41,6 +44,9 @@ export interface ToolCallHandler {
 
     /** Called to get context status suffix for tool responses */
     getContextStatusSuffix?: () => Promise<string>;
+
+    /** Called when a conversation iteration starts */
+    onIterationStart?: (current: number, max: number) => void;
 }
 
 /**
@@ -77,6 +83,8 @@ export class ConversationRunner {
         while (iteration < config.maxIterations) {
             iteration++;
             Log.info(`${logPrefix} Iteration ${iteration}/${config.maxIterations}`);
+
+            handler?.onIterationStart?.(iteration, config.maxIterations);
 
             try {
                 const vscodeTools = config.tools.map(tool => tool.getVSCodeTool());
@@ -208,6 +216,11 @@ export class ConversationRunner {
         // Log which tools are being called
         const toolNames = toolCalls.map(tc => tc.function.name).join(', ');
         Log.info(`${logPrefix} Executing ${toolCalls.length} tool(s): ${toolNames}`);
+
+        // Notify handler about tool calls starting
+        for (let i = 0; i < toolCalls.length; i++) {
+            handler?.onToolCallStart?.(toolCalls[i].function.name, i, toolCalls.length);
+        }
 
         const toolRequests: ToolExecutionRequest[] = toolCalls.map(call => {
             let parsedArgs: Record<string, unknown> = {};

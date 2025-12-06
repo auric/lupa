@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { AnalysisMode } from '../types/modelTypes';
-import type { ToolCallsData } from '../types/toolCallTypes';
+import type { ToolCallsData, AnalysisProgressCallback } from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 
 /**
@@ -8,18 +8,32 @@ import { IServiceRegistry } from '../services/serviceManager';
  * Orchestrates the interaction between UI, Git, and analysis services
  */
 export class AnalysisOrchestrator implements vscode.Disposable {
+    private isAnalysisRunning = false;
+
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly services: IServiceRegistry
     ) { }
 
     /**
-     * Orchestrate the complete PR analysis workflow
+     * Check if an analysis is currently running
      */
+    public isRunning(): boolean {
+        return this.isAnalysisRunning;
+    }
+
     /**
      * Orchestrate the complete PR analysis workflow
      */
     public async analyzePR(): Promise<void> {
+        if (this.isAnalysisRunning) {
+            vscode.window.showInformationMessage(
+                'Analysis is already in progress. Please wait for it to complete or cancel it.'
+            );
+            return;
+        }
+
+        this.isAnalysisRunning = true;
         const statusId = 'pr-analysis';
 
         try {
@@ -63,8 +77,8 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
             // Perform the analysis with progress reporting
             await this.services.uiManager.showAnalysisProgress('PR Analyzer', async (progress, token) => {
-                // Initial setup - 5%
-                progress.report({ message: 'Initializing analysis...', increment: 5 });
+                // Initial setup
+                progress.report({ message: 'Initializing analysis...', increment: 1 });
 
                 let analysis: string;
                 let context: string;
@@ -72,17 +86,14 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
                 if (useEmbeddingLspAlgorithm) {
                     // Use legacy embedding-based LSP algorithm
-                    progress.report({ message: 'Using legacy embedding-based analysis...', increment: 10 });
+                    progress.report({ message: 'Using legacy embedding-based analysis...', increment: 1 });
 
                     const result = await this.services.analysisProvider.analyzePullRequest(
                         diffText,
                         gitRootPath,
                         analysisMode,
                         (message, increment) => {
-                            // Only update the message if no increment is specified
                             if (increment) {
-                                // Use a very conservative scaling factor to ensure progress
-                                // never gets ahead of actual completion
                                 const scaledIncrement = Math.min(increment * 0.2, 1);
                                 progress.report({ message, increment: scaledIncrement });
                             } else {
@@ -95,26 +106,33 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                     analysis = result.analysis;
                     context = result.context;
                 } else {
-                    // Use new tool-calling approach
-                    progress.report({ message: 'Using new tool-calling analysis...', increment: 10 });
+                    // Use new tool-calling approach with detailed progress reporting
+                    progress.report({ message: 'Starting tool-calling analysis...', increment: 1 });
 
-                    const result = await this.services.toolCallingAnalysisProvider.analyze(diffText, token);
+                    const progressCallback: AnalysisProgressCallback = (message, incrementPercent) => {
+                        if (incrementPercent !== undefined) {
+                            progress.report({ message, increment: incrementPercent });
+                        } else {
+                            progress.report({ message });
+                        }
+                    };
+
+                    const result = await this.services.toolCallingAnalysisProvider.analyze(
+                        diffText,
+                        token,
+                        progressCallback
+                    );
                     analysis = result.analysis;
                     toolCallsData = result.toolCalls;
                     context = '';
-
-                    progress.report({ message: 'Tool-calling analysis completed', increment: 70 });
                 }
 
-                // Step 2: Display the results - 10% remaining
-                progress.report({ message: 'Preparing analysis results...', increment: 5 });
+                // Display the results
+                progress.report({ message: 'Preparing analysis results...', increment: 2 });
 
-                // Create a title based on the reference
                 const title = `PR Analysis: ${refName}`;
-
-                // Display the results in a webview
                 this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis, toolCallsData);
-                progress.report({ message: 'Analysis displayed', increment: 5 });
+                progress.report({ message: 'Analysis displayed', increment: 2 });
             });
 
             this.services.statusBar.showTemporaryMessage('Analysis complete', 3000, 'check');
@@ -128,6 +146,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 vscode.window.showErrorMessage(`Failed to analyze PR: ${errorMessage}`);
             }
         } finally {
+            this.isAnalysisRunning = false;
             this.services.statusBar.hideProgress(statusId);
         }
     }

@@ -7,7 +7,7 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { SubagentLimits } from '../models/toolConstants';
 import type { SubagentTask, SubagentResult } from '../types/modelTypes';
-import type { ToolCallRecord } from '../types/toolCallTypes';
+import type { ToolCallRecord, AnalysisProgressCallback, SubagentProgressContext } from '../types/toolCallTypes';
 import type { ITool } from '../tools/ITool';
 import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
@@ -22,12 +22,42 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  * - Return raw response for parent LLM to interpret
  */
 export class SubagentExecutor {
+    private progressCallback: AnalysisProgressCallback | undefined;
+    private progressContext: SubagentProgressContext | undefined;
+
     constructor(
         private readonly modelManager: CopilotModelManager,
         private readonly toolRegistry: ToolRegistry,
         private readonly promptGenerator: SubagentPromptGenerator,
         private readonly workspaceSettings: WorkspaceSettingsService
     ) { }
+
+    /**
+     * Set progress callback for subagent iteration reporting.
+     * Call before starting analysis, clear after completion.
+     */
+    setProgressCallback(
+        callback: AnalysisProgressCallback | undefined,
+        context: SubagentProgressContext | undefined
+    ): void {
+        this.progressCallback = callback;
+        this.progressContext = context;
+    }
+
+    /**
+     * Report progress with main analysis context prefix.
+     */
+    private reportProgress(message: string, increment?: number): void {
+        if (!this.progressCallback) return;
+
+        if (this.progressContext) {
+            const mainIter = this.progressContext.getCurrentIteration();
+            const mainMax = this.progressContext.getMaxIterations();
+            this.progressCallback(`Turn ${mainIter}/${mainMax} → ${message}`, increment);
+        } else {
+            this.progressCallback(message, increment);
+        }
+    }
 
     /**
      * Execute an isolated subagent investigation.
@@ -43,14 +73,15 @@ export class SubagentExecutor {
         const startTime = Date.now();
         let toolCallsMade = 0;
 
-        // Create short task label for logging (first 50 chars of task)
-        const taskLabel = task.task.length > 50
-            ? task.task.substring(0, 50).replace(/\s+/g, ' ').trim() + '...'
+        // Create short task label for logging and progress (first 30 chars)
+        const taskLabel = task.task.length > 30
+            ? task.task.substring(0, 30).replace(/\s+/g, ' ').trim() + '...'
             : task.task.replace(/\s+/g, ' ').trim();
         const logLabel = `Subagent #${subagentId}`;
 
         try {
             Log.info(`${logLabel} Starting: "${taskLabel}"`);
+            this.reportProgress(`Sub-analysis: ${taskLabel}`, 0.5);
 
             const conversation = new ConversationManager();
             const filteredTools = this.filterTools();
@@ -65,29 +96,8 @@ export class SubagentExecutor {
 
             // Track tool calls made by the subagent with full details
             const toolCalls: ToolCallRecord[] = [];
-            const onToolCallComplete = (
-                toolCallId: string,
-                toolName: string,
-                args: Record<string, unknown>,
-                result: string,
-                success: boolean,
-                error?: string,
-                durationMs?: number
-            ) => {
-                toolCallsMade++;
-                toolCalls.push({
-                    id: toolCallId,
-                    toolName,
-                    arguments: args,
-                    result,
-                    success,
-                    error,
-                    durationMs,
-                    timestamp: Date.now()
-                });
-            };
 
-            // Run the conversation loop with labeled logging
+            // Run the conversation loop with labeled logging and progress reporting
             const response = await conversationRunner.run(
                 {
                     systemPrompt,
@@ -97,7 +107,32 @@ export class SubagentExecutor {
                 },
                 conversation,
                 token,
-                { onToolCallComplete }
+                {
+                    onIterationStart: (current, max) => {
+                        this.reportProgress(`Sub-analysis (${current}/${max})...`, 0.1);
+                    },
+                    onToolCallComplete: (
+                        toolCallId: string,
+                        toolName: string,
+                        args: Record<string, unknown>,
+                        result: string,
+                        success: boolean,
+                        error?: string,
+                        durationMs?: number
+                    ) => {
+                        toolCallsMade++;
+                        toolCalls.push({
+                            id: toolCallId,
+                            toolName,
+                            arguments: args,
+                            result,
+                            success,
+                            error,
+                            durationMs,
+                            timestamp: Date.now()
+                        });
+                    }
+                }
             );
 
             const duration = Date.now() - startTime;

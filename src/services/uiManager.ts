@@ -417,11 +417,11 @@ export class UIManager {
     }
 
     /**
-     * Show PR analysis progress
+     * Show PR analysis progress in the status bar (non-intrusive)
      */
     public showAnalysisProgress<T>(title: string, task: (progress: vscode.Progress<{ message?: string; increment?: number }>, token: vscode.CancellationToken) => Thenable<T>): Thenable<T> {
         return vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
+            location: vscode.ProgressLocation.Window,
             title,
             cancellable: true
         }, task);

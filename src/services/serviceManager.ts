@@ -280,6 +280,9 @@ export class ServiceManager implements vscode.Disposable {
             this.services.workspaceSettings!
         );
 
+        // Wire up SubagentExecutor to ToolCallingAnalysisProvider for progress context sharing
+        this.services.toolCallingAnalysisProvider.setSubagentExecutor(this.services.subagentExecutor);
+
         // Register available tools (including subagent tool)
         this.initializeTools();
 
