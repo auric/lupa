@@ -4,21 +4,26 @@ import { SubagentExecutor } from '../services/subagentExecutor';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 import type { SubagentResult } from '../types/modelTypes';
 
-// Mock workspace settings
-const createMockWorkspaceSettings = (): WorkspaceSettingsService => ({
-    getMaxIterations: vi.fn().mockReturnValue(10),
-    getMaxToolCalls: vi.fn().mockReturnValue(50),
+const createMockWorkspaceSettings = (overrides: Partial<{
+    maxIterations: number;
+    maxSubagentsPerSession: number;
+    subagentTimeoutMs: number;
+}> = {}): WorkspaceSettingsService => ({
+    getMaxIterations: vi.fn().mockReturnValue(overrides.maxIterations ?? 10),
+    getMaxSubagentsPerSession: vi.fn().mockReturnValue(overrides.maxSubagentsPerSession ?? SUBAGENT_LIMITS.maxPerSession.default),
+    getSubagentTimeoutMs: vi.fn().mockReturnValue(overrides.subagentTimeoutMs ?? SUBAGENT_LIMITS.timeoutSeconds.default * 1000),
     getRequestTimeoutSeconds: vi.fn().mockReturnValue(30)
 } as unknown as WorkspaceSettingsService);
 
-// Mock the SubagentExecutor
 const createMockExecutor = (result: Partial<SubagentResult> = {}): SubagentExecutor => ({
     execute: vi.fn().mockResolvedValue({
         success: true,
         response: 'Test investigation findings with details',
         toolCallsMade: 5,
+        toolCalls: [],
         ...result
     })
 } as unknown as SubagentExecutor);
@@ -28,8 +33,8 @@ describe('RunSubagentTool', () => {
     let workspaceSettings: WorkspaceSettingsService;
 
     beforeEach(() => {
-        sessionManager = new SubagentSessionManager();
         workspaceSettings = createMockWorkspaceSettings();
+        sessionManager = new SubagentSessionManager(workspaceSettings);
     });
 
     describe('Tool Metadata', () => {
@@ -85,33 +90,32 @@ describe('RunSubagentTool', () => {
             expect(mockExecutor.execute).toHaveBeenCalledWith(
                 expect.objectContaining({ context: 'PR adds new JWT validation' }),
                 expect.anything(),
-                expect.any(Number)  // subagentId
+                expect.any(Number)
             );
         });
 
-        it('should accept optional max_tool_calls parameter', async () => {
+        it('should accept optional max_iterations parameter', async () => {
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(mockExecutor, sessionManager, workspaceSettings);
 
             await tool.execute({
                 task: 'Investigate the authentication flow thoroughly',
-                max_tool_calls: 8
+                max_iterations: 8
             });
 
             expect(mockExecutor.execute).toHaveBeenCalledWith(
-                expect.objectContaining({ maxToolCalls: 8 }),
+                expect.objectContaining({ maxIterations: 8 }),
                 expect.anything(),
-                expect.any(Number)  // subagentId
+                expect.any(Number)
             );
         });
 
-        it('should reject max_tool_calls above workspace setting limit', async () => {
+        it('should reject max_iterations above workspace setting limit', async () => {
             const tool = new RunSubagentTool(createMockExecutor(), sessionManager, workspaceSettings);
-            // workspaceSettings.getMaxIterations() returns 10 in mock
 
             const result = await tool.execute({
                 task: 'Investigate the authentication flow thoroughly',
-                max_tool_calls: 11  // Above the mocked limit of 10
+                max_iterations: 11
             });
 
             expect(result.success).toBe(false);
@@ -136,15 +140,15 @@ describe('RunSubagentTool', () => {
             expect(mockExecutor.execute).toHaveBeenCalledWith(
                 expect.anything(),
                 expect.anything(),
-                1  // First subagent should have ID 1
+                1
             );
         });
 
         it('should reject when session limit reached', async () => {
+            const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
             const tool = new RunSubagentTool(createMockExecutor(), sessionManager, workspaceSettings);
 
-            // Fill up the session
-            for (let i = 0; i < SubagentLimits.MAX_PER_SESSION; i++) {
+            for (let i = 0; i < maxSubagents; i++) {
                 sessionManager.recordSpawn();
             }
 
@@ -190,7 +194,7 @@ describe('RunSubagentTool', () => {
                 task: 'Investigate the authentication flow thoroughly'
             });
 
-            expect(result.success).toBe(true); // Tool execution succeeded, subagent reported failure
+            expect(result.success).toBe(true);
             expect(result.data).toContain('Subagent #1');
             expect(result.data).toContain('Failed');
             expect(result.data).toContain('Connection timeout');
@@ -211,6 +215,22 @@ describe('RunSubagentTool', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Internal error');
+        });
+
+        it('should report timeout correctly when cancelled', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'cancelled',
+                toolCallsMade: 2
+            });
+            const tool = new RunSubagentTool(mockExecutor, sessionManager, workspaceSettings);
+
+            const result = await tool.execute({
+                task: 'Investigate the authentication flow thoroughly'
+            });
+
+            expect(result.success).toBe(false);
         });
     });
 });

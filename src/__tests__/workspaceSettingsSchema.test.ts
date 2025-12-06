@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod/v4';
-import { WorkspaceSettingsSchema, ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { WorkspaceSettingsSchema, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 import { EmbeddingModel } from '../services/embeddingModelSelectionService';
 
 describe('WorkspaceSettingsSchema', () => {
@@ -10,9 +10,10 @@ describe('WorkspaceSettingsSchema', () => {
             expect(result.success).toBe(true);
             if (result.success) {
                 expect(result.data.enableEmbeddingLspAlgorithm).toBe(false);
-                expect(result.data.maxToolCalls).toBe(ANALYSIS_LIMITS.maxToolCalls.default);
                 expect(result.data.maxIterations).toBe(ANALYSIS_LIMITS.maxIterations.default);
                 expect(result.data.requestTimeoutSeconds).toBe(ANALYSIS_LIMITS.requestTimeoutSeconds.default);
+                expect(result.data.maxSubagentsPerSession).toBe(SUBAGENT_LIMITS.maxPerSession.default);
+                expect(result.data.subagentTimeoutSeconds).toBe(SUBAGENT_LIMITS.timeoutSeconds.default);
                 expect(result.data.logLevel).toBe('info');
                 expect(result.data.logOutputTarget).toBe('console');
             }
@@ -25,9 +26,10 @@ describe('WorkspaceSettingsSchema', () => {
                 preferredModelFamily: 'gpt-4',
                 preferredModelVersion: '0613',
                 enableEmbeddingLspAlgorithm: true,
-                maxToolCalls: 100,
                 maxIterations: 20,
                 requestTimeoutSeconds: 120,
+                maxSubagentsPerSession: 15,
+                subagentTimeoutSeconds: 600,
                 logLevel: 'debug' as const,
                 logOutputTarget: 'channel' as const,
             };
@@ -41,18 +43,20 @@ describe('WorkspaceSettingsSchema', () => {
 
         it('should accept boundary values for numeric limits', () => {
             const lowerBoundarySettings = {
-                maxToolCalls: ANALYSIS_LIMITS.maxToolCalls.min,
                 maxIterations: ANALYSIS_LIMITS.maxIterations.min,
                 requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.min,
+                maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.min,
+                subagentTimeoutSeconds: SUBAGENT_LIMITS.timeoutSeconds.min,
             };
 
             const result = WorkspaceSettingsSchema.safeParse(lowerBoundarySettings);
             expect(result.success).toBe(true);
 
             const upperBoundarySettings = {
-                maxToolCalls: ANALYSIS_LIMITS.maxToolCalls.max,
                 maxIterations: ANALYSIS_LIMITS.maxIterations.max,
                 requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.max,
+                maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.max,
+                subagentTimeoutSeconds: SUBAGENT_LIMITS.timeoutSeconds.max,
             };
 
             const upperResult = WorkspaceSettingsSchema.safeParse(upperBoundarySettings);
@@ -61,7 +65,7 @@ describe('WorkspaceSettingsSchema', () => {
 
         it('should preserve unknown properties via loose schema', () => {
             const settingsWithExtra = {
-                maxToolCalls: 50,
+                maxIterations: 50,
                 customProperty: 'custom-value',
                 nestedObject: { foo: 'bar' },
             };
@@ -87,20 +91,6 @@ describe('WorkspaceSettingsSchema', () => {
         it('should reject invalid embedding model', () => {
             const result = WorkspaceSettingsSchema.safeParse({
                 selectedEmbeddingModel: 'invalid-model',
-            });
-            expect(result.success).toBe(false);
-        });
-
-        it('should reject maxToolCalls below minimum', () => {
-            const result = WorkspaceSettingsSchema.safeParse({
-                maxToolCalls: 5,
-            });
-            expect(result.success).toBe(false);
-        });
-
-        it('should reject maxToolCalls above maximum', () => {
-            const result = WorkspaceSettingsSchema.safeParse({
-                maxToolCalls: 250,
             });
             expect(result.success).toBe(false);
         });
@@ -133,6 +123,34 @@ describe('WorkspaceSettingsSchema', () => {
             expect(result.success).toBe(false);
         });
 
+        it('should reject maxSubagentsPerSession below minimum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxSubagentsPerSession: 0,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject maxSubagentsPerSession above maximum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.max + 1,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject subagentTimeoutSeconds below minimum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                subagentTimeoutSeconds: 10,
+            });
+            expect(result.success).toBe(false);
+        });
+
+        it('should reject subagentTimeoutSeconds above maximum', () => {
+            const result = WorkspaceSettingsSchema.safeParse({
+                subagentTimeoutSeconds: SUBAGENT_LIMITS.timeoutSeconds.max + 1,
+            });
+            expect(result.success).toBe(false);
+        });
+
         it('should reject negative lastIndexingTimestamp', () => {
             const result = WorkspaceSettingsSchema.safeParse({
                 lastIndexingTimestamp: -1,
@@ -142,7 +160,7 @@ describe('WorkspaceSettingsSchema', () => {
 
         it('should reject wrong types', () => {
             const result = WorkspaceSettingsSchema.safeParse({
-                maxToolCalls: 'fifty',
+                maxIterations: 'fifty',
                 enableEmbeddingLspAlgorithm: 'yes',
             });
             expect(result.success).toBe(false);
@@ -166,15 +184,15 @@ describe('WorkspaceSettingsSchema', () => {
     describe('error formatting', () => {
         it('should provide readable error messages', () => {
             const result = WorkspaceSettingsSchema.safeParse({
-                maxToolCalls: ANALYSIS_LIMITS.maxToolCalls.min - 1,
-                maxIterations: ANALYSIS_LIMITS.maxIterations.max + 1,
+                maxIterations: ANALYSIS_LIMITS.maxIterations.min - 1,
+                maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.max + 1,
             });
 
             expect(result.success).toBe(false);
             if (!result.success) {
                 const formatted = z.prettifyError(result.error);
-                expect(formatted).toContain('maxToolCalls');
                 expect(formatted).toContain('maxIterations');
+                expect(formatted).toContain('maxSubagentsPerSession');
             }
         });
     });

@@ -40,7 +40,7 @@ export class ToolExecutor {
   ) { }
 
   private get maxToolCalls(): number {
-    return this.workspaceSettings.getMaxToolCalls();
+    return this.workspaceSettings.getMaxIterations();
   }
 
   /**

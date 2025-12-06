@@ -4,17 +4,18 @@ import { ToolExecutor, ToolExecutionRequest } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 /**
- * Create a mock WorkspaceSettingsService for testing with a specific max tool calls limit
+ * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
  */
-function createMockSettings(maxToolCalls: number): WorkspaceSettingsService {
+function createMockSettings(maxIterations: number): WorkspaceSettingsService {
   return {
-    getMaxToolCalls: () => maxToolCalls,
-    getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
-    getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
+    getMaxIterations: () => maxIterations,
+    getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default,
+    getMaxSubagentsPerSession: () => SUBAGENT_LIMITS.maxPerSession.default,
+    getSubagentTimeoutMs: () => SUBAGENT_LIMITS.timeoutSeconds.default
   } as WorkspaceSettingsService;
 }
 
@@ -84,7 +85,7 @@ describe('ToolExecutor', () => {
 
   beforeEach(() => {
     toolRegistry = new ToolRegistry();
-    mockSettings = createMockSettings(ANALYSIS_LIMITS.maxToolCalls.default);
+    mockSettings = createMockSettings(ANALYSIS_LIMITS.maxIterations.default);
     toolExecutor = new ToolExecutor(toolRegistry, mockSettings);
     successTool = new MockSuccessTool();
     errorTool = new MockErrorTool();
@@ -334,7 +335,7 @@ describe('ToolExecutor', () => {
     it('should use settings with default limit', async () => {
       const defaultExecutor = new ToolExecutor(
         toolRegistry,
-        createMockSettings(ANALYSIS_LIMITS.maxToolCalls.default)
+        createMockSettings(ANALYSIS_LIMITS.maxIterations.default)
       );
 
       expect(defaultExecutor.getToolCallCount()).toBe(0);

@@ -36,7 +36,7 @@ Example: "Investigate error handling in src/api/. For each endpoint: check try/c
     schema: z.ZodObject<{
         task: z.ZodString;
         context: z.ZodOptional<z.ZodString>;
-        max_tool_calls: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
+        max_iterations: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     }>;
 
     private cancellationTokenSource: vscode.CancellationTokenSource | null = null;
@@ -49,7 +49,6 @@ Example: "Investigate error handling in src/api/. For each endpoint: check try/c
         super();
         this.maxIterationsFromSettings = this.workspaceSettings.getMaxIterations();
 
-        // Build schema with dynamic defaults from settings
         this.schema = z.object({
             task: z.string()
                 .min(SubagentLimits.MIN_TASK_LENGTH, SubagentErrors.taskTooShort(SubagentLimits.MIN_TASK_LENGTH))
@@ -62,7 +61,7 @@ Example: "Investigate error handling in src/api/. For each endpoint: check try/c
             context: z.string().optional().describe(
                 'Relevant context from your current analysis: code snippets, file paths, findings, or symbol names.'
             ),
-            max_tool_calls: z.number()
+            max_iterations: z.number()
                 .min(1)
                 .max(this.maxIterationsFromSettings)
                 .default(this.maxIterationsFromSettings)
@@ -80,33 +79,30 @@ Example: "Investigate error handling in src/api/. For each endpoint: check try/c
             return toolError(validationResult.error.issues.map(e => e.message).join(', '));
         }
 
-        const { task, context, max_tool_calls } = validationResult.data;
+        const { task, context, max_iterations } = validationResult.data;
+        const maxSubagents = this.workspaceSettings.getMaxSubagentsPerSession();
+        const timeoutMs = this.workspaceSettings.getSubagentTimeoutMs();
 
-        // Check session limits
         if (!this.sessionManager.canSpawn()) {
-            Log.warn(`Subagent spawn rejected: session limit reached (${SubagentLimits.MAX_PER_SESSION})`);
-            return toolError(SubagentErrors.maxExceeded(SubagentLimits.MAX_PER_SESSION));
+            Log.warn(`Subagent spawn rejected: session limit reached (${maxSubagents})`);
+            return toolError(SubagentErrors.maxExceeded(maxSubagents));
         }
 
-        // Record spawn and get the subagent ID for logging
         const subagentId = this.sessionManager.recordSpawn();
         const remaining = this.sessionManager.getRemainingBudget();
-        Log.info(`Subagent #${subagentId} spawned (${this.sessionManager.getCount()}/${SubagentLimits.MAX_PER_SESSION}, ${remaining} remaining)`);
+        Log.info(`Subagent #${subagentId} spawned (${this.sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`);
 
-        // Create cancellation token for timeout
         this.cancellationTokenSource = new vscode.CancellationTokenSource();
-
-        // Set up timeout
         const timeoutHandle = setTimeout(() => {
             this.cancellationTokenSource?.cancel();
-        }, SubagentLimits.TIMEOUT_MS);
+        }, timeoutMs);
 
         try {
             const result = await this.executor.execute(
                 {
                     task,
                     context,
-                    maxToolCalls: max_tool_calls
+                    maxIterations: max_iterations
                 },
                 this.cancellationTokenSource.token,
                 subagentId
@@ -114,7 +110,14 @@ Example: "Investigate error handling in src/api/. For each endpoint: check try/c
 
             clearTimeout(timeoutHandle);
 
-            // Include nested tool calls in metadata for webview display
+            // Check if cancelled (timeout or user)
+            if (!result.success && result.error === 'cancelled') {
+                if (this.cancellationTokenSource?.token.isCancellationRequested) {
+                    return toolError(SubagentErrors.timeout(timeoutMs));
+                }
+                return toolError('Subagent was cancelled');
+            }
+
             return toolSuccess(
                 this.formatResult(result, subagentId),
                 { nestedToolCalls: result.toolCalls }
@@ -124,7 +127,7 @@ Example: "Investigate error handling in src/api/. For each endpoint: check try/c
             clearTimeout(timeoutHandle);
 
             if (this.cancellationTokenSource?.token.isCancellationRequested) {
-                return toolError(SubagentErrors.timeout(SubagentLimits.TIMEOUT_MS));
+                return toolError(SubagentErrors.timeout(timeoutMs));
             }
 
             const errorMessage = error instanceof Error ? error.message : String(error);

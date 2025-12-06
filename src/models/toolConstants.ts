@@ -35,24 +35,18 @@ export class ToolConstants {
 }
 
 /**
- * Limits for subagent execution.
- * Prevents resource exhaustion while allowing meaningful investigations.
- * Note: Tool call limits come from WorkspaceSettingsService, not here.
+ * Static limits for subagent execution that don't need user configuration.
+ * Dynamic limits (max per session, timeout) come from WorkspaceSettingsService.
  */
 export const SubagentLimits = {
-	/** Maximum subagents that can be spawned per analysis session */
-	MAX_PER_SESSION: 10,
 	/** Minimum task length to ensure meaningful instructions */
 	MIN_TASK_LENGTH: 30,
-	/** Timeout for subagent execution in milliseconds */
-	TIMEOUT_MS: 300_000, // 5 minutes
 	/** Tools that subagents cannot access to prevent recursion */
 	DISALLOWED_TOOLS: ['run_subagent'] as const,
 } as const;
 
 /**
  * Error messages for subagent execution failures.
- * Provides actionable feedback to guide the LLM to improve requests.
  */
 export const SubagentErrors = {
 	maxExceeded: (max: number) =>

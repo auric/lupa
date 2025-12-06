@@ -94,12 +94,10 @@ export interface ToolCallResponse {
  * Task definition for spawning an isolated subagent investigation.
  */
 export interface SubagentTask {
-    /** Detailed investigation task description */
     task: string;
-    /** Optional context from parent analysis */
     context?: string;
-    /** Maximum tool calls the subagent can make (uses workspace setting if not specified) */
-    maxToolCalls?: number;
+    /** Maximum iterations for subagent (uses workspace setting if not specified) */
+    maxIterations?: number;
 }
 
 /**

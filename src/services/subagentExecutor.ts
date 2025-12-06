@@ -52,18 +52,15 @@ export class SubagentExecutor {
         try {
             Log.info(`${logLabel} Starting: "${taskLabel}"`);
 
-            // Create isolated conversation and tool executor for this subagent
             const conversation = new ConversationManager();
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
             const toolExecutor = new ToolExecutor(filteredRegistry, this.workspaceSettings);
             const conversationRunner = new ConversationRunner(this.modelManager, toolExecutor);
 
-            // Generate subagent-specific prompt using workspace settings for limits
-            const maxIterations = task.maxToolCalls ?? this.workspaceSettings.getMaxIterations();
+            const maxIterations = task.maxIterations ?? this.workspaceSettings.getMaxIterations();
             const systemPrompt = this.promptGenerator.generateSystemPrompt(task, filteredTools, maxIterations);
 
-            // Add initial user message with the task
             conversation.addUserMessage(`Please investigate: ${task.task}`);
 
             // Track tool calls made by the subagent with full details
@@ -104,9 +101,21 @@ export class SubagentExecutor {
             );
 
             const duration = Date.now() - startTime;
+
+            // Check if cancelled (timeout or user) after run completes
+            if (token.isCancellationRequested) {
+                Log.warn(`${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`);
+                return {
+                    success: false,
+                    response: '',
+                    toolCallsMade,
+                    toolCalls,
+                    error: 'cancelled'
+                };
+            }
+
             Log.info(`${logLabel} Completed in ${duration}ms with ${toolCallsMade} tool calls`);
 
-            // Return raw response with tool call details for webview display
             return {
                 success: true,
                 response,

@@ -272,7 +272,7 @@ export class ServiceManager implements vscode.Disposable {
         );
 
         // Initialize subagent services
-        this.services.subagentSessionManager = new SubagentSessionManager();
+        this.services.subagentSessionManager = new SubagentSessionManager(this.services.workspaceSettings!);
         this.services.subagentExecutor = new SubagentExecutor(
             this.services.copilotModelManager!,
             this.services.toolRegistry,

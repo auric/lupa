@@ -94,7 +94,6 @@ export class CommandRegistry implements vscode.Disposable {
         this.services.workspaceSettings.resetAnalysisLimitsToDefaults();
         vscode.window.showInformationMessage(
             'Analysis limits reset to defaults: ' +
-            `Max Tool Calls: ${ANALYSIS_LIMITS.maxToolCalls.default}, ` +
             `Max Iterations: ${ANALYSIS_LIMITS.maxIterations.default}, ` +
             `Request Timeout: ${ANALYSIS_LIMITS.requestTimeoutSeconds.default}s`
         );

@@ -1,4 +1,4 @@
-import { SubagentLimits } from '../models/toolConstants';
+import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
  * Tracks subagent usage per analysis session.
@@ -7,39 +7,32 @@ import { SubagentLimits } from '../models/toolConstants';
 export class SubagentSessionManager {
     private count = 0;
 
-    /**
-     * Check if another subagent can be spawned.
-     */
+    constructor(private readonly workspaceSettings: WorkspaceSettingsService) { }
+
+    private get maxPerSession(): number {
+        return this.workspaceSettings.getMaxSubagentsPerSession();
+    }
+
     canSpawn(): boolean {
-        return this.count < SubagentLimits.MAX_PER_SESSION;
+        return this.count < this.maxPerSession;
     }
 
     /**
      * Record that a subagent was spawned and return its ID.
-     * @returns The unique ID for this subagent (1, 2, 3, etc.)
      */
     recordSpawn(): number {
         this.count++;
         return this.count;
     }
 
-    /**
-     * Get current subagent count.
-     */
     getCount(): number {
         return this.count;
     }
 
-    /**
-     * Get remaining subagent budget.
-     */
     getRemainingBudget(): number {
-        return Math.max(0, SubagentLimits.MAX_PER_SESSION - this.count);
+        return Math.max(0, this.maxPerSession - this.count);
     }
 
-    /**
-     * Reset counter for a new analysis session.
-     */
     reset(): void {
         this.count = 0;
     }

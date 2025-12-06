@@ -4,7 +4,7 @@ import * as path from 'path';
 import { z } from 'zod/v4';
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
-import { WorkspaceSettingsSchema, WorkspaceSettings, ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { WorkspaceSettingsSchema, WorkspaceSettings, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 
 const getDefaultSettings = (): WorkspaceSettings => WorkspaceSettingsSchema.parse({});
 
@@ -256,13 +256,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the maximum number of tool calls per analysis session
-     */
-    public getMaxToolCalls(): number {
-        return this.settings.maxToolCalls;
-    }
-
-    /**
      * Get the maximum conversation iterations
      */
     public getMaxIterations(): number {
@@ -277,12 +270,34 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
+     * Get the maximum subagents per analysis session
+     */
+    public getMaxSubagentsPerSession(): number {
+        return this.settings.maxSubagentsPerSession;
+    }
+
+    /**
+     * Get the subagent timeout in seconds
+     */
+    public getSubagentTimeoutSeconds(): number {
+        return this.settings.subagentTimeoutSeconds;
+    }
+
+    /**
+     * Get the subagent timeout in milliseconds
+     */
+    public getSubagentTimeoutMs(): number {
+        return this.settings.subagentTimeoutSeconds * 1000;
+    }
+
+    /**
      * Reset all analysis limit settings to their defaults
      */
     public resetAnalysisLimitsToDefaults(): void {
-        this.settings.maxToolCalls = ANALYSIS_LIMITS.maxToolCalls.default;
         this.settings.maxIterations = ANALYSIS_LIMITS.maxIterations.default;
         this.settings.requestTimeoutSeconds = ANALYSIS_LIMITS.requestTimeoutSeconds.default;
+        this.settings.maxSubagentsPerSession = SUBAGENT_LIMITS.maxPerSession.default;
+        this.settings.subagentTimeoutSeconds = SUBAGENT_LIMITS.timeoutSeconds.default;
         this.debouncedSaveSettings();
     }
 

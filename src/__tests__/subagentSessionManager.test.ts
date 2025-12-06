@@ -1,12 +1,20 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-import { SubagentLimits } from '../models/toolConstants';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
+
+const createMockSettings = (maxPerSession: number = SUBAGENT_LIMITS.maxPerSession.default): WorkspaceSettingsService => ({
+    getMaxSubagentsPerSession: vi.fn().mockReturnValue(maxPerSession),
+} as unknown as WorkspaceSettingsService);
 
 describe('SubagentSessionManager', () => {
     let sessionManager: SubagentSessionManager;
+    let mockSettings: WorkspaceSettingsService;
+    const defaultMax = SUBAGENT_LIMITS.maxPerSession.default;
 
     beforeEach(() => {
-        sessionManager = new SubagentSessionManager();
+        mockSettings = createMockSettings();
+        sessionManager = new SubagentSessionManager(mockSettings);
     });
 
     describe('Initial State', () => {
@@ -19,7 +27,7 @@ describe('SubagentSessionManager', () => {
         });
 
         it('should have full budget initially', () => {
-            expect(sessionManager.getRemainingBudget()).toBe(SubagentLimits.MAX_PER_SESSION);
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
         });
     });
 
@@ -37,7 +45,7 @@ describe('SubagentSessionManager', () => {
 
         it('should decrement remaining budget when spawning', () => {
             sessionManager.recordSpawn();
-            expect(sessionManager.getRemainingBudget()).toBe(SubagentLimits.MAX_PER_SESSION - 1);
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax - 1);
         });
 
         it('should track multiple spawns', () => {
@@ -45,30 +53,38 @@ describe('SubagentSessionManager', () => {
             sessionManager.recordSpawn();
             sessionManager.recordSpawn();
             expect(sessionManager.getCount()).toBe(3);
-            expect(sessionManager.getRemainingBudget()).toBe(SubagentLimits.MAX_PER_SESSION - 3);
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax - 3);
         });
     });
 
     describe('Spawn Limits', () => {
         it('should prevent spawning when limit reached', () => {
-            // Spawn up to the limit
-            for (let i = 0; i < SubagentLimits.MAX_PER_SESSION; i++) {
+            for (let i = 0; i < defaultMax; i++) {
                 expect(sessionManager.canSpawn()).toBe(true);
                 sessionManager.recordSpawn();
             }
 
-            // Should no longer allow spawning
             expect(sessionManager.canSpawn()).toBe(false);
             expect(sessionManager.getRemainingBudget()).toBe(0);
         });
 
         it('should return zero for remaining budget when exceeded', () => {
-            // Spawn past the limit (even though canSpawn would return false)
-            for (let i = 0; i < SubagentLimits.MAX_PER_SESSION + 2; i++) {
+            for (let i = 0; i < defaultMax + 2; i++) {
                 sessionManager.recordSpawn();
             }
-
             expect(sessionManager.getRemainingBudget()).toBe(0);
+        });
+
+        it('should respect custom limit from settings', () => {
+            const customLimit = 3;
+            mockSettings = createMockSettings(customLimit);
+            sessionManager = new SubagentSessionManager(mockSettings);
+
+            for (let i = 0; i < customLimit; i++) {
+                expect(sessionManager.canSpawn()).toBe(true);
+                sessionManager.recordSpawn();
+            }
+            expect(sessionManager.canSpawn()).toBe(false);
         });
     });
 
@@ -77,7 +93,6 @@ describe('SubagentSessionManager', () => {
             sessionManager.recordSpawn();
             sessionManager.recordSpawn();
             sessionManager.reset();
-
             expect(sessionManager.getCount()).toBe(0);
         });
 
@@ -85,22 +100,18 @@ describe('SubagentSessionManager', () => {
             sessionManager.recordSpawn();
             sessionManager.recordSpawn();
             sessionManager.reset();
-
-            // IDs should restart from 1 after reset
             expect(sessionManager.recordSpawn()).toBe(1);
         });
 
         it('should allow spawning after reset', () => {
-            // Fill up the session
-            for (let i = 0; i < SubagentLimits.MAX_PER_SESSION; i++) {
+            for (let i = 0; i < defaultMax; i++) {
                 sessionManager.recordSpawn();
             }
             expect(sessionManager.canSpawn()).toBe(false);
 
-            // Reset and verify we can spawn again
             sessionManager.reset();
             expect(sessionManager.canSpawn()).toBe(true);
-            expect(sessionManager.getRemainingBudget()).toBe(SubagentLimits.MAX_PER_SESSION);
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
         });
     });
 });
