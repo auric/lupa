@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { rgPath } from '@vscode/ripgrep';
+import { CodeFileDetector } from '../utils/codeFileDetector';
 
 export interface RipgrepMatch {
     filePath: string;
@@ -75,15 +76,6 @@ interface RipgrepSummaryData {
         matches: number;
     };
 }
-
-const CODE_FILE_TYPES = [
-    'ts', 'js', 'tsx', 'jsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp',
-    'cs', 'go', 'rs', 'rb', 'php', 'swift', 'kt', 'scala', 'vue',
-    'svelte', 'html', 'css', 'scss', 'less', 'sql', 'sh', 'bash',
-    'ps1', 'yaml', 'yml', 'json', 'xml', 'md', 'lua', 'r', 'dart',
-    'elm', 'ex', 'exs', 'clj', 'cljs', 'fs', 'fsx', 'ml', 'mli',
-    'hs', 'pl', 'pm', 'groovy', 'gradle'
-];
 
 export class RipgrepSearchService {
     async search(options: RipgrepSearchOptions): Promise<RipgrepFileResult[]> {
@@ -183,8 +175,9 @@ export class RipgrepSearchService {
         }
 
         if (options.codeFilesOnly) {
-            for (const ext of CODE_FILE_TYPES) {
-                args.push('--glob', `*.${ext}`);
+            args.push('--glob', CodeFileDetector.getGlobPattern());
+            for (const filename of CodeFileDetector.getSupportedFilenames()) {
+                args.push('--glob', filename);
             }
         }
 
