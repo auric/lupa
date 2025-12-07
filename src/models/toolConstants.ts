@@ -44,7 +44,10 @@ export const SubagentLimits = {
 	/** Tools that subagents cannot access */
 	DISALLOWED_TOOLS: [
 		'run_subagent',           // Prevent sub-subagent recursion
-		'think_about_completion', // Main agent only - subagents use think_about_investigation
+		'think_about_completion', // Main agent only - for final review verification
+		'think_about_context',    // Main agent only - references diff coverage
+		'think_about_task',       // Main agent only - references PR review scope
+		// Subagent uses only: think_about_investigation
 	] as const,
 } as const;
 
