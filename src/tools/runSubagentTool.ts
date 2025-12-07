@@ -15,18 +15,21 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
  */
 export class RunSubagentTool extends BaseTool {
     name = 'run_subagent';
-    description = `Spawn a focused investigation agent for complex, multi-file analysis.
+    description = `Spawn a focused investigation agent for complex analysis.
 
-MANDATORY when:
-- PR has 4+ files → parallelize analysis
-- Security-sensitive code (auth, crypto, user data)
-- Complex dependency chains (3+ files to trace)
+⚠️ FORBIDDEN in task: "changes", "new", "old", "removed", "added", "refactored"
+Subagent sees CURRENT CODE ONLY - cannot compare before/after!
 
-MUST provide in context parameter: Relevant code snippets from the diff!
-Subagents CANNOT see the diff—you must pass the code they need to investigate.
+✅ ONE FOCUS per subagent:
+Bad: "Check error handling, security, AND performance" (too broad!)
+Good: Spawn 3 separate subagents, one concern each.
 
-Task format: WHAT to investigate, WHERE to look, WHAT to return.
-Example: "Investigate error handling in OrderService.processPayment. Check: try/catch coverage, error logging, user-facing messages. Return: gaps with file:line and severity."`;
+MANDATORY when: 4+ files, security code, 3+ file dependency chains.
+
+MUST provide in context: Describe what to investigate (not diff snippets).
+Task format: WHAT to check, WHERE to look, WHAT to return.
+Example: "Does processPayment() in OrderService.ts handle API errors? Check try/catch, logging, user messages. Return gaps with file:line."`;
+
 
     private maxIterationsFromSettings: number;
 
