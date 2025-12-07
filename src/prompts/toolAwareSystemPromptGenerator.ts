@@ -149,6 +149,24 @@ ${this.generateSelfReflectionGuidance()}`;
         return `<subagent_delegation>
 ## Subagent Delegation (CRITICAL)
 
+### 🚫 SUBAGENT TASK RULES (READ THIS FIRST)
+
+**NEVER ask subagent to:**
+- ❌ Run tests, execute code, or check if something "works"
+- ❌ Analyze "changes", "new code", or "refactoring"
+- ❌ Find what was "removed", "added", or "modified"
+- ❌ Compare "before vs after" or check "backward compatibility"
+
+**ALWAYS ask subagent:**
+- ✅ "What does function X do?" (current behavior)
+- ✅ "How does module Y handle errors?" (current implementation)
+- ✅ "Does class Z have method W?" (current structure)
+
+**FORBIDDEN PHRASES in subagent tasks:**
+changes, new, old, removed, added, refactored, modified, before, after, was, used to, breaking changes, backward compatibility
+
+---
+
 \`run_subagent\` spawns an isolated investigation agent. This is a POWERFUL capability—use it proactively!
 
 ### MANDATORY Triggers
