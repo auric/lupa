@@ -226,18 +226,25 @@ You think: "I need to verify the refactoring is correct"
 
 Subagents CANNOT see the diff. Use NATURAL LANGUAGE to describe what you're concerned about and ask SPECIFIC QUESTIONS.
 
-<task_format>
-FORMAT:
-task: "[Natural description of what you're investigating]
+<task_template>
+📋 MANDATORY TASK TEMPLATE (use this exact format):
+
+task: "About [module/file]:
 
 Questions:
-1. [Specific question about the code]
-2. [Specific question about the code]
+1. How does [function] work?
+2. Does [function] handle [specific concern]?
+3. What does [class/function] return?
 
-Use find_symbol to examine [function/class] in [file path]."
+Examine: [list specific function/class names to investigate]"
 
-context: "[Optional: file paths, function names to focus on, your concerns]"
-</task_format>
+context: "[What prompted this investigation - your concerns, not diff snippets]"
+
+RULES:
+- ONE MODULE per subagent (to check 3 modules, spawn 3 subagents)
+- ALL questions must be about CURRENT behavior, not changes
+- List SPECIFIC functions/classes to examine
+</task_template>
 
 <good_subagent_examples>
 EXAMPLE 1 - Error Handling Investigation:

@@ -17,19 +17,19 @@ export class RunSubagentTool extends BaseTool {
     name = 'run_subagent';
     description = `Spawn a focused investigation agent for complex analysis.
 
-⚠️ FORBIDDEN in task: "changes", "new", "old", "removed", "added", "refactored"
-Subagent sees CURRENT CODE ONLY - cannot compare before/after!
+📋 USE THIS TEMPLATE:
+task: "About [module/file]:
+Questions:
+1. How does [function] work?
+2. Does [function] handle [concern]?
+Examine: [function names]"
 
-✅ ONE FOCUS per subagent:
-Bad: "Check error handling, security, AND performance" (too broad!)
-Good: Spawn 3 separate subagents, one concern each.
+RULES:
+- ONE MODULE per subagent (spawn multiple for multiple modules)
+- Questions about CURRENT code only (no "changes", "new", "old")
+- Subagent CANNOT run tests or execute code
 
-MANDATORY when: 4+ files, security code, 3+ file dependency chains.
-
-MUST provide in context: Describe what to investigate (not diff snippets).
-Task format: WHAT to check, WHERE to look, WHAT to return.
-Example: "Does processPayment() in OrderService.ts handle API errors? Check try/catch, logging, user messages. Return gaps with file:line."`;
-
+MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
     private maxIterationsFromSettings: number;
 
