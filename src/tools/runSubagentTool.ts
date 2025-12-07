@@ -18,7 +18,7 @@ export class RunSubagentTool extends BaseTool {
     description = `Spawn a focused investigation agent for complex analysis.
 
 📋 USE THIS TEMPLATE:
-task: "About [module/file]:
+"Task about [module/file]:
 Questions:
 1. How does [function] work?
 2. Does [function] handle [concern]?

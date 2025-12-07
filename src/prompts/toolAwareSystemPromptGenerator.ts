@@ -3,7 +3,7 @@ import { ITool } from '../tools/ITool';
 
 /**
  * Tool-aware system prompt generator for PR analysis.
- * 
+ *
  * Follows Anthropic prompt engineering best practices:
  * - Clear role definition with behavioral descriptors
  * - XML structure for prompt organization
@@ -229,7 +229,7 @@ Subagents CANNOT see the diff. Use NATURAL LANGUAGE to describe what you're conc
 <task_template>
 📋 MANDATORY TASK TEMPLATE (use this exact format):
 
-task: "About [module/file]:
+"Task about [module/file]:
 
 Questions:
 1. How does [function] work?
@@ -319,7 +319,7 @@ DO NOT write tasks like these:
    Problem: Subagent can't know what was removed/added
    Reframe: "Does the module have initialize() and cleanup() functions? What do they do?"
 
-❌ "Look for bugs in the payment code"  
+❌ "Look for bugs in the payment code"
    Problem: Too broad, will find pre-existing issues
    Reframe: "Is the Stripe API call in processPayment() wrapped in try/catch?"
 </bad_subagent_examples>
