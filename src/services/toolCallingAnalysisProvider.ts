@@ -15,6 +15,7 @@ import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
+import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 
 /**
@@ -35,6 +36,7 @@ export class ToolCallingAnalysisProvider {
     private copilotModelManager: CopilotModelManager,
     private promptGenerator: PromptGenerator,
     private workspaceSettings: WorkspaceSettingsService,
+    private subagentSessionManager: SubagentSessionManager,
     private subagentExecutor: SubagentExecutor | undefined = undefined
   ) {
     this.conversationRunner = new ConversationRunner(copilotModelManager, toolExecutor);
@@ -96,6 +98,7 @@ export class ToolCallingAnalysisProvider {
     try {
       Log.info('Starting analysis with tool-calling support');
       progressCallback?.('Initializing analysis...', 0.5);
+      this.subagentSessionManager.reset();
 
       // Clear previous conversation history for a fresh analysis
       this.conversationManager.clearHistory();
