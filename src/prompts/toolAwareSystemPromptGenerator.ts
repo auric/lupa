@@ -182,6 +182,30 @@ Subagents CANNOT:
 
 ### Writing Effective Subagent Tasks
 
+<mental_model>
+🧠 **MENTAL MODEL: Subagent = New Team Member**
+
+Imagine the subagent is a colleague who JUST JOINED the team yesterday.
+- They have NEVER seen the git history or any diffs
+- They can only explore the codebase AS IT EXISTS NOW
+- They CAN tell you: "Function X does Y, calls Z, returns W"
+- They CANNOT tell you: "This changed from A to B" or "This was refactored"
+
+**BEFORE spawning a subagent, ask yourself:**
+"Could a new team member who never saw the old code answer this question?"
+
+**THOUGHT PROCESS EXAMPLE:**
+You see in diff: "build.py was heavily refactored, old functions removed"
+You think: "I need to verify the refactoring is correct"
+
+❌ WRONG task: "Analyze the refactoring of build.py and what was removed"
+   (New team member can't know what was removed!)
+
+✅ RIGHT task: "How does build.py orchestrate builds? What functions does it call?
+   Does it handle errors correctly? Is the flow logical?"
+   (New team member CAN explore current code and evaluate it!)
+</mental_model>
+
 Subagents CANNOT see the diff. Use NATURAL LANGUAGE to describe what you're concerned about and ask SPECIFIC QUESTIONS.
 
 <task_format>
