@@ -16,10 +16,8 @@ import type {
  */
 export class UIManager {
     private statusBarService: StatusBarService;
+    private activeAnalysisPanel: vscode.WebviewPanel | undefined;
 
-    /**
-     * Create a new UIManager
-     */
     constructor(
         private readonly extensionContext: vscode.ExtensionContext,
         private readonly gitRepositoryRoot: string
@@ -221,7 +219,7 @@ export class UIManager {
     }
 
     /**
-     * Display analysis results in a webview
+     * Display analysis results in a webview (reuses existing panel if open)
      */
     public displayAnalysisResults(
         title: string,
@@ -230,12 +228,22 @@ export class UIManager {
         analysis: string,
         toolCalls: ToolCallsData | undefined = undefined
     ): vscode.WebviewPanel {
-        const panel = vscode.window.createWebviewPanel(
-            'prAnalyzerResults',
-            title,
-            vscode.ViewColumn.Beside,
-            { enableScripts: true }
-        );
+        let panel: vscode.WebviewPanel;
+
+        if (this.activeAnalysisPanel) {
+            // Reuse existing panel (may have been showing progress)
+            panel = this.activeAnalysisPanel;
+            panel.title = title;
+        } else {
+            // Create new panel
+            panel = vscode.window.createWebviewPanel(
+                'prAnalyzerResults',
+                title,
+                vscode.ViewColumn.Beside,
+                { enableScripts: true }
+            );
+            this.activeAnalysisPanel = panel;
+        }
 
         panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel, toolCalls);
 
@@ -247,9 +255,12 @@ export class UIManager {
             this.sendThemeToWebview(panel.webview);
         });
 
-        // Clean up theme listener when panel is disposed
+        // Clean up when panel is disposed
         panel.onDidDispose(() => {
             themeChangeDisposable.dispose();
+            if (this.activeAnalysisPanel === panel) {
+                this.activeAnalysisPanel = undefined;
+            }
         });
 
         return panel;
@@ -415,24 +426,5 @@ export class UIManager {
             payload: themeData
         });
     }
-
-    /**
-     * Show PR analysis progress in the status bar (non-intrusive)
-     */
-    public showAnalysisProgress<T>(title: string, task: (progress: vscode.Progress<{ message?: string; increment?: number }>, token: vscode.CancellationToken) => Thenable<T>): Thenable<T> {
-        return vscode.window.withProgress({
-            location: vscode.ProgressLocation.Window,
-            title,
-            cancellable: true
-        }, task);
-    }
-
-
-
-
-
-
-
-
 
 }

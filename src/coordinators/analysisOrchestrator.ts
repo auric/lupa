@@ -34,11 +34,8 @@ export class AnalysisOrchestrator implements vscode.Disposable {
         }
 
         this.isAnalysisRunning = true;
-        const statusId = 'pr-analysis';
 
         try {
-            this.services.statusBar.showProgress(statusId, 'Analyzing PR', 'PR analysis in progress');
-
             // Initialize Git service
             const isGitAvailable = await this.services.gitOperations.initialize();
             if (!isGitAvailable) {
@@ -72,70 +69,9 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 return;
             }
 
-            // Check if legacy embedding LSP algorithm is enabled
-            const useEmbeddingLspAlgorithm = this.services.workspaceSettings.isEmbeddingLspAlgorithmEnabled();
+            // Run the analysis with a progress notification
+            await this.runAnalysisWithProgress(diffText, refName, gitRootPath, analysisMode);
 
-            // Perform the analysis with progress reporting
-            await this.services.uiManager.showAnalysisProgress('PR Analyzer', async (progress, token) => {
-                // Initial setup
-                progress.report({ message: 'Initializing analysis...', increment: 1 });
-
-                let analysis: string;
-                let context: string;
-                let toolCallsData: ToolCallsData | undefined;
-
-                if (useEmbeddingLspAlgorithm) {
-                    // Use legacy embedding-based LSP algorithm
-                    progress.report({ message: 'Using legacy embedding-based analysis...', increment: 1 });
-
-                    const result = await this.services.analysisProvider.analyzePullRequest(
-                        diffText,
-                        gitRootPath,
-                        analysisMode,
-                        (message, increment) => {
-                            if (increment) {
-                                const scaledIncrement = Math.min(increment * 0.2, 1);
-                                progress.report({ message, increment: scaledIncrement });
-                            } else {
-                                progress.report({ message });
-                            }
-                        },
-                        token
-                    );
-
-                    analysis = result.analysis;
-                    context = result.context;
-                } else {
-                    // Use new tool-calling approach with detailed progress reporting
-                    progress.report({ message: 'Starting tool-calling analysis...', increment: 1 });
-
-                    const progressCallback: AnalysisProgressCallback = (message, incrementPercent) => {
-                        if (incrementPercent !== undefined) {
-                            progress.report({ message, increment: incrementPercent });
-                        } else {
-                            progress.report({ message });
-                        }
-                    };
-
-                    const result = await this.services.toolCallingAnalysisProvider.analyze(
-                        diffText,
-                        token,
-                        progressCallback
-                    );
-                    analysis = result.analysis;
-                    toolCallsData = result.toolCalls;
-                    context = '';
-                }
-
-                // Display the results
-                progress.report({ message: 'Preparing analysis results...', increment: 2 });
-
-                const title = `PR Analysis: ${refName}`;
-                this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis, toolCallsData);
-                progress.report({ message: 'Analysis displayed', increment: 2 });
-            });
-
-            this.services.statusBar.showTemporaryMessage('Analysis complete', 3000, 'check');
         } catch (error) {
             if (error instanceof Error && error.message.includes('cancelled')) {
                 this.services.statusBar.showTemporaryMessage('Analysis cancelled', 3000, 'warning');
@@ -147,8 +83,82 @@ export class AnalysisOrchestrator implements vscode.Disposable {
             }
         } finally {
             this.isAnalysisRunning = false;
-            this.services.statusBar.hideProgress(statusId);
         }
+    }
+
+    /**
+     * Run analysis with VS Code progress notification
+     * The notification appears automatically and can be minimized by user.
+     * When minimized, it moves to the status bar area near the bell icon.
+     * Clicking the status bar or bell icon reopens the notification.
+     */
+    private async runAnalysisWithProgress(
+        diffText: string,
+        refName: string,
+        gitRootPath: string,
+        analysisMode: AnalysisMode
+    ): Promise<void> {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: 'Analyzing PR',
+                cancellable: true
+            },
+            async (progress, token) => {
+                const cancellationTokenSource = new vscode.CancellationTokenSource();
+
+                // Link the VS Code cancellation token to our source
+                token.onCancellationRequested(() => {
+                    cancellationTokenSource.cancel();
+                });
+
+                try {
+                    const useEmbeddingLspAlgorithm = this.services.workspaceSettings.isEmbeddingLspAlgorithmEnabled();
+
+                    let analysis: string;
+                    let context: string;
+                    let toolCallsData: ToolCallsData | undefined;
+
+                    const updateProgress = (message: string) => {
+                        progress.report({ message });
+                    };
+
+                    updateProgress('Starting analysis...');
+
+                    if (useEmbeddingLspAlgorithm) {
+                        const result = await this.services.analysisProvider.analyzePullRequest(
+                            diffText,
+                            gitRootPath,
+                            analysisMode,
+                            updateProgress,
+                            cancellationTokenSource.token
+                        );
+
+                        analysis = result.analysis;
+                        context = result.context;
+                    } else {
+                        const progressCallback: AnalysisProgressCallback = updateProgress;
+
+                        const result = await this.services.toolCallingAnalysisProvider.analyze(
+                            diffText,
+                            cancellationTokenSource.token,
+                            progressCallback
+                        );
+                        analysis = result.analysis;
+                        toolCallsData = result.toolCalls;
+                        context = '';
+                    }
+
+                    // Display results in webview
+                    const title = `PR Analysis: ${refName}`;
+                    this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis, toolCallsData);
+
+                    this.services.statusBar.showTemporaryMessage('Analysis complete', 3000, 'check');
+                } finally {
+                    cancellationTokenSource.dispose();
+                }
+            }
+        );
     }
 
     /**

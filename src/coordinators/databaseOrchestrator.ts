@@ -12,7 +12,7 @@ export class DatabaseOrchestrator implements vscode.Disposable {
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly services: IServiceRegistry
-    ) {}
+    ) { }
 
     /**
      * Show database management options
@@ -45,16 +45,22 @@ export class DatabaseOrchestrator implements vscode.Disposable {
      * Optimize the vector database
      */
     private async optimizeDatabase(): Promise<void> {
-        await this.services.uiManager.showAnalysisProgress('Optimizing database', async (progress) => {
-            progress.report({ message: 'Running optimization...' });
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Window,
+                title: 'Optimizing database'
+            },
+            async (progress) => {
+                progress.report({ message: 'Running optimization...' });
 
-            try {
-                this.services.embeddingDatabaseAdapter.optimizeStorage();
-                vscode.window.showInformationMessage('Database optimization complete');
-            } catch (error) {
-                vscode.window.showErrorMessage(`Database optimization failed: ${error instanceof Error ? error.message : String(error)}`);
+                try {
+                    this.services.embeddingDatabaseAdapter.optimizeStorage();
+                    vscode.window.showInformationMessage('Database optimization complete');
+                } catch (error) {
+                    vscode.window.showErrorMessage(`Database optimization failed: ${error instanceof Error ? error.message : String(error)}`);
+                }
             }
-        });
+        );
     }
 
     /**

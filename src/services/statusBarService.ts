@@ -86,6 +86,19 @@ export class StatusBarService {
     }
 
     /**
+     * Update the message of an existing progress indicator
+     * @param id Unique identifier for the progress item
+     * @param message New message to display
+     */
+    public updateProgressMessage(id: string, message: string): void {
+        const statusItem = this.activeStatusItems.get(id);
+        if (statusItem) {
+            statusItem.text = `$(sync~spin) ${message}`;
+            statusItem.tooltip = message;
+        }
+    }
+
+    /**
      * Show a temporary message that auto-hides after timeout
      * @param text Text to display (without icon)
      * @param timeout Duration in milliseconds
@@ -94,7 +107,7 @@ export class StatusBarService {
     public showTemporaryMessage(text: string, timeout: number, icon: 'check' | 'warning' | 'error' = 'check'): void {
         // Create a separate temporary status item (not stored in the map)
         const tempStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-        
+
         // Set appropriate icon
         let iconString = '$(check)';
         switch (icon) {
@@ -109,11 +122,11 @@ export class StatusBarService {
                 iconString = '$(check)';
                 break;
         }
-        
+
         tempStatusItem.text = `${iconString} ${text}`;
         tempStatusItem.tooltip = text;
         tempStatusItem.show();
-        
+
         // Auto-dispose after timeout
         setTimeout(() => {
             tempStatusItem.dispose();
