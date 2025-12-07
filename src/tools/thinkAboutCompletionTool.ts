@@ -3,7 +3,7 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 
 /**
- * Self-reflection tool that prompts the LLM to verify analysis completeness.
+ * Self-reflection tool for main agent: verifies analysis completeness.
  * Call when ready to provide final review to ensure nothing important was missed
  * and the feedback is well-structured and actionable.
  */
@@ -16,52 +16,47 @@ export class ThinkAboutCompletionTool extends BaseTool {
     schema = z.object({}).strict();
 
     async execute(): Promise<ToolResult> {
-        return toolSuccess(`<completion_verification>
-<section name="coverage">
-Verify all files reviewed:
-[ ] Analyzed every file in the diff
-[ ] Checked both additions and deletions
-[ ] Considered impact of moved or renamed code
-</section>
+        return toolSuccess(`## Completion Verification
 
-<section name="issue_categories">
-Confirm you checked for:
-[ ] Bugs: Logic errors, null/undefined risks, race conditions
-[ ] Security: Input validation, authentication, data exposure
-[ ] Performance: N+1 queries, unnecessary computations, memory leaks
-[ ] Quality: Code duplication, complexity, naming, SOLID principles
-[ ] Testing: Missing tests, edge cases, test quality
-</section>
+### Structure Check
+My review includes:
+□ Summary - 2-3 sentence TL;DR of the PR and key findings
+□ Risk Assessment - Overall risk level of merging this PR
+□ Critical Issues - Blocking problems (if any)
+□ Suggestions - Organized by category with severity
+□ Positive Observations - What was done well
+□ Questions - Clarifications needed (if any)
 
-<section name="feedback_quality">
-Ensure actionable output:
-[ ] Suggestions are specific enough to implement
-[ ] Provided code examples where helpful
-[ ] Explained WHY something is an issue, not just WHAT
-</section>
+### Quality Check
+□ Every finding has a specific file:line reference
+□ Code examples provided where helpful
+□ Severity levels are justified and consistent
+□ Recommendations are specific and actionable
+□ No claims made without tool verification
 
-<section name="prioritization">
-Verify clear priority levels:
-[ ] Critical issues marked as blockers
-[ ] Minor suggestions labeled as nitpicks
-[ ] Issues organized by importance
-</section>
+### Completeness Check
+□ All files in the diff were considered
+□ Security implications were evaluated
+□ Performance implications were considered
+□ Breaking changes were identified (if any)
+□ Test coverage implications noted
 
-<section name="constructiveness">
-Confirm balanced feedback:
-[ ] Acknowledged well-written code
-[ ] Recognized good patterns and practices
-[ ] Review is constructive, not just fault-finding
-</section>
-</completion_verification>
+### Tone Check
+□ Review is constructive and professional
+□ Good practices are acknowledged
+□ Criticism is specific, not personal
+□ Provides clear path forward
 
-<next_action>
-If incomplete: Gather more context or refine analysis.
-If complete: Provide final review with clear structure:
-1. Summary (1-2 sentences)
-2. Critical issues (if any)
-3. Suggestions for improvement
-4. Positive observations
-</next_action>`);
+### Format Check
+□ Using Markdown (not XML tags)
+□ Severity indicators: 🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low
+□ File references in \`backticks\`
+□ Code in fenced blocks with language
+
+### Decision
+- [ ] All checks pass → Submit final review
+- [ ] Issues found → Fix before submitting
+
+Ready to submit.`);
     }
 }

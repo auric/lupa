@@ -46,7 +46,7 @@ describe('FindUsagesTool', () => {
     describe('Tool Configuration', () => {
         it('should have correct name and description', () => {
             expect(findUsagesTool.name).toBe('find_usages');
-            expect(findUsagesTool.description).toContain('Find all usages/references');
+            expect(findUsagesTool.description).toContain('Find all places where a symbol is used');
         });
 
         it('should have valid schema with all required fields', () => {
@@ -75,7 +75,7 @@ describe('FindUsagesTool', () => {
             const vscodeTool = findUsagesTool.getVSCodeTool();
 
             expect(vscodeTool.name).toBe('find_usages');
-            expect(vscodeTool.description).toContain('Find all usages/references');
+            expect(vscodeTool.description).toContain('Find all places where a symbol is used');
             expect(vscodeTool.inputSchema).toBeDefined();
         });
     });

@@ -10,7 +10,13 @@ import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
  */
 export class FindUsagesTool extends BaseTool {
   name = 'find_usages';
-  description = "Find all usages/references of a code symbol using VS Code's reference provider";
+  description = `Find all places where a symbol is used/called across the codebase.
+
+USE THIS to assess impact of changes—who calls this function?
+USE THIS to verify all callers handle new behavior/parameters.
+COMBINE with find_symbol: first understand the definition, then find who uses it.
+
+Requires file_path where the symbol is defined as starting point.`;
 
   private readonly formatter = new UsageFormatter();
 

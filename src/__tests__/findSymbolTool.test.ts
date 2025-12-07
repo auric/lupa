@@ -108,7 +108,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
         it('should create valid VS Code tool definition', () => {
             const vscodeTools = findSymbolTool.getVSCodeTool();
             expect(vscodeTools.name).toBe('find_symbol');
-            expect(vscodeTools.description).toContain('Finds code symbols (classes, functions, methods, variables, etc.) by exact name within the codebase.');
+            expect(vscodeTools.description).toContain('Find code symbol definitions');
             expect(vscodeTools.inputSchema).toBeDefined();
         });
     });

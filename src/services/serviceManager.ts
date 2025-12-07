@@ -41,6 +41,7 @@ import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { ThinkAboutContextTool } from '../tools/thinkAboutContextTool';
 import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
+import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
 import { RunSubagentTool } from '../tools/runSubagentTool';
 
 // Subagent services
@@ -343,6 +344,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(new ThinkAboutContextTool());
             this.services.toolRegistry!.registerTool(new ThinkAboutTaskTool());
             this.services.toolRegistry!.registerTool(new ThinkAboutCompletionTool());
+            this.services.toolRegistry!.registerTool(new ThinkAboutInvestigationTool());
 
             // Register the RunSubagentTool for delegating complex investigations
             const runSubagentTool = new RunSubagentTool(

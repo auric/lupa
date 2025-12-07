@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { ITool } from '../tools/ITool';
 import { z } from 'zod';
@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 // Mock tools for testing
 class MockFindSymbolTool implements ITool {
     name = 'find_symbol';
-    description = 'Find the definition of a code symbol by name';
+    description = 'Find code symbol definitions (functions, classes, methods)';
     schema = z.object({
         symbolName: z.string().describe('The name of the symbol to find'),
         relativePath: z.string().optional().describe('Optional relative path to search within'),
@@ -29,7 +29,7 @@ class MockFindSymbolTool implements ITool {
 
 class MockSearchPatternTool implements ITool {
     name = 'search_for_pattern';
-    description = 'Search for a regex pattern in the codebase';
+    description = 'Search for text patterns across the codebase';
     schema = z.object({
         pattern: z.string().describe('The regex pattern to search for'),
         include: z.string().optional().describe('Optional glob pattern to filter files'),
@@ -65,63 +65,84 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should generate a comprehensive system prompt with no tools', () => {
             const prompt = generator.generateSystemPrompt([]);
 
-            expect(prompt).toContain('Expert Senior Software Engineer');
-            expect(prompt).toContain('Security vulnerability identification');
-            expect(prompt).toContain('Performance optimization');
-            expect(prompt).toContain('Code quality evaluation');
+            expect(prompt).toContain('Staff Engineer');
+            expect(prompt).toContain('Finding subtle bugs');
+            expect(prompt).toContain('security vulnerabilities');
+            expect(prompt).toContain('actionable feedback');
             expect(prompt).not.toContain('Available Code Analysis Tools');
         });
 
         it('should include tool section when tools are provided', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
-            expect(prompt).toContain('Expert Senior Software Engineer');
+            expect(prompt).toContain('Staff Engineer');
             expect(prompt).toContain('## Available Code Analysis Tools');
-            expect(prompt).toContain('**find_symbol**: Find the definition of a code symbol by name');
-            expect(prompt).toContain('**search_for_pattern**: Search for a regex pattern in the codebase');
+            expect(prompt).toContain('**find_symbol**');
+            expect(prompt).toContain('**search_for_pattern**');
         });
 
-        it('should include strategic tool usage guidance', () => {
+        it('should include tool selection guide', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
-            expect(prompt).toContain('### Strategic Tool Usage');
-            expect(prompt).toContain('**When to use each tool:**');
-            expect(prompt).toContain('**find_symbol**: When you encounter unknown functions');
-            expect(prompt).toContain('**search_for_pattern**: To find similar code patterns');
-            expect(prompt).toContain('**Analysis Strategy:**');
-            expect(prompt).toContain('**Proactive Approach**');
+            expect(prompt).toContain('<tool_selection_guide>');
+            expect(prompt).toContain('## Tool Selection Guide');
+            expect(prompt).toContain('| When You Need To...');
+            expect(prompt).toContain('### Tool Usage Principles');
+            expect(prompt).toContain('Verify Before Claiming');
+            expect(prompt).toContain('### Anti-Patterns to Avoid');
+        });
+
+        it('should include subagent delegation guidance', () => {
+            const prompt = generator.generateSystemPrompt(mockTools);
+
+            expect(prompt).toContain('<subagent_delegation>');
+            expect(prompt).toContain('### MANDATORY Triggers');
+            expect(prompt).toContain('File Count ≥ 4');
+            expect(prompt).toContain('Security-Sensitive Code');
+            expect(prompt).toContain('### Subagent Capabilities');
+            expect(prompt).toContain('### Writing Effective Subagent Tasks');
+            expect(prompt).toContain('<good_subagent_examples>');
+            expect(prompt).toContain('<bad_subagent_examples>');
         });
 
         it('should include analysis methodology section', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
+            expect(prompt).toContain('<analysis_methodology>');
             expect(prompt).toContain('## Analysis Methodology');
             expect(prompt).toContain('Think step-by-step');
-            expect(prompt).toContain('**Initial Assessment**');
-            expect(prompt).toContain('**Context Gathering**');
-            expect(prompt).toContain('**Impact Analysis**');
-            expect(prompt).toContain('**Critical Thinking Framework:**');
+            expect(prompt).toContain('Initial Scan');
+            expect(prompt).toContain('Context Gathering');
+            expect(prompt).toContain('Spawn Subagents Early');
+            expect(prompt).toContain('Critical Thinking Framework');
         });
 
-        it('should include response structure guidance', () => {
+        it('should include output format guidance with Markdown structure', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
-            expect(prompt).toContain('## Response Structure');
-            expect(prompt).toContain('<thinking>');
-            expect(prompt).toContain('<suggestion_security>');
-            expect(prompt).toContain('<suggestion_performance>');
-            expect(prompt).toContain('<suggestion_maintainability>');
-            expect(prompt).toContain('<suggestion_reliability>');
-            expect(prompt).toContain('<suggestion_type_safety>');
-            expect(prompt).toContain('<example_fix>');
-            expect(prompt).toContain('<explanation>');
-            expect(prompt).toContain('**Quality Standards:**');
+            expect(prompt).toContain('<output_format>');
+            expect(prompt).toContain('## Output Format');
+            expect(prompt).toContain('### 1. Summary');
+            expect(prompt).toContain('### 2. Critical Issues');
+            expect(prompt).toContain('### 3. Suggestions by Category');
+            expect(prompt).toContain('### Severity Guide');
+            expect(prompt).toContain('🔴');
+            expect(prompt).toContain('🟠');
+            expect(prompt).toContain('🟡');
+            expect(prompt).toContain('🟢');
+        });
+
+        it('should include workflow examples', () => {
+            const prompt = generator.generateSystemPrompt(mockTools);
+
+            expect(prompt).toContain('<workflow_example>');
+            expect(prompt).toContain('SCENARIO: PR modifies 5 files');
+            expect(prompt).toContain('SCENARIO: PR modifies 2 files');
         });
 
         it('should extract parameter descriptions from tool schemas', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
-            // Should include parameter information extracted from Zod schemas
             expect(prompt).toContain('symbolName');
             expect(prompt).toContain('pattern');
             expect(prompt).toContain('includeFullBody');
@@ -137,7 +158,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
                     booleanParam: z.boolean().default(false).describe('A boolean parameter')
                 }),
                 getVSCodeTool: () => ({ name: 'complex_tool', description: '', parametersSchema: {} as any }),
-                execute: async () => []
+                execute: async () => ({ success: true, data: '' })
             };
 
             const prompt = generator.generateSystemPrompt([complexTool]);
@@ -152,14 +173,14 @@ describe('ToolAwareSystemPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
             // Check that the prompt has proper section ordering
-            const roleIndex = prompt.indexOf('Expert Senior Software Engineer');
+            const roleIndex = prompt.indexOf('Staff Engineer');
             const toolsIndex = prompt.indexOf('## Available Code Analysis Tools');
             const methodologyIndex = prompt.indexOf('## Analysis Methodology');
-            const responseIndex = prompt.indexOf('## Response Structure');
+            const outputIndex = prompt.indexOf('## Output Format');
 
             expect(roleIndex).toBeLessThan(toolsIndex);
             expect(toolsIndex).toBeLessThan(methodologyIndex);
-            expect(methodologyIndex).toBeLessThan(responseIndex);
+            expect(methodologyIndex).toBeLessThan(outputIndex);
         });
     });
 
@@ -170,7 +191,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
                 description: 'A tool with problematic schema',
                 schema: null as any,
                 getVSCodeTool: () => ({ name: 'bad_tool', description: '', parametersSchema: {} as any }),
-                execute: async () => []
+                execute: async () => ({ success: true, data: '' })
             };
 
             expect(() => {
@@ -187,7 +208,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
                     param2: z.number()
                 }),
                 getVSCodeTool: () => ({ name: 'simple_tool', description: '', parametersSchema: {} as any }),
-                execute: async () => []
+                execute: async () => ({ success: true, data: '' })
             };
 
             const prompt = generator.generateSystemPrompt([simpleTool]);

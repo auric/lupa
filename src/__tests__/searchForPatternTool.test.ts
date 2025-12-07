@@ -36,7 +36,7 @@ describe('SearchForPatternTool', () => {
     describe('Tool Configuration', () => {
         it('should have correct name and description', () => {
             expect(searchForPatternTool.name).toBe('search_for_pattern');
-            expect(searchForPatternTool.description).toContain('flexible search for arbitrary patterns');
+            expect(searchForPatternTool.description).toContain('Search for text patterns');
         });
 
         it('should have valid schema with all required fields', () => {
@@ -62,7 +62,7 @@ describe('SearchForPatternTool', () => {
         it('should create valid VS Code tool definition', () => {
             const vscodeTools = searchForPatternTool.getVSCodeTool();
             expect(vscodeTools.name).toBe('search_for_pattern');
-            expect(vscodeTools.description).toContain('flexible search for arbitrary patterns');
+            expect(vscodeTools.description).toContain('Search for text patterns');
             expect(vscodeTools.inputSchema).toBeDefined();
 
             const schema = vscodeTools.inputSchema as Record<string, unknown>;

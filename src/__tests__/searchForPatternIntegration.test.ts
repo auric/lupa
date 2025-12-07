@@ -14,7 +14,6 @@ import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
  */
 function createMockWorkspaceSettings(): WorkspaceSettingsService {
     return {
-        getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
         getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
         getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
     } as WorkspaceSettingsService;
@@ -156,7 +155,7 @@ describe('SearchForPatternTool Integration Tests', () => {
             const tool = toolRegistry.getTool('search_for_pattern');
             expect(tool).toBeDefined();
             expect(tool!.name).toBe('search_for_pattern');
-            expect(tool!.description).toContain('flexible search for arbitrary patterns');
+            expect(tool!.description).toContain('Search for text patterns');
         });
 
         it('should provide correct VS Code tool definition with LLM-optimized parameters', () => {
@@ -164,7 +163,7 @@ describe('SearchForPatternTool Integration Tests', () => {
             const vscodeTools = tool!.getVSCodeTool();
 
             expect(vscodeTools.name).toBe('search_for_pattern');
-            expect(vscodeTools.description).toContain('flexible search for arbitrary patterns');
+            expect(vscodeTools.description).toContain('Search for text patterns');
             expect(vscodeTools.inputSchema).toBeDefined();
 
             // Verify schema has correct LLM-optimized parameter names

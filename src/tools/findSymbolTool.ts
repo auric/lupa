@@ -29,15 +29,14 @@ const SPECIFIC_PATH_TIMEOUT = 3000; // 3 seconds for specific path search
  */
 export class FindSymbolTool extends BaseTool {
   name = 'find_symbol';
-  description = `Finds code symbols (classes, functions, methods, variables, etc.) by exact name within the codebase.
-Searches through the workspace using VS Code's symbol providers and returns detailed information about matching symbols.
+  description = `Find code symbol definitions (functions, classes, methods, variables, etc.) with complete source code.
 
-Usage examples:
-- name_path: "MyClass" - finds all classes named MyClass
-- name_path: "calculateTotal" - finds all functions/methods named calculateTotal
-- name_path: "API_KEY" - finds all constants named API_KEY
+USE THIS when you see an unfamiliar function/class/variable in the diff.
+ALWAYS set include_body: true when you need the implementation.
+PREFER THIS over read_file for code—extracts complete definitions regardless of length.
 
-The tool supports filtering by symbol kinds and can be restricted to specific files or directories using the relative_path parameter.`;
+Supports hierarchical paths: "MyClass/method" finds method inside MyClass.
+Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
   private readonly rangeExpander = new SymbolRangeExpander();
   private readonly formatter = new DefinitionFormatter();

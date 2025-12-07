@@ -20,14 +20,14 @@ import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
  */
 export class SearchForPatternTool extends BaseTool {
   name = 'search_for_pattern';
-  description = `Offers flexible search for arbitrary patterns in the codebase, including the possibility to search in non-code files.
-Generally, symbolic operations like find_symbol should be preferred if you know which symbols you are looking for.
+  description = `Search for text patterns across the codebase using regex.
 
-Pattern Matching Logic:
-For each match, the returned result contains the full lines where the pattern is found, plus optionally context lines before and after. Uses ripgrep's Rust regex engine which supports most PCRE features. Be careful to not use greedy quantifiers unnecessarily - use non-greedy quantifiers like .*? to avoid matching too much content.
+USE THIS for finding patterns like error handling, logging, similar code structures.
+USE THIS when you don't know exact symbol names—pattern matching across files.
+PREFER find_symbol when you know the symbol name—it's more precise.
 
-File Selection Logic:
-Files can be restricted very flexibly. Use only_code_files=true for code symbols. Combine with glob patterns and relative paths for targeted searches. Exclude patterns take precedence over include patterns.`;
+Supports context lines, glob patterns for file filtering, and code-file-only mode.
+Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? instead of .*).`;
 
   schema = z.object({
     pattern: z.string().min(1, 'Pattern cannot be empty').describe(

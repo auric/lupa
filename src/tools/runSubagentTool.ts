@@ -15,21 +15,18 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
  */
 export class RunSubagentTool extends BaseTool {
     name = 'run_subagent';
-    description = `Spawn an isolated agent for complex, multi-file investigations. USE THIS for deep analysis to avoid cluttering your main context.
+    description = `Spawn a focused investigation agent for complex, multi-file analysis.
 
-**STRONGLY RECOMMENDED when:**
-- PR touches 3+ files → delegate component-specific investigations
-- Need to trace impact across multiple modules
-- Security/performance concerns requiring deep code inspection
-- Complex dependency chains need tracing
+MANDATORY when:
+- PR has 4+ files → parallelize analysis
+- Security-sensitive code (auth, crypto, user data)
+- Complex dependency chains (3+ files to trace)
 
-**NOT needed for:**
-- Single symbol lookup → use find_symbol directly
-- Reading one file → use read_file directly
-- Quick regex search → use search_for_pattern directly
+MUST provide in context parameter: Relevant code snippets from the diff!
+Subagents CANNOT see the diff—you must pass the code they need to investigate.
 
-**Task format:** Include WHAT to investigate, WHERE to look, WHAT to return.
-Example: "Investigate error handling in src/api/. For each endpoint: check try/catch coverage, error response format, logging. Return: list of gaps with file:line references."`;
+Task format: WHAT to investigate, WHERE to look, WHAT to return.
+Example: "Investigate error handling in OrderService.processPayment. Check: try/catch coverage, error logging, user-facing messages. Return: gaps with file:line and severity."`;
 
     private maxIterationsFromSettings: number;
 

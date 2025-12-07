@@ -39,7 +39,7 @@ describe('SubagentPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('PR adds new JWT validation in auth.ts');
-            expect(prompt).toContain('Context from Parent Analysis');
+            expect(prompt).toContain('Context from Parent Agent');
         });
 
         it('should not include context section when not provided', () => {
@@ -49,8 +49,7 @@ describe('SubagentPromptGenerator', () => {
 
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
-            // The context section header should not appear when no context is provided
-            expect(prompt).not.toContain('Context from Parent Analysis');
+            expect(prompt).not.toContain('Context from Parent Agent');
         });
 
         it('should list available tools', () => {
@@ -75,30 +74,40 @@ describe('SubagentPromptGenerator', () => {
             expect(prompt).toContain('No tools available');
         });
 
-        it('should include clear results instructions (not XML tags)', () => {
+        it('should include response requirements section', () => {
             const task: SubagentTask = { task: 'Test task' };
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
-            // New simplified format - no XML tags
-            expect(prompt).toContain('Return Clear Results');
-            expect(prompt).toContain('What you found');
-            expect(prompt).toContain('Why it matters');
+            expect(prompt).toContain('## Response Requirements');
+            expect(prompt).toContain('### Findings');
+            expect(prompt).toContain('### Recommendations');
+            expect(prompt).toContain('### Summary');
         });
 
-        it('should include the maxIterations value in budget message', () => {
+        it('should include the maxIterations value in constraints', () => {
             const task: SubagentTask = { task: 'Test task' };
             const prompt = generator.generateSystemPrompt(task, [], 15);
 
-            expect(prompt).toContain('15 iterations');
+            expect(prompt).toContain('15 tool iterations');
         });
 
-        it('should include investigation instructions', () => {
+        it('should include investigation approach guidance', () => {
             const task: SubagentTask = { task: 'Test task' };
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
-            expect(prompt).toContain('Investigate Systematically');
-            expect(prompt).toContain('Be Proactive');
-            expect(prompt).toContain('Be Efficient');
+            expect(prompt).toContain('## Investigation Approach');
+            expect(prompt).toContain('Orient First');
+            expect(prompt).toContain('Gather Evidence');
+            expect(prompt).toContain('Trace Dependencies');
+        });
+
+        it('should include constraints section', () => {
+            const task: SubagentTask = { task: 'Test task' };
+            const prompt = generator.generateSystemPrompt(task, [], 10);
+
+            expect(prompt).toContain('## Constraints');
+            expect(prompt).toContain('CANNOT see the PR diff');
+            expect(prompt).toContain('CANNOT execute code');
         });
     });
 });

@@ -77,18 +77,18 @@ index 1234567..abcdefg 100644
         it('should generate a comprehensive tool-aware system prompt', () => {
             const systemPrompt = promptGenerator.generateToolAwareSystemPrompt(mockTools);
 
-            expect(systemPrompt).toContain('Expert Senior Software Engineer');
+            expect(systemPrompt).toContain('Staff Engineer');
             expect(systemPrompt).toContain('## Available Code Analysis Tools');
             expect(systemPrompt).toContain('**mock_tool**: A mock tool for testing');
-            expect(systemPrompt).toContain('### Strategic Tool Usage');
+            expect(systemPrompt).toContain('## Tool Selection Guide');
             expect(systemPrompt).toContain('## Analysis Methodology');
-            expect(systemPrompt).toContain('## Response Structure');
+            expect(systemPrompt).toContain('## Output Format');
         });
 
         it('should handle empty tools array', () => {
             const systemPrompt = promptGenerator.generateToolAwareSystemPrompt([]);
 
-            expect(systemPrompt).toContain('Expert Senior Software Engineer');
+            expect(systemPrompt).toContain('Staff Engineer');
             expect(systemPrompt).not.toContain('## Available Code Analysis Tools');
         });
 
