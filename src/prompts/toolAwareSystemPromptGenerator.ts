@@ -182,105 +182,90 @@ Subagents CANNOT:
 
 ### Writing Effective Subagent Tasks
 
+Subagents CANNOT see the diff. Use NATURAL LANGUAGE to describe what you're concerned about and ask SPECIFIC QUESTIONS.
+
 <task_format>
-STRUCTURE:
-1. Objective: One specific question to answer
-2. Scope: Exact files or directories to investigate
-3. Context: Relevant code snippets from the diff (CRITICAL - subagent cannot see the diff!)
-4. Checks: Numbered list of specific things to verify
-5. Deliverable: Exact output format expected
+FORMAT:
+task: "[Natural description of what you're investigating]
 
-TEMPLATE:
-task: "[Objective] in [Scope].
+Questions:
+1. [Specific question about the code]
+2. [Specific question about the code]
 
-Check:
-1. [Specific verification]
-2. [Specific verification]
-3. [Specific verification]
+Use find_symbol to examine [function/class] in [file path]."
 
-Return: [Format] with file:line references and severity ratings."
-
-context: "[Paste the relevant code from the diff that prompted this investigation]"
+context: "[Optional: file paths, function names to focus on, your concerns]"
 </task_format>
 
 <good_subagent_examples>
 EXAMPLE 1 - Error Handling Investigation:
-task: "Investigate error handling in the new OrderService.processPayment method.
+task: "I'm reviewing a payment processing function that calls an external Stripe API.
 
-Check:
-1. Are all external API calls wrapped in try/catch?
-2. Are errors logged with sufficient context before re-throwing?
-3. Are user-facing error messages safe (no stack traces or internal details)?
-4. Is there retry logic for transient failures?
+Questions:
+1. Does processPayment() wrap the stripeClient.charge() call in try/catch?
+2. Are errors logged with transaction context before re-throwing?
+3. Is there retry logic for transient API failures?
 
-Return: List of gaps with file:line references and severity (Critical/High/Medium/Low)."
+Use find_symbol to examine processPayment in src/services/OrderService.ts"
 
-context: "async processPayment(orderId: string, amount: number): Promise<PaymentResult> {
-  const order = await this.orderRepo.findById(orderId);
-  const result = await this.stripeClient.charge(order.customerId, amount);
-  await this.orderRepo.update(orderId, { paymentId: result.id, status: 'paid' });
-  return result;
-}"
+context: "Focus on error handling for external API calls. The function should handle Stripe API failures gracefully."
 
 ---
 
 EXAMPLE 2 - Security Review:
-task: "Security review of the new authentication changes in src/auth/.
+task: "I'm reviewing authentication code and noticed the password comparison.
 
-Check:
-1. Is password comparison using constant-time comparison?
-2. Are tokens generated with cryptographically secure randomness?
-3. Is there rate limiting on login attempts?
-4. Are sensitive fields excluded from logs?
+Questions:
+1. Does the login handler use constant-time comparison for passwords?
+2. Are failed login attempts logged without exposing sensitive data?
+3. Is there rate limiting on authentication endpoints?
 
-Return: Security findings with severity, affected file:line, and remediation."
+Use find_symbol to examine login and authenticate in src/auth/handler.ts"
 
-context: "// From the diff - new login handler
-async login(email: string, password: string): Promise<AuthResult> {
-  const user = await this.userRepo.findByEmail(email);
-  if (!user || user.password !== hashPassword(password)) {
-    logger.info('Login failed', { email, attemptedPassword: password });
-    throw new UnauthorizedError('Invalid credentials');
-  }
-  return { token: generateToken(user.id), user };
-}"
+context: "Check for timing attacks in password comparison and sensitive data in logs."
 
 ---
 
 EXAMPLE 3 - Impact Analysis:
-task: "Analyze the impact of renaming UserService.getProfile to UserService.fetchUserProfile.
+task: "A method was renamed. Need to verify all callers were updated.
 
-Check:
-1. Find all callers of the old method name
-2. Verify all callers have been updated
-3. Check for any dynamic calls (string-based invocation)
-4. Look for documentation or comments referencing old name
+Questions:
+1. What code calls fetchUserProfile() (the new name)?
+2. Is there any code still calling getProfile() (the old name)?
+3. Are there any string-based method invocations that might miss the rename?
 
-Return: List of locations that reference this method, noting which are updated and which are missed."
+Use find_usages for both method names in the codebase."
 
-context: "// Method was renamed in src/services/userService.ts
-- async getProfile(userId: string): Promise<UserProfile>
-+ async fetchUserProfile(userId: string): Promise<UserProfile>"
+context: "UserService.getProfile was renamed to UserService.fetchUserProfile"
 </good_subagent_examples>
 
 <bad_subagent_examples>
 DO NOT write tasks like these:
 
-❌ "Check the payment code for issues"
-   Problem: No specific files, no context, vague deliverable
+❌ "Analyze the changes to build.py"
+   Problem: Says "changes" but subagent can't see what changed
 
-❌ "Make sure the authentication is secure"
-   Problem: No specific checks, no code context provided
+❌ "Review what's new in the authentication module"
+   Problem: Says "new" but subagent sees current state, not what's new
 
-❌ "Run the tests and tell me if they pass"
-   Problem: Subagents cannot execute code or run tests
+❌ "Check if the refactoring broke anything"
+   Problem: Vague, no specific questions, subagent can't compare before/after
 
-❌ "Review the refactored code"
-   Problem: No code provided, subagent can't see the diff
+❌ "Look for bugs in the payment code"
+   Problem: No specific questions, too broad, will find pre-existing issues
 
-❌ "Look for bugs"
-   Problem: No methodology, no scope, no deliverable format
+❌ "Here's the diff, analyze it: + async processPayment()..."
+   Problem: Don't try to recreate diffs - describe concerns in natural language
 </bad_subagent_examples>
+
+### Synthesizing Subagent Results
+
+Subagents investigate CURRENT code and may find issues outside the PR's changes.
+
+When incorporating findings:
+1. Cross-reference each finding's location with YOUR diff
+2. **In changed lines** → Include in your review
+3. **In unchanged lines** → Either exclude, or note as "Pre-existing (not from this PR)"
 </subagent_delegation>`;
     }
 

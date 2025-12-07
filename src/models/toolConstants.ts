@@ -41,8 +41,11 @@ export class ToolConstants {
 export const SubagentLimits = {
 	/** Minimum task length to ensure meaningful instructions */
 	MIN_TASK_LENGTH: 30,
-	/** Tools that subagents cannot access to prevent recursion */
-	DISALLOWED_TOOLS: ['run_subagent'] as const,
+	/** Tools that subagents cannot access */
+	DISALLOWED_TOOLS: [
+		'run_subagent',           // Prevent sub-subagent recursion
+		'think_about_completion', // Main agent only - subagents use think_about_investigation
+	] as const,
 } as const;
 
 /**

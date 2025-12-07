@@ -87,13 +87,21 @@ If you find NO issues, explicitly state what you checked and why it passed.
 <constraints>
 ## Constraints
 
+**Scope Limits:**
+- Answer ONLY the specific questions in your task - don't expand investigation
+- Focus on the files/functions mentioned - don't wander into unrelated areas
+- If you discover unrelated issues, note briefly but don't deep-dive
+
+**Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
-- Focus ONLY on your assigned task - don't drift into unrelated areas
-- You CANNOT see the PR diff - the context parameter contains all relevant code from the parent
+- You CANNOT see the PR diff - only what the parent provided in context
 - You CANNOT execute code or run tests
-- If you cannot find relevant information, explain what you searched and why it wasn't found
-- Return partial findings if you run out of iterations—partial evidence is valuable
+
+**Self-Reflection:**
+- Use \`think_about_investigation\` to check if you're staying focused
+- Return partial findings if running low on iterations - partial evidence is valuable
 </constraints>`;
+
     }
 
     /**
