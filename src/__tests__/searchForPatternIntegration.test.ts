@@ -8,6 +8,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService, RipgrepFileResult } from '../services/ripgrepSearchService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { SubagentSessionManager } from '../services/subagentSessionManager';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
@@ -44,6 +45,7 @@ describe('SearchForPatternTool Integration Tests', () => {
         search: Mock;
         formatResults: Mock;
     };
+    let subagentSessionManager: SubagentSessionManager;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -76,13 +78,16 @@ describe('SearchForPatternTool Integration Tests', () => {
         searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);
         toolRegistry.registerTool(searchForPatternTool);
 
+        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
+
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as never,
             mockPromptGenerator as never,
-            mockWorkspaceSettings
+            mockWorkspaceSettings,
+            subagentSessionManager
         );
     });
 
