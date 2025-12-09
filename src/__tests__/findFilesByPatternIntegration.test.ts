@@ -9,6 +9,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 import { fdir } from 'fdir';
+import { SubagentSessionManager } from '../services/subagentSessionManager';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
@@ -114,6 +115,7 @@ describe('FindFileTool Integration Tests', () => {
     let findFileTool: FindFilesByPatternTool;
     let mockReadFile: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
+    let subagentSessionManager: SubagentSessionManager;
     let mockGitOperationsManager: GitOperationsManager;
 
     beforeEach(() => {
@@ -137,13 +139,16 @@ describe('FindFileTool Integration Tests', () => {
         findFileTool = new FindFilesByPatternTool(mockGitOperationsManager);
         toolRegistry.registerTool(findFileTool);
 
+        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
+
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
-            mockWorkspaceSettings
+            mockWorkspaceSettings,
+            subagentSessionManager
         );
 
         mockReadFile = vscode.workspace.fs.readFile as ReturnType<typeof vi.fn>;
