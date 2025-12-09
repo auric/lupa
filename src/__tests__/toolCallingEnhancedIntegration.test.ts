@@ -18,7 +18,6 @@ import { mock } from 'node:test';
  */
 function createMockWorkspaceSettings(): WorkspaceSettingsService {
   return {
-    getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
     getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
     getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
   } as WorkspaceSettingsService;
