@@ -161,7 +161,6 @@ export class ServiceManager implements vscode.Disposable {
         });
         this.services.logging = LoggingService.getInstance();
         this.services.logging.initialize(this.services.workspaceSettings);
-        this.services.logging.setOutputTarget('channel');
 
         this.services.statusBar = StatusBarService.getInstance();
         this.services.codeAnalysis = new CodeAnalysisService();

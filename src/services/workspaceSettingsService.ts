@@ -193,22 +193,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the preferred language model family
-     */
-    public getPreferredModelFamily(): string | undefined {
-        return this.settings.preferredModelFamily;
-    }
-
-    /**
-     * Set the preferred language model family
-     * @param family The model family to set as preferred
-     */
-    public setPreferredModelFamily(family: string | undefined): void {
-        this.settings.preferredModelFamily = family;
-        this.debouncedSaveSettings();
-    }
-
-    /**
      * Get the preferred language model version
      */
     public getPreferredModelVersion(): string | undefined {
@@ -277,27 +261,12 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the subagent timeout in seconds
-     */
-    public getSubagentTimeoutSeconds(): number {
-        return this.settings.subagentTimeoutSeconds;
-    }
-
-    /**
-     * Get the subagent timeout in milliseconds
-     */
-    public getSubagentTimeoutMs(): number {
-        return this.settings.subagentTimeoutSeconds * 1000;
-    }
-
-    /**
      * Reset all analysis limit settings to their defaults
      */
     public resetAnalysisLimitsToDefaults(): void {
         this.settings.maxIterations = ANALYSIS_LIMITS.maxIterations.default;
         this.settings.requestTimeoutSeconds = ANALYSIS_LIMITS.requestTimeoutSeconds.default;
         this.settings.maxSubagentsPerSession = SUBAGENT_LIMITS.maxPerSession.default;
-        this.settings.subagentTimeoutSeconds = SUBAGENT_LIMITS.timeoutSeconds.default;
         this.debouncedSaveSettings();
     }
 
@@ -306,17 +275,12 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      */
     public clearWorkspaceSettings(): void {
         const selectedEmbeddingModel = this.settings.selectedEmbeddingModel;
-        const preferredModelFamily = this.settings.preferredModelFamily;
         const preferredModelVersion = this.settings.preferredModelVersion;
 
         this.settings = getDefaultSettings();
 
         if (selectedEmbeddingModel) {
             this.settings.selectedEmbeddingModel = selectedEmbeddingModel;
-        }
-
-        if (preferredModelFamily) {
-            this.settings.preferredModelFamily = preferredModelFamily;
         }
 
         if (preferredModelVersion) {

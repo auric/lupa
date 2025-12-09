@@ -9,12 +9,9 @@ import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
  */
 function createMockSettings(timeoutSeconds: number): WorkspaceSettingsService {
     return {
-        getPreferredModelFamily: vi.fn().mockReturnValue(undefined),
         getPreferredModelVersion: vi.fn().mockReturnValue(undefined),
-        setPreferredModelFamily: vi.fn(),
         setPreferredModelVersion: vi.fn(),
         getRequestTimeoutSeconds: vi.fn().mockReturnValue(timeoutSeconds),
-        getMaxToolCalls: () => ANALYSIS_LIMITS.maxToolCalls.default,
         getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
     } as unknown as WorkspaceSettingsService;
 }

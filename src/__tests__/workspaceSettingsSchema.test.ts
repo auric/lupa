@@ -13,9 +13,7 @@ describe('WorkspaceSettingsSchema', () => {
                 expect(result.data.maxIterations).toBe(ANALYSIS_LIMITS.maxIterations.default);
                 expect(result.data.requestTimeoutSeconds).toBe(ANALYSIS_LIMITS.requestTimeoutSeconds.default);
                 expect(result.data.maxSubagentsPerSession).toBe(SUBAGENT_LIMITS.maxPerSession.default);
-                expect(result.data.subagentTimeoutSeconds).toBe(SUBAGENT_LIMITS.timeoutSeconds.default);
                 expect(result.data.logLevel).toBe('info');
-                expect(result.data.logOutputTarget).toBe('console');
             }
         });
 
@@ -23,15 +21,12 @@ describe('WorkspaceSettingsSchema', () => {
             const validSettings = {
                 selectedEmbeddingModel: EmbeddingModel.JinaEmbeddings,
                 lastIndexingTimestamp: 1732800000000,
-                preferredModelFamily: 'gpt-4',
                 preferredModelVersion: '0613',
                 enableEmbeddingLspAlgorithm: true,
                 maxIterations: 20,
                 requestTimeoutSeconds: 120,
                 maxSubagentsPerSession: 15,
-                subagentTimeoutSeconds: 600,
                 logLevel: 'debug' as const,
-                logOutputTarget: 'channel' as const,
             };
 
             const result = WorkspaceSettingsSchema.safeParse(validSettings);
@@ -46,7 +41,6 @@ describe('WorkspaceSettingsSchema', () => {
                 maxIterations: ANALYSIS_LIMITS.maxIterations.min,
                 requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.min,
                 maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.min,
-                subagentTimeoutSeconds: SUBAGENT_LIMITS.timeoutSeconds.min,
             };
 
             const result = WorkspaceSettingsSchema.safeParse(lowerBoundarySettings);
@@ -56,7 +50,6 @@ describe('WorkspaceSettingsSchema', () => {
                 maxIterations: ANALYSIS_LIMITS.maxIterations.max,
                 requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.max,
                 maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.max,
-                subagentTimeoutSeconds: SUBAGENT_LIMITS.timeoutSeconds.max,
             };
 
             const upperResult = WorkspaceSettingsSchema.safeParse(upperBoundarySettings);
@@ -81,7 +74,6 @@ describe('WorkspaceSettingsSchema', () => {
         it('should accept valid log settings', () => {
             const result = WorkspaceSettingsSchema.safeParse({
                 logLevel: 'debug',
-                logOutputTarget: 'console',
             });
             expect(result.success).toBe(true);
         });
@@ -118,7 +110,7 @@ describe('WorkspaceSettingsSchema', () => {
 
         it('should reject requestTimeoutSeconds above maximum', () => {
             const result = WorkspaceSettingsSchema.safeParse({
-                requestTimeoutSeconds: 500,
+                requestTimeoutSeconds: 700,
             });
             expect(result.success).toBe(false);
         });
@@ -133,20 +125,6 @@ describe('WorkspaceSettingsSchema', () => {
         it('should reject maxSubagentsPerSession above maximum', () => {
             const result = WorkspaceSettingsSchema.safeParse({
                 maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.max + 1,
-            });
-            expect(result.success).toBe(false);
-        });
-
-        it('should reject subagentTimeoutSeconds below minimum', () => {
-            const result = WorkspaceSettingsSchema.safeParse({
-                subagentTimeoutSeconds: 10,
-            });
-            expect(result.success).toBe(false);
-        });
-
-        it('should reject subagentTimeoutSeconds above maximum', () => {
-            const result = WorkspaceSettingsSchema.safeParse({
-                subagentTimeoutSeconds: SUBAGENT_LIMITS.timeoutSeconds.max + 1,
             });
             expect(result.success).toBe(false);
         });
@@ -169,13 +147,6 @@ describe('WorkspaceSettingsSchema', () => {
         it('should reject invalid logLevel', () => {
             const result = WorkspaceSettingsSchema.safeParse({
                 logLevel: 'verbose',
-            });
-            expect(result.success).toBe(false);
-        });
-
-        it('should reject invalid logOutputTarget', () => {
-            const result = WorkspaceSettingsSchema.safeParse({
-                logOutputTarget: 'file',
             });
             expect(result.success).toBe(false);
         });

@@ -61,6 +61,7 @@ export class LoggingService implements vscode.Disposable {
      */
     public initialize(settingsService: WorkspaceSettingsService): void {
         this.settingsService = settingsService;
+        this.outputTarget = 'channel';
         this.refreshConfiguration();
     }
 
@@ -82,16 +83,6 @@ export class LoggingService implements vscode.Disposable {
         this.logLevel = level;
         if (this.settingsService) {
             this.settingsService.setSetting('logLevel', level);
-        }
-    }
-
-    /**
-     * Update the output target setting
-     */
-    public setOutputTarget(target: OutputTarget): void {
-        this.outputTarget = target;
-        if (this.settingsService) {
-            this.settingsService.setSetting('logOutputTarget', target);
         }
     }
 

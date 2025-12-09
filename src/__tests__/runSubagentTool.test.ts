@@ -10,11 +10,9 @@ import type { SubagentResult } from '../types/modelTypes';
 const createMockWorkspaceSettings = (overrides: Partial<{
     maxIterations: number;
     maxSubagentsPerSession: number;
-    subagentTimeoutMs: number;
 }> = {}): WorkspaceSettingsService => ({
     getMaxIterations: vi.fn().mockReturnValue(overrides.maxIterations ?? 10),
     getMaxSubagentsPerSession: vi.fn().mockReturnValue(overrides.maxSubagentsPerSession ?? SUBAGENT_LIMITS.maxPerSession.default),
-    getSubagentTimeoutMs: vi.fn().mockReturnValue(overrides.subagentTimeoutMs ?? SUBAGENT_LIMITS.timeoutSeconds.default * 1000),
     getRequestTimeoutSeconds: vi.fn().mockReturnValue(30)
 } as unknown as WorkspaceSettingsService);
 

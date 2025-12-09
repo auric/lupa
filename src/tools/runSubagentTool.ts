@@ -81,7 +81,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
         const { task, context, max_iterations } = validationResult.data;
         const maxSubagents = this.workspaceSettings.getMaxSubagentsPerSession();
-        const timeoutMs = this.workspaceSettings.getSubagentTimeoutMs();
+        const timeoutMs = this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
         if (!this.sessionManager.canSpawn()) {
             Log.warn(`Subagent spawn rejected: session limit reached (${maxSubagents})`);

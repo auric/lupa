@@ -14,8 +14,7 @@ function createMockSettings(maxIterations: number): WorkspaceSettingsService {
   return {
     getMaxIterations: () => maxIterations,
     getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default,
-    getMaxSubagentsPerSession: () => SUBAGENT_LIMITS.maxPerSession.default,
-    getSubagentTimeoutMs: () => SUBAGENT_LIMITS.timeoutSeconds.default
+    getMaxSubagentsPerSession: () => SUBAGENT_LIMITS.maxPerSession.default
   } as WorkspaceSettingsService;
 }
 

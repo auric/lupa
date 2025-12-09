@@ -11,7 +11,7 @@ export class CopilotModelCoordinator implements vscode.Disposable {
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly services: IServiceRegistry
-    ) {}
+    ) { }
 
     /**
      * Show options for selecting Copilot language model
@@ -53,13 +53,11 @@ export class CopilotModelCoordinator implements vscode.Disposable {
             })!;
 
             // Save selected model preferences
-            this.services.workspaceSettings.setPreferredModelFamily(selectedModel.family);
             this.services.workspaceSettings.setPreferredModelVersion(selectedModel.version);
             vscode.window.showInformationMessage(`Copilot language model set to ${selectedModel.name} (version: ${selectedModel.version})`);
 
             // Try to select the model to verify it's available
             await this.services.copilotModelManager.selectModel({
-                family: selectedModel.family,
                 version: selectedModel.version
             });
 

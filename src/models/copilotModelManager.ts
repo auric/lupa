@@ -19,7 +19,6 @@ export interface ModelDetail {
  * Model selection options
  */
 export interface ModelSelectionOptions {
-    family?: string;
     version?: string;
 }
 
@@ -96,12 +95,10 @@ export class CopilotModelManager implements vscode.Disposable {
         try {
             // Check if we should load model preferences from settings
             if (!options) {
-                const savedFamily = this.settings.getPreferredModelFamily();
                 const savedVersion = this.settings.getPreferredModelVersion();
 
-                if (savedFamily) {
+                if (savedVersion) {
                     options = {
-                        family: savedFamily,
                         version: savedVersion
                     };
                 }
@@ -119,24 +116,20 @@ export class CopilotModelManager implements vscode.Disposable {
             const models = await vscode.lm.selectChatModels(selector);
 
             if (models.length === 0) {
-                Log.info(`Model ${options?.family || 'any'} ${options?.version || ''} not available, using fallback`);
+                Log.info(`Model ${options?.version || 'any'} not available, using fallback`);
                 return this.selectFallbackModel();
             }
 
             const [model] = models;
             this.currentModel = model;
 
-            // Save selected model to settings
-            if (options?.family) {
-                this.settings.setPreferredModelFamily(options.family);
-                if (options.version) {
-                    this.settings.setPreferredModelVersion(options.version);
-                }
+            if (options?.version) {
+                this.settings.setPreferredModelVersion(options.version);
             }
 
             return model;
         } catch (err) {
-            Log.error(`Failed to select model ${options?.family || 'any'} ${options?.version || ''}:`, err);
+            Log.error(`Failed to select model ${options?.version || ''}:`, err);
             return this.selectFallbackModel();
         }
     }
