@@ -159,7 +159,7 @@ export class ToolExecutor {
       const elapsed = Date.now() - startTime;
       const succeeded = results.filter(r => r.success).length;
       const failed = results.length - succeeded;
-      Log.info(`Parallel execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`);
+      Log.info(`Execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`);
       return results;
     } catch (error) {
       // This shouldn't happen since executeTool catches errors,
