@@ -291,7 +291,7 @@ export class UIManager {
      */
     private async handleOpenFileMessage(payload: OpenFilePayload): Promise<void> {
         try {
-            Log.info(`Opening file from webview: ${payload.filePath}`, payload);
+            Log.debug(`Opening file from webview: ${payload.filePath}`, payload);
 
             // Use vscode.Uri for secure file path handling
             // Note: payload.filePath is now the resolved absolute path from validation
@@ -317,7 +317,7 @@ export class UIManager {
             // Show the document in the editor
             await vscode.window.showTextDocument(document, showOptions);
 
-            Log.info(`Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`);
+            Log.debug(`Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`);
         } catch (error) {
             Log.error(`Failed to open file: ${payload.filePath}`, error);
 
