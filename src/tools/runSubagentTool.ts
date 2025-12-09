@@ -93,7 +93,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         Log.info(`Subagent #${subagentId} spawned (${this.sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`);
 
         this.cancellationTokenSource = new vscode.CancellationTokenSource();
+        const parentCancellationDisposable = this.sessionManager.registerSubagentCancellation(this.cancellationTokenSource);
+        let cancelledByTimeout = false;
         const timeoutHandle = setTimeout(() => {
+            cancelledByTimeout = true;
             this.cancellationTokenSource?.cancel();
         }, timeoutMs);
 
@@ -112,7 +115,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
             // Check if cancelled (timeout or user)
             if (!result.success && result.error === 'cancelled') {
-                if (this.cancellationTokenSource?.token.isCancellationRequested) {
+                if (cancelledByTimeout) {
                     return toolError(SubagentErrors.timeout(timeoutMs));
                 }
                 return toolError('Subagent was cancelled');
@@ -126,7 +129,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         } catch (error) {
             clearTimeout(timeoutHandle);
 
-            if (this.cancellationTokenSource?.token.isCancellationRequested) {
+            if (cancelledByTimeout) {
                 return toolError(SubagentErrors.timeout(timeoutMs));
             }
 
@@ -134,6 +137,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             return toolError(SubagentErrors.failed(errorMessage));
 
         } finally {
+            parentCancellationDisposable?.dispose();
             this.cancellationTokenSource?.dispose();
             this.cancellationTokenSource = null;
         }

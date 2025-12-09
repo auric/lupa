@@ -99,6 +99,7 @@ export class ToolCallingAnalysisProvider {
       Log.info('Starting analysis with tool-calling support');
       progressCallback?.('Initializing analysis...', 0.5);
       this.subagentSessionManager.reset();
+      this.subagentSessionManager.setParentCancellationToken(token);
 
       // Clear previous conversation history for a fresh analysis
       this.conversationManager.clearHistory();
@@ -174,6 +175,7 @@ export class ToolCallingAnalysisProvider {
     } finally {
       // Clear subagent progress callback
       this.subagentExecutor?.setProgressCallback(undefined, undefined);
+      this.subagentSessionManager.setParentCancellationToken(undefined);
     }
 
     return this.buildAnalysisResult(analysisText, analysisCompleted, analysisError);

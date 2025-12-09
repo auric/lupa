@@ -84,6 +84,11 @@ export class ConversationRunner {
             iteration++;
             Log.info(`${logPrefix} Iteration ${iteration}/${config.maxIterations}`);
 
+            if (token.isCancellationRequested) {
+                Log.info(`${logPrefix} Cancelled before iteration ${iteration}`);
+                return 'Conversation cancelled by user';
+            }
+
             handler?.onIterationStart?.(iteration, config.maxIterations);
 
             try {
@@ -156,6 +161,11 @@ export class ConversationRunner {
                 return response.content || 'Conversation completed but no content returned.';
 
             } catch (error) {
+                if (token.isCancellationRequested || error instanceof vscode.CancellationError || (error instanceof Error && error.message?.toLowerCase().includes('cancel'))) {
+                    Log.info(`${logPrefix} Cancelled during iteration ${iteration}`);
+                    return 'Conversation cancelled by user';
+                }
+
                 const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
                 Log.error(errorMessage);
 

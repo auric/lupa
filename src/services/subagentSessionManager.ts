@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
@@ -6,6 +7,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  */
 export class SubagentSessionManager {
     private count = 0;
+    private parentCancellationToken: vscode.CancellationToken | undefined;
 
     constructor(private readonly workspaceSettings: WorkspaceSettingsService) { }
 
@@ -33,7 +35,28 @@ export class SubagentSessionManager {
         return Math.max(0, this.maxPerSession - this.count);
     }
 
+    /**
+     * Link a parent cancellation token (main analysis) so subagents cancel promptly.
+     */
+    setParentCancellationToken(token: vscode.CancellationToken | undefined): void {
+        this.parentCancellationToken = token;
+    }
+
+    /**
+     * Register a subagent cancellation source so it mirrors the parent cancellation token.
+     */
+    registerSubagentCancellation(source: vscode.CancellationTokenSource): vscode.Disposable | undefined {
+        if (!this.parentCancellationToken) {
+            return undefined;
+        }
+
+        return this.parentCancellationToken.onCancellationRequested(() => {
+            source.cancel();
+        });
+    }
+
     reset(): void {
         this.count = 0;
+        this.parentCancellationToken = undefined;
     }
 }
