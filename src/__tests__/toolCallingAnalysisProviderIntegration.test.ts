@@ -9,6 +9,7 @@ import { DiffUtils } from '../utils/diffUtils';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import type { DiffHunk } from '../types/contextTypes';
+import { SubagentSessionManager } from '../services/subagentSessionManager';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
@@ -52,6 +53,7 @@ describe('ToolCallingAnalysisProvider Integration', () => {
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
     let sampleDiff: string;
+    let subagentSessioinManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -103,12 +105,16 @@ index 1234567..abcdefg 100644
 
         mockPromptGenerator = new PromptGenerator();
 
+        const mockWorkspaceSettings = createMockWorkspaceSettings();
+        subagentSessioinManager = new SubagentSessionManager(mockWorkspaceSettings);
+
         provider = new ToolCallingAnalysisProvider(
             mockConversationManager,
             mockToolExecutor,
             mockCopilotModelManager,
             mockPromptGenerator,
-            createMockWorkspaceSettings()
+            mockWorkspaceSettings,
+            subagentSessioinManager
         );
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
             const listeners: Array<(e: any) => any> = [];

@@ -10,6 +10,8 @@ import { ReadFileTool } from '../tools/readFileTool';
 import { ToolRegistry } from '../models/toolRegistry';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { SubagentSessionManager } from '../services/subagentSessionManager';
+import { mock } from 'node:test';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
@@ -65,6 +67,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     countTokens: Mock;
     maxInputTokens: number;
   };
+  let subagentSessioinManager: SubagentSessionManager;
   let tokenSource: vscode.CancellationTokenSource;
 
   beforeEach(() => {
@@ -97,12 +100,15 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
       generateToolCallingUserPrompt: vi.fn(() => 'User message')
     };
 
+    const mockWorkspaceSettings = createMockWorkspaceSettings();
+    subagentSessioinManager = new SubagentSessionManager(mockWorkspaceSettings);
     analysisProvider = new ToolCallingAnalysisProvider(
       mockConversationManager as any,
       mockToolExecutor as any,
       mockCopilotModelManager as any,
       mockPromptGenerator as any,
-      createMockWorkspaceSettings()
+      mockWorkspaceSettings,
+      subagentSessioinManager
     );
 
     vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {

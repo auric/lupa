@@ -7,6 +7,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { SubagentSessionManager } from '../services/subagentSessionManager';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
@@ -74,6 +75,7 @@ describe('FindUsages Integration Tests', () => {
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findUsagesTool: FindUsagesTool;
+    let subagentSessioinManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -87,13 +89,16 @@ describe('FindUsages Integration Tests', () => {
         findUsagesTool = new FindUsagesTool();
         toolRegistry.registerTool(findUsagesTool);
 
+        subagentSessioinManager = new SubagentSessionManager(mockWorkspaceSettings);
+
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
-            mockWorkspaceSettings
+            mockWorkspaceSettings,
+            subagentSessioinManager
         );
 
         // Clear all mocks

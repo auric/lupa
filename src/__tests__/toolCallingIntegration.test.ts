@@ -9,6 +9,7 @@ import { FindSymbolTool } from '../tools/findSymbolTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { SubagentSessionManager } from '../services/subagentSessionManager';
 
 /**
  * Create a mock WorkspaceSettingsService for testing
@@ -75,6 +76,7 @@ describe('Tool-Calling Integration Tests', () => {
     let tokenSource: vscode.CancellationTokenSource;
     let mockGitOperationsManager: Mocked<GitOperationsManager>;
     let mockSymbolExtractor: Mocked<SymbolExtractor>;
+    let subagentSessioinManager: SubagentSessionManager;
 
     beforeEach(() => {
         // Initialize the tool-calling system
@@ -99,13 +101,16 @@ describe('Tool-Calling Integration Tests', () => {
         findSymbolTool = new FindSymbolTool(mockGitOperationsManager, mockSymbolExtractor);
         toolRegistry.registerTool(findSymbolTool);
 
+        subagentSessioinManager = new SubagentSessionManager(mockWorkspaceSettings);
+
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
-            mockWorkspaceSettings
+            mockWorkspaceSettings,
+            subagentSessioinManager
         );
 
         // Clear all mocks
