@@ -2,9 +2,11 @@ import * as path from 'path';
 
 /**
  * Utility class for sanitizing and validating paths to prevent security vulnerabilities
- * such as directory traversal attacks.
+ * such as directory traversal attacks, null byte injection, and homograph attacks.
  */
 export class PathSanitizer {
+  private static readonly MAX_PATH_LENGTH = 1024;
+  private static readonly NULL_BYTE_PATTERN = /\x00/;
   /**
    * Sanitizes the relative path to prevent directory traversal attacks
    * Handles Windows absolute paths and UNC paths by rejecting them
@@ -15,13 +17,26 @@ export class PathSanitizer {
   static sanitizePath(relativePath: string): string {
     const trimmedPath = relativePath.trim();
 
+    // Check for null bytes first (can trick C-based APIs into path truncation)
+    if (this.NULL_BYTE_PATTERN.test(trimmedPath)) {
+      throw new Error('Invalid path: Path contains null bytes');
+    }
+
+    // Check path length to prevent potential DoS
+    if (trimmedPath.length > this.MAX_PATH_LENGTH) {
+      throw new Error(`Invalid path: Path exceeds maximum length of ${this.MAX_PATH_LENGTH} characters`);
+    }
+
+    // Apply Unicode NFC normalization to prevent homograph attacks
+    const normalizedUnicode = trimmedPath.normalize('NFC');
+
     // Check for Windows absolute paths and UNC paths (these should be rejected as they're not relative)
-    if (this.isAbsolutePath(trimmedPath)) {
+    if (this.isAbsolutePath(normalizedUnicode)) {
       throw new Error('Invalid path: Absolute paths are not allowed, only relative paths');
     }
 
     // Normalize path separators to forward slashes for consistent handling
-    const normalizedPath = path.posix.normalize(trimmedPath.replaceAll(path.sep, path.posix.sep));
+    const normalizedPath = path.posix.normalize(normalizedUnicode.replaceAll(path.sep, path.posix.sep));
 
     // Check for directory traversal attempts
     if (normalizedPath.startsWith('..') || normalizedPath.startsWith('/')) {
