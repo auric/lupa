@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { ConversationManager } from './conversationManager';
 import { ToolExecutor, type ToolExecutionRequest } from './toolExecutor';
-import { CopilotModelManager } from './copilotModelManager';
+import { CopilotModelManager, CopilotApiError } from './copilotModelManager';
 import { TokenValidator } from './tokenValidator';
 import type { ToolCallMessage, ToolCall } from '../types/modelTypes';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
@@ -166,6 +166,13 @@ export class ConversationRunner {
                     return 'Conversation cancelled by user';
                 }
 
+                if (this.isFatalModelError(error)) {
+                    const errorMsg = error instanceof Error ? error.message : String(error);
+                    Log.error(`${logPrefix} Fatal model error encountered: ${errorMsg}`);
+                    vscode.window.showErrorMessage(errorMsg);
+                    throw error instanceof Error ? error : new Error(errorMsg);
+                }
+
                 const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
                 Log.error(errorMessage);
 
@@ -186,6 +193,10 @@ export class ConversationRunner {
 
         Log.warn(`${logPrefix} Reached maximum iterations (${config.maxIterations})`);
         return 'Conversation reached maximum iterations. The conversation may be incomplete.';
+    }
+
+    private isFatalModelError(error: unknown): boolean {
+        return error instanceof CopilotApiError && error.code === 'model_not_supported';
     }
 
     /**

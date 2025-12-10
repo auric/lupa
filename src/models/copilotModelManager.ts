@@ -4,6 +4,13 @@ import { TokenConstants } from './tokenConstants';
 import { ToolCallRequest, ToolCallResponse, ToolCall } from '../types/modelTypes';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
+export class CopilotApiError extends Error {
+    constructor(message: string, public readonly code: string) {
+        super(message);
+        this.name = 'CopilotApiError';
+    }
+}
+
 /**
  * Model information
  */
@@ -372,6 +379,17 @@ export class CopilotModelManager implements vscode.Disposable {
             };
 
         } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            const codeMatch = msg.match(/"code"\s*:\s*"([^"]+)"/);
+            if (codeMatch) {
+                const code = codeMatch[1];
+                if (code === 'model_not_supported') {
+                    const modelName = this.currentModel?.name || this.currentModel?.id || 'selected model';
+                    const friendlyMessage = `The selected Copilot model ${modelName} is not supported. Please choose another Copilot model in Lupa settings.`;
+                    Log.error(`Copilot model not supported: ${modelName}. API response: ${msg.replace(/\\"/g, '"').replace(/\n/g, '')}`);
+                    throw new CopilotApiError(friendlyMessage, code);
+                }
+            }
             Log.error('Error in sendRequest:', error);
             throw error;
         }

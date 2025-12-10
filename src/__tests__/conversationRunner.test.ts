@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ConversationRunner, ConversationRunnerConfig, ToolCallHandler } from '../models/conversationRunner';
 import { ConversationManager } from '../models/conversationManager';
-import { CopilotModelManager } from '../models/copilotModelManager';
+import { CopilotModelManager, CopilotApiError } from '../models/copilotModelManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import type { ITool } from '../tools/ITool';
 
@@ -289,6 +289,31 @@ describe('ConversationRunner', () => {
 
             await expect(runner.run(config, conversation, createCancellationToken()))
                 .rejects.toThrow('service unavailable');
+        });
+
+        it('should stop and rethrow unsupported model errors', async () => {
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(new CopilotApiError('The selected Copilot model "foo" is not supported.', 'model_not_supported')),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'unsupported-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100)
+                })
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: []
+            };
+
+            await expect(runner.run(config, conversation, createCancellationToken()))
+                .rejects.toThrow(/not supported/i);
+
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
         });
     });
 
