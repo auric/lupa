@@ -59,7 +59,8 @@ const isExternalDependency = (source: string, importer: string | undefined, isRe
     }
 
     // For extension and workers, externalize these Node.js packages
-    return ['vscode', 'onnxruntime-node', 'hnswlib-node', '@vscode/sqlite3', '@tailwindcss/vite', '@vscode/ripgrep'].includes(source);
+    // Note: @vscode/ripgrep downloads its binaries via postinstall, no need to externalize
+    return ['vscode', 'onnxruntime-node', 'hnswlib-node', '@vscode/sqlite3', '@tailwindcss/vite'].includes(source);
 };
 
 export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
@@ -137,10 +138,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
             src: 'node_modules/web-tree-sitter/tree-sitter.wasm',
             dest: '.',
         },
-        {
-            src: 'node_modules/@vscode/ripgrep/',
-            dest: 'node_modules/@vscode',
-        },
+        // Note: @vscode/ripgrep is NOT copied - it downloads its own binaries via postinstall
         {
             src: 'models/',
             dest: '.',
