@@ -41,10 +41,10 @@ Future direction: Tool-calling analysis via `ToolCallingAnalysisProvider` only.
 
 ## Key Files
 
-- [serviceManager.ts](../src/services/serviceManager.ts) - DI container, 4-phase initialization
-- [toolCallingAnalysisProvider.ts](../src/services/toolCallingAnalysisProvider.ts) - Main analysis loop
-- [vectorDatabaseService.ts](../src/services/vectorDatabaseService.ts) - SQLite + HNSWlib storage
-- [vite.config.mts](../vite.config.mts) - Dual build config (Node.js extension + browser webview)
+- `../src/services/serviceManager.ts` - DI container, 4-phase initialization
+- `../src/services/toolCallingAnalysisProvider.ts` - Main analysis loop
+- `../src/services/vectorDatabaseService.ts` - SQLite + HNSWlib storage
+- `../vite.config.mts` - Dual build config (Node.js extension + browser webview)
 
 ## Agent Behavior
 
