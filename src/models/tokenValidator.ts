@@ -38,7 +38,7 @@ export interface ContextCleanupResult {
  * Handles token counting and context window management without complex truncation
  */
 export class TokenValidator {
-    constructor(private model: vscode.LanguageModelChat) {}
+    constructor(private model: vscode.LanguageModelChat) { }
 
     /**
      * Validate token count for a conversation
@@ -53,7 +53,7 @@ export class TokenValidator {
         try {
             // Count tokens for system prompt
             const systemTokens = await this.model.countTokens(systemPrompt);
-            
+
             // Count tokens for all messages
             let messageTokens = 0;
             for (const message of messages) {
@@ -119,14 +119,14 @@ export class TokenValidator {
             // Continue removing oldest tool interactions until we're under target
             while (cleanedMessages.length > 0) {
                 const validation = await this.validateTokens(cleanedMessages, systemPrompt);
-                
+
                 if (validation.totalTokens <= targetTokens) {
                     break;
                 }
 
                 // Find oldest tool result to remove
                 const removalResult = this.removeOldestToolInteraction(cleanedMessages);
-                
+
                 if (!removalResult.found) {
                     // No more tool interactions to remove
                     break;
@@ -195,7 +195,7 @@ export class TokenValidator {
     }
 
     /**
-     * Remove the oldest tool interaction (tool result + corresponding assistant message)
+     * Remove the oldest tool interaction (assistant message with tool calls + ALL corresponding tool results)
      * @param messages Messages to search through
      * @returns Result of removal operation
      */
@@ -205,10 +205,12 @@ export class TokenValidator {
         toolResultsRemoved: number;
         assistantMessagesRemoved: number;
     } {
-        // Find oldest tool result message
-        const toolResultIndex = messages.findIndex(msg => msg.role === 'tool');
-        
-        if (toolResultIndex === -1) {
+        // Find the oldest assistant message with tool calls
+        const assistantIndex = messages.findIndex(
+            msg => msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0
+        );
+
+        if (assistantIndex === -1) {
             return {
                 found: false,
                 messages,
@@ -217,40 +219,33 @@ export class TokenValidator {
             };
         }
 
-        const toolResult = messages[toolResultIndex];
-        const newMessages = [...messages];
-        let toolResultsRemoved = 0;
-        let assistantMessagesRemoved = 0;
+        const assistantMessage = messages[assistantIndex];
+        const toolCallIds = new Set(
+            assistantMessage.toolCalls!.map(call => call.id)
+        );
 
-        // Remove the tool result
-        newMessages.splice(toolResultIndex, 1);
-        toolResultsRemoved = 1;
-
-        // Find and remove the corresponding assistant message with tool calls
-        // Look backwards from the tool result to find the assistant message
-        for (let i = toolResultIndex - 1; i >= 0; i--) {
-            const msg = messages[i];
-            if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
-                // Check if this assistant message contains the tool call that produced our result
-                const hasMatchingToolCall = msg.toolCalls.some(
-                    call => call.id === toolResult.toolCallId
-                );
-                
-                if (hasMatchingToolCall) {
-                    // Remove this assistant message (adjust index since we already removed tool result)
-                    const adjustedIndex = i < toolResultIndex ? i : i - 1;
-                    newMessages.splice(adjustedIndex, 1);
-                    assistantMessagesRemoved = 1;
-                    break;
-                }
+        // Filter out the assistant message and ALL its corresponding tool results
+        const newMessages = messages.filter((msg, index) => {
+            // Remove the assistant message
+            if (index === assistantIndex) {
+                return false;
             }
-        }
+            // Remove tool results that belong to this assistant message
+            if (msg.role === 'tool' && msg.toolCallId && toolCallIds.has(msg.toolCallId)) {
+                return false;
+            }
+            return true;
+        });
+
+        const toolResultsRemoved = messages.filter(
+            msg => msg.role === 'tool' && msg.toolCallId && toolCallIds.has(msg.toolCallId)
+        ).length;
 
         return {
             found: true,
             messages: newMessages,
             toolResultsRemoved,
-            assistantMessagesRemoved
+            assistantMessagesRemoved: 1
         };
     }
 }

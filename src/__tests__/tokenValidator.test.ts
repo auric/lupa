@@ -238,5 +238,47 @@ describe('TokenValidator', () => {
       expect(result.assistantMessagesRemoved).toBe(0);
       expect(result.messages).toEqual(messages);
     });
+
+    it('should remove ALL tool results when assistant has multiple tool calls', async () => {
+      // BUG TEST: When an assistant makes multiple tool calls in one message,
+      // removing the oldest tool interaction should remove ALL tool results
+      // from that assistant message, not just one
+      const messages: ToolCallMessage[] = [
+        { role: 'user', content: 'Initial request', toolCalls: undefined, toolCallId: undefined },
+        {
+          role: 'assistant',
+          content: 'I will call multiple tools',
+          toolCalls: [
+            { id: 'call_1', function: { name: 'tool1', arguments: '{}' } },
+            { id: 'call_2', function: { name: 'tool2', arguments: '{}' } },
+            { id: 'call_3', function: { name: 'tool3', arguments: '{}' } }
+          ],
+          toolCallId: undefined
+        },
+        { role: 'tool', content: 'Tool1 result', toolCalls: undefined, toolCallId: 'call_1' },
+        { role: 'tool', content: 'Tool2 result', toolCalls: undefined, toolCallId: 'call_2' },
+        { role: 'tool', content: 'Tool3 result', toolCalls: undefined, toolCallId: 'call_3' },
+        { role: 'user', content: 'Follow up', toolCalls: undefined, toolCallId: undefined }
+      ];
+
+      const result = (tokenValidator as any).removeOldestToolInteraction(messages);
+
+      expect(result.found).toBe(true);
+      // Should remove ALL 3 tool results and the 1 assistant message
+      expect(result.toolResultsRemoved).toBe(3);
+      expect(result.assistantMessagesRemoved).toBe(1);
+
+      // Remaining messages should only be the user messages
+      const remainingMessages = result.messages;
+      expect(remainingMessages.length).toBe(2);
+      expect(remainingMessages[0].role).toBe('user');
+      expect(remainingMessages[0].content).toBe('Initial request');
+      expect(remainingMessages[1].role).toBe('user');
+      expect(remainingMessages[1].content).toBe('Follow up');
+
+      // No orphaned tool results should exist
+      const orphanedToolResults = remainingMessages.filter((m: ToolCallMessage) => m.role === 'tool');
+      expect(orphanedToolResults.length).toBe(0);
+    });
   });
 });
