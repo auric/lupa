@@ -6,6 +6,7 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { TokenManagerService } from '../services/tokenManagerService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { CodeAnalysisService } from '../services/codeAnalysisService';
+import { PromptGenerator } from '../models/promptGenerator';
 
 // Mock VS Code APIs
 vi.mock('vscode', async () => ({
@@ -60,6 +61,7 @@ vi.mock('../models/copilotModelManager');
 vi.mock('../services/tokenManagerService');
 vi.mock('../services/workspaceSettingsService');
 vi.mock('../services/codeAnalysisService');
+vi.mock('../models/promptGenerator');
 
 
 describe('ContextProvider', () => {
@@ -70,6 +72,7 @@ describe('ContextProvider', () => {
     let mockExtensionContext: vscode.ExtensionContext;
     let mockWorkspaceSettingsService: Mocked<WorkspaceSettingsService>;
     let mockCodeAnalysisService: Mocked<CodeAnalysisService>;
+    let mockPromptGenerator: Mocked<PromptGenerator>;
 
 
     beforeEach(() => {
@@ -92,7 +95,8 @@ describe('ContextProvider', () => {
         mockEmbeddingDatabaseAdapter = new (EmbeddingDatabaseAdapter as any)(mockExtensionContext) as Mocked<EmbeddingDatabaseAdapter>;
         mockWorkspaceSettingsService = new WorkspaceSettingsService(mockExtensionContext) as Mocked<WorkspaceSettingsService>;
         mockCopilotModelManager = new CopilotModelManager(mockWorkspaceSettingsService) as Mocked<CopilotModelManager>;
-        mockTokenManagerService = new TokenManagerService(mockCopilotModelManager) as Mocked<TokenManagerService>;
+        mockPromptGenerator = new PromptGenerator() as Mocked<PromptGenerator>;
+        mockTokenManagerService = new TokenManagerService(mockCopilotModelManager, mockPromptGenerator) as Mocked<TokenManagerService>;
         mockCodeAnalysisService = new (CodeAnalysisService as any)() as Mocked<CodeAnalysisService>;
 
 

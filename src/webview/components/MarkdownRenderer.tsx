@@ -2,8 +2,7 @@ import React, { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { CopyButton } from './CopyButton';
 import { FileLink } from './FileLink';
 import { parseFilePaths } from '../../lib/pathUtils';
@@ -246,7 +245,6 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                         </SyntaxHighlighter>
                         <CopyButton
                             text={textContent}
-                            id={codeBlockId}
                             className="absolute top-2 right-2"
                             onCopy={onCopy}
                         />
@@ -281,7 +279,6 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
                 <div className="absolute top-2 right-2 z-10">
                     <CopyButton
                         text={content}
-                        id={id}
                         onCopy={onCopy}
                     />
                 </div>

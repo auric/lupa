@@ -6,9 +6,8 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { ContextSnippet } from '../types/contextTypes';
 import { AnalysisMode } from '../types/modelTypes';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { PromptGenerator } from '../services/promptGenerator';
+import { PromptGenerator } from '../models/promptGenerator';
 import { TokenConstants } from '../models/tokenConstants';
-import { get } from 'http';
 
 vi.mock('vscode');
 vi.mock('../models/copilotModelManager');

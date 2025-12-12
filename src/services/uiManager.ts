@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { StatusBarService } from './statusBarService';
 import { AnalysisMode } from '../types/modelTypes';
+import type { ToolCallsData } from '../types/toolCallTypes';
 import { Log } from './loggingService';
-import {
+import type {
     WebviewMessageType,
     OpenFilePayload,
     ValidatePathPayload,
@@ -15,10 +16,8 @@ import {
  */
 export class UIManager {
     private statusBarService: StatusBarService;
+    private activeAnalysisPanel: vscode.WebviewPanel | undefined;
 
-    /**
-     * Create a new UIManager
-     */
     constructor(
         private readonly extensionContext: vscode.ExtensionContext,
         private readonly gitRepositoryRoot: string
@@ -98,7 +97,14 @@ export class UIManager {
     /**
      * Generate PR analysis with HTML that loads React app
      */
-    public generatePRAnalysisHtml(title: string, diffText: string, context: string, analysis: string, panel: vscode.WebviewPanel): string {
+    public generatePRAnalysisHtml(
+        title: string,
+        diffText: string,
+        context: string,
+        analysis: string,
+        panel: vscode.WebviewPanel,
+        toolCalls: ToolCallsData | undefined
+    ): string {
         // Strip output tags before sending to frontend
         const cleanedAnalysis = this.stripOutputTags(analysis);
 
@@ -112,6 +118,10 @@ export class UIManager {
             this.extensionContext.extensionUri, 'dist', 'webview', 'main.js'
         ));
 
+        const mainStylesUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
+            this.extensionContext.extensionUri, 'dist', 'webview', 'main.css'
+        ));
+
         return `
         <!DOCTYPE html>
         <html>
@@ -119,6 +129,7 @@ export class UIManager {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>${titleTruncated}</title>
+            <link href="${mainStylesUri}" rel="stylesheet">
             <style>
                 body {
                     margin: 0;
@@ -130,7 +141,7 @@ export class UIManager {
                 #root {
                     width: 100%;
                     height: 100vh;
-                    overflow: auto;
+                    overflow: hidden;
                 }
                 .loading {
                     display: flex;
@@ -161,7 +172,8 @@ export class UIManager {
                     title: ${JSON.stringify(titleTruncated)},
                     diffText: ${JSON.stringify(diffText)},
                     context: ${JSON.stringify(context)},
-                    analysis: ${JSON.stringify(cleanedAnalysis)}
+                    analysis: ${JSON.stringify(cleanedAnalysis)},
+                    toolCalls: ${JSON.stringify(toolCalls ?? null)}
                 };
 
                 // Inject initial theme data
@@ -171,7 +183,7 @@ export class UIManager {
             vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast}
                 };
             </script>
-            <script src="${mainScriptUri}"></script>
+            <script type="module" src="${mainScriptUri}"></script>
         </body>
         </html>
         `;
@@ -207,17 +219,33 @@ export class UIManager {
     }
 
     /**
-     * Display analysis results in a webview
+     * Display analysis results in a webview (reuses existing panel if open)
      */
-    public displayAnalysisResults(title: string, diffText: string, context: string, analysis: string): vscode.WebviewPanel {
-        const panel = vscode.window.createWebviewPanel(
-            'prAnalyzerResults',
-            title,
-            vscode.ViewColumn.Beside,
-            { enableScripts: true }
-        );
+    public displayAnalysisResults(
+        title: string,
+        diffText: string,
+        context: string,
+        analysis: string,
+        toolCalls: ToolCallsData | undefined = undefined
+    ): vscode.WebviewPanel {
+        let panel: vscode.WebviewPanel;
 
-        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel);
+        if (this.activeAnalysisPanel) {
+            // Reuse existing panel (may have been showing progress)
+            panel = this.activeAnalysisPanel;
+            panel.title = title;
+        } else {
+            // Create new panel
+            panel = vscode.window.createWebviewPanel(
+                'prAnalyzerResults',
+                title,
+                vscode.ViewColumn.Beside,
+                { enableScripts: true }
+            );
+            this.activeAnalysisPanel = panel;
+        }
+
+        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel, toolCalls);
 
         // Set up message listeners for webview communication
         this.setupWebviewMessageHandlers(panel.webview);
@@ -227,9 +255,12 @@ export class UIManager {
             this.sendThemeToWebview(panel.webview);
         });
 
-        // Clean up theme listener when panel is disposed
+        // Clean up when panel is disposed
         panel.onDidDispose(() => {
             themeChangeDisposable.dispose();
+            if (this.activeAnalysisPanel === panel) {
+                this.activeAnalysisPanel = undefined;
+            }
         });
 
         return panel;
@@ -260,7 +291,7 @@ export class UIManager {
      */
     private async handleOpenFileMessage(payload: OpenFilePayload): Promise<void> {
         try {
-            Log.info(`Opening file from webview: ${payload.filePath}`, payload);
+            Log.debug(`Opening file from webview: ${payload.filePath}`, payload);
 
             // Use vscode.Uri for secure file path handling
             // Note: payload.filePath is now the resolved absolute path from validation
@@ -286,7 +317,7 @@ export class UIManager {
             // Show the document in the editor
             await vscode.window.showTextDocument(document, showOptions);
 
-            Log.info(`Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`);
+            Log.debug(`Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`);
         } catch (error) {
             Log.error(`Failed to open file: ${payload.filePath}`, error);
 
@@ -302,7 +333,7 @@ export class UIManager {
      */
     private async handleValidatePathMessage(payload: ValidatePathPayload, webview: vscode.Webview): Promise<void> {
         try {
-            Log.info(`Validating file path from webview: ${payload.filePath}`);
+            Log.debug(`Validating file path from webview: ${payload.filePath}`);
 
             let isValid = false;
             let resolvedPath: string | undefined;
@@ -360,10 +391,10 @@ export class UIManager {
                 payload: response
             });
 
-            Log.info(`Path validation result for ${payload.filePath}: ${isValid}${resolvedPath ? ` (resolved: ${resolvedPath})` : ''}`);
+            Log.debug(`Path validation result for ${payload.filePath}: ${isValid}${resolvedPath ? ` (resolved: ${resolvedPath})` : ''}`);
         } catch (error) {
             // File doesn't exist or access error
-            Log.info(`Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            Log.debug(`Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
             // Send negative validation result
             const response: PathValidationResultPayload = {
@@ -394,17 +425,6 @@ export class UIManager {
             command: 'themeUpdate',
             payload: themeData
         });
-    }
-
-    /**
-     * Show PR analysis progress
-     */
-    public showAnalysisProgress<T>(title: string, task: (progress: vscode.Progress<{ message?: string; increment?: number }>, token: vscode.CancellationToken) => Thenable<T>): Thenable<T> {
-        return vscode.window.withProgress({
-            location: vscode.ProgressLocation.Notification,
-            title,
-            cancellable: true
-        }, task);
     }
 
 }

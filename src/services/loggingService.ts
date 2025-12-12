@@ -1,8 +1,6 @@
 import * as vscode from 'vscode';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
-
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
-type OutputTarget = 'channel' | 'console';
+import { LogLevel, OutputTarget } from '../models/loggingTypes';
 
 const LOG_LEVEL_VALUES: Record<LogLevel, number> = {
     debug: 0,
@@ -63,6 +61,7 @@ export class LoggingService implements vscode.Disposable {
      */
     public initialize(settingsService: WorkspaceSettingsService): void {
         this.settingsService = settingsService;
+        this.outputTarget = 'channel';
         this.refreshConfiguration();
     }
 
@@ -74,7 +73,7 @@ export class LoggingService implements vscode.Disposable {
             return;
         }
 
-        this.logLevel = this.settingsService.getSetting<LogLevel>('logLevel', 'info');
+        this.logLevel = this.settingsService.getSetting('logLevel', 'info');
     }
 
     /**
@@ -84,16 +83,6 @@ export class LoggingService implements vscode.Disposable {
         this.logLevel = level;
         if (this.settingsService) {
             this.settingsService.setSetting('logLevel', level);
-        }
-    }
-
-    /**
-     * Update the output target setting
-     */
-    public setOutputTarget(target: OutputTarget): void {
-        this.outputTarget = target;
-        if (this.settingsService) {
-            this.settingsService.setSetting('logOutputTarget', target);
         }
     }
 

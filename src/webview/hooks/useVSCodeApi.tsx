@@ -1,10 +1,10 @@
-import { WebviewMessageType } from '../../types/webviewMessages';
+import type { WebviewMessageType, ToolTestingMessageType } from '../../types/webviewMessages';
 
 /**
  * VSCode API interface for type safety
  */
 interface WebviewAPI {
-    postMessage: (message: WebviewMessageType) => void;
+    postMessage: (message: WebviewMessageType | ToolTestingMessageType) => void;
 }
 
 /**
@@ -15,11 +15,11 @@ interface WebviewAPI {
 export const useVSCodeApi = (): WebviewAPI | null => {
     // Simply return the global vscode instance that was acquired in the HTML
     const vscode = (window as any).vscode;
-    
+
     // Type guard to ensure the API has the expected interface
     if (vscode && typeof vscode.postMessage === 'function') {
         return vscode as WebviewAPI;
     }
-    
+
     return null;
 };

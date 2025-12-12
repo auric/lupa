@@ -51,9 +51,50 @@ export interface ThemeUpdateMessage extends WebviewMessage<ThemeUpdatePayload> {
     command: 'themeUpdate';
 }
 
+// Tool Testing command types
+export interface GetToolsPayload {
+    // No specific payload needed
+}
+
+export interface GetToolsMessage extends WebviewMessage<GetToolsPayload> {
+    command: 'getTools';
+}
+
+export interface GetToolCategoriesPayload {
+    // No specific payload needed
+}
+
+export interface GetToolCategoriesMessage extends WebviewMessage<GetToolCategoriesPayload> {
+    command: 'getToolCategories';
+}
+
+export interface ExecuteToolPayload {
+    sessionId: string;
+    toolName: string;
+    parameters: Record<string, any>;
+}
+
+export interface ExecuteToolMessage extends WebviewMessage<ExecuteToolPayload> {
+    command: 'executeTool';
+}
+
+export interface CopyToClipboardPayload {
+    content: string;
+}
+
+export interface CopyToClipboardMessage extends WebviewMessage<CopyToClipboardPayload> {
+    command: 'copyToClipboard';
+}
+
 // Union type for all possible webview messages
-export type WebviewMessageType = 
+export type WebviewMessageType =
     | OpenFileMessage
     | ValidatePathMessage
     | PathValidationResultMessage
-    | ThemeUpdateMessage;
+    | ThemeUpdateMessage
+    | CopyToClipboardMessage;
+
+export type ToolTestingMessageType =
+    | GetToolsMessage
+    | GetToolCategoriesMessage
+    | ExecuteToolMessage;

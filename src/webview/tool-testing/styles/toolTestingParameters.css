@@ -1,0 +1,487 @@
+/*
+ * Tool Testing Interface - Enhanced Parameter Input Styles
+ * Better input types with VS Code theme integration
+ */
+
+/* ===== PARAMETER FIELD STYLING ===== */
+
+.toolTesting-parameterField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.toolTesting-parameterLabel {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.toolTesting-requiredIndicator {
+  color: var(--vscode-errorForeground);
+  font-weight: bold;
+  font-size: var(--font-size-xs);
+}
+
+.toolTesting-parameterDescription {
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.3;
+  margin: 0;
+  margin-top: var(--space-1);
+}
+
+.toolTesting-parameterError {
+  font-size: var(--font-size-xs);
+  color: var(--vscode-errorForeground);
+  margin: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.toolTesting-parameterError::before {
+  content: "⚠️";
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* ===== INPUT HINT STYLING ===== */
+
+.toolTesting-inputHint {
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground);
+  margin-top: var(--space-1);
+  font-style: italic;
+}
+
+/* ===== TEXT INPUT STYLING ===== */
+
+.toolTesting-textInputWrapper {
+  position: relative;
+}
+
+.toolTesting-textInput {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-size: var(--font-size-sm);
+  font-family: var(--vscode-font-family);
+  outline: none;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.toolTesting-textInput:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.toolTesting-textInput:hover:not(:focus) {
+  border-color: var(--vscode-inputOption-hoverBackground);
+}
+
+.toolTesting-textInput.error {
+  border-color: var(--vscode-inputValidation-errorBorder);
+  background-color: var(--vscode-inputValidation-errorBackground);
+}
+
+.toolTesting-textInput::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+/* ===== NUMBER INPUT STYLING ===== */
+
+.toolTesting-numberInputWrapper {
+  position: relative;
+}
+
+.toolTesting-numberInput {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-size: var(--font-size-sm);
+  font-family: var(--vscode-font-family);
+  outline: none;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Fix number input spinner buttons in dark theme */
+.toolTesting-numberInput::-webkit-outer-spin-button,
+.toolTesting-numberInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.toolTesting-numberInput[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.toolTesting-numberInput:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.toolTesting-numberInput:hover:not(:focus) {
+  border-color: var(--vscode-inputOption-hoverBackground);
+}
+
+.toolTesting-numberInput.error {
+  border-color: var(--vscode-inputValidation-errorBorder);
+  background-color: var(--vscode-inputValidation-errorBackground);
+}
+
+/* ===== FILE INPUT STYLING ===== */
+
+.toolTesting-fileInputWrapper {
+  position: relative;
+}
+
+.toolTesting-fileInput {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-size: var(--font-size-sm);
+  font-family: var(--vscode-font-family);
+  outline: none;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.4;
+}
+
+.toolTesting-fileInput:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.toolTesting-fileInput:hover:not(:focus) {
+  border-color: var(--vscode-inputOption-hoverBackground);
+}
+
+.toolTesting-fileInput.error {
+  border-color: var(--vscode-inputValidation-errorBorder);
+  background-color: var(--vscode-inputValidation-errorBackground);
+}
+
+
+/* ===== TEXTAREA STYLING ===== */
+
+.toolTesting-textareaWrapper {
+  position: relative;
+}
+
+.toolTesting-textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-size: var(--font-size-sm);
+  font-family: var(--vscode-font-family);
+  outline: none;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.toolTesting-textarea:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.toolTesting-textarea:hover:not(:focus) {
+  border-color: var(--vscode-inputOption-hoverBackground);
+}
+
+.toolTesting-textarea.error {
+  border-color: var(--vscode-inputValidation-errorBorder);
+  background-color: var(--vscode-inputValidation-errorBackground);
+}
+
+.toolTesting-textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+/* ===== CHECKBOX STYLING ===== */
+
+.toolTesting-checkboxWrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+}
+
+.toolTesting-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--vscode-checkbox-border);
+  background-color: var(--vscode-checkbox-background);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolTesting-checkbox:hover {
+  border-color: var(--vscode-checkbox-border);
+  background-color: var(--vscode-inputOption-hoverBackground);
+}
+
+.toolTesting-checkbox:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* Checked state */
+.toolTesting-checkbox[data-state="checked"],
+.toolTesting-checkbox:checked {
+  background-color: var(--vscode-checkbox-selectBackground);
+  border-color: var(--vscode-checkbox-selectBorder);
+}
+
+.toolTesting-checkbox[data-state="checked"]::after,
+.toolTesting-checkbox:checked::after {
+  content: "✓";
+  color: var(--vscode-checkbox-selectForeground);
+  font-size: 11px;
+  font-weight: bold;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.toolTesting-checkboxLabel {
+  font-size: var(--font-size-sm);
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.2;
+  font-family: var(--vscode-font-family);
+}
+
+/* ===== PARAMETER SECTIONS ===== */
+
+.parameter-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.parameter-form-container,
+.toolTesting-parameterFormContainer {
+  padding: var(--space-4);
+  flex: 1;
+  overflow-y: auto;
+}
+
+.parameter-form,
+.toolTesting-parameterForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.parameter-section,
+.toolTesting-parameterSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.parameter-section-title,
+.toolTesting-parameterSectionTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin: 0;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.parameter-section-toggle,
+.toolTesting-parameterSectionToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  color: var(--vscode-foreground);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  text-align: left;
+  transition: color 150ms ease-out;
+  margin-bottom: var(--space-2);
+}
+
+.parameter-section-toggle:hover,
+.toolTesting-parameterSectionToggle:hover {
+  color: var(--vscode-list-hoverForeground);
+}
+
+.toggle-icon,
+.toolTesting-toggleIcon {
+  font-size: var(--font-size-xs);
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.optional-parameters,
+.toolTesting-optionalParameters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  animation: toolTesting-fadeInDown 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== ACTION BUTTONS ===== */
+
+.parameter-actions,
+.toolTesting-parameterActions {
+  padding: var(--space-4);
+  border-top: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-sideBar-background);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.toolTesting-btn,
+.btn {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+}
+
+.toolTesting-btn:disabled,
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.toolTesting-btnPrimary,
+.btn-primary {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.toolTesting-btnPrimary:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground);
+  transform: translateY(-1px);
+}
+
+.toolTesting-btnSecondary,
+.btn-secondary {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.toolTesting-btnSecondary:hover:not(:disabled),
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+  transform: translateY(-1px);
+}
+
+.toolTesting-btnCancel,
+.btn-cancel {
+  background-color: var(--vscode-errorForeground);
+  color: var(--vscode-editor-background);
+}
+
+.toolTesting-btnCancel:hover:not(:disabled),
+.btn-cancel:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* ===== RESPONSIVE ADJUSTMENTS ===== */
+
+@media (max-width: 999px) {
+  .parameter-form-container,
+  .toolTesting-parameterFormContainer {
+    padding: var(--space-3);
+  }
+  
+  .parameter-actions,
+  .toolTesting-parameterActions {
+    padding: var(--space-3);
+    flex-direction: column;
+  }
+  
+  .toolTesting-btn,
+  .btn {
+    justify-content: center;
+  }
+}
+
+/* ===== ACCESSIBILITY ===== */
+
+@media (prefers-reduced-motion: reduce) {
+  .toolTesting-textInput,
+  .toolTesting-numberInput,
+  .toolTesting-fileInput,
+  .toolTesting-textarea,
+  .toolTesting-checkbox,
+  .toolTesting-btn,
+  .btn {
+    transition: none;
+  }
+  
+  .optional-parameters,
+  .toolTesting-optionalParameters {
+    animation: none;
+  }
+}
+
+/* ===== HIGH CONTRAST SUPPORT ===== */
+
+@media (prefers-contrast: high) {
+  .toolTesting-textInput,
+  .toolTesting-numberInput,
+  .toolTesting-fileInput,
+  .toolTesting-textarea {
+    border-width: 2px;
+  }
+  
+  .toolTesting-checkbox {
+    border-width: 3px;
+  }
+}

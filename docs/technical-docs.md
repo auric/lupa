@@ -27,20 +27,30 @@ The overall architecture consists of these primary layers:
 
 #### 1.1.2 Coordination Layer
 
-- **ServiceManager** (`src/services/serviceManager.ts`): Centralized dependency injection container with phased initialization and service reinitialization
-- **PRAnalysisCoordinator** (`src/services/prAnalysisCoordinator.ts`): Lightweight coordinator that delegates to specialized coordinators
-- **AnalysisOrchestrator** (`src/coordinators/analysisOrchestrator.ts`): Handles core PR analysis workflow
-- **EmbeddingModelCoordinator** (`src/coordinators/embeddingModelCoordinator.ts`): Handles embedding model UI workflows, delegates service reinitialization to ServiceManager
-- **CopilotModelCoordinator** (`src/coordinators/copilotModelCoordinator.ts`): Manages GitHub Copilot language model operations
-- **DatabaseOrchestrator** (`src/coordinators/databaseOrchestrator.ts`): Manages database operations and optimization
-- **CommandRegistry** (`src/coordinators/commandRegistry.ts`): Centralizes VS Code command registration
+- **ServiceManager** (`src/services/serviceManager.ts`): Centralized dependency injection container with phased initialization and service reinitialization.
+- **PRAnalysisCoordinator** (`src/services/prAnalysisCoordinator.ts`): Lightweight coordinator that delegates to specialized coordinators.
+- **EmbeddingModelCoordinator** (`src/coordinators/embeddingModelCoordinator.ts`): Handles embedding model UI workflows, delegates service reinitialization to ServiceManager.
+- **AnalysisOrchestrator** (`src/coordinators/analysisOrchestrator.ts`): Manages the end-to-end analysis process, including the new conversational tool-calling loop (via `ToolCallingAnalyzer`).
+- **CopilotModelCoordinator** (`src/coordinators/copilotModelCoordinator.ts`): Manages GitHub Copilot language model operations.
+- **DatabaseOrchestrator** (`src/coordinators/databaseOrchestrator.ts`): Manages database operations and optimization.
+- **CommandRegistry** (`src/coordinators/commandRegistry.ts`): Centralizes VS Code command registration.
 
 #### 1.1.3 Service Layer
 
-- Contains specialized services for specific functionality domains
-- Implements the core business logic of the extension
-- Manages resources and state for specific domains
-- Communicates with other services through well-defined interfaces
+- Contains specialized services for specific functionality domains.
+- Implements the core business logic of the extension.
+- **ConversationManager** (`src/models/conversationManager.ts`): Manages the history of the conversation with the LLM, including user, assistant, and tool messages.
+- **ToolExecutor** (`src/models/toolExecutor.ts`): Executes tools requested by the LLM with configurable rate limiting (default: 50 calls per session, configurable via `WorkspaceSettingsService`), validating requests against schemas and running tools in parallel.
+- **ToolRegistry** (`src/models/toolRegistry.ts`): Registry of available tools for LLM-driven code exploration.
+- **WorkspaceSettingsService** (`src/services/workspaceSettingsService.ts`): Persists workspace-specific settings to `.vscode/lupa.json`, including configurable analysis limits (maxToolCalls, maxIterations, requestTimeoutSeconds).
+- Other services manage resources and state for specific domains and communicate with other services through well-defined interfaces.
+
+#### 1.1.3a Tools Layer
+
+- **`src/tools/`**: This new directory contains the individual tools that the LLM can call.
+- **`ITool.ts`**: Defines the base interface for all tools, including `name`, `description`, `schema`, and an `execute` method.
+- **`BaseTool.ts`**: An abstract base class that provides common functionality for tools, such as generating the `vscode.LanguageModelChatTool` representation from the Zod schema.
+- **`FindSymbolTool.ts`**: An implementation of `ITool` that uses `vscode.executeDefinitionProvider` to find the definition of a symbol.
 
 #### 1.1.4 Data Layer
 

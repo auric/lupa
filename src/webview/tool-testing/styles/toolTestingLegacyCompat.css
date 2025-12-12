@@ -1,0 +1,360 @@
+/*
+ * Tool Testing Interface - Legacy Class Compatibility
+ * Supports old class names that components still use
+ */
+
+/* ===== SIDEBAR STYLES ===== */
+.tool-library-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--vscode-sideBar-border);
+  background-color: var(--vscode-sideBar-background);
+}
+
+.sidebar-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--vscode-sideBar-foreground);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.search-container {
+  position: relative;
+}
+
+.tool-search {
+  width: 100%;
+  height: 32px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: var(--radius);
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-size: var(--font-size-sm);
+  outline: none;
+  transition: border-color 150ms ease-out;
+}
+
+.tool-search:focus {
+  border-color: var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.search-clear-btn {
+  position: absolute;
+  right: var(--space-2);
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius);
+  font-size: var(--font-size-xs);
+  transition: color 150ms ease-out;
+}
+
+.search-clear-btn:hover {
+  color: var(--vscode-foreground);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+}
+
+.all-tools-section {
+  padding: 0 var(--space-2);
+}
+
+.tools-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  border-radius: var(--radius);
+  margin-bottom: var(--space-1);
+  transition: background-color 150ms ease-out;
+  outline: none;
+}
+
+.tool-item:hover {
+  background-color: var(--vscode-list-hoverBackground);
+}
+
+.tool-item:focus {
+  background-color: var(--vscode-list-hoverBackground);
+  box-shadow: inset 2px 0 0 var(--vscode-focusBorder);
+}
+
+.tool-item.selected {
+  background-color: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.tool-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--vscode-foreground);
+  display: block;
+  margin-bottom: var(--space-1);
+  word-break: break-word;
+}
+
+.tool-description {
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.3;
+  margin: 0;
+  word-break: break-word;
+}
+
+.tool-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.favorite-icon {
+  font-size: var(--font-size-xs);
+}
+
+.usage-count {
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground);
+  background-color: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius);
+}
+
+/* ===== EMPTY STATES ===== */
+.empty-state {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--vscode-descriptionForeground);
+}
+
+.empty-state-icon {
+  font-size: 32px;
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-text {
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-3);
+}
+
+.clear-search-btn {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border: none;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.clear-search-btn:hover {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+/* ===== RESULTS PANEL LEGACY STYLES ===== */
+.results-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-editor-background);
+  gap: var(--space-3);
+}
+
+.execution-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.status-icon {
+  font-size: var(--font-size-base);
+}
+
+.status-text {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--vscode-foreground);
+}
+
+.execution-metadata {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--vscode-descriptionForeground);
+}
+
+.results-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--space-3);
+}
+
+.loading-text {
+  font-size: var(--font-size-sm);
+  color: var(--vscode-descriptionForeground);
+  margin: 0;
+}
+
+/* ===== PARAMETER PANEL LEGACY STYLES ===== */
+.parameter-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.parameter-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-6);
+}
+
+.tool-info-header {
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-sideBar-background);
+}
+
+.tool-name-section {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.parameter-panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.parameter-form-container {
+  padding: var(--space-4);
+}
+
+.parameter-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.parameter-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.parameter-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin: 0;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.parameter-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: none;
+  border: none;
+  color: var(--vscode-foreground);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  text-align: left;
+  transition: color 150ms ease-out;
+  margin-bottom: var(--space-2);
+}
+
+.parameter-section-toggle:hover {
+  color: var(--vscode-list-hoverForeground);
+}
+
+.toggle-icon {
+  font-size: var(--font-size-xs);
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.optional-parameters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.parameter-actions {
+  padding: var(--space-4);
+  border-top: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-sideBar-background);
+  display: flex;
+  gap: var(--space-2);
+}
+
+/* Legacy empty state styles */
+.empty-state-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  margin-bottom: var(--space-2);
+}
+
+.empty-state-description {
+  font-size: var(--font-size-sm);
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+  margin: 0;
+}

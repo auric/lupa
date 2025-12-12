@@ -578,6 +578,34 @@ vscodeMock.LanguageModelChat = vi.fn().mockImplementation((id, name, vendor, fam
   countTokens: vi.fn().mockResolvedValue(10),
 }));
 
+// Add mocks for LanguageModelTextPart and LanguageModelToolCallPart
+vscodeMock.LanguageModelTextPart = class LanguageModelTextPart {
+  constructor(value) {
+    this.value = value;
+  }
+};
+
+vscodeMock.LanguageModelToolCallPart = class LanguageModelToolCallPart {
+  constructor(callId, name, input) {
+    this.callId = callId;
+    this.name = name;
+    this.input = input;
+  }
+};
+
+vscodeMock.LanguageModelToolResultPart = class LanguageModelToolResultPart {
+  constructor(callId, content) {
+    this.callId = callId;
+    this.content = content;
+  }
+};
+
+// Add lm namespace
+vscodeMock.lm = {
+  selectChatModels: vi.fn().mockResolvedValue([]),
+  onDidChangeChatModels: vi.fn(() => ({ dispose: vi.fn() })),
+};
+
 // Mock chat namespace and selectChatModels
 vscodeMock.chat = {
   languageModels: {
@@ -609,6 +637,10 @@ export const ThemeIcon = vscodeMock.ThemeIcon;
 export const LanguageModelChatMessageRole = vscodeMock.LanguageModelChatMessageRole;
 export const LanguageModelChatMessage = vscodeMock.LanguageModelChatMessage;
 export const LanguageModelChat = vscodeMock.LanguageModelChat;
+export const LanguageModelTextPart = vscodeMock.LanguageModelTextPart;
+export const LanguageModelToolCallPart = vscodeMock.LanguageModelToolCallPart;
+export const LanguageModelToolResultPart = vscodeMock.LanguageModelToolResultPart;
+export const lm = vscodeMock.lm;
 
 // Export the new mocks
 export const FileType = vscodeMock.FileType;

@@ -1,0 +1,96 @@
+/* Import global styles which include Tailwind */
+@import "../../globals.css";
+
+/* Import tool testing specific styles */
+@import "./toolTestingAnimations.css";
+@import "./toolTestingJsonEditor.css";
+@import "./toolTestingParameters.css";
+@import "./toolTestingLegacyCompat.css";
+@import "./toolTestingLayout.css";
+
+/* ===== VS Code Design System - Typography & Spacing ===== */
+:root {
+  /* Font Settings */
+  --font-family: var(--vscode-font-family);
+  --font-size-xs: calc(var(--vscode-font-size) * 0.75);
+  --font-size-sm: calc(var(--vscode-font-size) * 0.875);
+  --font-size-base: var(--vscode-font-size);
+  --font-size-lg: calc(var(--vscode-font-size) * 1.125);
+
+  /* Spacing System */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+}
+
+/* ===== RAW VIEW STYLES ===== */
+.toolTesting-rawTab {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.toolTesting-rawContent {
+  flex: 1;
+  overflow: auto;
+  background-color: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: var(--radius);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+  color: var(--vscode-editor-foreground);
+  padding: var(--space-3);
+  margin: 0;
+  white-space: pre;
+  word-wrap: normal;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.toolTesting-rawContent code {
+  background: none;
+  padding: 0;
+  font-family: inherit;
+}
+
+.toolTesting-rawHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background-color: var(--vscode-editorWidget-background);
+}
+
+.toolTesting-rawTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--vscode-editorWidget-foreground);
+}
+
+/* Raw view scrollbars */
+.toolTesting-rawContent::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.toolTesting-rawContent::-webkit-scrollbar-track {
+  background: var(--vscode-scrollbarSlider-background);
+}
+
+.toolTesting-rawContent::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+  border-radius: 4px;
+}
+
+.toolTesting-rawContent::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+.toolTesting-rawContent::-webkit-scrollbar-corner {
+  background: var(--vscode-scrollbarSlider-background);
+}

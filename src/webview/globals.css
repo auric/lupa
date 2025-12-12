@@ -7,6 +7,7 @@
 @import "./styles/diff.css";
 @import "./styles/copy-button.css";
 @import "./styles/file-link.css";
+@import "./styles/toolCalls.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -108,11 +109,20 @@ body {
   padding: 0;
 }
 
+input,
+textarea,
+button,
+select {
+  font-family: inherit;
+  font-size: inherit;
+}
+
 /* VSCode webview fills the entire container */
 html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
 }
 
 /* VSCode-style tab components */
@@ -132,6 +142,7 @@ body,
 
 .vscode-tab-content {
   @apply flex-1 m-0 p-3 focus-visible:outline-none;
+  background-color: var(--vscode-editor-background);
 }
 
 @theme inline {

@@ -11,9 +11,45 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 // Importing Vitest's config type for explicit typing if needed, though UserConfig from Vite includes 'test'
 import type { InlineConfig as VitestInlineConfig } from 'vitest/node';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Custom plugin to modify package.json for production builds
+const packageJsonFilter = (isProduction: boolean) => ({
+    name: 'package-json-filter',
+    writeBundle() {
+        if (isProduction && process.env.BUILD_TARGET !== 'webview') {
+            // This runs during extension build (not webview build)
+            try {
+                const packagePath = resolve(__dirname, 'package.json');
+                const distPackagePath = resolve(__dirname, 'dist/package.json');
+
+                const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
+
+                // Remove dev-only commands
+                if (pkg.contributes?.commands) {
+                    pkg.contributes.commands = pkg.contributes.commands.filter(
+                        (cmd: any) => !cmd.command.includes('toolTesting') && !cmd.command.includes('testWebview')
+                    );
+                }
+
+                // Remove dev-only keybindings if any
+                if (pkg.contributes?.keybindings) {
+                    pkg.contributes.keybindings = pkg.contributes.keybindings.filter(
+                        (kb: any) => !kb.command.includes('toolTesting') && !kb.command.includes('testWebview')
+                    );
+                }
+
+                fs.writeFileSync(distPackagePath, JSON.stringify(pkg, null, 2));
+                console.log('✓ Filtered dev commands from package.json for production');
+            } catch (error) {
+                console.error('Failed to filter package.json:', error);
+            }
+        }
+    }
+});
 
 // External dependencies function for different entry points
 const isExternalDependency = (source: string, importer: string | undefined, isResolved: boolean): boolean => {
@@ -23,7 +59,7 @@ const isExternalDependency = (source: string, importer: string | undefined, isRe
     }
 
     // For extension and workers, externalize these Node.js packages
-    return ['vscode', 'onnxruntime-node', 'hnswlib-node', '@vscode/sqlite3', '@tailwindcss/vite'].includes(source);
+    return ['vscode', 'onnxruntime-node', 'hnswlib-node', '@vscode/sqlite3', '@tailwindcss/vite', '@vscode/ripgrep'].includes(source);
 };
 
 export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
@@ -39,21 +75,24 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         fileName: (_format, entryName) => `${entryName}.js`,
     };
 
+    // Webview entry points - exclude toolTesting from production builds
+    const webviewInputs: Record<string, string> = isProduction
+        ? { main: resolve(__dirname, 'src/webview/main.tsx') }
+        : {
+            main: resolve(__dirname, 'src/webview/main.tsx'),
+            toolTesting: resolve(__dirname, 'src/webview/tool-testing/toolTesting.tsx')
+        };
+
     // Webview app configuration (browser-like)
     const webviewBuildConfig: BuildOptions = {
         rollupOptions: {
-            input: resolve(__dirname, 'src/webview/main.tsx'),
+            input: webviewInputs,
             output: {
-                entryFileNames: 'webview/main.js',
+                inlineDynamicImports: false,
+                entryFileNames: 'webview/[name].js',
                 chunkFileNames: 'webview/[name].js',
-                assetFileNames: (assetInfo) => {
-                    if (assetInfo.name?.endsWith('.css')) {
-                        return 'webview/main.css';
-                    }
-                    return 'webview/[name].[ext]';
-                },
-                format: 'iife',
-                name: 'WebviewApp'
+                assetFileNames: 'webview/[name].[ext]',
+                format: 'esm',
             },
             external: []
         },
@@ -97,6 +136,10 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         {
             src: 'node_modules/web-tree-sitter/tree-sitter.wasm',
             dest: '.',
+        },
+        {
+            src: 'node_modules/@vscode/ripgrep/',
+            dest: 'node_modules/@vscode',
         },
         {
             src: 'models/',
@@ -173,6 +216,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
                 viteStaticCopy({
                     targets: staticCopyTargets,
                 }),
+                packageJsonFilter(isProduction),
             ],
         };
     }

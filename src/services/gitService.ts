@@ -1,7 +1,12 @@
 // filepath: d:\dev\copilot-review\src\services\gitService.ts
 import * as vscode from 'vscode';
 import * as child_process from 'child_process';
-import { API, GitExtension, Repository, RefType } from '../types/vscodeGitExtension';
+import type {
+    API,
+    GitExtension,
+    Repository
+} from '../types/vscodeGitExtension';
+import { RefType } from '../types/vscodeGitExtension';
 import { Log } from './loggingService';
 
 /**

@@ -15,6 +15,7 @@ import {
     type HybridContextResult
 } from '../types/contextTypes';
 import { getLanguageForExtension, type SupportedLanguage } from '../types/types';
+import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 import { quickHash } from '../lib/hashUtils';
 
@@ -50,14 +51,14 @@ export class ContextProvider implements vscode.Disposable {
         context: vscode.ExtensionContext,
         embeddingDatabaseAdapter: EmbeddingDatabaseAdapter,
         modelManager: CopilotModelManager,
-        codeAnalysisService: CodeAnalysisService
+        codeAnalysisService: CodeAnalysisService,
     ): ContextProvider {
         if (!this.instance ||
             this.instance.embeddingDatabaseAdapter !== embeddingDatabaseAdapter ||
             this.instance.modelManager !== modelManager ||
             this.instance.codeAnalysisService !== codeAnalysisService
         ) {
-            this.instance = new ContextProvider(context, embeddingDatabaseAdapter, modelManager, codeAnalysisService); // Passed to constructor
+            this.instance = new ContextProvider(context, embeddingDatabaseAdapter, modelManager, codeAnalysisService);
         }
         return this.instance;
     }
@@ -78,9 +79,6 @@ export class ContextProvider implements vscode.Disposable {
      * @param hunkData An object containing hunk information, typically `newStart` line.
      * @returns A string identifier for the hunk.
      */
-    private getHunkIdentifier(filePath: string, hunkData: { newStart: number }): string {
-        return `${filePath}:${hunkData.newStart}`;
-    }
 
     /**
      * Extract meaningful code chunks and identify symbols from PR diff.
@@ -114,12 +112,12 @@ export class ContextProvider implements vscode.Disposable {
                         fullFileContent = Buffer.from(contentBytes).toString('utf8');
                     }
                 } catch (error) {
-                    const newFilePattern = new RegExp(`^diff --git a\\/dev\\/null b\\/${filePath.replace(/\\/g, '\\\\/')}`, 'm');
-                    if (newFilePattern.test(diff)) {
+                    // Check if this is a new file using parsed diff metadata
+                    if (fileDiff.isNewFile) {
                         fullFileContent = fileDiff.hunks
-                            .flatMap(hunk => hunk.lines)
-                            .filter(line => line.startsWith('+'))
-                            .map(line => line.substring(1))
+                            .flatMap(hunk => hunk.parsedLines)
+                            .filter(line => line.type === 'added')
+                            .map(line => line.content)
                             .join('\n');
                     } else {
                         Log.warn(`Could not read file content for ${filePath}:`, error);
@@ -134,12 +132,12 @@ export class ContextProvider implements vscode.Disposable {
                 let currentNewLineInFile = hunk.newStart - 1; // 0-based file line number
                 let rangeStartLine: number | null = null;
 
-                for (const line of hunk.lines) {
-                    const isAdded = line.startsWith('+');
-                    const isRemoved = line.startsWith('-');
+                for (const parsedLine of hunk.parsedLines) {
+                    const isAdded = parsedLine.type === 'added';
+                    const isRemoved = parsedLine.type === 'removed';
 
                     if (isAdded) {
-                        addedLinesForSymbolSnippets.push({ fileLine: currentNewLineInFile, text: line.substring(1) });
+                        addedLinesForSymbolSnippets.push({ fileLine: currentNewLineInFile, text: parsedLine.content });
                         if (rangeStartLine === null) rangeStartLine = currentNewLineInFile;
                     } else {
                         if (rangeStartLine !== null) {
@@ -190,12 +188,12 @@ export class ContextProvider implements vscode.Disposable {
                 let currentHunkAddedLinesWithFileNumbers: { fileLine: number, text: string }[] = [];
                 let currentFileLineForHunkProcessing = hunk.newStart - 1; // 0-based
 
-                for (const line of hunk.lines) {
-                    const isAdded = line.startsWith('+');
-                    const isRemoved = line.startsWith('-');
+                for (const parsedLine of hunk.parsedLines) {
+                    const isAdded = parsedLine.type === 'added';
+                    const isRemoved = parsedLine.type === 'removed';
 
                     if (isAdded) {
-                        const lineContent = line.substring(1);
+                        const lineContent = parsedLine.content;
                         currentAddedBlockLines.push(lineContent);
                         currentHunkAddedLinesWithFileNumbers.push({ fileLine: currentFileLineForHunkProcessing, text: lineContent });
                     } else {
@@ -249,9 +247,9 @@ export class ContextProvider implements vscode.Disposable {
             let allAddedLinesFromDiff = "";
             for (const fileDiff of parsedDiff) {
                 for (const hunk of fileDiff.hunks) {
-                    for (const line of hunk.lines) {
-                        if (line.startsWith('+')) {
-                            allAddedLinesFromDiff += line.substring(1) + '\n';
+                    for (const parsedLine of hunk.parsedLines) {
+                        if (parsedLine.type === 'added') {
+                            allAddedLinesFromDiff += parsedLine.content + '\n';
                         }
                     }
                 }
@@ -265,43 +263,6 @@ export class ContextProvider implements vscode.Disposable {
         return { embeddingQueries: finalEmbeddingQueries, symbols: identifiedSymbols };
     }
 
-    private parseDiff(diff: string): DiffHunk[] {
-        const files: DiffHunk[] = [];
-        const lines = diff.split('\n');
-        let currentFile: DiffHunk | null = null;
-        let currentHunk: DiffHunkLine | null = null;
-
-        for (const line of lines) {
-            const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-            if (fileMatch) {
-                currentFile = { filePath: fileMatch[2], hunks: [] };
-                files.push(currentFile);
-                currentHunk = null;
-                continue;
-            }
-
-            if (currentFile) {
-                const hunkHeaderMatch = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
-                if (hunkHeaderMatch) {
-                    const oldStart = parseInt(hunkHeaderMatch[1], 10);
-                    const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1; // Group 2 is optional for oldLines
-                    const newStart = parseInt(hunkHeaderMatch[3], 10); // Group 3 is newStart
-                    const newLines = hunkHeaderMatch[4] ? parseInt(hunkHeaderMatch[4], 10) : 1; // Group 4 is optional for newLines
-
-                    currentHunk = {
-                        oldStart: oldStart, oldLines: oldLines,
-                        newStart: newStart, newLines: newLines,
-                        lines: [],
-                        hunkId: this.getHunkIdentifier(currentFile.filePath, { newStart: newStart })
-                    };
-                    currentFile.hunks.push(currentHunk);
-                } else if (currentHunk && (line.startsWith('+') || line.startsWith('-') || line.startsWith(' '))) {
-                    currentHunk.lines.push(line);
-                }
-            }
-        }
-        return files;
-    }
 
     /**
      * Get relevant code context for a diff, now returns an array of ContextSnippet objects.
@@ -323,7 +284,7 @@ export class ContextProvider implements vscode.Disposable {
     ): Promise<HybridContextResult> {
         Log.info(`Finding relevant context for PR diff (mode: ${analysisMode})`);
         const allContextSnippets: ContextSnippet[] = [];
-        const parsedDiffFileHunks = this.parseDiff(diff); // Now includes hunkId
+        const parsedDiffFileHunks = DiffUtils.parseDiff(diff); // Now includes hunkId
 
         try {
             if (token?.isCancellationRequested) {

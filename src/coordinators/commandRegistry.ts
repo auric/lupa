@@ -4,6 +4,8 @@ import { EmbeddingModelCoordinator } from './embeddingModelCoordinator';
 import { CopilotModelCoordinator } from './copilotModelCoordinator';
 import { DatabaseOrchestrator } from './databaseOrchestrator';
 import { IServiceRegistry } from '../services/serviceManager';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * CommandRegistry handles all VS Code command registration
@@ -66,9 +68,34 @@ export class CommandRegistry implements vscode.Disposable {
             this.services.indexingService.showIndexingManagementOptions()
         );
 
-        // Test webview command for development
-        this.registerCommand('lupa.testWebview', () =>
-            this.showTestWebview()
+        // Settings commands
+        this.registerCommand('lupa.resetAnalysisLimits', () =>
+            this.resetAnalysisLimitsToDefaults()
+        );
+
+        // Development-only commands - only register in development mode
+        if (this.context.extensionMode === vscode.ExtensionMode.Development) {
+            // Tool testing interface command
+            this.registerCommand('lupa.openToolTesting', () =>
+                this.services.toolTestingWebview.openToolTestingInterface()
+            );
+
+            // Test webview command for development
+            this.registerCommand('lupa.testWebview', () =>
+                this.showTestWebview()
+            );
+        }
+    }
+
+    /**
+     * Reset analysis limits to their default values
+     */
+    private resetAnalysisLimitsToDefaults(): void {
+        this.services.workspaceSettings.resetAnalysisLimitsToDefaults();
+        vscode.window.showInformationMessage(
+            'Analysis limits reset to defaults: ' +
+            `Max Iterations: ${ANALYSIS_LIMITS.maxIterations.default}, ` +
+            `Request Timeout: ${ANALYSIS_LIMITS.requestTimeoutSeconds.default}s`
         );
     }
 
@@ -287,8 +314,8 @@ private async analyzeWithLanguageModel(
         const allocation = await this.tokenManager.calculateTokenAllocation(tokenComponents, mode);
 
         // Calculate context allocation tokens
-        const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens + 
-            allocation.userMessagesTokens + allocation.assistantMessagesTokens + 
+        const nonContextTokens = allocation.systemPromptTokens + allocation.diffTextTokens +
+            allocation.userMessagesTokens + allocation.assistantMessagesTokens +
             allocation.responsePrefillTokens + allocation.messageOverheadTokens + allocation.otherTokens;
         const contextAllocationTokens = Math.max(0, allocation.totalAvailableTokens - nonContextTokens);
 

@@ -12,15 +12,43 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { CodeAnalysisService, CodeAnalysisServiceInitializer } from './codeAnalysisService';
 import { UIManager } from './uiManager';
 import { GitOperationsManager } from './gitOperationsManager';
+import { ToolTestingWebviewService } from './toolTestingWebview';
 
 // Complex services
 import { IndexingService } from './indexingService';
 import { EmbeddingDatabaseAdapter } from './embeddingDatabaseAdapter';
 import { ContextProvider } from './contextProvider';
-import { PromptGenerator } from './promptGenerator';
+import { PromptGenerator } from '../models/promptGenerator';
 import { TokenManagerService } from './tokenManagerService';
 import { AnalysisProvider } from './analysisProvider';
 import { IndexingManager } from './indexingManager';
+
+// Utility services
+import { SymbolExtractor } from '../utils/symbolExtractor';
+
+// Tool-calling services
+import { ToolRegistry } from '../models/toolRegistry';
+import { ToolExecutor } from '../models/toolExecutor';
+import { ConversationManager } from '../models/conversationManager';
+import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
+import { FindSymbolTool } from '../tools/findSymbolTool';
+import { FindUsagesTool } from '../tools/findUsagesTool';
+import { ListDirTool } from '../tools/listDirTool';
+import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
+import { ReadFileTool } from '../tools/readFileTool';
+import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
+import { SearchForPatternTool } from '../tools/searchForPatternTool';
+import { ThinkAboutContextTool } from '../tools/thinkAboutContextTool';
+import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
+import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
+import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
+import { RunSubagentTool } from '../tools/runSubagentTool';
+
+// Subagent services
+import { SubagentExecutor } from './subagentExecutor';
+import { SubagentSessionManager } from './subagentSessionManager';
+import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
+
 import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
 
@@ -34,21 +62,37 @@ export interface IServiceRegistry {
     logging: LoggingService;
     statusBar: StatusBarService;
 
-    // Model services
+    // Embeddings services
     embeddingModelSelection: EmbeddingModelSelectionService;
     vectorDatabase: VectorDatabaseService;
-    copilotModelManager: CopilotModelManager;
     codeAnalysis: CodeAnalysisService;
+
+    // LLM services
+    copilotModelManager: CopilotModelManager;
+    promptGenerator: PromptGenerator;
 
     // UI and Git services
     uiManager: UIManager;
     gitOperations: GitOperationsManager;
+    toolTestingWebview: ToolTestingWebviewService;
+
+    // Utility services
+    symbolExtractor: SymbolExtractor;
+
+    // Tool-calling services
+    toolRegistry: ToolRegistry;
+    toolExecutor: ToolExecutor;
+    conversationManager: ConversationManager;
+    toolCallingAnalysisProvider: ToolCallingAnalysisProvider;
+
+    // Subagent services
+    subagentExecutor: SubagentExecutor;
+    subagentSessionManager: SubagentSessionManager;
 
     // Complex services
     indexingService: IndexingService;
     embeddingDatabaseAdapter: EmbeddingDatabaseAdapter;
     contextProvider: ContextProvider;
-    promptGenerator: PromptGenerator;
     tokenManager: TokenManagerService;
     analysisProvider: AnalysisProvider;
     indexingManager: IndexingManager;
@@ -117,7 +161,6 @@ export class ServiceManager implements vscode.Disposable {
         });
         this.services.logging = LoggingService.getInstance();
         this.services.logging.initialize(this.services.workspaceSettings);
-        this.services.logging.setOutputTarget('channel');
 
         this.services.statusBar = StatusBarService.getInstance();
         this.services.codeAnalysis = new CodeAnalysisService();
@@ -147,6 +190,7 @@ export class ServiceManager implements vscode.Disposable {
 
         // Language model manager
         this.services.copilotModelManager = new CopilotModelManager(this.services.workspaceSettings!);
+        this.services.promptGenerator = new PromptGenerator();
 
         // Vector database service
         this.services.vectorDatabase = VectorDatabaseService.getInstance(this.context);
@@ -156,6 +200,9 @@ export class ServiceManager implements vscode.Disposable {
         if (initialModelInfo && initialModelInfo.dimensions) {
             this.services.vectorDatabase.setCurrentModelDimension(initialModelInfo.dimensions);
         }
+
+        // Utility services (depend on gitOperations)
+        this.services.symbolExtractor = new SymbolExtractor(this.services.gitOperations!);
     }
 
     /**
@@ -212,17 +259,104 @@ export class ServiceManager implements vscode.Disposable {
             this.services.codeAnalysis!
         );
 
-        this.services.promptGenerator = new PromptGenerator();
+        // Initialize tool-calling services
+        this.services.toolRegistry = new ToolRegistry();
+        this.services.toolExecutor = new ToolExecutor(this.services.toolRegistry, this.services.workspaceSettings!);
+        this.services.conversationManager = new ConversationManager();
+        this.services.subagentSessionManager = new SubagentSessionManager(this.services.workspaceSettings!);
+        this.services.toolCallingAnalysisProvider = new ToolCallingAnalysisProvider(
+            this.services.conversationManager,
+            this.services.toolExecutor,
+            this.services.copilotModelManager!,
+            this.services.promptGenerator!,
+            this.services.workspaceSettings!,
+            this.services.subagentSessionManager
+        );
+
+        this.services.subagentExecutor = new SubagentExecutor(
+            this.services.copilotModelManager!,
+            this.services.toolRegistry,
+            new SubagentPromptGenerator(),
+            this.services.workspaceSettings!
+        );
+
+        // Wire up SubagentExecutor to ToolCallingAnalysisProvider for progress context sharing
+        this.services.toolCallingAnalysisProvider.setSubagentExecutor(this.services.subagentExecutor);
+
+        // Register available tools (including subagent tool)
+        this.initializeTools();
+
+        // Initialize tool testing webview service
+        const gitRootPath = this.services.gitOperations!.getRepository()?.rootUri.fsPath || '';
+        this.services.toolTestingWebview = new ToolTestingWebviewService(
+            this.context,
+            gitRootPath,
+            this.services.toolRegistry,
+            this.services.toolExecutor
+        );
+
         this.services.tokenManager = new TokenManagerService(
             this.services.copilotModelManager!,
-            this.services.promptGenerator
+            this.services.promptGenerator!
         );
         this.services.analysisProvider = new AnalysisProvider(
             this.services.contextProvider,
             this.services.copilotModelManager!,
             this.services.tokenManager,
-            this.services.promptGenerator
+            this.services.promptGenerator!
         );
+    }
+
+    /**
+     * Initialize and register available tools for the LLM
+     */
+    private initializeTools(): void {
+        try {
+            // Register the FindSymbolTool (Get Definition functionality)
+            const findSymbolTool = new FindSymbolTool(this.services.gitOperations!, this.services.symbolExtractor!);
+            this.services.toolRegistry!.registerTool(findSymbolTool);
+
+            // Register the FindUsagesTool (Find Usages functionality)
+            const findUsagesTool = new FindUsagesTool();
+            this.services.toolRegistry!.registerTool(findUsagesTool);
+
+            // Register the ListDirTool (List Directory functionality)
+            const listDirTool = new ListDirTool(this.services.gitOperations!);
+            this.services.toolRegistry!.registerTool(listDirTool);
+
+            // Register the FindFileTool (Find File functionality)
+            const findFileTool = new FindFilesByPatternTool(this.services.gitOperations!);
+            this.services.toolRegistry!.registerTool(findFileTool);
+
+            // Register the ReadFileTool (Read File functionality)
+            const readFileTool = new ReadFileTool(this.services.gitOperations!);
+            this.services.toolRegistry!.registerTool(readFileTool);
+
+            // Register the GetSymbolsOverviewTool (Get Symbols Overview functionality)
+            const getSymbolsOverviewTool = new GetSymbolsOverviewTool(this.services.gitOperations!, this.services.symbolExtractor!);
+            this.services.toolRegistry!.registerTool(getSymbolsOverviewTool);
+
+            // Register the SearchForPatternTool (Search for Pattern functionality)
+            const searchForPatternTool = new SearchForPatternTool(this.services.gitOperations!);
+            this.services.toolRegistry!.registerTool(searchForPatternTool);
+
+            this.services.toolRegistry!.registerTool(new ThinkAboutContextTool());
+            this.services.toolRegistry!.registerTool(new ThinkAboutTaskTool());
+            this.services.toolRegistry!.registerTool(new ThinkAboutCompletionTool());
+            this.services.toolRegistry!.registerTool(new ThinkAboutInvestigationTool());
+
+            // Register the RunSubagentTool for delegating complex investigations
+            const runSubagentTool = new RunSubagentTool(
+                this.services.subagentExecutor!,
+                this.services.subagentSessionManager!,
+                this.services.workspaceSettings!
+            );
+            this.services.toolRegistry!.registerTool(runSubagentTool);
+
+            Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
+        } catch (error) {
+            Log.error(`Failed to initialize tools: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 
     /**
@@ -235,6 +369,10 @@ export class ServiceManager implements vscode.Disposable {
             this.services.analysisProvider,
             this.services.tokenManager,
             this.services.promptGenerator,
+            this.services.toolCallingAnalysisProvider,
+            this.services.conversationManager,
+            this.services.toolExecutor,
+            this.services.toolRegistry,
             this.services.contextProvider,
             this.services.embeddingDatabaseAdapter,
             this.services.indexingManager,

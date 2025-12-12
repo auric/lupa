@@ -24,31 +24,31 @@ export const FILE_PATH_REGEX = /(?:^|[\s\(\[\{,;])((?:[`"']?)(?:[a-zA-Z]:[/\\]|\
  */
 export function parseFilePaths(text: string): ParsedPath[] {
     const paths: ParsedPath[] = [];
-    
+
     // Create a new regex instance to avoid global state issues
     const regex = new RegExp(FILE_PATH_REGEX.source, FILE_PATH_REGEX.flags);
     let match: RegExpExecArray | null;
-    
+
     while ((match = regex.exec(text)) !== null) {
         let filePath = match[1];
         const lineStr = match[2] || match[4]; // Handle both formats: :123 and "at line 123"
         const columnStr = match[3];
-        
+
         // Clean up quotes and backticks from file path
         filePath = filePath.replace(/^[`"']|[`"']$/g, '');
-        
+
         // Skip if the path doesn't look like a real file path
         if (!isValidFilePath(filePath)) {
             continue;
         }
-        
+
         const line = lineStr ? parseInt(lineStr, 10) : undefined;
         const column = columnStr ? parseInt(columnStr, 10) : undefined;
-        
+
         // Calculate correct start and end indices
         const filePathStart = match.index + match[0].indexOf(match[1]);
         const filePathEnd = filePathStart + match[1].length;
-        
+
         paths.push({
             fullMatch: match[0],
             filePath,
@@ -58,7 +58,7 @@ export function parseFilePaths(text: string): ParsedPath[] {
             endIndex: filePathEnd
         });
     }
-    
+
     return paths;
 }
 
@@ -72,21 +72,21 @@ function isValidFilePath(path: string): boolean {
     if (!/\.[a-zA-Z0-9]+$/.test(path)) {
         return false;
     }
-    
+
     // Must not be too short or too long
     if (path.length < 3 || path.length > 1000) {
         return false;
     }
-    
+
     // Must not contain invalid characters for file paths
     if (/[<>"|*?]/.test(path)) {
         return false;
     }
-    
+
     // Must not be just dots
     if (/^\.+$/.test(path.replace(/[/\\]/g, ''))) {
         return false;
     }
-    
+
     return true;
 }

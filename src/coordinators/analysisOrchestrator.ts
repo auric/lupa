@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { AnalysisMode } from '../types/modelTypes';
+import type { ToolCallsData, AnalysisProgressCallback } from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 
 /**
@@ -7,20 +8,34 @@ import { IServiceRegistry } from '../services/serviceManager';
  * Orchestrates the interaction between UI, Git, and analysis services
  */
 export class AnalysisOrchestrator implements vscode.Disposable {
+    private isAnalysisRunning = false;
+
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly services: IServiceRegistry
     ) { }
 
     /**
+     * Check if an analysis is currently running
+     */
+    public isRunning(): boolean {
+        return this.isAnalysisRunning;
+    }
+
+    /**
      * Orchestrate the complete PR analysis workflow
      */
     public async analyzePR(): Promise<void> {
-        const statusId = 'pr-analysis';
+        if (this.isAnalysisRunning) {
+            vscode.window.showInformationMessage(
+                'Analysis is already in progress. Please wait for it to complete or cancel it.'
+            );
+            return;
+        }
+
+        this.isAnalysisRunning = true;
 
         try {
-            this.services.statusBar.showProgress(statusId, 'Analyzing PR', 'PR analysis in progress');
-
             // Initialize Git service
             const isGitAvailable = await this.services.gitOperations.initialize();
             if (!isGitAvailable) {
@@ -54,42 +69,9 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 return;
             }
 
-            // Perform the analysis with progress reporting
-            await this.services.uiManager.showAnalysisProgress('PR Analyzer', async (progress, token) => {
-                // Initial setup - 5%
-                progress.report({ message: 'Initializing analysis...', increment: 5 });
+            // Run the analysis with a progress notification
+            await this.runAnalysisWithProgress(diffText, refName, gitRootPath, analysisMode);
 
-                // Step 1: Run the analysis with detailed progress reporting - 85% total
-                const { analysis, context } = await this.services.analysisProvider.analyzePullRequest(
-                    diffText,
-                    gitRootPath,
-                    analysisMode,
-                    (message, increment) => {
-                        // Only update the message if no increment is specified
-                        if (increment) {
-                            // Use a very conservative scaling factor to ensure progress
-                            // never gets ahead of actual completion
-                            const scaledIncrement = Math.min(increment * 0.2, 1);
-                            progress.report({ message, increment: scaledIncrement });
-                        } else {
-                            progress.report({ message });
-                        }
-                    },
-                    token
-                );
-
-                // Step 2: Display the results - 10% remaining
-                progress.report({ message: 'Preparing analysis results...', increment: 5 });
-
-                // Create a title based on the reference
-                const title = `PR Analysis: ${refName}`;
-
-                // Display the results in a webview
-                this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis);
-                progress.report({ message: 'Analysis displayed', increment: 5 });
-            });
-
-            this.services.statusBar.showTemporaryMessage('Analysis complete', 3000, 'check');
         } catch (error) {
             if (error instanceof Error && error.message.includes('cancelled')) {
                 this.services.statusBar.showTemporaryMessage('Analysis cancelled', 3000, 'warning');
@@ -100,8 +82,83 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 vscode.window.showErrorMessage(`Failed to analyze PR: ${errorMessage}`);
             }
         } finally {
-            this.services.statusBar.hideProgress(statusId);
+            this.isAnalysisRunning = false;
         }
+    }
+
+    /**
+     * Run analysis with VS Code progress notification
+     * The notification appears automatically and can be minimized by user.
+     * When minimized, it moves to the status bar area near the bell icon.
+     * Clicking the status bar or bell icon reopens the notification.
+     */
+    private async runAnalysisWithProgress(
+        diffText: string,
+        refName: string,
+        gitRootPath: string,
+        analysisMode: AnalysisMode
+    ): Promise<void> {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: 'Analyzing PR (Esc to hide)',
+                cancellable: true
+            },
+            async (progress, token) => {
+                const cancellationTokenSource = new vscode.CancellationTokenSource();
+
+                // Link the VS Code cancellation token to our source
+                token.onCancellationRequested(() => {
+                    cancellationTokenSource.cancel();
+                });
+
+                try {
+                    const useEmbeddingLspAlgorithm = this.services.workspaceSettings.isEmbeddingLspAlgorithmEnabled();
+
+                    let analysis: string;
+                    let context: string;
+                    let toolCallsData: ToolCallsData | undefined;
+
+                    const updateProgress = (message: string) => {
+                        progress.report({ message });
+                    };
+
+                    updateProgress('Starting analysis...');
+
+                    if (useEmbeddingLspAlgorithm) {
+                        const result = await this.services.analysisProvider.analyzePullRequest(
+                            diffText,
+                            gitRootPath,
+                            analysisMode,
+                            updateProgress,
+                            cancellationTokenSource.token
+                        );
+
+                        analysis = result.analysis;
+                        context = result.context;
+                    } else {
+                        const progressCallback: AnalysisProgressCallback = updateProgress;
+
+                        const result = await this.services.toolCallingAnalysisProvider.analyze(
+                            diffText,
+                            cancellationTokenSource.token,
+                            progressCallback
+                        );
+                        analysis = result.analysis;
+                        toolCallsData = result.toolCalls;
+                        context = '';
+                    }
+
+                    // Display results in webview
+                    const title = `PR Analysis: ${refName}`;
+                    this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis, toolCallsData);
+
+                    this.services.statusBar.showTemporaryMessage('Analysis complete', 3000, 'check');
+                } finally {
+                    cancellationTokenSource.dispose();
+                }
+            }
+        );
     }
 
     /**
