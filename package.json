@@ -4,7 +4,7 @@
     "description": "A VS Code extension for comprehensive pull request analysis using GitHub Copilot models",
     "version": "0.1.0",
     "engines": {
-        "vscode": "^1.91.0",
+        "vscode": "^1.107.0",
         "node": ">=20"
     },
     "categories": [
