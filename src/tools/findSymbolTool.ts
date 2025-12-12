@@ -11,6 +11,7 @@ import { SymbolMatcher, type SymbolMatch, type BasicSymbolMatch } from '../utils
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
+import { withTimeout } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import ignore from 'ignore';
@@ -132,18 +133,6 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
   }
 
   /**
-   * Timeout wrapper for operations
-   */
-  private withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs)
-      )
-    ]);
-  }
-
-  /**
    * Get file path relative to git repository root (now using SymbolExtractor)
    */
   private getGitRelativePath(uri: vscode.Uri): string {
@@ -205,7 +194,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
           'vscode.executeWorkspaceSymbolProvider',
           targetSymbolName
         ));
-        workspaceSymbols = await this.withTimeout(symbolsPromise, SYMBOL_SEARCH_TIMEOUT, 'Workspace symbol search') || [];
+        workspaceSymbols = await withTimeout(symbolsPromise, SYMBOL_SEARCH_TIMEOUT, 'Workspace symbol search') || [];
       } catch (error) {
         Log.warn('Workspace symbol search failed:', error);
         return [];
@@ -226,7 +215,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
         try {
           const processSymbolPromise = this.processWorkspaceSymbol(symbol, pathSegments);
-          const match = await this.withTimeout(processSymbolPromise, FILE_PROCESSING_TIMEOUT, 'Symbol processing');
+          const match = await withTimeout(processSymbolPromise, FILE_PROCESSING_TIMEOUT, 'Symbol processing');
           if (match) {
             matches.push(match);
           }

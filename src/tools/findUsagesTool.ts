@@ -2,7 +2,11 @@ import { z } from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { UsageFormatter } from './usageFormatter';
+import { PathSanitizer } from '../utils/pathSanitizer';
+import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+
+const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
 
 /**
  * Tool that finds all usages of a code symbol using VS Code's reference provider.
@@ -35,17 +39,21 @@ Requires file_path where the symbol is defined as starting point.`;
     try {
       const { symbol_name, file_path, should_include_declaration, context_line_count } = args;
 
-      // Sanitize input to prevent potential injection attacks
-      const sanitizedSymbolName = symbol_name.trim();
-      const sanitizedFilePath = file_path.trim();
+      // Validate inputs before sanitization
+      const trimmedSymbol = symbol_name.trim();
+      const trimmedPath = file_path.trim();
 
-      if (!sanitizedSymbolName) {
+      if (!trimmedSymbol) {
         return toolError('Symbol name cannot be empty');
       }
 
-      if (!sanitizedFilePath) {
+      if (!trimmedPath) {
         return toolError('File path cannot be empty');
       }
+
+      // Sanitize input to prevent path traversal attacks
+      const sanitizedSymbolName = trimmedSymbol;
+      const sanitizedFilePath = PathSanitizer.sanitizePath(trimmedPath);
 
       // Get the document containing the symbol definition
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -70,12 +78,16 @@ Requires file_path where the symbol is defined as starting point.`;
       }
 
       try {
-        // Use VS Code's reference provider to find all references
-        const references = await vscode.commands.executeCommand<vscode.Location[]>(
-          'vscode.executeReferenceProvider',
-          document.uri,
-          symbolPosition,
-          { includeDeclaration: should_include_declaration || false }
+        // Use VS Code's reference provider to find all references (with timeout)
+        const references = await withTimeout(
+          Promise.resolve(vscode.commands.executeCommand<vscode.Location[]>(
+            'vscode.executeReferenceProvider',
+            document.uri,
+            symbolPosition,
+            { includeDeclaration: should_include_declaration || false }
+          )),
+          LSP_OPERATION_TIMEOUT,
+          `Reference search for ${sanitizedSymbolName}`
         );
 
         if (!references || references.length === 0) {
@@ -124,7 +136,11 @@ Requires file_path where the symbol is defined as starting point.`;
         return toolSuccess(formattedUsages.join('\n\n'));
 
       } catch (error) {
-        return toolError(`Error executing reference provider: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('timed out')) {
+          return toolError(`Reference search timed out. The language server may be slow or the codebase too large.`);
+        }
+        return toolError(`Error executing reference provider: ${message}`);
       }
 
     } catch (error) {

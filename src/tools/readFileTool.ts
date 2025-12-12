@@ -5,8 +5,11 @@ import { BaseTool } from './baseTool';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { OutputFormatter, FileContentOptions } from '../utils/outputFormatter';
+
+const FILE_OPERATION_TIMEOUT = 15000; // 30 seconds for file operations
 
 /**
  * Tool that reads file content with support for partial content reading.
@@ -49,17 +52,33 @@ export class ReadFileTool extends BaseTool {
       const fileUri = vscode.Uri.file(absoluteFilePath);
 
       try {
-        await vscode.workspace.fs.stat(fileUri);
-      } catch {
+        await withTimeout(
+          Promise.resolve(vscode.workspace.fs.stat(fileUri)),
+          FILE_OPERATION_TIMEOUT,
+          `File stat for ${sanitizedPath}`
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('timed out')) {
+          return toolError(`File operation timed out: ${sanitizedPath}`);
+        }
         return toolError(`File not found: ${sanitizedPath}`);
       }
 
       let fileContent: string;
       try {
-        const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+        const contentBytes = await withTimeout(
+          Promise.resolve(vscode.workspace.fs.readFile(fileUri)),
+          FILE_OPERATION_TIMEOUT,
+          `File read for ${sanitizedPath}`
+        );
         fileContent = Buffer.from(contentBytes).toString('utf8');
       } catch (error) {
-        return toolError(`Failed to read file ${sanitizedPath}: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes('timed out')) {
+          return toolError(`File read timed out: ${sanitizedPath}`);
+        }
+        return toolError(`Failed to read file ${sanitizedPath}: ${message}`);
       }
 
       const lines = fileContent.split('\n');

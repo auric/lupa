@@ -5,8 +5,11 @@ import ignore from 'ignore'
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
+import { withTimeout } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+
+const DIRECTORY_OPERATION_TIMEOUT = 15000; // 15 seconds for directory operations
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -34,8 +37,12 @@ export class ListDirTool extends BaseTool {
       // Sanitize the relative path to prevent directory traversal attacks
       const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
 
-      // List directory contents with ignore pattern support
-      const result = await this.callListDir(sanitizedPath, recursive);
+      // List directory contents with ignore pattern support (with timeout)
+      const result = await withTimeout(
+        this.callListDir(sanitizedPath, recursive),
+        DIRECTORY_OPERATION_TIMEOUT,
+        `Directory listing for ${sanitizedPath}`
+      );
 
       // Format the output as a single string
       const output = this.formatOutput(result);
@@ -44,7 +51,11 @@ export class ListDirTool extends BaseTool {
       return toolSuccess(output || '(empty directory)');
 
     } catch (error) {
-      return toolError(`Error listing directory: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('timed out')) {
+        return toolError(`Directory listing timed out. Try listing a smaller directory or disable recursion.`);
+      }
+      return toolError(`Error listing directory: ${message}`);
     }
   }
 

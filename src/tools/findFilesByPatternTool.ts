@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
+import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+
+const FILE_SEARCH_TIMEOUT = 60000; // 60 seconds for file search operations
 
 /**
  * Tool that finds files matching glob patterns within a directory.
@@ -39,11 +42,15 @@ export class FindFilesByPatternTool extends BaseTool {
         return toolError('Git repository not found');
       }
 
-      const result = await FileDiscoverer.discoverFiles(gitRepo, {
-        searchPath: searchPath || '.',
-        includePattern: pattern,
-        respectGitignore: true
-      });
+      const result = await withTimeout(
+        FileDiscoverer.discoverFiles(gitRepo, {
+          searchPath: searchPath || '.',
+          includePattern: pattern,
+          respectGitignore: true
+        }),
+        FILE_SEARCH_TIMEOUT,
+        `File search for pattern ${pattern}`
+      );
 
       if (result.files.length === 0) {
         return toolError(`No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'. Did you forget to add '**/' for recursive search in subdirectories?`);
@@ -59,6 +66,9 @@ export class FindFilesByPatternTool extends BaseTool {
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('timed out')) {
+        return toolError(`File search timed out. Try a more specific pattern or search in a smaller directory.`);
+      }
       return toolError(`Unable to find files: ${errorMessage}`);
     }
   }

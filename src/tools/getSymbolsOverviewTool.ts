@@ -8,7 +8,10 @@ import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { CodeFileUtils } from '../utils/codeFileUtils';
 import { OutputFormatter } from '../utils/outputFormatter';
+import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+
+const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
 
 /**
  * Enhanced tool that provides a configurable overview of symbols in a file or directory.
@@ -66,15 +69,19 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
       const effectiveMaxSymbols = maxSymbols || 100;
 
-      // Get symbols overview using enhanced utilities
-      const { content, symbolCount, truncated } = await this.getEnhancedSymbolsOverview(sanitizedPath, {
-        maxDepth: maxDepth || 0,
-        showHierarchy: showHierarchy ?? true,
-        includeBody: includeBody || false,
-        maxSymbols: effectiveMaxSymbols,
-        includeKinds,
-        excludeKinds
-      });
+      // Get symbols overview using enhanced utilities (with timeout)
+      const { content, symbolCount, truncated } = await withTimeout(
+        this.getEnhancedSymbolsOverview(sanitizedPath, {
+          maxDepth: maxDepth || 0,
+          showHierarchy: showHierarchy ?? true,
+          includeBody: includeBody || false,
+          maxSymbols: effectiveMaxSymbols,
+          includeKinds,
+          excludeKinds
+        }),
+        LSP_OPERATION_TIMEOUT,
+        `Symbol overview for ${sanitizedPath}`
+      );
 
       if (symbolCount === 0) {
         return toolError(`No symbols found in '${sanitizedPath}'`);
@@ -88,7 +95,11 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
       return toolSuccess(result);
 
     } catch (error) {
-      return toolError(`Failed to get symbols overview: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('timed out')) {
+        return toolError(`Symbol extraction timed out. Try a specific file path instead of a directory, or use filters.`);
+      }
+      return toolError(`Failed to get symbols overview: ${message}`);
     }
   }
 

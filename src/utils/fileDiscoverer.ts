@@ -60,7 +60,7 @@ export interface FileDiscoveryResult {
  */
 export class FileDiscoverer {
   private static readonly DEFAULT_MAX_RESULTS = 1000;
-  private static readonly DEFAULT_TIMEOUT = 30000; // 30 seconds
+  private static readonly DEFAULT_TIMEOUT = 15000; // 15 seconds
 
   /**
    * Discover files matching the specified criteria
