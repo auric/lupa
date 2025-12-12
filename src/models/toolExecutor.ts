@@ -226,6 +226,14 @@ export class ToolExecutor {
   }
 
   /**
+   * Reset the tool call counter for a new analysis session.
+   * Should be called at the start of each new analysis to ensure clean rate limiting.
+   */
+  resetToolCallCount(): void {
+    this.toolCallCount = 0;
+  }
+
+  /**
    * Validate the size of a tool response
    * @param result The result string returned by the tool
    * @param toolName Name of the tool for error messages

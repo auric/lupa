@@ -79,6 +79,7 @@ export class ToolCallingAnalysisProvider {
     // Reset state for new analysis
     this.toolCallRecords = [];
     this.conversationRunner.reset();
+    this.toolExecutor.resetToolCallCount();
     this.currentIteration = 0;
     this.currentMaxIterations = this.maxIterations;
 
