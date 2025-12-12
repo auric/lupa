@@ -89,7 +89,7 @@ export class SubagentExecutor {
             const toolExecutor = new ToolExecutor(filteredRegistry, this.workspaceSettings);
             const conversationRunner = new ConversationRunner(this.modelManager, toolExecutor);
 
-            const maxIterations = task.maxIterations ?? this.workspaceSettings.getMaxIterations();
+            const maxIterations = this.workspaceSettings.getMaxIterations();
             const systemPrompt = this.promptGenerator.generateSystemPrompt(task, filteredTools, maxIterations);
 
             conversation.addUserMessage(`Please investigate: ${task.task}`);

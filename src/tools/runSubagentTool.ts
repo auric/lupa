@@ -31,12 +31,9 @@ RULES:
 
 MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
-    private maxIterationsFromSettings: number;
-
     schema: z.ZodObject<{
         task: z.ZodString;
         context: z.ZodOptional<z.ZodString>;
-        max_iterations: z.ZodOptional<z.ZodDefault<z.ZodNumber>>;
     }>;
 
     private cancellationTokenSource: vscode.CancellationTokenSource | null = null;
@@ -47,7 +44,6 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         private readonly workspaceSettings: WorkspaceSettingsService
     ) {
         super();
-        this.maxIterationsFromSettings = this.workspaceSettings.getMaxIterations();
 
         this.schema = z.object({
             task: z.string()
@@ -60,16 +56,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 ),
             context: z.string().optional().describe(
                 'Relevant context from your current analysis: code snippets, file paths, findings, or symbol names.'
-            ),
-            max_iterations: z.number()
-                .min(1)
-                .max(this.maxIterationsFromSettings)
-                .default(this.maxIterationsFromSettings)
-                .optional()
-                .describe(
-                    `Maximum iterations for the subagent (default: ${this.maxIterationsFromSettings}). ` +
-                    'Increase for complex investigations, decrease for focused lookups.'
-                )
+            )
         });
     }
 
@@ -79,7 +66,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             return toolError(validationResult.error.issues.map(e => e.message).join(', '));
         }
 
-        const { task, context, max_iterations } = validationResult.data;
+        const { task, context } = validationResult.data;
         const maxSubagents = this.workspaceSettings.getMaxSubagentsPerSession();
         const timeoutMs = this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
@@ -104,8 +91,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             const result = await this.executor.execute(
                 {
                     task,
-                    context,
-                    maxIterations: max_iterations
+                    context
                 },
                 this.cancellationTokenSource.token,
                 subagentId

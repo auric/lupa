@@ -96,8 +96,6 @@ export interface ToolCallResponse {
 export interface SubagentTask {
     task: string;
     context?: string;
-    /** Maximum iterations for subagent (uses workspace setting if not specified) */
-    maxIterations?: number;
 }
 
 /**

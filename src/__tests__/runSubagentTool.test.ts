@@ -91,33 +91,6 @@ describe('RunSubagentTool', () => {
                 expect.any(Number)
             );
         });
-
-        it('should accept optional max_iterations parameter', async () => {
-            const mockExecutor = createMockExecutor();
-            const tool = new RunSubagentTool(mockExecutor, sessionManager, workspaceSettings);
-
-            await tool.execute({
-                task: 'Investigate the authentication flow thoroughly',
-                max_iterations: 8
-            });
-
-            expect(mockExecutor.execute).toHaveBeenCalledWith(
-                expect.objectContaining({ maxIterations: 8 }),
-                expect.anything(),
-                expect.any(Number)
-            );
-        });
-
-        it('should reject max_iterations above workspace setting limit', async () => {
-            const tool = new RunSubagentTool(createMockExecutor(), sessionManager, workspaceSettings);
-
-            const result = await tool.execute({
-                task: 'Investigate the authentication flow thoroughly',
-                max_iterations: 11
-            });
-
-            expect(result.success).toBe(false);
-        });
     });
 
     describe('Session Limits', () => {
