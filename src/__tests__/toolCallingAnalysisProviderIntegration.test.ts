@@ -86,7 +86,8 @@ index 1234567..abcdefg 100644
                 success: true,
                 result: ['Tool execution result'],
                 name: 'find_symbol'
-            }])
+            }]),
+            resetToolCallCount: vi.fn()
         };
 
         const mockModel = {

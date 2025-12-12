@@ -53,6 +53,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
   let mockToolExecutor: {
     getAvailableTools: Mock;
     executeTools: Mock;
+    resetToolCallCount: Mock;
   };
   let mockCopilotModelManager: {
     getCurrentModel: Mock;
@@ -91,7 +92,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
     mockToolExecutor = {
       getAvailableTools: vi.fn(() => []),
-      executeTools: vi.fn(() => Promise.resolve([]))
+      executeTools: vi.fn(() => Promise.resolve([])),
+      resetToolCallCount: vi.fn()
     };
 
     mockPromptGenerator = {
