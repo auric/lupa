@@ -122,6 +122,7 @@ html,
 body,
 #root {
   height: 100%;
+  overflow: hidden;
 }
 
 /* VSCode-style tab components */
@@ -142,7 +143,6 @@ body,
 .vscode-tab-content {
   @apply flex-1 m-0 p-3 focus-visible:outline-none;
   background-color: var(--vscode-editor-background);
-  overflow: auto;
 }
 
 @theme inline {

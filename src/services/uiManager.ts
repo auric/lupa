@@ -141,7 +141,7 @@ export class UIManager {
                 #root {
                     width: 100%;
                     height: 100vh;
-                    overflow: auto;
+                    overflow: hidden;
                 }
                 .loading {
                     display: flex;

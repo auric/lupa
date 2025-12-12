@@ -79,11 +79,11 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, a
                     />
                 </TabsContent>
 
-                <TabsContent value="toolcalls" className="vscode-tab-content flex-1 min-h-0 overflow-hidden bg-background">
+                <TabsContent value="toolcalls" className="vscode-tab-content flex-1 min-h-0 overflow-hidden flex flex-col bg-background">
                     <ToolCallsTab toolCalls={toolCalls} onCopy={copyToClipboard} />
                 </TabsContent>
 
-                <TabsContent value="changes" className="vscode-tab-content flex-1 min-h-0 overflow-auto bg-background">
+                <TabsContent value="changes" className="vscode-tab-content flex-1 min-h-0 overflow-hidden flex flex-col bg-background">
                     <DiffTab diffText={diffText} viewType={viewType} />
                 </TabsContent>
             </Tabs>

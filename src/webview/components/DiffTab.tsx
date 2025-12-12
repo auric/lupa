@@ -49,7 +49,7 @@ export const DiffTab = memo<DiffTabProps>(({ diffText, viewType }) => {
     }, [diffFiles]);
 
     const result = (
-        <div className="border rounded-lg bg-background" style={{ maxHeight: '100%', overflow: 'auto' }}>
+        <div className="border rounded-lg bg-background flex-1 min-h-0 overflow-auto">
             <div className="w-full">
                 {tokenizedFiles.map((file, index) => (
                     <div key={index} className="mb-4">
