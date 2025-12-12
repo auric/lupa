@@ -9,12 +9,26 @@ VS Code extension for PR analysis using GitHub Copilot. See [CLAUDE.md](../CLAUD
 - **Circular deps use null+setter injection** - `ServiceManager` creates `IndexingManager` with null, then injects `EmbeddingDatabaseAdapter` via setter
 - **Two model types** - Embedding models (local, semantic search) vs Language models (Copilot API, analysis)
 
+## Planned Deprecation
+
+The embedding-based context system is being phased out. Do not invest in:
+
+- `IndexingService`, `IndexingManager`, `EmbeddingGenerationService`
+- `VectorDatabaseService`, `EmbeddingDatabaseAdapter`
+- `ContextProvider` embedding search paths
+- Worker-based embedding generation (`src/workers/`)
+
+Future direction: Tool-calling analysis via `ToolCallingAnalysisProvider` only.
+
 ## Commands
 
-- `npm run build` - Build extension + webview
-- `npm run test` - Run tests (output can be long; read final summary only)
+- `npm run check-types` - Fast type checking (~2s), prefer over `npm run build` for validation
+- `npm run build` - Full build (~30s), use sparingly
+- `npm run test` - Run all tests; **output is massive**, read only final summary lines
 - `npm run package` - Production build
 - `npx vitest run src/__tests__/file.test.ts` - Single test
+
+**Context window warning:** Test output can overwhelm context. After running tests, read only the last ~50 lines for the summary. Prefer running specific test files over the full suite.
 
 ## Conventions
 
@@ -31,3 +45,22 @@ VS Code extension for PR analysis using GitHub Copilot. See [CLAUDE.md](../CLAUD
 - [toolCallingAnalysisProvider.ts](../src/services/toolCallingAnalysisProvider.ts) - Main analysis loop
 - [vectorDatabaseService.ts](../src/services/vectorDatabaseService.ts) - SQLite + HNSWlib storage
 - [vite.config.mts](../vite.config.mts) - Dual build config (Node.js extension + browser webview)
+
+## Agent Behavior
+
+Be a skeptical collaborator, not a compliant assistant. Question assumptions, verify claims against the codebase, and push back when something seems wrong. I am not always right. Neither are you, but we both strive for accuracy.
+
+**Code quality expectations:**
+
+- Write production-ready TypeScript: DRY, SOLID, properly typed
+- Comments only where non-obvious; avoid redundant explanations
+- Documentation should read as if written by a senior engineer, not generated
+- Verify changes compile (`npm run build`) and consider test impact
+
+**Working style:**
+
+- Research before implementing—read existing patterns in the codebase first
+- When uncertain, investigate rather than guess
+- Propose alternatives if you see a better approach
+- Acknowledge limitations honestly rather than fabricating answers
+- Use subagents for parallel research tasks—break complex work into small, focused subtasks (never delegate the entire task to a single subagent)
