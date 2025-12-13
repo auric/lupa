@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { StatusBarService } from './statusBarService';
 import { AnalysisMode } from '../types/modelTypes';
 import type { ToolCallsData } from '../types/toolCallTypes';
+import { type AnalysisTargetType, ANALYSIS_TARGET_OPTIONS } from '../types/analysisTypes';
 import { Log } from './loggingService';
 import type {
     WebviewMessageType,
@@ -26,22 +27,23 @@ export class UIManager {
     }
 
     /**
-     * Show quick pick for analysis type selection
+     * Show quick pick for analysis type selection.
+     * Only offers targets that maintain consistency between diff and tool-accessible state.
      */
-    public async showAnalysisTypeOptions(): Promise<string | undefined> {
-        const analysisOptions = [
-            { label: 'Current Branch vs Default Branch', description: 'Compare the current branch with the default branch' },
-            { label: 'Select Branch', description: 'Select a branch to compare with the default branch' },
-            { label: 'Select Commit', description: 'Select a specific commit to analyze' },
-            { label: 'Current Changes', description: 'Analyze uncommitted changes' }
-        ];
+    public async showAnalysisTypeOptions(): Promise<AnalysisTargetType | undefined> {
+        const selectedOption = await vscode.window.showQuickPick(
+            ANALYSIS_TARGET_OPTIONS.map(opt => ({
+                label: opt.label,
+                description: opt.description,
+                target: opt.target
+            })),
+            {
+                placeHolder: 'Select what to analyze',
+                matchOnDescription: true
+            }
+        );
 
-        const selectedOption = await vscode.window.showQuickPick(analysisOptions, {
-            placeHolder: 'Select what to analyze',
-            matchOnDescription: true
-        });
-
-        return selectedOption?.label;
+        return selectedOption?.target;
     }
 
     /**

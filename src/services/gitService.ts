@@ -6,27 +6,7 @@ import type {
     GitExtension,
     Repository
 } from '../types/vscodeGitExtension';
-import { RefType } from '../types/vscodeGitExtension';
 import { Log } from './loggingService';
-
-/**
- * Represents a Git commit
- */
-export interface GitCommit {
-    hash: string;
-    message: string;
-    author: string;
-    date: number;
-}
-
-/**
- * Represents Git branch information
- */
-export interface GitBranch {
-    name: string;
-    isDefault: boolean;
-    isCurrent: boolean;
-}
 
 /**
  * Options for comparing branches
@@ -278,93 +258,6 @@ export class GitService {
     }
 
     /**
-     * Get all branches in the repository
-     */
-    public async getBranches(): Promise<GitBranch[]> {
-        try {
-            if (!this.isInitialized() || !this.repository) {
-                throw new Error('Git service not initialized');
-            }
-
-            const defaultBranch = await this.getDefaultBranch();
-            const currentBranch = this.repository.state.HEAD?.name;
-
-            // Get local branches from the repository
-            const branchRefs = await this.repository.getRefs({
-                pattern: '*',
-                includeCommitDetails: false
-            });
-
-            // Filter to only include local branches (type = HEAD)
-            const branches: GitBranch[] = branchRefs
-                .filter(ref => ref.type === RefType.Head)
-                .map(ref => ({
-                    name: ref.name || '',
-                    isDefault: ref.name === defaultBranch,
-                    isCurrent: ref.name === currentBranch
-                }));
-
-            return branches;
-        } catch (error) {
-            Log.error('Error getting branches:', error);
-            return [];
-        }
-    }
-
-    /**
-     * Get recent commits from the repository
-     * @param limit Maximum number of commits to return
-     */
-    public async getRecentCommits(limit: number = 30): Promise<GitCommit[]> {
-        try {
-            if (!this.isInitialized() || !this.repository) {
-                throw new Error('Git service not initialized');
-            }
-
-            // Use the VS Code Git API to get commits
-            const commits = await this.repository.log({
-                maxEntries: limit
-            });
-
-            // Convert to our GitCommit format
-            return commits.map(commit => ({
-                hash: commit.hash,
-                message: commit.message,
-                author: commit.authorName || 'Unknown',
-                date: commit.authorDate ? commit.authorDate.getTime() : Date.now()
-            }));
-        } catch (error) {
-            Log.error('Error getting recent commits:', error);
-            return [];
-        }
-    }
-
-    /**
-     * Get a specific commit by hash
-     * @param hash The commit hash to lookup
-     */
-    public async getCommit(hash: string): Promise<GitCommit | undefined> {
-        try {
-            if (!this.isInitialized() || !this.repository) {
-                throw new Error('Git service not initialized');
-            }
-
-            // Use repository API to get commit details
-            const commit = await this.repository.getCommit(hash);
-
-            return {
-                hash: commit.hash,
-                message: commit.message,
-                author: commit.authorName || 'Unknown',
-                date: commit.authorDate ? commit.authorDate.getTime() : Date.now()
-            };
-        } catch (error) {
-            Log.error(`Error getting commit ${hash}:`, error);
-            return undefined;
-        }
-    }
-
-    /**
      * Compare two branches or refs and get the diff
      * @param options The compare options
      */
@@ -406,35 +299,6 @@ export class GitService {
                 diffText: '',
                 refName: options.compare || 'unknown',
                 error: `Failed to compare branches: ${error instanceof Error ? error.message : String(error)}`
-            };
-        }
-    }
-
-    /**
-     * Get the diff for a specific commit
-     * @param hash The commit hash
-     */
-    public async getCommitDiff(hash: string): Promise<GitDiffResult> {
-        try {
-            if (!this.isInitialized() || !this.repository) {
-                throw new Error('Git service not initialized');
-            }
-
-            const commit = await this.getCommit(hash);
-
-            // Use Git command to show the commit with diff
-            const diffText = await this.executeGitCommand(['show', hash]);
-
-            return {
-                diffText,
-                refName: `commit ${hash.substring(0, 7)}${commit ? ` (${commit.message})` : ''}`
-            };
-        } catch (error) {
-            Log.error(`Error getting diff for commit ${hash}:`, error);
-            return {
-                diffText: '',
-                refName: `commit ${hash.substring(0, 7)}`,
-                error: `Failed to get commit diff: ${error instanceof Error ? error.message : String(error)}`
             };
         }
     }
