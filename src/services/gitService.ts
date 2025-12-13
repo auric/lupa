@@ -7,6 +7,7 @@ import type {
     Repository
 } from '../types/vscodeGitExtension';
 import { Log } from './loggingService';
+import type { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
  * Options for comparing branches
@@ -30,6 +31,7 @@ export interface GitDiffResult {
  */
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
     repository: Repository;
+    isSubmodule: boolean;
 }
 
 /**
@@ -40,6 +42,7 @@ export class GitService {
     private repository: Repository | null = null;
     private static instance: GitService | null = null;
     private defaultBranchCache: string | null = null;
+    private workspaceSettings: WorkspaceSettingsService | null = null;
 
     /**
      * Get the singleton instance of GitService
@@ -57,11 +60,16 @@ export class GitService {
     private constructor() { }
 
     /**
-     * Initialize the Git service
+     * Initialize the Git service with smart repository selection
+     * @param workspaceSettings Optional settings service for persistence
      * @returns True if Git API is available and repository is found
      */
-    public async initialize(): Promise<boolean> {
+    public async initialize(workspaceSettings?: WorkspaceSettingsService): Promise<boolean> {
         try {
+            if (workspaceSettings) {
+                this.workspaceSettings = workspaceSettings;
+            }
+
             const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
             if (!gitExtension) {
                 Log.info('Git extension not available');
@@ -93,18 +101,30 @@ export class GitService {
                 }
             }
 
-            // If multiple repositories are available, let the user select one
-            if (this.gitApi.repositories.length > 1) {
-                const selectedRepo = await this.selectRepository();
-                if (!selectedRepo) {
-                    // User canceled repository selection
-                    return false;
-                }
-                this.repository = selectedRepo;
-            } else {
-                // Just use the only repository
-                this.repository = this.gitApi.repositories[0];
+            const savedRepo = this.findSavedRepository();
+            if (savedRepo) {
+                Log.info(`Using saved repository: ${savedRepo.rootUri.fsPath}`);
+                this.repository = savedRepo;
+                return true;
             }
+
+            // Try to auto-select a main (non-submodule) repository
+            const autoSelected = this.autoSelectMainRepository();
+            if (autoSelected) {
+                Log.info(`Auto-selected main repository: ${autoSelected.rootUri.fsPath}`);
+                this.repository = autoSelected;
+                this.saveRepositorySelection(autoSelected);
+                return true;
+            }
+
+            // Multiple main repositories or only submodules - prompt user
+            const selectedRepo = await this.showRepositoryPicker();
+            if (!selectedRepo) {
+                // User canceled repository selection
+                return false;
+            }
+            this.repository = selectedRepo;
+            this.saveRepositorySelection(selectedRepo);
 
             return true;
         } catch (error) {
@@ -114,35 +134,186 @@ export class GitService {
     }
 
     /**
-     * Allow user to select a repository when multiple are available
-     * @returns The selected repository or undefined if selection was canceled
+     * Collect all submodule paths from all repositories
      */
-    private async selectRepository(): Promise<Repository | undefined> {
-        // Get list of repositories
-        const repositories = this.gitApi!.repositories;
+    private getSubmodulePaths(): Set<string> {
+        const submodulePaths = new Set<string>();
+        if (!this.gitApi) {
+            return submodulePaths;
+        }
 
-        // Create QuickPick items for each repository
-        const items: RepositoryQuickPickItem[] = repositories.map((repo: Repository) => {
-            // Get the repository root path
-            const rootPath = repo.rootUri.fsPath;
-            // Get repository name (last segment of path)
-            const name = rootPath.split(/[/\\]/).pop() || rootPath;
+        for (const repo of this.gitApi.repositories) {
+            const repoRoot = repo.rootUri.fsPath;
+            for (const submodule of repo.state.submodules) {
+                // Submodule path is relative to the parent repo
+                const absolutePath = vscode.Uri.joinPath(repo.rootUri, submodule.path).fsPath;
+                submodulePaths.add(this.normalizePath(absolutePath));
+            }
+        }
+        return submodulePaths;
+    }
 
-            return {
-                label: name,
-                description: rootPath,
-                repository: repo
-            };
-        });
+    /**
+     * Normalize path for comparison (lowercase on Windows, consistent separators)
+     */
+    private normalizePath(p: string): string {
+        const normalized = p.replace(/\\/g, '/');
+        return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+    }
 
-        // Show QuickPick for repository selection
+    /**
+     * Check if a repository is a submodule
+     */
+    private isSubmodule(repo: Repository): boolean {
+        const submodulePaths = this.getSubmodulePaths();
+        return submodulePaths.has(this.normalizePath(repo.rootUri.fsPath));
+    }
+
+    /**
+     * Get all non-submodule (main) repositories
+     */
+    private getMainRepositories(): Repository[] {
+        if (!this.gitApi) {
+            return [];
+        }
+        const submodulePaths = this.getSubmodulePaths();
+        return this.gitApi.repositories.filter(repo =>
+            !submodulePaths.has(this.normalizePath(repo.rootUri.fsPath))
+        );
+    }
+
+    /**
+     * Find the saved repository if it still exists
+     */
+    private findSavedRepository(): Repository | undefined {
+        if (!this.workspaceSettings || !this.gitApi) {
+            return undefined;
+        }
+
+        const savedPath = this.workspaceSettings.getSelectedRepositoryPath();
+        if (!savedPath) {
+            return undefined;
+        }
+
+        const normalizedSaved = this.normalizePath(savedPath);
+        return this.gitApi.repositories.find(repo =>
+            this.normalizePath(repo.rootUri.fsPath) === normalizedSaved
+        );
+    }
+
+    /**
+     * Try to auto-select a main repository
+     * Returns undefined if there are multiple main repos or none
+     */
+    private autoSelectMainRepository(): Repository | undefined {
+        const mainRepos = this.getMainRepositories();
+
+        // Only auto-select if there's exactly one main repository
+        if (mainRepos.length === 1) {
+            return mainRepos[0];
+        }
+
+        // If all repos are submodules and there's only one, use it
+        if (mainRepos.length === 0 && this.gitApi && this.gitApi.repositories.length === 1) {
+            return this.gitApi.repositories[0];
+        }
+
+        return undefined;
+    }
+
+    /**
+     * Save the repository selection to workspace settings
+     */
+    private saveRepositorySelection(repo: Repository): void {
+        if (this.workspaceSettings) {
+            this.workspaceSettings.setSelectedRepositoryPath(repo.rootUri.fsPath);
+        }
+    }
+
+    /**
+     * Show repository picker with submodule indicators
+     * @returns The selected repository or undefined if canceled
+     */
+    private async showRepositoryPicker(): Promise<Repository | undefined> {
+        if (!this.gitApi) {
+            return undefined;
+        }
+
+        const submodulePaths = this.getSubmodulePaths();
+        const repositories = this.gitApi.repositories;
+
+        // Create QuickPick items with submodule indicators, sorted main repos first
+        const items: RepositoryQuickPickItem[] = repositories
+            .map((repo: Repository) => {
+                const rootPath = repo.rootUri.fsPath;
+                const name = rootPath.split(/[/\\]/).pop() || rootPath;
+                const isSubmodule = submodulePaths.has(this.normalizePath(rootPath));
+
+                return {
+                    label: isSubmodule ? `$(git-submodule) ${name}` : `$(repo) ${name}`,
+                    description: rootPath,
+                    detail: isSubmodule ? 'Submodule' : undefined,
+                    repository: repo,
+                    isSubmodule
+                };
+            })
+            .sort((a, b) => {
+                // Main repos first, then submodules
+                if (a.isSubmodule !== b.isSubmodule) {
+                    return a.isSubmodule ? 1 : -1;
+                }
+                // Within same type, sort alphabetically
+                return a.label.localeCompare(b.label);
+            });
+
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Select Git repository to use for PR analysis',
-            title: 'Multiple Git repositories detected'
+            title: 'Select Repository'
         });
 
-        // Return the selected repository or undefined if canceled
-        return selected ? selected.repository : undefined;
+        return selected?.repository;
+    }
+
+    /**
+     * Allow user to manually select a different repository
+     * Called by the lupa.selectRepository command
+     * @param workspaceSettings Settings service for persistence
+     * @returns True if a repository was selected, false if canceled
+     */
+    public async selectRepositoryManually(workspaceSettings?: WorkspaceSettingsService): Promise<boolean> {
+        if (workspaceSettings) {
+            this.workspaceSettings = workspaceSettings;
+        }
+
+        // Ensure Git API is available
+        if (!this.gitApi) {
+            const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
+            if (!gitExtension?.enabled) {
+                vscode.window.showErrorMessage('Git extension is not available');
+                return false;
+            }
+            this.gitApi = gitExtension.getAPI(1);
+        }
+
+        if (!this.gitApi || this.gitApi.repositories.length === 0) {
+            vscode.window.showErrorMessage('No Git repositories found in workspace');
+            return false;
+        }
+
+        const selectedRepo = await this.showRepositoryPicker();
+        if (!selectedRepo) {
+            return false;
+        }
+
+        this.repository = selectedRepo;
+        this.saveRepositorySelection(selectedRepo);
+        this.defaultBranchCache = null; // Clear cache when switching repos
+
+        vscode.window.showInformationMessage(
+            `Selected repository: ${selectedRepo.rootUri.fsPath.split(/[/\\]/).pop()}`
+        );
+
+        return true;
     }
 
     /**

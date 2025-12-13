@@ -50,6 +50,11 @@ export class CommandRegistry implements vscode.Disposable {
             this.copilotModelCoordinator.showCopilotModelSelectionOptions()
         );
 
+        // Repository selection command
+        this.registerCommand('lupa.selectRepository', () =>
+            this.selectRepository()
+        );
+
         // Database management commands
         this.registerCommand('lupa.manageDatabase', () =>
             this.databaseOrchestrator.showDatabaseManagementOptions()
@@ -97,6 +102,13 @@ export class CommandRegistry implements vscode.Disposable {
             `Max Iterations: ${ANALYSIS_LIMITS.maxIterations.default}, ` +
             `Request Timeout: ${ANALYSIS_LIMITS.requestTimeoutSeconds.default}s`
         );
+    }
+
+    /**
+     * Allow user to manually select a different Git repository
+     */
+    private async selectRepository(): Promise<void> {
+        await this.services.gitOperations.selectRepositoryManually();
     }
 
     /**

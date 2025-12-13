@@ -193,6 +193,22 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
+     * Get the selected repository path for this workspace
+     */
+    public getSelectedRepositoryPath(): string | undefined {
+        return this.settings.selectedRepositoryPath;
+    }
+
+    /**
+     * Set the selected repository path for this workspace
+     * @param path The absolute path to the repository root
+     */
+    public setSelectedRepositoryPath(path: string | undefined): void {
+        this.settings.selectedRepositoryPath = path;
+        this.debouncedSaveSettings();
+    }
+
+    /**
      * Get the preferred language model version
      */
     public getPreferredModelVersion(): string | undefined {
@@ -271,11 +287,12 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Clear all workspace settings (except for selected models)
+     * Clear all workspace settings (except for selected models and repository)
      */
     public clearWorkspaceSettings(): void {
         const selectedEmbeddingModel = this.settings.selectedEmbeddingModel;
         const preferredModelVersion = this.settings.preferredModelVersion;
+        const selectedRepositoryPath = this.settings.selectedRepositoryPath;
 
         this.settings = getDefaultSettings();
 
@@ -285,6 +302,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
         if (preferredModelVersion) {
             this.settings.preferredModelVersion = preferredModelVersion;
+        }
+
+        if (selectedRepositoryPath) {
+            this.settings.selectedRepositoryPath = selectedRepositoryPath;
         }
 
         this.saveSettings();

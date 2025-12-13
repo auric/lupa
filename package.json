@@ -56,6 +56,10 @@
                 "title": "Lupa: Select Language Model"
             },
             {
+                "command": "lupa.selectRepository",
+                "title": "Lupa: Select Git Repository"
+            },
+            {
                 "command": "lupa.resetAnalysisLimits",
                 "title": "Lupa: Reset Analysis Limits to Defaults"
             },

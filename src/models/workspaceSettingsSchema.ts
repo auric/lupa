@@ -13,6 +13,7 @@ export const SUBAGENT_LIMITS = {
 
 export const WorkspaceSettingsSchema = z.looseObject({
     selectedEmbeddingModel: z.enum(EmbeddingModel).optional(),
+    selectedRepositoryPath: z.string().optional(),
     lastIndexingTimestamp: z.number().positive().optional(),
     preferredModelVersion: z.string().optional(),
     enableEmbeddingLspAlgorithm: z.boolean().default(false),

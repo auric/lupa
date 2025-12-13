@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { GitService } from './gitService';
+import type { WorkspaceSettingsService } from './workspaceSettingsService';
 import type { AnalysisTargetType } from '../types/analysisTypes';
 
 /**
@@ -19,9 +20,11 @@ export interface DiffResult {
  */
 export class GitOperationsManager implements vscode.Disposable {
     private gitService: GitService;
+    private workspaceSettings: WorkspaceSettingsService | undefined;
 
-    constructor() {
+    constructor(workspaceSettings?: WorkspaceSettingsService) {
         this.gitService = GitService.getInstance();
+        this.workspaceSettings = workspaceSettings;
     }
 
     /**
@@ -29,7 +32,15 @@ export class GitOperationsManager implements vscode.Disposable {
      * @returns true if Git is available, false otherwise
      */
     public async initialize(): Promise<boolean> {
-        return await this.gitService.initialize();
+        return await this.gitService.initialize(this.workspaceSettings);
+    }
+
+    /**
+     * Allow user to manually select a different repository
+     * @returns True if a repository was selected, false if canceled
+     */
+    public async selectRepositoryManually(): Promise<boolean> {
+        return await this.gitService.selectRepositoryManually(this.workspaceSettings);
     }
 
     /**
