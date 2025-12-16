@@ -33,21 +33,28 @@ export class ModelRequestHandler {
             } else if (msg.role === 'assistant') {
                 const content: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
 
-                // Add text content if present
                 if (msg.content) {
                     content.push(new vscode.LanguageModelTextPart(msg.content));
                 }
 
-                // Add tool calls if present
                 if (msg.toolCalls) {
                     for (const toolCall of msg.toolCalls) {
-                        const input = JSON.parse(toolCall.function.arguments);
-                        content.push(new vscode.LanguageModelToolCallPart(
-                            toolCall.id,
-                            toolCall.function.name,
-                            input
-                        ));
+                        try {
+                            const input = JSON.parse(toolCall.function.arguments);
+                            content.push(new vscode.LanguageModelToolCallPart(
+                                toolCall.id,
+                                toolCall.function.name,
+                                input
+                            ));
+                        } catch (error) {
+                            continue;
+                        }
                     }
+                }
+
+                // Ensure content is not empty (VS Code API requirement)
+                if (content.length === 0) {
+                    content.push(new vscode.LanguageModelTextPart(''));
                 }
 
                 result.push(vscode.LanguageModelChatMessage.Assistant(content));
@@ -80,7 +87,12 @@ export class ModelRequestHandler {
         timeoutMs: number,
         token: vscode.CancellationToken
     ): Promise<T> {
+        if (token.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let cancellationDisposable: vscode.Disposable | undefined;
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
@@ -91,21 +103,25 @@ export class ModelRequestHandler {
             }, timeoutMs);
         });
 
-        const cleanup = () => {
+        const cancellationPromise = new Promise<never>((_, reject) => {
+            cancellationDisposable = token.onCancellationRequested(() => {
+                reject(new vscode.CancellationError());
+            });
+        });
+
+        try {
+            return await Promise.race([
+                Promise.resolve(thenable),
+                timeoutPromise,
+                cancellationPromise
+            ]);
+        } finally {
             if (timeoutId !== undefined) {
                 clearTimeout(timeoutId);
             }
-        };
-
-        token.onCancellationRequested(cleanup);
-
-        try {
-            const result = await Promise.race([Promise.resolve(thenable), timeoutPromise]);
-            cleanup();
-            return result;
-        } catch (error) {
-            cleanup();
-            throw error;
+            if (cancellationDisposable) {
+                cancellationDisposable.dispose();
+            }
         }
     }
 
@@ -129,22 +145,18 @@ export class ModelRequestHandler {
         token: vscode.CancellationToken,
         timeoutMs: number
     ): Promise<ToolCallResponse> {
-        // Convert messages to VS Code format
         const messages = ModelRequestHandler.convertMessages(request.messages);
 
-        // Create request options with tools if provided
         const options: vscode.LanguageModelChatRequestOptions = {
             tools: request.tools || []
         };
 
-        // Send the request with timeout
         const response = await ModelRequestHandler.withTimeout(
             model.sendRequest(messages, options, token),
             timeoutMs,
             token
         );
 
-        // Parse the response stream for both text and tool calls
         let responseText = '';
         const toolCalls: ToolCall[] = [];
 
@@ -152,7 +164,6 @@ export class ModelRequestHandler {
             if (chunk instanceof vscode.LanguageModelTextPart) {
                 responseText += chunk.value;
             } else if (chunk instanceof vscode.LanguageModelToolCallPart) {
-                // Parse tool call from response
                 toolCalls.push({
                     id: chunk.callId,
                     function: {

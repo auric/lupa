@@ -120,6 +120,42 @@ describe('ModelRequestHandler', () => {
             // User messages with null content are skipped
             expect(result).toHaveLength(0);
         });
+
+        it('should throw error for invalid JSON in tool call arguments', () => {
+            const messages: ToolCallMessage[] = [
+                {
+                    role: 'assistant',
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call-123',
+                            function: {
+                                name: 'readFile',
+                                arguments: '{ invalid json }'
+                            }
+                        }
+                    ]
+                }
+            ];
+
+            const result = ModelRequestHandler.convertMessages(messages);
+            expect(result).toHaveLength(1);
+            expect(result[0].role).toBe(vscode.LanguageModelChatMessageRole.Assistant);
+            expect(result[0].content).toEqual([new vscode.LanguageModelTextPart('')]);
+        });
+
+        it('should ensure assistant message has at least empty text part if content is empty', () => {
+            const messages: ToolCallMessage[] = [
+                { role: 'assistant', content: null }
+            ];
+
+            const result = ModelRequestHandler.convertMessages(messages);
+
+            expect(result).toHaveLength(1);
+            expect(vscode.LanguageModelChatMessage.Assistant).toHaveBeenCalledWith(expect.arrayContaining([
+                expect.any(vscode.LanguageModelTextPart)
+            ]));
+        });
     });
 
     describe('withTimeout', () => {
@@ -159,6 +195,36 @@ describe('ModelRequestHandler', () => {
                 )
             ).rejects.toThrow('The model may be overloaded. Please try again.');
         }, 1000);
+
+        it('should reject immediately if token is cancelled', async () => {
+            const thenable = new Promise(() => { }); // Never resolves
+
+            // Cancel immediately
+            cancellationTokenSource.cancel();
+
+            await expect(
+                ModelRequestHandler.withTimeout(
+                    thenable,
+                    1000,
+                    cancellationTokenSource.token
+                )
+            ).rejects.toThrow();
+        });
+
+        it('should reject if token is cancelled during execution', async () => {
+            const thenable = new Promise(() => { }); // Never resolves
+
+            const promise = ModelRequestHandler.withTimeout(
+                thenable,
+                1000,
+                cancellationTokenSource.token
+            );
+
+            // Cancel after a small delay
+            setTimeout(() => cancellationTokenSource.cancel(), 10);
+
+            await expect(promise).rejects.toThrow();
+        });
 
         it('should propagate errors from the thenable', async () => {
             const thenable = Promise.reject(new Error('Model error'));

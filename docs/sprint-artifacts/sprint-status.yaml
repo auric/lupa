@@ -43,7 +43,7 @@ story_location: docs/sprint-artifacts
 development_status:
   # Epic 0: Foundation & Interface Abstraction
   epic-0: in-progress
-  0-1-create-illmclient-interface-and-modelrequesthandler: review
+  0-1-create-illmclient-interface-and-modelrequesthandler: done
   0-2-modify-copilotmodelmanager-to-implement-illmclient: review
   0-3-modify-conversationrunner-to-accept-illmclient: review
   0-4-create-emoji-design-system-and-debounced-stream-handler: review
