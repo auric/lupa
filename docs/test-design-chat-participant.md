@@ -11,6 +11,8 @@
 |------------|---------|-------------------------------------------------------------------|
 | 2025-12-15 | 1.0 | Initial test design from PRD, Architecture, Epics |
 | 2025-12-16 | 1.1 | Added UX Design Specification coverage (Stories 0.4, 0.5, 2.1 UX) |
+| 2025-12-16 | 1.2 | Added Context Window Management (Story 3.2), Hybrid Output clarification |
+| 2025-12-16 | 1.3 | Party Mode review: Promoted ChatContextManager tests to P1, added R-017/R-018 mitigations, added error tone test |
 
 ---
 
@@ -22,21 +24,28 @@
 
 **Risk Summary:**
 
-- Total risks identified: 16 (+4 UX-related)
+- Total risks identified: 18 (+2 context window)
 - High-priority risks (≥6): 2 (R-001, R-007)
-- Critical categories: TECH (10), PERF (2), BUS (2), OPS (1), UX (1)
+- Medium-priority risks (3-5): 10 (including R-017, R-018 for context window)
+- Critical categories: TECH (12), PERF (2), BUS (2), OPS (1), UX (1)
 
 **Coverage Summary:**
 
 - P0 scenarios: 22 (44 hours)
-- P1 scenarios: 37 (37 hours)
-- P2 scenarios: 15 (7.5 hours)
-- **Total effort**: 88.5 hours (~11 days)
+- P1 scenarios: 48 (48 hours)
+- P2 scenarios: 12 (6 hours)
+- **Total effort**: 98 hours (~12.5 days)
 
 **UX Coverage Added:**
 
 - UX-FR-001 to UX-FR-007: Response formatting, emoji, debouncing, voice patterns
 - UX-NFR-001 to UX-NFR-004: Accessibility, tone, hierarchy
+
+**Context Window Coverage Added (v1.2):**
+
+- NFR-040 to NFR-043: Token budget tracking, sliding window truncation, graceful degradation
+- ChatContextManager: New class for context window management
+- Hybrid Output Approach: Clarified what we test (extension messages) vs. don't test (LLM output format)
 
 ---
 
@@ -61,6 +70,8 @@
 | R-013   | TECH     | DebouncedStreamHandler timing inaccurate                 | 2           | 2      | 4     | Test 100ms interval enforcement. Check for silent gaps. | Dev   |
 | R-014   | BUS      | ChatResponseBuilder produces inconsistent output         | 2           | 2      | 4     | Unit test all builder methods. Test section order.      | Dev   |
 | R-002   | TECH     | ILLMClient interface missing method causes runtime error | 1           | 3      | 3     | TypeScript compilation validates.                       | Dev   |
+| R-017   | TECH     | ChatContextManager token counting inaccurate             | 2           | 2      | 4     | Unit test token budget calculations. Compare with API.  | Dev   |
+| R-018   | TECH     | Sliding window truncation loses critical context         | 2           | 2      | 4     | Test priority order (system > diff > current > history) | Dev   |
 
 ### Low-Priority Risks (Score 1-2)
 
@@ -121,71 +132,77 @@
 
 **Criteria**: Important features + Medium risk (3-4) + Common workflows
 
-| Test ID      | Requirement | Test Level  | Risk Link | Description                                           | Owner |
-| ------------ | ----------- | ----------- | --------- | ----------------------------------------------------- | ----- |
-| 0.1-UNIT-004 | AC-0.1.2    | Unit        | R-001     | ModelRequestHandler handles timeout                   | Dev   |
-| 0.1-UNIT-005 | AC-0.1.2    | Unit        | R-001     | ModelRequestHandler parses tool calls                 | Dev   |
-| 0.1-UNIT-006 | AC-0.1.2    | Unit        | -         | ModelRequestHandler propagates errors                 | Dev   |
-| 0.4-UNIT-005 | AC-0.4.1    | Unit        | R-015     | SECTION emoji constants defined (🔒🧪📊📁)            | Dev   |
-| 0.4-UNIT-006 | AC-0.4.2    | Unit        | R-013     | DebouncedStreamHandler passes through onMarkdown      | Dev   |
-| 0.4-UNIT-007 | AC-0.4.3    | Unit        | R-013     | DebouncedStreamHandler.flush() sends pending message  | Dev   |
-| 0.4-UNIT-008 | AC-0.4.1    | Unit        | R-015     | Types exported (SeverityType, ActivityType)           | Dev   |
-| 0.4-UNIT-009 | AC-0.4.2    | Unit        | R-013     | No silent gaps >2 seconds during active analysis      | Dev   |
-| 0.5-UNIT-004 | AC-0.5.3    | Unit        | R-014     | addPositiveNotes creates "What's Good" section        | Dev   |
-| 0.5-UNIT-005 | AC-0.5.1    | Unit        | R-014     | addFollowupPrompt adds summary line                   | Dev   |
-| 0.5-UNIT-006 | AC-0.5.4    | Unit        | R-014     | build() concatenates all sections correctly           | Dev   |
-| 0.5-UNIT-007 | AC-0.5.1    | Unit        | R-015     | Builder uses emoji from chatEmoji.ts constants        | Dev   |
-| 0.5-UNIT-008 | AC-0.5.2    | Unit        | R-014     | Finding cards use **Title** in [location](anchor)     | Dev   |
-| 0.5-UNIT-009 | AC-0.5.3    | Unit        | R-014     | Positive notes appear AFTER findings section          | Dev   |
-| 1.1-UNIT-003 | FR-003      | Unit        | -         | Participant has isSticky: true                        | Dev   |
-| 1.1-UNIT-004 | NFR-031     | Unit        | R-006     | Graceful degradation if Copilot not installed         | Dev   |
-| 1.1-INT-001  | AC-1.1.4    | Integration | R-007     | ChatParticipantService in ServiceManager Phase 4      | QA    |
-| 1.2-UNIT-003 | AC-1.2.1    | Unit        | R-003     | ChatLLMClient.getCurrentModel() returns wrapped model | Dev   |
-| 1.2-INT-002  | AC-1.2.2    | Integration | -         | /branch calls GitOperations.getDiffToDefaultBranch()  | QA    |
-| 1.2-INT-003  | AC-1.2.3    | Integration | R-004     | stream.progress() called within 500ms                 | QA    |
-| 1.2-INT-004  | AC-1.2.3    | Integration | -         | stream.markdown() called with results                 | QA    |
-| 1.2-INT-005  | AC-1.2.4    | Integration | -         | Error returns ChatResult.errorDetails                 | QA    |
-| 1.3-INT-001  | FR-011      | Integration | -         | /changes calls getUncommittedDiff()                   | QA    |
-| 1.3-INT-002  | AC-1.3.2    | Integration | -         | Progress indicates "uncommitted changes"              | QA    |
-| 1.4-INT-002  | AC-1.4.2    | Integration | R-011     | Cancellation streams "Analysis cancelled"             | QA    |
-| 2.1-UNIT-001 | AC-2.1.1    | Unit        | -         | ToolCallHandler interface complete                    | Dev   |
-| 2.1-UNIT-002 | AC-2.1.3    | Unit        | R-005     | Debounce limits updates to 10/second                  | Dev   |
-| 2.1-UNIT-003 | UX-FR-004   | Unit        | R-016     | Progress messages use ACTIVITY emoji (📂🔍💭)         | Dev   |
-| 2.1-UNIT-004 | UX-FR-001   | Unit        | R-014     | ChatStreamHandler uses ChatResponseBuilder            | Dev   |
-| 2.1-INT-001  | AC-2.1.2    | Integration | -         | stream.anchor() for file:line                         | QA    |
-| 2.1-INT-004  | UX-FR-007   | Integration | R-014     | Empty state uses positive framing "✅ Looking good!"  | QA    |
-| 2.2-UNIT-001 | FR-030      | Unit        | -         | ChatFollowupProvider implemented                      | Dev   |
-| 2.2-UNIT-002 | AC-2.2.2    | Unit        | -         | Follow-ups contextual on hasCriticalIssues            | Dev   |
-| 2.3-UNIT-001 | FR-050      | Unit        | R-009     | lupa_getSymbolsOverview registered                    | Dev   |
-| 2.3-UNIT-002 | FR-052      | Unit        | R-009     | Tool wraps GetSymbolsOverviewTool                     | Dev   |
-| 2.3-INT-001  | AC-2.3.3    | Integration | R-009     | Tool returns correct result format                    | QA    |
-| 2.3-INT-002  | AC-2.3.4    | Integration | R-007     | LanguageModelToolProvider in Phase 4                  | QA    |
+| Test ID      | Requirement | Test Level  | Risk Link | Description                                                   | Owner |
+| ------------ | ----------- | ----------- | --------- | ------------------------------------------------------------- | ----- |
+| 0.1-UNIT-004 | AC-0.1.2    | Unit        | R-001     | ModelRequestHandler handles timeout                           | Dev   |
+| 0.1-UNIT-005 | AC-0.1.2    | Unit        | R-001     | ModelRequestHandler parses tool calls                         | Dev   |
+| 0.1-UNIT-006 | AC-0.1.2    | Unit        | -         | ModelRequestHandler propagates errors                         | Dev   |
+| 0.4-UNIT-005 | AC-0.4.1    | Unit        | R-015     | SECTION emoji constants defined (🔒🧪📊📁)                    | Dev   |
+| 0.4-UNIT-006 | AC-0.4.2    | Unit        | R-013     | DebouncedStreamHandler passes through onMarkdown              | Dev   |
+| 0.4-UNIT-007 | AC-0.4.3    | Unit        | R-013     | DebouncedStreamHandler.flush() sends pending message          | Dev   |
+| 0.4-UNIT-008 | AC-0.4.1    | Unit        | R-015     | Types exported (SeverityType, ActivityType)                   | Dev   |
+| 0.4-UNIT-009 | AC-0.4.2    | Unit        | R-013     | No silent gaps >2 seconds during active analysis              | Dev   |
+| 0.5-UNIT-004 | AC-0.5.3    | Unit        | R-014     | addPositiveNotes creates "What's Good" section                | Dev   |
+| 0.5-UNIT-005 | AC-0.5.1    | Unit        | R-014     | addFollowupPrompt adds summary line                           | Dev   |
+| 0.5-UNIT-006 | AC-0.5.4    | Unit        | R-014     | build() concatenates all sections correctly                   | Dev   |
+| 0.5-UNIT-007 | AC-0.5.1    | Unit        | R-015     | Builder uses emoji from chatEmoji.ts constants                | Dev   |
+| 0.5-UNIT-008 | AC-0.5.2    | Unit        | R-014     | Finding cards use **Title** in [location](anchor)             | Dev   |
+| 0.5-UNIT-009 | AC-0.5.3    | Unit        | R-014     | Positive notes appear AFTER findings section                  | Dev   |
+| 1.1-UNIT-003 | FR-003      | Unit        | -         | Participant has isSticky: true                                | Dev   |
+| 1.1-UNIT-004 | NFR-031     | Unit        | R-006     | Graceful degradation if Copilot not installed                 | Dev   |
+| 1.1-INT-001  | AC-1.1.4    | Integration | R-007     | ChatParticipantService in ServiceManager Phase 4              | QA    |
+| 1.2-UNIT-003 | AC-1.2.1    | Unit        | R-003     | ChatLLMClient.getCurrentModel() returns wrapped model         | Dev   |
+| 1.2-INT-002  | AC-1.2.2    | Integration | -         | /branch calls GitOperations.getDiffToDefaultBranch()          | QA    |
+| 1.2-INT-003  | AC-1.2.3    | Integration | R-004     | stream.progress() called within 500ms                         | QA    |
+| 1.2-INT-004  | AC-1.2.3    | Integration | -         | stream.markdown() called with results                         | QA    |
+| 1.2-INT-005  | AC-1.2.4    | Integration | -         | Error returns ChatResult.errorDetails                         | QA    |
+| 1.3-INT-001  | FR-011      | Integration | -         | /changes calls getUncommittedDiff()                           | QA    |
+| 1.3-INT-002  | AC-1.3.2    | Integration | -         | Progress indicates "uncommitted changes"                      | QA    |
+| 1.4-INT-002  | AC-1.4.2    | Integration | R-011     | Cancellation streams "Analysis cancelled"                     | QA    |
+| 2.1-UNIT-001 | AC-2.1.1    | Unit        | -         | ToolCallHandler interface complete                            | Dev   |
+| 2.1-UNIT-002 | AC-2.1.3    | Unit        | R-005     | Debounce limits updates to 10/second                          | Dev   |
+| 2.1-UNIT-003 | UX-FR-004   | Unit        | R-016     | Progress messages use ACTIVITY emoji (📂🔍💭)                 | Dev   |
+| 2.1-UNIT-004 | UX-FR-001   | Unit        | R-014     | ChatStreamHandler uses ChatResponseBuilder                    | Dev   |
+| 2.1-INT-001  | AC-2.1.2    | Integration | -         | stream.anchor() for file:line                                 | QA    |
+| 2.1-INT-004  | UX-FR-007   | Integration | R-014     | Empty state uses positive framing "✅ Looking good!"          | QA    |
+| 2.2-UNIT-001 | FR-030      | Unit        | -         | ChatFollowupProvider implemented                              | Dev   |
+| 2.2-UNIT-002 | AC-2.2.2    | Unit        | -         | Follow-ups contextual on hasCriticalIssues                    | Dev   |
+| 2.3-UNIT-001 | FR-050      | Unit        | R-009     | lupa_getSymbolsOverview registered                            | Dev   |
+| 2.3-UNIT-002 | FR-052      | Unit        | R-009     | Tool wraps GetSymbolsOverviewTool                             | Dev   |
+| 2.3-INT-001  | AC-2.3.3    | Integration | R-009     | Tool returns correct result format                            | QA    |
+| 2.3-INT-002  | AC-2.3.4    | Integration | R-007     | LanguageModelToolProvider in Phase 4                          | QA    |
+| 3.2-UNIT-001 | AC-3.2.4    | Unit        | R-017     | ChatContextManager tracks token budget correctly              | Dev   |
+| 3.2-UNIT-002 | AC-3.2.4    | Unit        | R-017     | ChatContextManager reserves 4000 tokens for output            | Dev   |
+| 3.2-UNIT-003 | AC-3.2.5    | Unit        | R-018     | Sliding window prioritizes: system > diff > current > history | Dev   |
+| 3.2-UNIT-004 | AC-3.2.5    | Unit        | R-018     | Truncation drops oldest history first                         | Dev   |
+| ERR-UNIT-001 | UX-NFR-004  | Unit        | R-014     | Error messages use supportive language (no blame)             | Dev   |
 
-**Total P1**: 37 tests, 37 hours
+**Total P1**: 48 tests, 48 hours
 
 ### P2 (Medium) - Run nightly/weekly
 
 **Criteria**: Secondary features + Low risk (1-2) + Edge cases
 
-| Test ID      | Requirement | Test Level  | Risk Link | Description                                    | Owner |
-| ------------ | ----------- | ----------- | --------- | ---------------------------------------------- | ----- |
-| 1.3-INT-003  | AC-1.3.3    | Integration | -         | Empty diff returns helpful message             | QA    |
-| 1.4-INT-003  | AC-1.4.3    | Integration | -         | Partial results visible after cancellation     | QA    |
-| 2.1-INT-002  | AC-2.1.2    | Integration | -         | stream.reference() for file-only               | QA    |
-| 2.1-INT-003  | AC-2.1.4    | Integration | -         | stream.filetree() for changed files            | QA    |
-| 2.1-UNIT-005 | UX-FR-004   | Unit        | R-016     | Progress voice follows "📂 Reading..." pattern | Dev   |
-| 2.1-INT-005  | UX-FR-005   | Integration | R-014     | Finding cards render with anchors              | QA    |
-| 2.2-UNIT-003 | AC-2.2.2    | Unit        | -         | "What tests should I add?" always available    | Dev   |
-| 2.2-INT-001  | AC-2.2.3    | Integration | -         | Follow-up click continues conversation         | QA    |
-| 3.1-INT-001  | FR-012      | Integration | -         | No-command routes to exploration               | QA    |
-| 3.1-INT-002  | AC-3.1.2    | Integration | -         | Exploration uses tools for context             | QA    |
-| 3.1-INT-003  | AC-3.1.3    | Integration | -         | Responses reference workspace code             | QA    |
-| 3.2-INT-001  | AC-3.2.1    | Integration | R-012     | History extracted from ChatContext             | QA    |
-| 3.2-INT-002  | AC-3.2.2    | Integration | R-012     | ChatRequestTurn conversion                     | QA    |
-| 3.3-UNIT-001 | FR-004      | Unit        | R-010     | Disambiguation in package.json                 | Dev   |
-| 3.3-INT-001  | AC-3.3.3    | Integration | R-010     | isParticipantDetected handled                  | QA    |
+| Test ID      | Requirement | Test Level  | Risk Link | Description                                       | Owner |
+| ------------ | ----------- | ----------- | --------- | ------------------------------------------------- | ----- |
+| 1.3-INT-003  | AC-1.3.3    | Integration | -         | Empty diff returns helpful message                | QA    |
+| 1.4-INT-003  | AC-1.4.3    | Integration | -         | Partial results visible after cancellation        | QA    |
+| 2.1-INT-002  | AC-2.1.2    | Integration | -         | stream.reference() for file-only                  | QA    |
+| 2.1-INT-003  | AC-2.1.4    | Integration | -         | stream.filetree() for changed files               | QA    |
+| 2.1-UNIT-005 | UX-FR-004   | Unit        | R-016     | Progress voice follows "📂 Reading..." pattern    | Dev   |
+| 2.2-UNIT-003 | AC-2.2.2    | Unit        | -         | "What tests should I add?" always available       | Dev   |
+| 2.2-INT-001  | AC-2.2.3    | Integration | -         | Follow-up click continues conversation            | QA    |
+| 3.1-INT-001  | FR-012      | Integration | -         | No-command routes to exploration                  | QA    |
+| 3.1-INT-002  | AC-3.1.2    | Integration | -         | Exploration uses tools for context                | QA    |
+| 3.1-INT-003  | AC-3.1.3    | Integration | -         | Responses reference workspace code                | QA    |
+| 3.2-INT-001  | AC-3.2.1    | Integration | R-012     | History extracted from ChatContext                | QA    |
+| 3.2-INT-002  | AC-3.2.2    | Integration | R-012     | ChatRequestTurn conversion                        | QA    |
+| 3.2-UNIT-005 | AC-3.2.5    | Unit        | -         | Warning logged when truncation occurs             | Dev   |
+| 3.2-INT-003  | AC-3.2.6    | Integration | -         | Handler accepts summarized history without errors | QA    |
+| 3.3-UNIT-001 | FR-004      | Unit        | R-010     | Disambiguation in package.json                    | Dev   |
+| 3.3-INT-001  | AC-3.3.3    | Integration | R-010     | isParticipantDetected handled                     | QA    |
 
-**Total P2**: 15 tests, 7.5 hours
+**Total P2**: 16 tests, 8 hours
 
 ---
 
@@ -227,22 +244,23 @@
 - [ ] UX patterns (emoji usage, response builder integration)
 - [ ] Follow-up provider
 - [ ] Agent Mode tool execution
-- [ ] Exploration mode
-- [ ] History conversion
+- [ ] Context window management (ChatContextManager)
+- [ ] Error message tone validation
 
-**Total**: 37 scenarios
+**Total**: 48 scenarios
 
 ### P2 Tests (<60 min)
 
 **Purpose**: Full regression coverage
 
 - [ ] Edge cases (empty diff, partial results)
-- [ ] Rich UX (filetree, references, finding cards)
+- [ ] Rich UX (filetree, references)
 - [ ] Progress voice patterns
-- [ ] Exploration and history
+- [ ] Exploration and history conversion
 - [ ] Disambiguation
+- [ ] Truncation logging
 
-**Total**: 15 scenarios
+**Total**: 16 scenarios
 
 ---
 
@@ -253,9 +271,9 @@
 | Priority  | Count  | Hours/Test | Total Hours | Notes                                          |
 | --------- | ------ | ---------- | ----------- | ---------------------------------------------- |
 | P0        | 22     | 2.0        | 44          | Complex setup, backward compatibility, UX core |
-| P1        | 37     | 1.0        | 37          | Standard coverage + UX patterns                |
-| P2        | 15     | 0.5        | 7.5         | Edge cases, exploration                        |
-| **Total** | **74** | **-**      | **88.5**    | **~11 days**                                   |
+| P1        | 48     | 1.0        | 48          | Standard coverage + UX + context management    |
+| P2        | 16     | 0.5        | 8           | Edge cases, exploration, logging               |
+| **Total** | **86** | **-**      | **100**     | **~12.5 days**                                 |
 
 ### Prerequisites
 
@@ -338,6 +356,34 @@
 **Status:** Planned
 **Verification:** ServiceManager.getChatParticipantService() returns valid instance
 
+### R-017: ChatContextManager token counting inaccurate (Score: 4)
+
+**Mitigation Strategy:**
+
+1. Unit test token budget calculations with known message sizes
+2. Compare `model.countTokens()` results with expected values
+3. Test boundary conditions (exactly at limit, 1 over, 1 under)
+4. Mock `LanguageModelChat.countTokens()` for deterministic testing
+
+**Owner:** Dev
+**Timeline:** Story 3.2 completion
+**Status:** Planned
+**Verification:** 3.2-UNIT-001 and 3.2-UNIT-002 pass with 100% accuracy
+
+### R-018: Sliding window truncation loses critical context (Score: 4)
+
+**Mitigation Strategy:**
+
+1. Test priority order enforcement: system prompt > diff > current request > history
+2. Verify oldest history dropped first, newest preserved
+3. Test that system prompt and diff are NEVER truncated
+4. Verify truncation warning logged when history is dropped
+
+**Owner:** Dev
+**Timeline:** Story 3.2 completion
+**Status:** Planned
+**Verification:** 3.2-UNIT-003 and 3.2-UNIT-004 verify correct priority order
+
 ---
 
 ## Assumptions and Dependencies
@@ -367,6 +413,7 @@
 
 ```
 src/__tests__/
+├── chatContextManager.test.ts         # Story 3.2: Token budget + sliding window tests
 ├── chatEmoji.test.ts                  # Story 0.4: Emoji constant tests
 ├── chatLLMClient.test.ts              # Story 1.2: ChatLLMClient unit tests
 ├── chatParticipantService.test.ts     # Stories 1.1-1.4, 3.1-3.3: Service tests
@@ -396,7 +443,56 @@ src/__tests__/
 | UX-NFR-001     | Emoji distinguishable by shape (accessibility)  | 0.4-UNIT-001, 0.4-UNIT-002               | Covered |
 | UX-NFR-002     | Link text descriptive                           | 2.1-INT-005                              | Covered |
 | UX-NFR-003     | Heading hierarchy logical                       | 0.5-UNIT-006                             | Covered |
-| UX-NFR-004     | Tone supportive, non-judgmental                 | 0.5-UNIT-004, 2.1-INT-004                | Covered |
+| UX-NFR-004     | Tone supportive, non-judgmental                 | 0.5-UNIT-004, 2.1-INT-004, ERR-UNIT-001  | Covered |
+
+---
+
+## Hybrid Output Testing Guidelines
+
+**Architecture Decision 11: What We Test vs. What We Don't**
+
+Per the Hybrid Output Approach, the extension and LLM have distinct responsibilities. This affects what we can meaningfully test:
+
+### ✅ Test Thoroughly (Extension-Controlled)
+
+| Component                | Responsibility            | Test Coverage |
+| ------------------------ | ------------------------- | ------------- |
+| `ChatResponseBuilder`    | Greeting, summary, errors | 100%          |
+| `DebouncedStreamHandler` | Progress rate limiting    | 100%          |
+| `chatEmoji.ts` constants | Emoji consistency         | 100%          |
+| `ChatContextManager`     | Token budget, truncation  | 100%          |
+| `stream.button()` calls  | Follow-up chip generation | 100%          |
+| Error message formatting | Supportive tone           | 100%          |
+
+### ❌ Do NOT Test (LLM-Controlled)
+
+| Aspect                    | Reason                                           |
+| ------------------------- | ------------------------------------------------ |
+| LLM finding format        | Smaller LLMs don't follow output format reliably |
+| Emoji usage in LLM output | System prompt is best-effort, not enforceable    |
+| Finding severity accuracy | LLM judgment, not parsing of structured output   |
+| Markdown structure in LLM | We stream as-is, no post-processing              |
+
+### Test Boundary Example
+
+```typescript
+// ✅ TEST THIS: Extension-controlled greeting
+it("should format greeting with ChatResponseBuilder", () => {
+  const greeting = new ChatResponseBuilder()
+    .addVerdictLine("issues", "Analyzing...")
+    .build();
+  expect(greeting).toContain("🔍 Analyzing...");
+});
+
+// ❌ DON'T TEST THIS: LLM output format
+// it('LLM should use 🔴 for critical issues') - UNRELIABLE
+```
+
+### Implications for Integration Tests
+
+- **Mock LLM responses** should be simple strings, not structured formats
+- **End-to-end tests** verify streaming works, not output structure
+- **Snapshot tests** for LLM output are inappropriate (output varies)
 
 ---
 
@@ -434,5 +530,5 @@ src/__tests__/
 **Workflow**: `.bmad/bmm/workflows/testarch/test-design`
 **Version**: 4.0 (BMad v6)
 **Mode**: Party Mode
-**Revision**: 1.1 (December 16, 2025)
-**UX Input**: Sally (UX Designer) - emotional design validation
+**Revision**: 1.3 (December 16, 2025)
+**Party Review**: Winston (Architect), Murat (TEA), Sally (UX), John (PM)

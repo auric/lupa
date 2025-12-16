@@ -8,13 +8,14 @@ inputDocuments:
   - docs/research/vscode-chat-response-streaming.md
   - docs/research/vscode-lm-tool-calling-api.md
   - docs/research/vscode-copilot-chat-research.md
+  - docs/research/context-window-management.md
   - CLAUDE.md
 workflowType: "architecture"
 lastStep: 8
 status: "complete-revised"
 completedAt: "2025-12-16"
 revisedAt: "2025-12-16"
-revisionReason: "Incorporated UX Design Specification requirements"
+revisionReason: "Incorporated UX Design Specification requirements; Added context window management and hybrid output approach decisions"
 project_name: "Lupa"
 feature_name: "@lupa Chat Participant"
 user_name: "Igor"
@@ -23,7 +24,7 @@ date: "2025-12-16"
 
 # Architecture Decision Document: @lupa Chat Participant
 
-**Version:** 1.1
+**Version:** 1.2
 **Date:** December 16, 2025 (Revised)
 **Original Date:** December 15, 2025
 **Author:** Igor + Winston (Architect Agent)
@@ -672,6 +673,150 @@ await conversationRunner.run(
 
 debouncedHandler.flush(); // Ensure final message sent
 ```
+
+---
+
+### Decision 11: Hybrid Output Approach
+
+**Decision:** Use ChatResponseBuilder for extension-generated messages only; stream LLM output as-is
+
+**Rationale:**
+
+- LLM output format cannot be guaranteed, especially with smaller models (GPT-4o-mini, Claude Haiku)
+- Tool calling is unreliable across model sizes - some models skip tool calls entirely
+- Parsing LLM output is fragile and breaks when models don't comply with format instructions
+- We should control what we can and influence what we can't
+
+**What We Control (ChatResponseBuilder):**
+
+| Message Type         | Controller | Method                         |
+| -------------------- | ---------- | ------------------------------ |
+| Opening/intro        | Extension  | ChatResponseBuilder            |
+| Progress updates     | Extension  | DebouncedStreamHandler + emoji |
+| Error messages       | Extension  | ChatResponseBuilder            |
+| Cancellation message | Extension  | ChatResponseBuilder            |
+| Closing summary      | Extension  | ChatResponseBuilder            |
+| Follow-up chips      | Extension  | ChatFollowupProvider           |
+
+**What LLM Controls (streamed as-is):**
+
+| Message Type       | Controller | Influence Method            |
+| ------------------ | ---------- | --------------------------- |
+| Analysis findings  | LLM        | System prompt (best effort) |
+| Issue explanations | LLM        | System prompt (best effort) |
+| Code suggestions   | LLM        | System prompt (best effort) |
+
+**Implementation Pattern:**
+
+```typescript
+// In ChatParticipantService
+async handleBranchCommand(request, stream, token) {
+  // 1. OUR FORMATTED INTRO (ChatResponseBuilder)
+  const intro = new ChatResponseBuilder()
+    .addVerdictLine('issues', `Analyzing ${branchName}...`)
+    .addSummaryStats(changedFiles.length, 0, 0)
+    .build();
+  stream.markdown(intro);
+
+  // 2. Progress events (DebouncedStreamHandler + chatEmoji)
+  handler.onProgress(`${ACTIVITY.reading} Reading changed files...`);
+
+  // 3. LLM ANALYSIS (streamed as-is, no ChatResponseBuilder)
+  for await (const chunk of llmResponse) {
+    stream.markdown(chunk);
+  }
+
+  // 4. OUR FORMATTED CLOSING (ChatResponseBuilder)
+  const closing = new ChatResponseBuilder()
+    .addFollowupPrompt('Analysis complete.')
+    .build();
+  stream.markdown(closing);
+}
+```
+
+**Alternatives Rejected:**
+
+- **Report Tools approach:** LLM calls tools to report findings - unreliable with smaller models
+- **Post-processing markers:** Parse LLM output for markers - fragile, markers visible on failure
+- **Prompt engineering only:** Hope LLM follows format - inconsistent, especially with smaller models
+
+---
+
+### Decision 12: Context Window Management Strategy
+
+**Decision:** Implement sliding-window token budget tracking with newest-first priority
+
+**Rationale:**
+
+- VS Code Chat Participant API provides full history without truncation
+- Extensions are fully responsible for context window management
+- Copilot Chat summarizes ALL turns (including participant turns) uniformly when context overflows
+- When summarized, participant attribution is LOST - summaries don't preserve "who said what"
+- We cannot rely on Copilot's summarization to preserve our analysis context
+
+**Token Budget Strategy:**
+
+```typescript
+// In ChatContextManager
+class ChatContextManager {
+  private readonly OUTPUT_RESERVE = 4000;
+  private readonly BUDGET_THRESHOLD = 0.8; // 80%
+
+  async prepareHistory(
+    history: ChatRequestTurn[],
+    model: LanguageModelChat,
+    systemPrompt: string,
+    diffContext: string
+  ): Promise<LanguageModelChatMessage[]> {
+    const maxTokens = model.maxInputTokens - this.OUTPUT_RESERVE;
+    const targetTokens = maxTokens * this.BUDGET_THRESHOLD;
+
+    // Count fixed costs (always included)
+    const systemTokens = await model.countTokens(systemPrompt);
+    const diffTokens = await model.countTokens(diffContext);
+    const availableForHistory = targetTokens - systemTokens - diffTokens;
+
+    // Include history newest-first until budget exhausted
+    const includedHistory: LanguageModelChatMessage[] = [];
+    let usedTokens = 0;
+
+    for (let i = history.length - 1; i >= 0; i--) {
+      const turnTokens = await model.countTokens(history[i].prompt);
+      if (usedTokens + turnTokens > availableForHistory) {
+        Log.info("ChatContextManager", `Truncating history at turn ${i}`);
+        break;
+      }
+      includedHistory.unshift(this.convertTurn(history[i]));
+      usedTokens += turnTokens;
+    }
+
+    return includedHistory;
+  }
+}
+```
+
+**Priority Order (highest to lowest):**
+
+1. System prompt (always included)
+2. Current diff context (always included)
+3. Current user request (always included)
+4. Recent conversation history (newest first, until budget exhausted)
+5. Older conversation history (dropped first)
+
+**Copilot Summarization Behavior (Research Findings):**
+
+| Behavior                                 | Implication for Lupa                         |
+| ---------------------------------------- | -------------------------------------------- |
+| Summarizes ALL turns uniformly           | Our participant responses get summarized too |
+| Attribution lost in summaries            | Can't tell what we said vs what Copilot said |
+| `isSticky: true` has no special handling | Same summarization regardless of sticky mode |
+| Threshold-based triggering               | Happens when context exceeds model limits    |
+
+**Alternatives Considered:**
+
+- **LLM-based summarization:** Adds latency, unreliable with smaller models
+- **Turn count limit:** Simpler but ignores actual token usage
+- **Rely on Copilot summarization:** Attribution lost, can't control what's preserved
 
 ---
 
@@ -1361,6 +1506,7 @@ This architecture document is your complete guide for implementing the `@lupa` c
 |------|---------|---------|
 | 2025-12-15 | 1.0 | Initial architecture document |
 | 2025-12-16 | 1.1 | Incorporated UX Design Specification (Decisions 8-10, format patterns, 6 new files) |
+| 2025-12-16 | 1.2 | Added Decisions 11-12: Hybrid Output Approach, Context Window Management Strategy |
 
 **Next Phase:** Begin implementation using the architectural decisions and patterns documented herein.
 

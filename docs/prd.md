@@ -6,14 +6,18 @@ inputDocuments:
   - docs/research/vscode-chat-response-streaming.md
   - docs/research/vscode-copilot-chat-research.md
   - docs/research/vscode-lm-tool-calling-api.md
+  - docs/research/context-window-management.md
 documentCounts:
   briefs: 1
-  research: 4
+  research: 5
   brainstorming: 0
   projectDocs: 0
 workflowType: "prd"
 workflowMode: "yolo"
 lastStep: 11
+status: "revised"
+revisedAt: "2025-12-16"
+revisionReason: "Added context window management and output formatting responsibility requirements"
 project_name: "Lupa"
 feature_name: "@lupa Chat Participant"
 user_name: "Igor"
@@ -22,8 +26,9 @@ date: "2025-12-15"
 
 # Product Requirements Document: @lupa Chat Participant
 
-**Version:** 1.0
-**Date:** December 15, 2025
+**Version:** 1.1
+**Date:** December 16, 2025 (Revised)
+**Original Date:** December 15, 2025
 **Author:** Igor
 **Status:** APPROVED FOR IMPLEMENTATION
 
@@ -364,6 +369,24 @@ stream.anchor(
 **NFR-030:** Feature MUST work on VS Code 1.95+ (Chat Participant API availability).
 
 **NFR-031:** Feature MUST gracefully degrade if Copilot is not installed (show error message).
+
+### 5.5 Context Window Management
+
+**NFR-040:** ChatParticipantService MUST track token usage via `model.countTokens()` for each conversation.
+
+**NFR-041:** When cumulative context approaches 80% of `model.maxInputTokens`, older history MUST be truncated using a sliding window approach (newest turns first).
+
+**NFR-042:** System prompt and current diff context MUST be prioritized over old conversation history during truncation.
+
+**NFR-043:** A minimum of 4000 tokens MUST be reserved for model output.
+
+### 5.6 Output Formatting Responsibility
+
+**NFR-050:** `ChatResponseBuilder` MUST be used for extension-generated messages only (intro, summary, errors, cancellation), NOT for reformatting LLM analysis output.
+
+**NFR-051:** LLM analysis output MUST be streamed via `stream.markdown()` as-is, with format influenced by system prompt (best effort, not guaranteed).
+
+**NFR-052:** Progress messages, file anchors, and follow-up suggestions are controlled by our code and MUST use emoji constants from `chatEmoji.ts`.
 
 ---
 

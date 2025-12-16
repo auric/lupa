@@ -754,6 +754,55 @@ From `chatResponseBuilder.ts`:
 
 ## Dev Notes
 
+### Integration Clarification (Added 2025-12-15)
+
+**Critical: ChatResponseBuilder is for EXTENSION-GENERATED messages only**
+
+Per Architecture Decision 11 (Hybrid Output Approach), this utility is NOT used to reformat or parse LLM output. The LLM analysis content streams as-is via `stream.markdown()`.
+
+| Message Type           | Uses ChatResponseBuilder? | Method                    |
+| ---------------------- | ------------------------- | ------------------------- |
+| Greeting/intro         | ✅ Yes                    | Custom greeting method    |
+| Progress updates       | ❌ No                     | `DebouncedStreamHandler`  |
+| LLM analysis findings  | ❌ No                     | `stream.markdown()` raw   |
+| Summary after analysis | ✅ Yes                    | `addSummaryStats()`, etc. |
+| Error messages         | ✅ Yes                    | Custom error method       |
+| Follow-up chips        | ❌ No                     | `stream.button()`         |
+
+**Why This Approach:**
+
+1. **Smaller LLMs don't follow output formats reliably** - We can't parse or restructure LLM output
+2. **We control the bookends** - Greeting, summary, errors are always consistent
+3. **LLM controls the core** - Analysis content is the LLM's responsibility
+4. **System prompt = best effort** - We ask for emoji severity, but can't enforce
+
+**Integration Pattern (Story 2.1):**
+
+```typescript
+// 1. Extension-controlled greeting (uses ChatResponseBuilder)
+const greeting = new ChatResponseBuilder()
+  .addVerdictLine("issues", "Analyzing your changes...")
+  .build();
+stream.markdown(greeting);
+
+// 2. LLM-controlled analysis (streams as-is)
+for await (const chunk of llmResponse) {
+  stream.markdown(chunk);
+}
+
+// 3. Extension-controlled summary (uses ChatResponseBuilder)
+const summary = new ChatResponseBuilder()
+  .addSummaryStats(fileCount, criticalCount, suggestionCount)
+  .addFollowupPrompt("Analysis complete.")
+  .build();
+stream.markdown(summary);
+```
+
+**Testing Implications:**
+
+- Test `ChatResponseBuilder` formatting thoroughly (we control it)
+- Do NOT test LLM output format compliance (we don't control it)
+
 ### Critical Implementation Details
 
 1. **Emoji Source:**

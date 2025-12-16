@@ -17,13 +17,21 @@ project_name: "Lupa"
 feature_name: "@lupa Chat Participant"
 user_name: "Igor"
 date: "2025-12-15"
+version: "1.1"
+revision_history:
+  - version: "1.0"
+    date: "2025-12-15"
+    changes: "Initial specification"
+  - version: "1.1"
+    date: "2025-12-15"
+    changes: "Added Output Responsibility Matrix (Architecture Decision 11 alignment)"
 ---
 
 # UX Design Specification: @lupa Chat Participant
 
 **Author:** Igor
 **Date:** December 15, 2025
-**Version:** 1.0
+**Version:** 1.1
 **Status:** IN PROGRESS
 
 ---
@@ -983,6 +991,53 @@ flowchart TD
 ---
 
 ## Component Strategy
+
+### Output Responsibility Matrix
+
+**Decision:** Hybrid Output Approach (Architecture Decision 11)
+
+The extension and LLM have distinct output responsibilities. This matrix clarifies what each controls:
+
+| Output Element                | Controller | Method                               | Formatting        |
+| ----------------------------- | ---------- | ------------------------------------ | ----------------- |
+| **Analysis intro/greeting**   | Extension  | `ChatResponseBuilder`                | Emoji + markdown  |
+| **Progress updates**          | Extension  | `DebouncedStreamHandler`             | Activity emoji    |
+| **Finding detection/content** | LLM        | `stream.markdown()` (raw)            | LLM decides       |
+| **Finding severity**          | LLM        | System prompt guidance (best-effort) | May vary          |
+| **File references**           | LLM        | Markdown links in output             | LLM decides       |
+| **Summary statistics**        | Extension  | `ChatResponseBuilder`                | Standardized      |
+| **Follow-up chips**           | Extension  | `stream.button()`                    | Emoji + label     |
+| **Error messages**            | Extension  | `ChatResponseBuilder.error()`        | Supportive tone   |
+| **Cancellation message**      | Extension  | `ChatResponseBuilder`                | Preserve partials |
+
+**Why This Approach:**
+
+1. **LLM Reliability:** Smaller LLMs don't reliably follow output format instructions or call report tools
+2. **We Control Bookends:** Greeting, progress, summary, errors, follow-ups are always consistent
+3. **LLM Controls Core:** Analysis findings stream as-is—we can't parse or restructure reliably
+4. **System Prompt = Best Effort:** We ask for emoji severity (🔴🟡), but can't enforce it
+
+**Implementation Pattern:**
+
+```typescript
+// Extension-controlled intro
+await responseBuilder.startAnalysis(stream, fileCount);
+
+// LLM-controlled analysis (streams as-is)
+for await (const chunk of llmResponse) {
+  stream.markdown(chunk);
+}
+
+// Extension-controlled summary
+await responseBuilder.completeSummary(stream, stats);
+await responseBuilder.addFollowups(stream, contextualChips);
+```
+
+**Implications for Testing:**
+
+- Test `ChatResponseBuilder` formatting thoroughly (we control it)
+- Test `DebouncedStreamHandler` rate limiting (we control it)
+- Do NOT test LLM output format compliance (we don't control it)
 
 ### Platform Components (Stream API)
 

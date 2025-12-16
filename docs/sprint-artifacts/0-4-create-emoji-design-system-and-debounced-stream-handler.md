@@ -666,6 +666,29 @@ From `debouncedStreamHandler.ts`:
 
 ## Dev Notes
 
+### Integration Clarification (Added 2025-12-15)
+
+**How These Components Will Be Used:**
+
+The utilities created in this story are part of the **Hybrid Output Approach** (Architecture Decision 11):
+
+| Component                | Integration Point                                                                       | Used By        |
+| ------------------------ | --------------------------------------------------------------------------------------- | -------------- |
+| `SEVERITY`, `SECTION`    | `ChatResponseBuilder` methods for extension-controlled messages (intro, summary, error) | Extension only |
+| `ACTIVITY`               | `DebouncedStreamHandler.onProgress()` for progress updates during analysis              | Extension only |
+| `DebouncedStreamHandler` | Wraps `ChatStreamHandler` to rate-limit `stream.progress()` calls to 10/sec             | Extension only |
+| `ChatToolCallHandler`    | Interface for `ChatStreamHandler` implementation (Story 2.1)                            | Extension only |
+
+**Key Insight:** These utilities are NOT used to format LLM output. The LLM analysis content streams as-is via `stream.markdown()`. We control only:
+
+- Progress updates during analysis (uses `ACTIVITY` emoji via `DebouncedStreamHandler`)
+- Intro/greeting messages (uses `ChatResponseBuilder` with `SEVERITY`/`SECTION` emoji)
+- Summary messages after analysis (uses `ChatResponseBuilder`)
+- Error messages (uses `ChatResponseBuilder.error()`)
+- Follow-up chips (uses `stream.button()`)
+
+The emoji system provides consistency for OUR messages, not LLM messages. We ask the LLM to use these emoji via system prompt, but cannot enforce it.
+
 ### Critical Implementation Details
 
 1. **Interface Naming:** Use `ChatToolCallHandler` NOT `ToolCallHandler` to avoid confusion with the existing interface in `conversationRunner.ts`. They serve different purposes:
