@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { ConversationManager } from './conversationManager';
 import { ToolExecutor, type ToolExecutionRequest } from './toolExecutor';
-import { CopilotModelManager, CopilotApiError } from './copilotModelManager';
+import { ILLMClient } from './ILLMClient';
+import { CopilotApiError } from './copilotModelManager';
 import { TokenValidator } from './tokenValidator';
 import type { ToolCallMessage, ToolCall } from '../types/modelTypes';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
@@ -63,7 +64,7 @@ export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
 
     constructor(
-        private readonly modelManager: CopilotModelManager,
+        private readonly client: ILLMClient,
         private readonly toolExecutor: ToolExecutor
     ) { }
 
@@ -97,7 +98,7 @@ export class ConversationRunner {
 
                 // Initialize token validator if not already done
                 if (!this.tokenValidator) {
-                    const currentModel = await this.modelManager.getCurrentModel();
+                    const currentModel = await this.client.getCurrentModel();
                     this.tokenValidator = new TokenValidator(currentModel);
                 }
 
@@ -137,7 +138,7 @@ export class ConversationRunner {
                     }
                 }
 
-                const response = await this.modelManager.sendRequest({
+                const response = await this.client.sendRequest({
                     messages,
                     tools: vscodeTools
                 }, token);
