@@ -32,17 +32,10 @@ export interface ModelSelectionOptions {
 }
 
 /**
- * Task compatibility requirements
- */
-export interface TaskCompatibility {
-    minTokenLimit?: number;
-    requiresThinking?: boolean;
-}
-
-/**
  * Service for managing language models through VS Code's API
  */
 export class CopilotModelManager implements vscode.Disposable, ILLMClient {
+    private readonly DEFAULT_MODEL_ID = 'gpt-4.1';
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelCache: ModelDetail[] | null = null;
     private lastModelRefresh: number = 0;
@@ -119,7 +112,7 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             };
 
             if (!options) {
-                selector.id = 'gpt-4.1';
+                selector.id = this.DEFAULT_MODEL_ID;
             }
 
             const models = await vscode.lm.selectChatModels(selector);
