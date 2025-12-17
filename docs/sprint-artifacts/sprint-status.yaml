@@ -42,13 +42,13 @@ story_location: docs/sprint-artifacts
 
 development_status:
   # Epic 0: Foundation & Interface Abstraction
-  epic-0: in-progress
+  epic-0: done
   0-1-create-illmclient-interface-and-modelrequesthandler: done
   0-2-modify-copilotmodelmanager-to-implement-illmclient: done
-  0-3-modify-conversationrunner-to-accept-illmclient: review
+  0-3-modify-conversationrunner-to-accept-illmclient: done
   0-4-create-emoji-design-system-and-debounced-stream-handler: done
   0-5-create-chatresponsebuilder-utility: done
-  epic-0-retrospective: optional
+  epic-0-retrospective: completed
 
   # Epic 1: Core Chat Participant
   epic-1: backlog

@@ -852,6 +852,18 @@ Tool calling for structured output is unreliable across model sizes.
 - [ ] Import and use emoji from `chatEmoji.ts` for progress messages
 - [ ] Use `ChatResponseBuilder` for formatted output
 - [ ] Modify ConversationRunner to accept optional `ToolCallHandler`
+- [ ] **Update `toolAwareSystemPromptGenerator.ts` with UX guidelines** (from Epic 0 Retro):
+  - Add emoji severity guidance (🔴 CRITICAL, 🟠 HIGH, 🟡 MEDIUM, 🟢 LOW)
+  - Add finding format template matching `ChatResponseBuilder` output
+  - Add supportive tone guidelines (positive framing, actionable feedback)
+  - Use Anthropic best practices for prompt clarity:
+    - https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/be-clear-and-direct.md
+    - https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/multishot-prompting.md
+    - https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/chain-of-thought.md
+    - https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/use-xml-tags.md
+    - https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/system-prompts.md
+    - https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/chain-prompts.md
+    - https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/long-context-tips.md
 - [ ] Add tests for visualization, debouncing, and UX patterns
 - [ ] Verify with `npm run check-types`
 
