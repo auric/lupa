@@ -17,7 +17,7 @@ project_name: "Lupa"
 feature_name: "@lupa Chat Participant"
 user_name: "Igor"
 date: "2025-12-15"
-version: "1.1"
+version: "1.2"
 revision_history:
   - version: "1.0"
     date: "2025-12-15"
@@ -25,6 +25,9 @@ revision_history:
   - version: "1.1"
     date: "2025-12-15"
     changes: "Added Output Responsibility Matrix (Architecture Decision 11 alignment)"
+  - version: "1.2"
+    date: "2025-12-17"
+    changes: "Corrected cancellation UX - removed false claims about 'partial results' that don't exist in tool-calling architecture. Journey 5 and related patterns updated to reflect reality: findings are produced as a complete block after ConversationRunner.run() completes, not progressively during analysis."
 ---
 
 # UX Design Specification: @lupa Chat Participant
@@ -64,7 +67,7 @@ Transform Lupa from a standalone VS Code extension into a **conversational code 
    The chat must feel supportive, not judgmental. Findings presented as helpful suggestions from a wise colleague, not criticisms from an automated linter.
 
 2. **Streaming State Communication**
-   Analysis takes 1-5 minutes. Users need: progress visibility (what's happening now), control (can I cancel), and partial value (show findings as they arrive).
+   Analysis takes 1-5 minutes. Users need: progress visibility (what's happening now) and control (can I cancel). Note: Due to tool-calling architecture, findings arrive as a complete block at the end, not progressively.
 
 3. **Information Hierarchy in Linear Medium**
    Chat is a stream, not a dashboard. Must design for: quick visual scanning via severity indicators, clickable references without clutter, and progressive disclosure.
@@ -153,8 +156,8 @@ The fundamental user experience is a **single chat message** (`@lupa /branch` or
 
 5. **Graceful Exit**
    - Cancel button works instantly
-   - Partial results preserved
-   - Clear "Analysis cancelled" message
+   - Honest acknowledgment (no false claims about partial results)
+   - Clear "Analysis cancelled" message with restart path
 
 ### Critical Success Moments
 
@@ -188,7 +191,7 @@ User goes from invocation to confidence in their code in under 5 minutes. Pushes
    Follow-up suggestions feel contextually aware, not templated or generic.
 
 5. **Graceful Control**
-   User can cancel anytime, partial results are preserved, no orphaned processes.
+   User can cancel anytime with honest acknowledgment, no orphaned processes.
 
 6. **Trust Through Transparency**
    Show what files are being analyzed, which symbols traced, why issues flagged.
@@ -239,12 +242,12 @@ User goes from invocation to confidence in their code in under 5 minutes. Pushes
 
 **Tone Guidelines:**
 
-| Scenario    | ❌ Don't Say                    | ✅ Do Say                                        |
-| ----------- | ------------------------------- | ------------------------------------------------ |
-| Issue found | "Error: Bad code detected"      | "Potential issue: Consider reviewing..."         |
-| Severe bug  | "Critical mistake in your code" | "🔴 Important: This could cause..."              |
-| No issues   | "No errors"                     | "✅ Looking good! No critical issues found."     |
-| Cancelled   | "Aborted"                       | "Analysis paused. Here's what I found so far..." |
+| Scenario    | ❌ Don't Say                    | ✅ Do Say                                               |
+| ----------- | ------------------------------- | ------------------------------------------------------- |
+| Issue found | "Error: Bad code detected"      | "Potential issue: Consider reviewing..."                |
+| Severe bug  | "Critical mistake in your code" | "🔴 Important: This could cause..."                     |
+| No issues   | "No errors"                     | "✅ Looking good! No critical issues found."            |
+| Cancelled   | "Aborted"                       | "Analysis cancelled. Run the command again when ready." |
 
 **Visual Emotional Cues:**
 
@@ -941,19 +944,21 @@ flowchart TD
 
 **Trigger:** User cancels during analysis
 
-**Goal:** Stop gracefully, preserve partial value
+**Goal:** Stop gracefully, acknowledge cancellation honestly
+
+> **Architecture Note:** Lupa uses a tool-calling LLM architecture. The LLM makes tool calls to gather context (reading files, finding symbols), then produces findings as a complete analysis at the end. During analysis, only progress messages stream—actual findings don't exist until `ConversationRunner.run()` completes. Therefore, cancellation cannot "preserve partial findings" because no findings exist yet.
 
 **Output:**
 
 ```
-💬 Analysis paused. Here's what I found so far...
+⏹️ Analysis cancelled.
 
-[Partial findings if available]
+The analysis was stopped before findings could be generated. Run the command again when you're ready for a fresh analysis.
 
-📊 Analyzed 8/15 files before stopping.
+📊 Progress: Examined 8/15 files before stopping.
 ```
 
-**Principle:** Preserve value, offer restart path.
+**Principle:** Be honest about what happened. Don't claim partial results exist when they don't. Offer clear restart path.
 
 ### Journey 6: Error Recovery
 
@@ -977,14 +982,14 @@ flowchart TD
 | **Progress Loop**              | Progress message → Tool call → Progress update |
 | **Verdict-First Output**       | Summary → Details → Follow-ups                 |
 | **Follow-up Continuity**       | Context preserved, suggestions contextual      |
-| **Graceful Degradation**       | Partial results on cancel/error                |
+| **Graceful Cancellation**      | Honest messaging, clear restart path           |
 | **Supportive Error Messaging** | Non-judgmental, actionable errors              |
 
 ### Flow Optimization Principles
 
 1. **Immediate Feedback:** First progress within 500ms of command
 2. **Progressive Disclosure:** High-level first, details on demand
-3. **Preserve Partial Value:** Cancellation/errors don't lose everything
+3. **Honest Cancellation:** Don't claim partial results that don't exist
 4. **Context Continuity:** Follow-ups feel like one conversation
 5. **Clear Exit Paths:** User always knows how to proceed
 
@@ -998,17 +1003,17 @@ flowchart TD
 
 The extension and LLM have distinct output responsibilities. This matrix clarifies what each controls:
 
-| Output Element                | Controller | Method                               | Formatting        |
-| ----------------------------- | ---------- | ------------------------------------ | ----------------- |
-| **Analysis intro/greeting**   | Extension  | `ChatResponseBuilder`                | Emoji + markdown  |
-| **Progress updates**          | Extension  | `DebouncedStreamHandler`             | Activity emoji    |
-| **Finding detection/content** | LLM        | `stream.markdown()` (raw)            | LLM decides       |
-| **Finding severity**          | LLM        | System prompt guidance (best-effort) | May vary          |
-| **File references**           | LLM        | Markdown links in output             | LLM decides       |
-| **Summary statistics**        | Extension  | `ChatResponseBuilder`                | Standardized      |
-| **Follow-up chips**           | Extension  | `stream.button()`                    | Emoji + label     |
-| **Error messages**            | Extension  | `ChatResponseBuilder.error()`        | Supportive tone   |
-| **Cancellation message**      | Extension  | `ChatResponseBuilder`                | Preserve partials |
+| Output Element                | Controller | Method                               | Formatting            |
+| ----------------------------- | ---------- | ------------------------------------ | --------------------- |
+| **Analysis intro/greeting**   | Extension  | `ChatResponseBuilder`                | Emoji + markdown      |
+| **Progress updates**          | Extension  | `DebouncedStreamHandler`             | Activity emoji        |
+| **Finding detection/content** | LLM        | `stream.markdown()` (raw)            | LLM decides           |
+| **Finding severity**          | LLM        | System prompt guidance (best-effort) | May vary              |
+| **File references**           | LLM        | Markdown links in output             | LLM decides           |
+| **Summary statistics**        | Extension  | `ChatResponseBuilder`                | Standardized          |
+| **Follow-up chips**           | Extension  | `stream.button()`                    | Emoji + label         |
+| **Error messages**            | Extension  | `ChatResponseBuilder.error()`        | Supportive tone       |
+| **Cancellation message**      | Extension  | `ChatResponseBuilder`                | Honest acknowledgment |
 
 **Why This Approach:**
 
@@ -1261,7 +1266,7 @@ Summary line
 - Never blame user
 - Be specific
 - Always provide next step
-- Preserve partial results
+- Be honest about what happened
 
 ### Follow-up Chip Patterns
 

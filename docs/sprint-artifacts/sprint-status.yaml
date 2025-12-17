@@ -55,7 +55,7 @@ development_status:
   1-1-register-chat-participant: done
   1-2-implement-branch-command: done
   1-3-implement-changes-command: done
-  1-4-support-cancellation: backlog
+  1-4-support-cancellation: done
   epic-1-retrospective: optional
 
   # Epic 2: Rich UX & Agent Mode Integration

@@ -8,6 +8,7 @@ import type { ToolCallMessage, ToolCall } from '../types/modelTypes';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
+import { CANCELLATION_MESSAGE } from '../config/constants';
 
 /**
  * Configuration for running a conversation loop.
@@ -87,7 +88,7 @@ export class ConversationRunner {
 
             if (token.isCancellationRequested) {
                 Log.info(`${logPrefix} Cancelled before iteration ${iteration}`);
-                return 'Conversation cancelled by user';
+                return CANCELLATION_MESSAGE;
             }
 
             handler?.onIterationStart?.(iteration, config.maxIterations);
@@ -145,7 +146,7 @@ export class ConversationRunner {
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
-                    return 'Conversation cancelled by user';
+                    return CANCELLATION_MESSAGE;
                 }
 
                 conversation.addAssistantMessage(
@@ -164,7 +165,7 @@ export class ConversationRunner {
             } catch (error) {
                 if (token.isCancellationRequested || error instanceof vscode.CancellationError || (error instanceof Error && error.message?.toLowerCase().includes('cancel'))) {
                     Log.info(`${logPrefix} Cancelled during iteration ${iteration}`);
-                    return 'Conversation cancelled by user';
+                    return CANCELLATION_MESSAGE;
                 }
 
                 if (this.isFatalModelError(error)) {

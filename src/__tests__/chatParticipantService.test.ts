@@ -617,4 +617,383 @@ describe('ChatParticipantService', () => {
             expect(() => instance.dispose()).not.toThrow();
         });
     });
+
+    describe('cancellation handling', () => {
+        let capturedHandler: any;
+        let mockStream: any;
+        let mockToolExecutor: any;
+        let mockToolRegistry: any;
+        let mockWorkspaceSettings: any;
+        let mockPromptGenerator: any;
+
+        beforeEach(() => {
+            const mockParticipant = { dispose: vi.fn() };
+            mockStream = {
+                markdown: vi.fn(),
+                progress: vi.fn()
+            };
+            mockToolExecutor = {
+                getAvailableTools: vi.fn().mockReturnValue([]),
+                resetToolCallCount: vi.fn()
+            };
+            mockToolRegistry = {
+                getToolNames: vi.fn().mockReturnValue([])
+            };
+            mockWorkspaceSettings = {
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300)
+            };
+            mockPromptGenerator = {
+                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+            };
+
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                (_id: string, handler: any) => {
+                    capturedHandler = handler;
+                    return mockParticipant;
+                }
+            );
+        });
+
+        describe('pre-cancelled token', () => {
+            it('should return immediately with cancellation message for /branch', async () => {
+                const cancelledToken = {
+                    isCancellationRequested: true,
+                    onCancellationRequested: vi.fn()
+                };
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    compareBranches: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'feature/test',
+                        error: undefined
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                const result = await capturedHandler(
+                    { command: 'branch', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    cancelledToken
+                );
+
+                expect(mockStream.markdown).toHaveBeenCalledWith(
+                    expect.stringContaining('Analysis Cancelled')
+                );
+                expect(result.metadata).toEqual({
+                    cancelled: true,
+                    responseIsIncomplete: true
+                });
+            });
+
+            it('should return immediately with cancellation message for /changes', async () => {
+                const cancelledToken = {
+                    isCancellationRequested: true,
+                    onCancellationRequested: vi.fn()
+                };
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    getUncommittedChanges: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'uncommitted changes',
+                        error: undefined
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                const result = await capturedHandler(
+                    { command: 'changes', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    cancelledToken
+                );
+
+                expect(mockStream.markdown).toHaveBeenCalledWith(
+                    expect.stringContaining('Analysis Cancelled')
+                );
+                expect(result.metadata).toEqual({
+                    cancelled: true,
+                    responseIsIncomplete: true
+                });
+            });
+        });
+
+        describe('cancellation during analysis', () => {
+            it('should return supportive message when runner returns cancellation string', async () => {
+                const mockToken = {
+                    isCancellationRequested: false,
+                    onCancellationRequested: vi.fn()
+                };
+
+                vi.mocked(ConversationRunner).mockImplementation(() => ({
+                    run: vi.fn().mockResolvedValue('Conversation cancelled by user'),
+                    reset: vi.fn()
+                }) as any);
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    compareBranches: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'feature/test',
+                        error: undefined
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                const result = await capturedHandler(
+                    { command: 'branch', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    mockToken
+                );
+
+                expect(mockStream.markdown).toHaveBeenCalledWith(
+                    expect.stringContaining('Analysis Cancelled')
+                );
+                expect(mockStream.markdown).not.toHaveBeenCalledWith('Conversation cancelled by user');
+                expect(result.metadata).toEqual({
+                    cancelled: true,
+                    responseIsIncomplete: true
+                });
+            });
+
+            it('should NOT claim partial results exist', async () => {
+                const mockToken = {
+                    isCancellationRequested: false,
+                    onCancellationRequested: vi.fn()
+                };
+
+                vi.mocked(ConversationRunner).mockImplementation(() => ({
+                    run: vi.fn().mockResolvedValue('Conversation cancelled by user'),
+                    reset: vi.fn()
+                }) as any);
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    compareBranches: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'feature/test',
+                        error: undefined
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                await capturedHandler(
+                    { command: 'branch', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    mockToken
+                );
+
+                const markdownCalls = mockStream.markdown.mock.calls.flat().join(' ');
+                expect(markdownCalls).not.toContain('found so far');
+                expect(markdownCalls).not.toContain('partial');
+            });
+        });
+
+        describe('cancellation during error', () => {
+            it('should treat error as cancellation if token is cancelled for /branch', async () => {
+                const mockToken = {
+                    isCancellationRequested: false,
+                    onCancellationRequested: vi.fn()
+                };
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    compareBranches: vi.fn().mockImplementation(async () => {
+                        mockToken.isCancellationRequested = true;
+                        throw new Error('Operation cancelled');
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                const result = await capturedHandler(
+                    { command: 'branch', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    mockToken
+                );
+
+                expect(mockStream.markdown).toHaveBeenCalledWith(
+                    expect.stringContaining('Analysis Cancelled')
+                );
+                expect(result.metadata).toEqual({
+                    cancelled: true,
+                    responseIsIncomplete: true
+                });
+            });
+
+            it('should treat error as cancellation if token is cancelled for /changes', async () => {
+                const mockToken = {
+                    isCancellationRequested: false,
+                    onCancellationRequested: vi.fn()
+                };
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    getUncommittedChanges: vi.fn().mockImplementation(async () => {
+                        mockToken.isCancellationRequested = true;
+                        throw new Error('Operation cancelled');
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                const result = await capturedHandler(
+                    { command: 'changes', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    mockToken
+                );
+
+                expect(mockStream.markdown).toHaveBeenCalledWith(
+                    expect.stringContaining('Analysis Cancelled')
+                );
+                expect(result.metadata).toEqual({
+                    cancelled: true,
+                    responseIsIncomplete: true
+                });
+            });
+        });
+
+        describe('ChatResult metadata', () => {
+            it('should include cancelled and responseIsIncomplete in metadata', async () => {
+                const cancelledToken = {
+                    isCancellationRequested: true,
+                    onCancellationRequested: vi.fn()
+                };
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    compareBranches: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'feature/test',
+                        error: undefined
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                const result = await capturedHandler(
+                    { command: 'branch', model: { id: 'test-model' } },
+                    {},
+                    mockStream,
+                    cancelledToken
+                );
+
+                expect(result).toHaveProperty('metadata');
+                expect(result.metadata.cancelled).toBe(true);
+                expect(result.metadata.responseIsIncomplete).toBe(true);
+            });
+        });
+
+        describe('both commands handle cancellation identically', () => {
+            it('should produce identical cancellation message for /branch and /changes', async () => {
+                const cancelledToken = {
+                    isCancellationRequested: true,
+                    onCancellationRequested: vi.fn()
+                };
+
+                const mockGitService = {
+                    isInitialized: vi.fn().mockReturnValue(true),
+                    compareBranches: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'feature/test',
+                        error: undefined
+                    }),
+                    getUncommittedChanges: vi.fn().mockResolvedValue({
+                        diffText: 'mock diff',
+                        refName: 'uncommitted changes',
+                        error: undefined
+                    })
+                };
+                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+                const instance = ChatParticipantService.getInstance();
+                instance.setDependencies({
+                    toolExecutor: mockToolExecutor,
+                    toolRegistry: mockToolRegistry,
+                    workspaceSettings: mockWorkspaceSettings,
+                    promptGenerator: mockPromptGenerator
+                });
+
+                const branchMockStream = { markdown: vi.fn(), progress: vi.fn() };
+                const changesMockStream = { markdown: vi.fn(), progress: vi.fn() };
+
+                const branchResult = await capturedHandler(
+                    { command: 'branch', model: { id: 'test-model' } },
+                    {},
+                    branchMockStream,
+                    cancelledToken
+                );
+
+                const changesResult = await capturedHandler(
+                    { command: 'changes', model: { id: 'test-model' } },
+                    {},
+                    changesMockStream,
+                    cancelledToken
+                );
+
+                expect(branchMockStream.markdown.mock.calls).toEqual(changesMockStream.markdown.mock.calls);
+                expect(branchResult.metadata).toEqual(changesResult.metadata);
+            });
+        });
+    });
 });

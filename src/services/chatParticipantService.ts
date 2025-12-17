@@ -12,6 +12,7 @@ import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { PromptGenerator } from '../models/promptGenerator';
 import { DiffUtils } from '../utils/diffUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
+import { CANCELLATION_MESSAGE } from '../config/constants';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 
 /**
@@ -117,41 +118,15 @@ export class ChatParticipantService implements vscode.Disposable {
         stream: vscode.ChatResponseStream,
         token: vscode.CancellationToken
     ): Promise<vscode.ChatResult> {
-        Log.info('[ChatParticipantService]: /branch command received');
-
-        if (!this.deps) {
-            Log.error('[ChatParticipantService]: Dependencies not injected');
-            stream.markdown(`## ${SEVERITY.warning} Configuration Error\n\nLupa is still initializing. Please try again in a moment.`);
-            return { errorDetails: { message: 'Service not initialized' } };
-        }
-
-        try {
-            stream.progress(`${ACTIVITY.reading} Fetching branch changes...`);
-
-            const gitService = GitService.getInstance();
-            if (!gitService.isInitialized()) {
-                stream.markdown(`## ${SEVERITY.warning} Git Not Initialized\n\nCould not find a Git repository. Please ensure you have a Git repository open.`);
-                return { errorDetails: { message: 'Git service not initialized' } };
-            }
-
-            const diffResult = await gitService.compareBranches({});
-
-            if (diffResult.error || !diffResult.diffText) {
-                stream.markdown(`## ${SEVERITY.success} No Changes Found\n\nYour branch \`${diffResult.refName}\` appears to be up-to-date with the default branch. Nothing to analyze!`);
-                return {};
-            }
-
-            return this.runAnalysis(request, stream, token, diffResult, diffResult.refName);
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            Log.error('[ChatParticipantService]: /branch analysis failed', error);
-
-            stream.markdown(`## ${SEVERITY.warning} Analysis Error\n\nSomething went wrong during analysis. Please try again.\n\n\`\`\`\n${errorMessage}\n\`\`\``);
-            return {
-                errorDetails: { message: errorMessage },
-                metadata: { responseIsIncomplete: true }
-            };
-        }
+        return this.runGitAnalysis(
+            request,
+            stream,
+            token,
+            'Fetching branch changes...',
+            () => GitService.getInstance().compareBranches({}),
+            'Your branch `${refName}` appears to be up-to-date with the default branch. Nothing to analyze!',
+            'branch changes'
+        );
     }
 
     /**
@@ -162,7 +137,30 @@ export class ChatParticipantService implements vscode.Disposable {
         stream: vscode.ChatResponseStream,
         token: vscode.CancellationToken
     ): Promise<vscode.ChatResult> {
-        Log.info('[ChatParticipantService]: /changes command received');
+        return this.runGitAnalysis(
+            request,
+            stream,
+            token,
+            'Fetching uncommitted changes...',
+            () => GitService.getInstance().getUncommittedChanges(),
+            'You have no uncommitted changes to analyze. Your working tree is clean!',
+            'uncommitted changes'
+        );
+    }
+
+    /**
+     * Helper to run analysis based on a git operation.
+     */
+    private async runGitAnalysis(
+        request: vscode.ChatRequest,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken,
+        progressMessage: string,
+        gitOp: () => Promise<{ diffText: string; refName: string; error?: string }>,
+        noChangesMessage: string,
+        scopeLabel: string
+    ): Promise<vscode.ChatResult> {
+        Log.info(`[ChatParticipantService]: /${request.command} command received`);
 
         if (!this.deps) {
             Log.error('[ChatParticipantService]: Dependencies not injected');
@@ -171,7 +169,7 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
-            stream.progress(`${ACTIVITY.reading} Fetching uncommitted changes...`);
+            stream.progress(`${ACTIVITY.reading} ${progressMessage}`);
 
             const gitService = GitService.getInstance();
             if (!gitService.isInitialized()) {
@@ -179,17 +177,25 @@ export class ChatParticipantService implements vscode.Disposable {
                 return { errorDetails: { message: 'Git service not initialized' } };
             }
 
-            const diffResult = await gitService.getUncommittedChanges();
+            const diffResult = await gitOp();
 
             if (diffResult.error || !diffResult.diffText) {
-                stream.markdown(`## ${SEVERITY.success} No Changes Found\n\nYou have no uncommitted changes to analyze. Your working tree is clean!`);
+                // Format message with refName if available (for branch command)
+                const message = noChangesMessage.replace('${refName}', diffResult.refName || 'unknown');
+                stream.markdown(`## ${SEVERITY.success} No Changes Found\n\n${message}`);
                 return {};
             }
 
-            return this.runAnalysis(request, stream, token, diffResult, 'uncommitted changes');
+            const finalScopeLabel = request.command === 'branch' ? diffResult.refName : scopeLabel;
+
+            return this.runAnalysis(request, stream, token, diffResult, finalScopeLabel);
         } catch (error) {
+            if (token.isCancellationRequested) {
+                return this.handleCancellation(stream);
+            }
+
             const errorMessage = error instanceof Error ? error.message : String(error);
-            Log.error('[ChatParticipantService]: /changes analysis failed', error);
+            Log.error(`[ChatParticipantService]: /${request.command} analysis failed`, error);
 
             stream.markdown(`## ${SEVERITY.warning} Analysis Error\n\nSomething went wrong during analysis. Please try again.\n\n\`\`\`\n${errorMessage}\n\`\`\``);
             return {
@@ -209,6 +215,10 @@ export class ChatParticipantService implements vscode.Disposable {
         diffResult: { diffText: string; refName: string },
         scopeLabel: string
     ): Promise<vscode.ChatResult> {
+        if (token.isCancellationRequested) {
+            return this.handleCancellation(stream);
+        }
+
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
 
@@ -248,9 +258,34 @@ export class ChatParticipantService implements vscode.Disposable {
         );
 
         debouncedHandler.flush();
+
+        if (analysisResult === CANCELLATION_MESSAGE) {
+            return this.handleCancellation(stream);
+        }
+
         stream.markdown(analysisResult);
 
         return {};
+    }
+
+    /**
+     * Format a user-friendly cancellation response with correct metadata.
+     */
+    private handleCancellation(stream: vscode.ChatResponseStream): vscode.ChatResult {
+        Log.info('[ChatParticipantService]: Analysis cancelled by user');
+
+        stream.markdown(`## 💬 Analysis Cancelled
+
+Analysis was stopped before findings could be generated.
+
+*Run the command again when you're ready.*`);
+
+        return {
+            metadata: {
+                cancelled: true,
+                responseIsIncomplete: true
+            }
+        };
     }
 
     /**
