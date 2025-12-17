@@ -238,5 +238,17 @@ describe("DebouncedStreamHandler", () => {
             handler.onProgress("message 2"); // Should be debounced
             expect(mockInner.onProgress).toHaveBeenCalledTimes(1);
         });
+
+        it("should flush pending message even during debounce period", () => {
+            handler.onProgress("message 1");
+            handler.onProgress("message 2"); // Pending, < 100ms
+
+            // Flush immediately without waiting
+            handler.flush();
+
+            expect(mockInner.onProgress).toHaveBeenCalledTimes(2);
+            expect(mockInner.onProgress).toHaveBeenNthCalledWith(1, "message 1");
+            expect(mockInner.onProgress).toHaveBeenNthCalledWith(2, "message 2");
+        });
     });
 });
