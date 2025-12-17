@@ -26,7 +26,12 @@ export class ChatResponseBuilder {
      * @param summary - Text to display after emoji (e.g., "Analysis Complete")
      */
     addVerdictLine(status: "success" | "issues" | "cancelled", summary: string): this {
-        const emoji = status === "success" ? SEVERITY.success : status === "issues" ? "🔍" : "💬";
+        let emoji = "💬";
+        if (status === "success") {
+            emoji = SEVERITY.success;
+        } else if (status === "issues") {
+            emoji = "🔍"
+        }
         this.sections.push(`## ${emoji} ${summary}\n`);
         return this;
     }
@@ -39,8 +44,9 @@ export class ChatResponseBuilder {
      * @param suggestions - Number of suggestions
      */
     addSummaryStats(filesAnalyzed: number, critical: number, suggestions: number): this {
+        const fileWord = filesAnalyzed === 1 ? "file" : "files";
         this.sections.push(
-            `\n${SECTION.summary} **${filesAnalyzed} files** analyzed | **${critical}** critical | **${suggestions}** suggestions\n`
+            `\n${SECTION.summary} **${filesAnalyzed} ${fileWord}** analyzed | **${critical}** critical | **${suggestions}** suggestions\n`
         );
         return this;
     }
@@ -59,7 +65,7 @@ export class ChatResponseBuilder {
         const findingCards = findings.map(
             (finding) => `**${finding.title}** in [${finding.location}](${finding.anchor})\n${finding.description}`
         );
-        this.sections.push(findingCards.join("\n\n") + "\n");
+        this.sections.push(findingCards.join("\n\n") + "\n\n");
         return this;
     }
 

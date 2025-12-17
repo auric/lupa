@@ -45,6 +45,20 @@ describe("ChatResponseBuilder", () => {
             expect(result).toContain(SECTION.summary);
         });
 
+        it("should use singular 'file' for count of 1", () => {
+            const result = new ChatResponseBuilder().addSummaryStats(1, 0, 0).build();
+            expect(result).toContain("**1 file**");
+            expect(result).not.toContain("**1 files**");
+        });
+
+        it("should use plural 'files' for count other than 1", () => {
+            const result = new ChatResponseBuilder().addSummaryStats(2, 0, 0).build();
+            expect(result).toContain("**2 files**");
+
+            const zeroResult = new ChatResponseBuilder().addSummaryStats(0, 0, 0).build();
+            expect(zeroResult).toContain("**0 files**");
+        });
+
         it("should return this for fluent chaining", () => {
             const builder = new ChatResponseBuilder();
             const returnValue = builder.addSummaryStats(1, 0, 0);
@@ -192,7 +206,7 @@ describe("ChatResponseBuilder", () => {
 
             expect(result).toBeTruthy();
             expect(result).toContain("✅ Test");
-            expect(result).toContain("**1 files**");
+            expect(result).toContain("**1 file**"); // Singular
         });
 
         it("should build partial response when some sections omitted", () => {
