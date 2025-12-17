@@ -49,6 +49,25 @@
                 "command": "lupa.testWebview",
                 "title": "Lupa: Test Webview (Development)"
             }
+        ],
+        "chatParticipants": [
+            {
+                "id": "lupa.chat-participant",
+                "name": "lupa",
+                "fullName": "Lupa Code Review",
+                "description": "Analyze pull requests and code changes",
+                "isSticky": true,
+                "commands": [
+                    {
+                        "name": "branch",
+                        "description": "Analyze current branch vs default branch"
+                    },
+                    {
+                        "name": "changes",
+                        "description": "Analyze uncommitted changes"
+                    }
+                ]
+            }
         ]
     },
     "scripts": {

@@ -40,3 +40,18 @@ export interface Finding {
     /** Description text explaining the issue and guidance */
     description: string;
 }
+
+/**
+ * Metadata stored with chat analysis results for follow-up handling and history.
+ * Used by ChatParticipantService to track analysis context across conversation turns.
+ */
+export interface ChatAnalysisMetadata {
+    /** The analysis mode that was used */
+    mode?: 'branch' | 'changes';
+    /** Base branch for comparison (when mode is 'branch') */
+    baseBranch?: string;
+    /** Target branch being analyzed (when mode is 'branch') */
+    targetBranch?: string;
+    /** Unix timestamp when analysis was performed */
+    analysisTimestamp?: number;
+}

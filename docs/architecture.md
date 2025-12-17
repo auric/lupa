@@ -783,7 +783,7 @@ class ChatContextManager {
     for (let i = history.length - 1; i >= 0; i--) {
       const turnTokens = await model.countTokens(history[i].prompt);
       if (usedTokens + turnTokens > availableForHistory) {
-        Log.info("ChatContextManager", `Truncating history at turn ${i}`);
+        Log.info(`[ChatContextManager]: Truncating history at turn ${i}`);
         break;
       }
       includedHistory.unshift(this.convertTurn(history[i]));
@@ -951,8 +951,8 @@ return toolError('File not found');
 import { Log } from "../services/loggingService";
 
 // Use Log, NOT console.log
-Log.info("ChatParticipantService", "Processing /branch command");
-Log.error("ChatParticipantService", "Analysis failed", error);
+Log.info("[ChatParticipantService]: Processing /branch command");
+Log.error("[ChatParticipantService]: Analysis failed", error);
 ```
 
 **Type Parameters:**

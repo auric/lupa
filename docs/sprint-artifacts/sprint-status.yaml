@@ -51,8 +51,8 @@ development_status:
   epic-0-retrospective: completed
 
   # Epic 1: Core Chat Participant
-  epic-1: backlog
-  1-1-register-chat-participant: backlog
+  epic-1: in-progress
+  1-1-register-chat-participant: done
   1-2-implement-branch-command: backlog
   1-3-implement-changes-command: backlog
   1-4-support-cancellation: backlog

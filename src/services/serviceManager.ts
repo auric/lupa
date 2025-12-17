@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { LoggingService } from './loggingService';
 import { StatusBarService } from './statusBarService';
+import { ChatParticipantService } from './chatParticipantService';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { UIManager } from './uiManager';
 import { GitOperationsManager } from './gitOperationsManager';
@@ -55,6 +56,7 @@ export interface IServiceRegistry {
     uiManager: UIManager;
     gitOperations: GitOperationsManager;
     toolTestingWebview: ToolTestingWebviewService;
+    chatParticipantService: ChatParticipantService;
 
     // Utility services
     symbolExtractor: SymbolExtractor;
@@ -190,6 +192,8 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry,
             this.services.toolExecutor
         );
+
+        this.services.chatParticipantService = ChatParticipantService.getInstance();
     }
 
     /**
@@ -257,6 +261,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolExecutor,
             this.services.toolRegistry,
             this.services.copilotModelManager,
+            this.services.chatParticipantService,
             this.services.gitOperations,
             this.services.statusBar,
             this.services.logging
