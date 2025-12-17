@@ -194,6 +194,11 @@ export class ServiceManager implements vscode.Disposable {
         );
 
         this.services.chatParticipantService = ChatParticipantService.getInstance();
+        this.services.chatParticipantService.setDependencies({
+            toolExecutor: this.services.toolExecutor!,
+            toolRegistry: this.services.toolRegistry!,
+            workspaceSettings: this.services.workspaceSettings!
+        });
     }
 
     /**

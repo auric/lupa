@@ -588,20 +588,27 @@ export type SectionType = keyof typeof SECTION;
 - NFR-002 requires debounced updates to prevent UI flicker
 - UX specification mandates max 10 updates/second
 - Preserves important updates while reducing noise
-- Decorator pattern wraps any ToolCallHandler implementation
+- Decorator pattern wraps any `ChatToolCallHandler` implementation
+
+**Important:** `DebouncedStreamHandler` implements `ChatToolCallHandler` (from chatTypes.ts), NOT `ToolCallHandler` (from conversationRunner.ts). These are separate interfaces for different purposes:
+
+| Interface             | Location              | Purpose                       |
+| --------------------- | --------------------- | ----------------------------- |
+| `ToolCallHandler`     | conversationRunner.ts | ConversationRunner callbacks  |
+| `ChatToolCallHandler` | chatTypes.ts          | Chat UI streaming abstraction |
 
 **Implementation:**
 
 ```typescript
-// src/handlers/debouncedStreamHandler.ts
-import { ToolCallHandler } from "../models/toolCallHandler";
+// src/models/debouncedStreamHandler.ts
+import { ChatToolCallHandler } from "../types/chatTypes";
 
-export class DebouncedStreamHandler implements ToolCallHandler {
+export class DebouncedStreamHandler implements ChatToolCallHandler {
   private lastUpdate = 0;
   private readonly minIntervalMs = 100; // 10 updates/sec max
   private pendingProgress: string | undefined;
 
-  constructor(private readonly innerHandler: ToolCallHandler) {}
+  constructor(private readonly innerHandler: ChatToolCallHandler) {}
 
   onProgress(message: string): void {
     const now = Date.now();
@@ -610,7 +617,6 @@ export class DebouncedStreamHandler implements ToolCallHandler {
       this.lastUpdate = now;
       this.pendingProgress = undefined;
     } else {
-      // Store for potential flush
       this.pendingProgress = message;
     }
   }
@@ -648,31 +654,138 @@ export class DebouncedStreamHandler implements ToolCallHandler {
     }
   }
 
-  /**
-   * Call at end of analysis to ensure final message is sent
-   */
   flush(): void {
     this.flushPending();
   }
 }
 ```
 
-**Usage:**
+**Three-Layer Streaming Architecture:**
+
+Since `ConversationRunner.run()` accepts `ToolCallHandler` but `DebouncedStreamHandler` implements `ChatToolCallHandler`, we use a three-layer architecture with a reusable adapter class:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ChatParticipantService                                      │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │ Layer 1: UI Handler (ChatToolCallHandler)            │  │
+│  │   Maps: onProgress→stream.progress()                 │  │
+│  │         onMarkdown→stream.markdown()                 │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+│                         │                                   │
+│  ┌──────────────────────▼───────────────────────────────┐  │
+│  │ Layer 2: DebouncedStreamHandler (decorator)          │  │
+│  │   Wraps ChatToolCallHandler                          │  │
+│  │   Rate limits onProgress to 10/sec (NFR-002)         │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+│                         │                                   │
+│  ┌──────────────────────▼───────────────────────────────┐  │
+│  │ Layer 3: ToolCallStreamAdapter (adapter class)       │  │
+│  │   Implements ToolCallHandler                         │  │
+│  │   Forwards to ChatToolCallHandler                    │  │
+│  └──────────────────────┬───────────────────────────────┘  │
+│                         │                                   │
+└─────────────────────────┼───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│ ConversationRunner.run(config, conversation, token, adapter)│
+└─────────────────────────────────────────────────────────────┘
+```
+
+**ToolCallStreamAdapter Implementation (DRY-compliant):**
 
 ```typescript
-// In ChatParticipantService
-const baseHandler = new ChatStreamHandler(stream);
-const debouncedHandler = new DebouncedStreamHandler(baseHandler);
+// src/models/toolCallStreamAdapter.ts
+import { ToolCallHandler } from "./conversationRunner";
+import { ChatToolCallHandler } from "../types/chatTypes";
+import { ACTIVITY } from "../config/chatEmoji";
 
-await conversationRunner.run(
+/**
+ * Adapts ConversationRunner's ToolCallHandler to ChatToolCallHandler for UI streaming.
+ * Bridges the gap between internal conversation events and external UI updates.
+ *
+ * This adapter exists because:
+ * - ToolCallHandler is for conversation state management (recording, metrics)
+ * - ChatToolCallHandler is for UI streaming (progress, markdown)
+ * - They have different method signatures and purposes
+ *
+ * @see Decision 10 in architecture.md
+ */
+export class ToolCallStreamAdapter implements ToolCallHandler {
+  constructor(private readonly chatHandler: ChatToolCallHandler) {}
+
+  onIterationStart(current: number, max: number): void {
+    this.chatHandler.onProgress(
+      `Turn ${current}/${max}: ${ACTIVITY.thinking} Analyzing...`
+    );
+  }
+
+  onToolCallStart(
+    toolName: string,
+    _toolIndex: number,
+    _totalTools: number
+  ): void {
+    this.chatHandler.onToolStart(toolName, {});
+  }
+
+  onToolCallComplete(
+    _toolCallId: string,
+    toolName: string,
+    _args: Record<string, unknown>,
+    _result: string,
+    success: boolean,
+    error?: string
+  ): void {
+    const summary = success ? "completed" : error || "failed";
+    this.chatHandler.onToolComplete(toolName, success, summary);
+  }
+
+  // getContextStatusSuffix not implemented - not needed for UI streaming
+}
+```
+
+**Usage in ChatParticipantService:**
+
+```typescript
+// Layer 1: UI streaming handler (ChatToolCallHandler)
+const uiHandler: ChatToolCallHandler = {
+  onProgress: (msg) => stream.progress(msg),
+  onToolStart: () => {},
+  onToolComplete: () => {},
+  onFileReference: () => {},
+  onThinking: (thought) => stream.progress(`${ACTIVITY.thinking} ${thought}`),
+  onMarkdown: (content) => stream.markdown(content),
+};
+
+// Layer 2: Rate limiting (decorator)
+const debouncedHandler = new DebouncedStreamHandler(uiHandler);
+
+// Layer 3: Adapter (bridges ToolCallHandler → ChatToolCallHandler)
+const adapter = new ToolCallStreamAdapter(debouncedHandler);
+
+// Execute with the adapter
+const result = await conversationRunner.run(
   config,
   conversationManager,
   token,
-  debouncedHandler
+  adapter // ToolCallHandler interface, forwards to ChatToolCallHandler
 );
 
 debouncedHandler.flush(); // Ensure final message sent
+stream.markdown(result);
 ```
+
+**Why a Reusable Class (SOLID Compliance):**
+
+| Principle | How Addressed                                                  |
+| --------- | -------------------------------------------------------------- |
+| **SRP**   | Adapter has single responsibility: bridging interfaces         |
+| **OCP**   | Can extend behavior without modifying ConversationRunner       |
+| **LSP**   | ToolCallStreamAdapter is substitutable for any ToolCallHandler |
+| **ISP**   | Interfaces stay separate, serving their distinct purposes      |
+| **DRY**   | Single adapter class reused by all chat consumers              |
 
 ---
 

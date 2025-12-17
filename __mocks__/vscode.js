@@ -634,10 +634,15 @@ vscodeMock.lm = {
 // Mock chat namespace and selectChatModels
 vscodeMock.chat = {
   languageModels: {
-    selectChatModels: vi.fn().mockResolvedValue([]), // Mock function to select models
-    onDidChangeLanguageModels: vi.fn(() => ({ dispose: vi.fn() })), // Mock event
-    all: [], // Mock property for all models
-  }
+    selectChatModels: vi.fn().mockResolvedValue([]),
+    onDidChangeLanguageModels: vi.fn(() => ({ dispose: vi.fn() })),
+    all: [],
+  },
+  createChatParticipant: vi.fn().mockReturnValue({
+    dispose: vi.fn(),
+    iconPath: undefined,
+    followupProvider: undefined,
+  }),
 };
 
 // Mock env namespace (for vscode.env.appRoot, etc.)
