@@ -263,7 +263,6 @@ Use these tools proactively to understand the context of any functions, classes,
      * - Proper XML structure
      */
     public generateUserPrompt(
-        diffText: string,
         parsedDiff: DiffHunk[],
         contextString: string,
         hasContext: boolean
@@ -277,7 +276,7 @@ Use these tools proactively to understand the context of any functions, classes,
         const examplesSection = this.generateExamplesSection();
 
         // 3. File content structured with metadata
-        const fileContentSection = this.generateFileContentSection(diffText, parsedDiff);
+        const fileContentSection = this.generateFileContentSection(parsedDiff);
 
         // 4. Task instructions at end (Anthropic guideline for 30% improvement)
         const instructionsSection = this.generateInstructionsSection();
@@ -288,16 +287,14 @@ Use these tools proactively to understand the context of any functions, classes,
     /**
      * Generate tool-calling focused user prompt
      * Optimized for tool-calling workflow with enhanced examples
-     * @param diffText The diff content to analyze
      * @param parsedDiff Parsed diff structure
      * @returns User prompt optimized for tool-calling analysis
      */
     public generateToolCallingUserPrompt(
-        diffText: string,
         parsedDiff: DiffHunk[]
     ): string {
         // 1. File content at top for long context optimization
-        const fileContentSection = this.generateFileContentSection(diffText, parsedDiff);
+        const fileContentSection = this.generateFileContentSection(parsedDiff);
 
         // 2. Tool usage examples
         const toolExamplesSection = this.generateToolUsageExamples();
@@ -327,7 +324,7 @@ Use these tools proactively to understand the context of any functions, classes,
     /**
      * Generate file content section with proper structure
      */
-    private generateFileContentSection(diffText: string, parsedDiff: DiffHunk[]): string {
+    private generateFileContentSection(parsedDiff: DiffHunk[]): string {
         let fileContentXml = "<files_to_review>\n";
 
         for (const fileDiff of parsedDiff) {
@@ -427,7 +424,6 @@ For each identified issue:
      * This method helps with token estimation for the generated prompt structure
      */
     public calculatePromptStructureTokens(
-        diffText: string,
         parsedDiff: DiffHunk[],
         contextPlaceholder: string = "[CONTEXT_PLACEHOLDER]"
     ): {
@@ -438,7 +434,7 @@ For each identified issue:
         estimatedPromptLength: number;
     } {
         const examplesSection = this.generateExamplesSection();
-        const fileContentSection = this.generateFileContentSection(diffText, parsedDiff);
+        const fileContentSection = this.generateFileContentSection(parsedDiff);
         const instructionsSection = this.generateInstructionsSection();
         const contextSection = `<context>\n${contextPlaceholder}\n</context>\n\n`;
 

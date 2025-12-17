@@ -133,6 +133,7 @@ describe('ChatParticipantService', () => {
         let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
+        let mockPromptGenerator: any;
 
         beforeEach(() => {
             const mockParticipant = { dispose: vi.fn() };
@@ -153,6 +154,10 @@ describe('ChatParticipantService', () => {
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300)
+            };
+            mockPromptGenerator = {
+                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
             };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
@@ -178,7 +183,8 @@ describe('ChatParticipantService', () => {
             instance.setDependencies({
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
-                workspaceSettings: mockWorkspaceSettings
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
             });
 
             const result = await capturedHandler(
@@ -208,7 +214,8 @@ describe('ChatParticipantService', () => {
             instance.setDependencies({
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
-                workspaceSettings: mockWorkspaceSettings
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
             });
 
             const result = await capturedHandler(
@@ -239,7 +246,8 @@ describe('ChatParticipantService', () => {
             instance.setDependencies({
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
-                workspaceSettings: mockWorkspaceSettings
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
             });
 
             const result = await capturedHandler(
@@ -281,7 +289,8 @@ describe('ChatParticipantService', () => {
             instance.setDependencies({
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
-                workspaceSettings: mockWorkspaceSettings
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
             });
 
             const result = await capturedHandler(
@@ -308,7 +317,8 @@ describe('ChatParticipantService', () => {
             instance.setDependencies({
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
-                workspaceSettings: mockWorkspaceSettings
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
             });
 
             const result = await capturedHandler(
@@ -323,6 +333,264 @@ describe('ChatParticipantService', () => {
             );
             expect(result).toHaveProperty('errorDetails');
             expect(result.metadata).toHaveProperty('responseIsIncomplete', true);
+        });
+    });
+
+    describe('/changes command', () => {
+        let capturedHandler: any;
+        let mockStream: any;
+        let mockToken: any;
+        let mockToolExecutor: any;
+        let mockToolRegistry: any;
+        let mockWorkspaceSettings: any;
+        let mockPromptGenerator: any;
+
+        beforeEach(() => {
+            const mockParticipant = { dispose: vi.fn() };
+            mockStream = {
+                markdown: vi.fn(),
+                progress: vi.fn()
+            };
+            mockToken = {
+                isCancellationRequested: false,
+                onCancellationRequested: vi.fn()
+            };
+            mockToolExecutor = {
+                getAvailableTools: vi.fn().mockReturnValue([]),
+                resetToolCallCount: vi.fn()
+            };
+            mockToolRegistry = {
+                getToolNames: vi.fn().mockReturnValue([])
+            };
+            mockWorkspaceSettings = {
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300)
+            };
+            mockPromptGenerator = {
+                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+            };
+
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                (_id: string, handler: any) => {
+                    capturedHandler = handler;
+                    return mockParticipant;
+                }
+            );
+        });
+
+        it('should route /changes command to handleChangesCommand', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'mock diff content',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockGitService.getUncommittedChanges).toHaveBeenCalled();
+            expect(mockStream.progress).toHaveBeenCalled();
+            expect(result).toEqual({});
+        });
+
+        it('should return helpful message for no uncommitted changes', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: '',
+                    refName: 'uncommitted changes',
+                    error: 'No uncommitted changes found'
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('No Changes Found')
+            );
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('working tree is clean')
+            );
+            expect(result).toEqual({});
+        });
+
+        it('should return error when git not initialized for /changes', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(false)
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Git Not Initialized')
+            );
+            expect(result).toHaveProperty('errorDetails');
+        });
+
+        it('should handle /changes analysis errors gracefully', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockRejectedValue(new Error('Git error'))
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis Error')
+            );
+            expect(result).toHaveProperty('errorDetails');
+            expect(result.metadata).toHaveProperty('responseIsIncomplete', true);
+        });
+
+        it('should call getUncommittedChanges not compareBranches', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'mock diff',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                }),
+                compareBranches: vi.fn()
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockGitService.getUncommittedChanges).toHaveBeenCalled();
+            expect(mockGitService.compareBranches).not.toHaveBeenCalled();
+        });
+
+        it('should use PromptGenerator.generateToolCallingUserPrompt', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/test.ts b/test.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockPromptGenerator.generateToolCallingUserPrompt).toHaveBeenCalledWith(
+                expect.any(Array)
+            );
+        });
+
+        it('should stream progress with uncommitted changes scope', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'mock diff',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.progress).toHaveBeenCalledWith(
+                expect.stringContaining('uncommitted changes')
+            );
         });
     });
 

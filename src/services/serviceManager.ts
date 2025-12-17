@@ -197,7 +197,8 @@ export class ServiceManager implements vscode.Disposable {
         this.services.chatParticipantService.setDependencies({
             toolExecutor: this.services.toolExecutor!,
             toolRegistry: this.services.toolRegistry!,
-            workspaceSettings: this.services.workspaceSettings!
+            workspaceSettings: this.services.workspaceSettings!,
+            promptGenerator: this.services.promptGenerator!
         });
     }
 

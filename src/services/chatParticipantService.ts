@@ -9,7 +9,8 @@ import { ConversationManager } from '../models/conversationManager';
 import { ChatLLMClient } from '../models/chatLLMClient';
 import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
-import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
+import { PromptGenerator } from '../models/promptGenerator';
+import { DiffUtils } from '../utils/diffUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 
@@ -21,6 +22,7 @@ export interface ChatParticipantDependencies {
     toolExecutor: ToolExecutor;
     toolRegistry: ToolRegistry;
     workspaceSettings: WorkspaceSettingsService;
+    promptGenerator: PromptGenerator;
 }
 
 /**
@@ -99,6 +101,10 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleBranchCommand(request, stream, token);
         }
 
+        if (request.command === 'changes') {
+            return this.handleChangesCommand(request, stream, token);
+        }
+
         stream.markdown('Lupa chat participant registered. Commands coming soon!');
         return {};
     }
@@ -135,48 +141,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 return {};
             }
 
-            Log.info(`[ChatParticipantService]: Analyzing branch "${diffResult.refName}"`);
-            stream.progress(`${ACTIVITY.analyzing} Analyzing ${diffResult.refName}...`);
-
-            const timeoutMs = this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
-            const client = new ChatLLMClient(request.model, timeoutMs);
-            const runner = new ConversationRunner(client, this.deps.toolExecutor);
-            const conversation = new ConversationManager();
-            const availableTools = this.deps.toolExecutor.getAvailableTools();
-            const promptGenerator = new ToolAwareSystemPromptGenerator();
-            const systemPrompt = promptGenerator.generateSystemPrompt(availableTools);
-
-            const userPrompt = this.buildUserPrompt(diffResult.diffText, diffResult.refName);
-            conversation.addUserMessage(userPrompt);
-
-            const uiHandler: ChatToolCallHandler = {
-                onProgress: (msg) => stream.progress(msg),
-                onToolStart: () => { },
-                onToolComplete: () => { },
-                onFileReference: () => { },
-                onThinking: (thought) => stream.progress(`${ACTIVITY.thinking} ${thought}`),
-                onMarkdown: (content) => stream.markdown(content)
-            };
-
-            const debouncedHandler = new DebouncedStreamHandler(uiHandler);
-            const adapter = new ToolCallStreamAdapter(debouncedHandler);
-
-            const analysisResult = await runner.run(
-                {
-                    systemPrompt,
-                    maxIterations: 15,
-                    tools: availableTools,
-                    label: 'Chat /branch'
-                },
-                conversation,
-                token,
-                adapter
-            );
-
-            debouncedHandler.flush();
-            stream.markdown(analysisResult);
-
-            return {};
+            return this.runAnalysis(request, stream, token, diffResult, diffResult.refName);
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
             Log.error('[ChatParticipantService]: /branch analysis failed', error);
@@ -189,19 +154,103 @@ export class ChatParticipantService implements vscode.Disposable {
         }
     }
 
-    private buildUserPrompt(diffText: string, branchName: string): string {
-        return `Please analyze the following changes on branch \`${branchName}\`:
+    /**
+     * Handle the /changes command to analyze uncommitted changes.
+     */
+    private async handleChangesCommand(
+        request: vscode.ChatRequest,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<vscode.ChatResult> {
+        Log.info('[ChatParticipantService]: /changes command received');
 
-\`\`\`diff
-${diffText}
-\`\`\`
+        if (!this.deps) {
+            Log.error('[ChatParticipantService]: Dependencies not injected');
+            stream.markdown(`## ${SEVERITY.warning} Configuration Error\n\nLupa is still initializing. Please try again in a moment.`);
+            return { errorDetails: { message: 'Service not initialized' } };
+        }
 
-Provide a comprehensive code review focusing on:
-1. Potential bugs or logic errors
-2. Security vulnerabilities
-3. Performance concerns
-4. Code quality and maintainability
-5. Test coverage considerations`;
+        try {
+            stream.progress(`${ACTIVITY.reading} Fetching uncommitted changes...`);
+
+            const gitService = GitService.getInstance();
+            if (!gitService.isInitialized()) {
+                stream.markdown(`## ${SEVERITY.warning} Git Not Initialized\n\nCould not find a Git repository. Please ensure you have a Git repository open.`);
+                return { errorDetails: { message: 'Git service not initialized' } };
+            }
+
+            const diffResult = await gitService.getUncommittedChanges();
+
+            if (diffResult.error || !diffResult.diffText) {
+                stream.markdown(`## ${SEVERITY.success} No Changes Found\n\nYou have no uncommitted changes to analyze. Your working tree is clean!`);
+                return {};
+            }
+
+            return this.runAnalysis(request, stream, token, diffResult, 'uncommitted changes');
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            Log.error('[ChatParticipantService]: /changes analysis failed', error);
+
+            stream.markdown(`## ${SEVERITY.warning} Analysis Error\n\nSomething went wrong during analysis. Please try again.\n\n\`\`\`\n${errorMessage}\n\`\`\``);
+            return {
+                errorDetails: { message: errorMessage },
+                metadata: { responseIsIncomplete: true }
+            };
+        }
+    }
+
+    /**
+     * Run analysis on diff content using the LLM with tool-calling.
+     */
+    private async runAnalysis(
+        request: vscode.ChatRequest,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken,
+        diffResult: { diffText: string; refName: string },
+        scopeLabel: string
+    ): Promise<vscode.ChatResult> {
+        Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
+        stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
+
+        const timeoutMs = this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+        const client = new ChatLLMClient(request.model, timeoutMs);
+        const runner = new ConversationRunner(client, this.deps!.toolExecutor);
+        const conversation = new ConversationManager();
+        const availableTools = this.deps!.toolExecutor.getAvailableTools();
+        const systemPrompt = this.deps!.promptGenerator.generateToolAwareSystemPrompt(availableTools);
+
+        const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
+        const userPrompt = this.deps!.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
+        conversation.addUserMessage(userPrompt);
+
+        const uiHandler: ChatToolCallHandler = {
+            onProgress: (msg) => stream.progress(msg),
+            onToolStart: () => { },
+            onToolComplete: () => { },
+            onFileReference: () => { },
+            onThinking: (thought) => stream.progress(`${ACTIVITY.thinking} ${thought}`),
+            onMarkdown: (content) => stream.markdown(content)
+        };
+
+        const debouncedHandler = new DebouncedStreamHandler(uiHandler);
+        const adapter = new ToolCallStreamAdapter(debouncedHandler);
+
+        const analysisResult = await runner.run(
+            {
+                systemPrompt,
+                maxIterations: 15,
+                tools: availableTools,
+                label: `Chat /${scopeLabel}`
+            },
+            conversation,
+            token,
+            adapter
+        );
+
+        debouncedHandler.flush();
+        stream.markdown(analysisResult);
+
+        return {};
     }
 
     /**

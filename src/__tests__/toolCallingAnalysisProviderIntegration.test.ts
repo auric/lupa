@@ -129,7 +129,6 @@ index 1234567..abcdefg 100644
 
             // Verify tool-calling user prompt was generated
             expect(generateToolCallingUserPromptSpy).toHaveBeenCalledWith(
-                sampleDiff,
                 expect.any(Array) // parsed diff
             );
         });
@@ -211,9 +210,8 @@ index 1234567..abcdefg 100644
             await provider.analyze(sampleDiff, tokenSource.token);
 
             const userPromptCall = generateToolCallingUserPromptSpy.mock.calls[0];
-            const [diffParam, parsedDiffParam] = userPromptCall;
+            const [parsedDiffParam] = userPromptCall;
 
-            expect(diffParam).toBe(sampleDiff);
             expect(parsedDiffParam).toBeInstanceOf(Array);
             expect(parsedDiffParam[0]).toHaveProperty('filePath', 'src/auth.ts');
             expect(parsedDiffParam[0]).toHaveProperty('hunks');
@@ -316,7 +314,7 @@ index 0000000..3333333
 
             await provider.analyze(complexDiff, tokenSource.token);
 
-            const parsedDiff = generateToolCallingUserPromptSpy.mock.calls[0][1] as DiffHunk[];
+            const parsedDiff = generateToolCallingUserPromptSpy.mock.calls[0][0] as DiffHunk[];
 
             expect(parsedDiff).toHaveLength(2);
             expect(parsedDiff[0].filePath).toBe('src/file1.ts');

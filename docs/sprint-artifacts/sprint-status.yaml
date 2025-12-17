@@ -54,7 +54,7 @@ development_status:
   epic-1: in-progress
   1-1-register-chat-participant: done
   1-2-implement-branch-command: done
-  1-3-implement-changes-command: backlog
+  1-3-implement-changes-command: done
   1-4-support-cancellation: backlog
   epic-1-retrospective: optional
 
