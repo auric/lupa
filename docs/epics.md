@@ -842,6 +842,22 @@ Tool calling for structured output is unreliable across model sizes.
 **Then** output MUST use positive framing: "✅ Looking good! No critical issues found."
 **And** MUST NOT use negative framing like "No errors" or "Nothing found"
 
+**AC-2.1.8: ChatResponseBuilder Migration (Epic 1 Technical Debt)**
+**Given** Epic 1 implemented inline string formatting instead of ChatResponseBuilder
+**When** refactoring ChatParticipantService
+**Then** the following inline patterns MUST be replaced with ChatResponseBuilder:
+
+- `## ${SEVERITY.success} No Changes Found` → `ChatResponseBuilder.addVerdictLine('success', ...)`
+- `## ${SEVERITY.warning} Configuration Error` → Error handling via builder
+- `## ${SEVERITY.warning} Git Not Initialized` → Error handling via builder
+- `## ${SEVERITY.warning} Analysis Error` → Error handling via builder
+- `## 💬 Analysis Cancelled` → `ChatResponseBuilder.addVerdictLine('cancelled', ...)`
+  **And** add `addErrorSection(title: string, message: string, details?: string)` method to ChatResponseBuilder
+  **And** ensure consistent UX formatting across all extension-generated messages
+
+**Technical Debt Context (from Epic 1 Retrospective):**
+Story 0.5 created ChatResponseBuilder but Epic 1 used inline formatting for simplicity during rapid development. This story consolidates all extension-generated messages through the builder for UX consistency.
+
 **Tasks:**
 
 - [ ] Create `ToolCallHandler` interface in `src/types/chatTypes.ts`
@@ -851,6 +867,11 @@ Tool calling for structured output is unreliable across model sizes.
 - [ ] Use `stream.filetree()` for changed files display
 - [ ] Import and use emoji from `chatEmoji.ts` for progress messages
 - [ ] Use `ChatResponseBuilder` for formatted output
+- [ ] **Migrate Epic 1 inline formatting to ChatResponseBuilder** (AC-2.1.8):
+  - Replace inline error messages with builder pattern
+  - Replace inline cancellation message with builder pattern
+  - Add `addErrorSection()` method to ChatResponseBuilder if needed
+  - Update tests to verify builder usage
 - [ ] Modify ConversationRunner to accept optional `ToolCallHandler`
 - [ ] **Update `toolAwareSystemPromptGenerator.ts` with UX guidelines** (from Epic 0 Retro):
   - Add emoji severity guidance (🔴 CRITICAL, 🟠 HIGH, 🟡 MEDIUM, 🟢 LOW)
@@ -1094,14 +1115,41 @@ Tool calling for structured output is unreliable across model sizes.
 ### Story 3.2: Conversation History Integration
 
 **As a** developer,
-**I want** conversation history to influence analysis,
-**So that** follow-ups have context.
+**I want** conversation history to influence follow-up questions,
+**So that** I can ask contextual questions about previous analysis.
+
+**SCOPE CLARIFICATION (Epic 1 Retrospective):**
+
+| Mode                  | Include History? | Rationale                                    |
+| --------------------- | ---------------- | -------------------------------------------- |
+| `/branch` command     | ❌ NO            | Fresh diff analysis, token budget protection |
+| `/changes` command    | ❌ NO            | Fresh diff analysis, token budget protection |
+| `@lupa` (exploration) | ✅ YES           | Follow-ups need context                      |
+| Follow-up chips       | ✅ YES           | Continuation of conversation                 |
+
+**Design Decision:** Commands (`/branch`, `/changes`) intentionally start fresh to:
+
+1. Avoid context window overflow (diff can be 5-20K tokens)
+2. Prevent stale analysis context from influencing new diff
+3. Give users predictable, repeatable behavior
+
+**UX Mitigation:** Progress messages indicate "fresh analysis" and follow-up suggestions guide users to exploration mode for contextual questions.
 
 **Acceptance Criteria:**
 
-**AC-3.2.1: History Extraction**
-**Given** a chat request with context.history
-**When** processing the request
+**AC-3.2.0: Command vs Exploration Mode History**
+**Given** the need to balance context relevance with token budget
+**When** handling requests
+**Then**:
+
+- `/branch` and `/changes` commands MUST NOT include conversation history
+- `@lupa` without a command (exploration mode) MUST include history
+- Follow-up suggestions MUST trigger exploration mode with history
+- Progress message for commands MUST indicate "fresh analysis" (e.g., "🔄 Starting fresh analysis...")
+
+**AC-3.2.1: History Extraction (Exploration Mode Only) (Exploration Mode Only)**
+**Given** a chat request with context.history AND no command specified
+**When** processing the request in exploration mode
 **Then** the handler MUST:
 
 - Extract previous turns from `ChatContext.history`

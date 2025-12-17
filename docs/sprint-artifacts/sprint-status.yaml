@@ -51,12 +51,12 @@ development_status:
   epic-0-retrospective: completed
 
   # Epic 1: Core Chat Participant
-  epic-1: in-progress
+  epic-1: done
   1-1-register-chat-participant: done
   1-2-implement-branch-command: done
   1-3-implement-changes-command: done
   1-4-support-cancellation: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: completed
 
   # Epic 2: Rich UX & Agent Mode Integration
   epic-2: backlog
