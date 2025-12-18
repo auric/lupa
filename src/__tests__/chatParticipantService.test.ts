@@ -1,9 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, Mocked } from 'vitest';
 import * as vscode from 'vscode';
 import { ChatParticipantService } from '../services/chatParticipantService';
 import { GitService } from '../services/gitService';
-import { ToolExecutor } from '../models/toolExecutor';
-import { ToolRegistry } from '../models/toolRegistry';
 import { ConversationRunner } from '../models/conversationRunner';
 
 vi.mock('vscode', async () => {
@@ -139,7 +137,8 @@ describe('ChatParticipantService', () => {
             const mockParticipant = { dispose: vi.fn() };
             mockStream = {
                 markdown: vi.fn(),
-                progress: vi.fn()
+                progress: vi.fn(),
+                filetree: vi.fn()
             };
             mockToken = {
                 isCancellationRequested: false,
@@ -153,7 +152,8 @@ describe('ChatParticipantService', () => {
                 getToolNames: vi.fn().mockReturnValue([])
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300)
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getMaxIterations: vi.fn().mockReturnValue(100)
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
@@ -349,7 +349,8 @@ describe('ChatParticipantService', () => {
             const mockParticipant = { dispose: vi.fn() };
             mockStream = {
                 markdown: vi.fn(),
-                progress: vi.fn()
+                progress: vi.fn(),
+                filetree: vi.fn()
             };
             mockToken = {
                 isCancellationRequested: false,
@@ -363,7 +364,8 @@ describe('ChatParticipantService', () => {
                 getToolNames: vi.fn().mockReturnValue([])
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300)
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getMaxIterations: vi.fn().mockReturnValue(100)
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
@@ -592,6 +594,49 @@ describe('ChatParticipantService', () => {
                 expect.stringContaining('uncommitted changes')
             );
         });
+
+        it('should call stream.filetree with parsed diff files', async () => {
+            // Set up workspace folders mock
+            const originalWorkspaceFolders = vscode.workspace.workspaceFolders;
+            (vscode.workspace as any).workspaceFolders = [
+                { uri: vscode.Uri.file('/workspace'), name: 'test', index: 0 }
+            ];
+
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/src/app.ts b/src/app.ts\n@@ -1,1 +1,2 @@\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.filetree).toHaveBeenCalledWith(
+                expect.arrayContaining([
+                    expect.objectContaining({ name: 'src' })
+                ]),
+                expect.any(Object)
+            );
+
+            // Restore workspace folders
+            (vscode.workspace as any).workspaceFolders = originalWorkspaceFolders;
+        });
     });
 
     describe('dispose', () => {
@@ -630,7 +675,8 @@ describe('ChatParticipantService', () => {
             const mockParticipant = { dispose: vi.fn() };
             mockStream = {
                 markdown: vi.fn(),
-                progress: vi.fn()
+                progress: vi.fn(),
+                filetree: vi.fn()
             };
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
@@ -640,7 +686,8 @@ describe('ChatParticipantService', () => {
                 getToolNames: vi.fn().mockReturnValue([])
             };
             mockWorkspaceSettings = {
-                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300)
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getMaxIterations: vi.fn().mockReturnValue(100)
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),

@@ -11,8 +11,10 @@ import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { PromptGenerator } from '../models/promptGenerator';
 import { DiffUtils } from '../utils/diffUtils';
+import { buildFileTree } from '../utils/fileTreeBuilder';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
+import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 
 /**
@@ -164,7 +166,10 @@ export class ChatParticipantService implements vscode.Disposable {
 
         if (!this.deps) {
             Log.error('[ChatParticipantService]: Dependencies not injected');
-            stream.markdown(`## ${SEVERITY.warning} Configuration Error\n\nLupa is still initializing. Please try again in a moment.`);
+            const response = new ChatResponseBuilder()
+                .addErrorSection('Configuration Error', 'Lupa is still initializing. Please try again in a moment.')
+                .build();
+            stream.markdown(response);
             return { errorDetails: { message: 'Service not initialized' } };
         }
 
@@ -173,7 +178,10 @@ export class ChatParticipantService implements vscode.Disposable {
 
             const gitService = GitService.getInstance();
             if (!gitService.isInitialized()) {
-                stream.markdown(`## ${SEVERITY.warning} Git Not Initialized\n\nCould not find a Git repository. Please ensure you have a Git repository open.`);
+                const response = new ChatResponseBuilder()
+                    .addErrorSection('Git Not Initialized', 'Could not find a Git repository. Please ensure you have a Git repository open.')
+                    .build();
+                stream.markdown(response);
                 return { errorDetails: { message: 'Git service not initialized' } };
             }
 
@@ -182,7 +190,11 @@ export class ChatParticipantService implements vscode.Disposable {
             if (diffResult.error || !diffResult.diffText) {
                 // Format message with refName if available (for branch command)
                 const message = noChangesMessage.replace('${refName}', diffResult.refName || 'unknown');
-                stream.markdown(`## ${SEVERITY.success} No Changes Found\n\n${message}`);
+                const response = new ChatResponseBuilder()
+                    .addVerdictLine('success', 'No Changes Found')
+                    .addFollowupPrompt(message)
+                    .build();
+                stream.markdown(response);
                 return {};
             }
 
@@ -197,7 +209,10 @@ export class ChatParticipantService implements vscode.Disposable {
             const errorMessage = error instanceof Error ? error.message : String(error);
             Log.error(`[ChatParticipantService]: /${request.command} analysis failed`, error);
 
-            stream.markdown(`## ${SEVERITY.warning} Analysis Error\n\nSomething went wrong during analysis. Please try again.\n\n\`\`\`\n${errorMessage}\n\`\`\``);
+            const response = new ChatResponseBuilder()
+                .addErrorSection('Analysis Error', 'Something went wrong during analysis. Please try again.', errorMessage)
+                .build();
+            stream.markdown(response);
             return {
                 errorDetails: { message: errorMessage },
                 metadata: { responseIsIncomplete: true }
@@ -230,6 +245,13 @@ export class ChatParticipantService implements vscode.Disposable {
         const systemPrompt = this.deps!.promptGenerator.generateToolAwareSystemPrompt(availableTools);
 
         const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
+
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (workspaceFolder && parsedDiff.length > 0) {
+            const fileTree = buildFileTree(parsedDiff);
+            stream.filetree(fileTree, workspaceFolder.uri);
+        }
+
         const userPrompt = this.deps!.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
         conversation.addUserMessage(userPrompt);
 
@@ -238,6 +260,7 @@ export class ChatParticipantService implements vscode.Disposable {
             onToolStart: () => { },
             onToolComplete: () => { },
             onFileReference: () => { },
+            // onThinking is currently unused by ToolCallStreamAdapter but required by interface
             onThinking: (thought) => stream.progress(`${ACTIVITY.thinking} ${thought}`),
             onMarkdown: (content) => stream.markdown(content)
         };
@@ -248,7 +271,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const analysisResult = await runner.run(
             {
                 systemPrompt,
-                maxIterations: 15,
+                maxIterations: this.deps!.workspaceSettings.getMaxIterations(),
                 tools: availableTools,
                 label: `Chat /${scopeLabel}`
             },
@@ -274,11 +297,11 @@ export class ChatParticipantService implements vscode.Disposable {
     private handleCancellation(stream: vscode.ChatResponseStream): vscode.ChatResult {
         Log.info('[ChatParticipantService]: Analysis cancelled by user');
 
-        stream.markdown(`## 💬 Analysis Cancelled
-
-Analysis was stopped before findings could be generated.
-
-*Run the command again when you're ready.*`);
+        const response = new ChatResponseBuilder()
+            .addVerdictLine('cancelled', 'Analysis Cancelled')
+            .addFollowupPrompt('Analysis was stopped before findings could be generated.\n\n*Run the command again when you\'re ready.*')
+            .build();
+        stream.markdown(response);
 
         return {
             metadata: {

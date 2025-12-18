@@ -132,8 +132,9 @@ describe('ConversationRunner', () => {
 
             const runner = new ConversationRunner(modelManager, toolExecutor);
             const onToolCallComplete = vi.fn();
+            const onToolCallStart = vi.fn();
 
-            const handler: ToolCallHandler = { onToolCallComplete };
+            const handler: ToolCallHandler = { onToolCallComplete, onToolCallStart };
 
             const config: ConversationRunnerConfig = {
                 systemPrompt: 'Test prompt',
@@ -143,6 +144,12 @@ describe('ConversationRunner', () => {
 
             await runner.run(config, conversation, createCancellationToken(), handler);
 
+            expect(onToolCallStart).toHaveBeenCalledWith(
+                'find_symbol',
+                { name: 'test' },
+                0,
+                1
+            );
             expect(onToolCallComplete).toHaveBeenCalledWith(
                 'call_1',
                 'find_symbol',

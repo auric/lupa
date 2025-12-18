@@ -156,6 +156,53 @@ describe("ChatResponseBuilder", () => {
         });
     });
 
+    describe("addErrorSection", () => {
+        it("should render error section with warning emoji and title", () => {
+            const result = new ChatResponseBuilder()
+                .addErrorSection("Configuration Error", "Lupa is still initializing.")
+                .build();
+            expect(result).toContain("## ⚠️ Configuration Error");
+            expect(result).toContain("Lupa is still initializing.");
+        });
+
+        it("should use SEVERITY.warning emoji", () => {
+            const result = new ChatResponseBuilder()
+                .addErrorSection("Test Error", "Message")
+                .build();
+            expect(result).toContain(SEVERITY.warning);
+        });
+
+        it("should not include code block when details not provided", () => {
+            const result = new ChatResponseBuilder()
+                .addErrorSection("Error", "Message")
+                .build();
+            expect(result).not.toContain("```");
+        });
+
+        it("should include code block when details provided", () => {
+            const result = new ChatResponseBuilder()
+                .addErrorSection("Analysis Error", "Something went wrong.", "Stack trace here")
+                .build();
+            expect(result).toContain("## ⚠️ Analysis Error");
+            expect(result).toContain("Something went wrong.");
+            expect(result).toContain("```\nStack trace here\n```");
+        });
+
+        it("should render multi-line details in code block", () => {
+            const details = "Error: Connection failed\n  at Socket.connect\n  at main.ts:42";
+            const result = new ChatResponseBuilder()
+                .addErrorSection("Connection Error", "Failed to connect.", details)
+                .build();
+            expect(result).toContain("```\n" + details + "\n```");
+        });
+
+        it("should return this for fluent chaining", () => {
+            const builder = new ChatResponseBuilder();
+            const returnValue = builder.addErrorSection("Test", "Message");
+            expect(returnValue).toBe(builder);
+        });
+    });
+
     describe("addFollowupPrompt", () => {
         it("should render with summary emoji and horizontal rule", () => {
             const result = new ChatResponseBuilder().addFollowupPrompt("Ready for review.").build();

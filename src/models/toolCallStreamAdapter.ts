@@ -19,20 +19,27 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
     /**
      * Called when a conversation iteration starts.
-     * Forwards to onProgress with turn count and thinking emoji.
+     * Intentionally does NOT show turn indicators - they're noise.
+     * Users care about tool actions, not iteration counts.
      */
-    onIterationStart(current: number, max: number): void {
-        this.chatHandler.onProgress(
-            `Turn ${current}/${max}: ${ACTIVITY.thinking} Analyzing...`
-        );
+    onIterationStart(_current: number, _max: number): void {
+        // No-op: Turn indicators removed per UX decision.
+        // Tool-specific messages provide sufficient progress feedback.
     }
 
     /**
      * Called when a tool execution starts.
-     * Forwards to onToolStart with tool name.
+     * Forwards formatted progress message based on tool type and args.
      */
-    onToolCallStart(toolName: string, _toolIndex: number, _totalTools: number): void {
-        this.chatHandler.onToolStart(toolName, {});
+    onToolCallStart(
+        toolName: string,
+        args: Record<string, unknown>,
+        _toolIndex: number,
+        _totalTools: number
+    ): void {
+        const message = this.formatToolStartMessage(toolName, args);
+        this.chatHandler.onProgress(message);
+        this.chatHandler.onToolStart(toolName, args);
     }
 
     /**
@@ -51,5 +58,52 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     ): void {
         const summary = success ? 'completed' : (error || 'failed');
         this.chatHandler.onToolComplete(toolName, success, summary);
+    }
+
+    /**
+     * Formats a human-readable progress message for tool execution.
+     * Uses tool-specific templates with argument interpolation.
+     */
+    private formatToolStartMessage(toolName: string, args: Record<string, unknown>): string {
+        switch (toolName) {
+            case 'read_file':
+                return `${ACTIVITY.reading} Reading ${args.file_path || 'file'}...`;
+
+            case 'find_symbol':
+                return `${ACTIVITY.searching} Finding symbol \`${args.name_path || 'symbol'}\`...`;
+
+            case 'find_usages':
+                return `${ACTIVITY.analyzing} Finding usages of \`${args.symbol_name || 'symbol'}\`...`;
+
+            case 'list_directory':
+                return `${ACTIVITY.reading} Listing ${args.path || 'directory'}...`;
+
+            case 'find_files_by_pattern':
+                return `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`;
+
+            case 'get_symbols_overview':
+                return `${ACTIVITY.analyzing} Getting symbols in ${args.path || 'file'}...`;
+
+            case 'search_for_pattern':
+                return `${ACTIVITY.searching} Searching for \`${args.pattern || 'pattern'}\`...`;
+
+            case 'run_subagent':
+                return `🤖 Spawning subagent investigation...`;
+
+            case 'think_about_context':
+                return `🧠 Reflecting on context...`;
+
+            case 'think_about_investigation':
+                return `🧠 Checking investigation progress...`;
+
+            case 'think_about_task':
+                return `🧠 Verifying task alignment...`;
+
+            case 'think_about_completion':
+                return `🧠 Verifying analysis completeness...`;
+
+            default:
+                return `🔧 Running ${toolName}...`;
+        }
     }
 }

@@ -29,8 +29,13 @@ export interface ConversationRunnerConfig {
  * Enables the caller to record tool calls without ConversationRunner knowing about the specifics.
  */
 export interface ToolCallHandler {
-    /** Called when a tool execution starts */
-    onToolCallStart?: (toolName: string, toolIndex: number, totalTools: number) => void;
+    /** Called when a tool execution starts, with parsed args for message formatting */
+    onToolCallStart?: (
+        toolName: string,
+        args: Record<string, unknown>,
+        toolIndex: number,
+        totalTools: number
+    ) => void;
 
     /** Called after each tool call completes */
     onToolCallComplete?: (
@@ -240,11 +245,7 @@ export class ConversationRunner {
         const toolNames = toolCalls.map(tc => tc.function.name).join(', ');
         Log.info(`${logPrefix} Executing ${toolCalls.length} tool(s): ${toolNames}`);
 
-        // Notify handler about tool calls starting
-        for (let i = 0; i < toolCalls.length; i++) {
-            handler?.onToolCallStart?.(toolCalls[i].function.name, i, toolCalls.length);
-        }
-
+        // Pre-parse arguments for all tool calls before notifying handlers
         const toolRequests: ToolExecutionRequest[] = toolCalls.map(call => {
             let parsedArgs: Record<string, unknown> = {};
 
@@ -259,6 +260,16 @@ export class ConversationRunner {
                 args: parsedArgs
             };
         });
+
+        // Notify handler about tool calls starting (with parsed args for message formatting)
+        for (let i = 0; i < toolCalls.length; i++) {
+            handler?.onToolCallStart?.(
+                toolCalls[i].function.name,
+                toolRequests[i].args as Record<string, unknown>,
+                i,
+                toolCalls.length
+            );
+        }
 
         const startTime = Date.now();
         const results = await this.toolExecutor.executeTools(toolRequests);

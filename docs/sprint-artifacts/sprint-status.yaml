@@ -59,8 +59,8 @@ development_status:
   epic-1-retrospective: completed
 
   # Epic 2: Rich UX & Agent Mode Integration
-  epic-2: backlog
-  2-1-rich-progress-visualization: backlog
+  epic-2: in-progress
+  2-1-rich-progress-visualization: done
   2-2-follow-up-suggestions: backlog
   2-3-register-agent-mode-tool: backlog
   epic-2-retrospective: optional

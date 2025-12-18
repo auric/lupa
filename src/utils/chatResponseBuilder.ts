@@ -37,6 +37,22 @@ export class ChatResponseBuilder {
     }
 
     /**
+     * Adds a styled error section with optional technical details.
+     * Uses warning emoji and supportive tone per UX guidelines.
+     * @param title - Error section title (e.g., "Configuration Error")
+     * @param message - User-friendly error message
+     * @param details - Optional technical details shown in code block
+     */
+    addErrorSection(title: string, message: string, details?: string): this {
+        this.sections.push(`## ${SEVERITY.warning} ${title}\n\n${message}`);
+        if (details) {
+            this.sections.push(`\n\n\`\`\`\n${details}\n\`\`\``);
+        }
+        this.sections.push('\n');
+        return this;
+    }
+
+    /**
      * Add the summary statistics bar.
      * Uses 📊 emoji from SECTION constants.
      * @param filesAnalyzed - Number of files analyzed

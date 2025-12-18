@@ -655,6 +655,13 @@ vscodeMock.env = {
   uriScheme: 'vscode',
 };
 
+vscodeMock.ChatResponseFileTreePart = class ChatResponseFileTreePart {
+  constructor(value, baseUri) {
+    this.value = value;
+    this.baseUri = baseUri;
+  }
+};
+
 export const commands = vscodeMock.commands;
 export const chat = vscodeMock.chat;
 export const workspace = vscodeMock.workspace;
@@ -688,6 +695,7 @@ export const env = vscodeMock.env;
 // Export the new mocks
 export const FileType = vscodeMock.FileType;
 export const FileStat = vscodeMock.FileStat;
+export const ChatResponseFileTreePart = vscodeMock.ChatResponseFileTreePart;
 
 // Default export for direct imports
 export default vscodeMock;
