@@ -59,11 +59,15 @@ development_status:
   epic-1-retrospective: completed
 
   # Epic 2: Rich UX & Agent Mode Integration
-  epic-2: in-progress
+  epic-2: done
   2-1-rich-progress-visualization: done
   2-2-follow-up-suggestions: done
   2-3-register-agent-mode-tool: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: completed
+  # ^ Completed 2025-12-19: Full retrospective with subagent research
+  # ^ Key findings: 2 CRITICAL (broken follow-ups, fragile emoji detection)
+  # ^ 2 HIGH (missing history, no ChatContextManager), 2 MEDIUM issues
+  # ^ All issues documented with fix targets in Epic 3
 
   # Epic 3: Exploration Mode & Polish
   epic-3: backlog
