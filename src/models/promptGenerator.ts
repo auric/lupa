@@ -228,6 +228,16 @@ Your expertise spans all major programming languages and frameworks. You provide
     }
 
     /**
+     * Generate exploration-focused system prompt for answering codebase questions.
+     * Uses the same tool infrastructure but without PR/diff-specific language.
+     * @param availableTools Array of tools available to the LLM
+     * @returns Complete system prompt for exploration mode
+     */
+    public generateExplorationSystemPrompt(availableTools: ITool[]): string {
+        return this.toolAwarePromptGenerator.generateExplorationPrompt(availableTools);
+    }
+
+    /**
      * Generate tool information section for system prompt
      * Used when tool-calling approach is enabled
      * @deprecated Use generateToolAwareSystemPrompt() for comprehensive tool guidance
@@ -288,10 +298,12 @@ Use these tools proactively to understand the context of any functions, classes,
      * Generate tool-calling focused user prompt
      * Optimized for tool-calling workflow with enhanced examples
      * @param parsedDiff Parsed diff structure
+     * @param userInstructions Optional user-provided instructions to focus the analysis
      * @returns User prompt optimized for tool-calling analysis
      */
     public generateToolCallingUserPrompt(
-        parsedDiff: DiffHunk[]
+        parsedDiff: DiffHunk[],
+        userInstructions?: string
     ): string {
         // 1. File content at top for long context optimization
         const fileContentSection = this.generateFileContentSection(parsedDiff);
@@ -299,10 +311,15 @@ Use these tools proactively to understand the context of any functions, classes,
         // 2. Tool usage examples
         const toolExamplesSection = this.generateToolUsageExamples();
 
-        // 3. Analysis instructions with tool guidance
+        // 3. User-provided focus instructions (if any)
+        const userFocusSection = userInstructions?.trim()
+            ? `<user_focus>\nThe developer has requested you focus on: ${userInstructions.trim()}\n\nWhile performing comprehensive analysis, prioritize findings related to this request.\n</user_focus>\n\n`
+            : '';
+
+        // 4. Analysis instructions with tool guidance
         const toolInstructionsSection = this.generateToolCallingInstructions();
 
-        return `${fileContentSection}${toolExamplesSection}${toolInstructionsSection}`;
+        return `${fileContentSection}${toolExamplesSection}${userFocusSection}${toolInstructionsSection}`;
     }
 
     /**

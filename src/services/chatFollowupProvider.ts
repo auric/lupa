@@ -10,6 +10,10 @@ const MAX_FOLLOWUPS = 4;
  * - Clear, direct language
  * - Action-oriented prompts
  * - Context-aware suggestions
+ *
+ * IMPORTANT: All follow-ups explicitly set `command: ''` to activate exploration mode.
+ * Without this, VS Code defaults to the original command (e.g., `/branch`), causing
+ * the analysis to re-run instead of allowing follow-up questions.
  */
 export function createFollowupProvider(): vscode.ChatFollowupProvider {
     return {
@@ -25,6 +29,12 @@ export function createFollowupProvider(): vscode.ChatFollowupProvider {
                 return getDefaultFollowups();
             }
 
+            // No follow-ups for exploration mode - it's open-ended Q&A
+            if (metadata.command === 'exploration') {
+                Log.info('[ChatFollowupProvider]: No follow-ups for exploration mode');
+                return [];
+            }
+
             const followups = buildContextualFollowups(metadata);
             Log.info(`[ChatFollowupProvider]: Generated ${followups.length} follow-ups`);
             return followups;
@@ -34,6 +44,9 @@ export function createFollowupProvider(): vscode.ChatFollowupProvider {
 
 /**
  * Builds a list of contextual follow-up suggestions based on analysis metadata.
+ * All follow-ups set `command: ''` to ensure they activate exploration mode
+ * rather than re-running the original analysis command.
+ *
  * @param metadata Analysis metadata from the previous turn
  * @returns Array of follow-up suggestions
  */
@@ -47,6 +60,7 @@ function buildContextualFollowups(
         followups.push({
             prompt: "Focus on critical issues only",
             label: "🔴 Critical Focus",
+            command: '',  // Exploration mode, not re-run analysis
         });
     }
 
@@ -55,6 +69,7 @@ function buildContextualFollowups(
         followups.push({
             prompt: "Explain the security risks in detail",
             label: "🔒 Security Details",
+            command: '',
         });
     }
 
@@ -63,6 +78,7 @@ function buildContextualFollowups(
         followups.push({
             prompt: "What tests should I add for these changes?",
             label: "🧪 Test Suggestions",
+            command: '',
         });
     }
 
@@ -71,16 +87,14 @@ function buildContextualFollowups(
         followups.push({
             prompt: "Show me how to fix the most important issue",
             label: "🔧 Fix Guidance",
+            command: '',
         });
     }
 
     // Fill remaining slots with general follow-ups
     const generalFollowups: vscode.ChatFollowup[] = [
-        { prompt: "What did you like about this code?", label: "✅ What's Good" },
-        {
-            prompt: "Explain these changes to a teammate",
-            label: "💬 Explain Changes",
-        },
+        { prompt: "What did you like about this code?", label: "✅ What's Good", command: '' },
+        { prompt: "Explain these changes to a teammate", label: "💬 Explain Changes", command: '' },
     ];
 
     for (const followup of generalFollowups) {
@@ -100,7 +114,12 @@ function getDefaultFollowups(): vscode.ChatFollowup[] {
         {
             prompt: "Ask a follow-up question about these changes",
             label: "❓ Ask Question",
+            command: '',  // Exploration mode
         },
-        { prompt: "What should I focus on next?", label: "🎯 Next Steps" },
+        {
+            prompt: "What should I focus on next?",
+            label: "🎯 Next Steps",
+            command: '',
+        },
     ];
 }

@@ -90,10 +90,11 @@ describe('ChatParticipantService', () => {
     });
 
     describe('handler', () => {
-        it('should return valid ChatResult with placeholder message', async () => {
+        it('should route no-command requests to exploration mode', async () => {
             const mockParticipant = { dispose: vi.fn() };
             const mockStream = {
                 markdown: vi.fn(),
+                progress: vi.fn()
             };
             const mockToken = {
                 isCancellationRequested: false,
@@ -111,16 +112,16 @@ describe('ChatParticipantService', () => {
             ChatParticipantService.getInstance();
 
             const result = await capturedHandler(
-                { command: undefined },
+                { command: undefined, prompt: 'test question', model: { id: 'test-model' } },
                 {},
                 mockStream,
                 mockToken
             );
 
             expect(mockStream.markdown).toHaveBeenCalledWith(
-                'Lupa chat participant registered. Commands coming soon!'
+                expect.stringContaining('Configuration Error')
             );
-            expect(result).toEqual({});
+            expect(result).toHaveProperty('errorDetails');
         });
     });
 
@@ -566,7 +567,40 @@ describe('ChatParticipantService', () => {
             );
 
             expect(mockPromptGenerator.generateToolCallingUserPrompt).toHaveBeenCalledWith(
-                expect.any(Array)
+                expect.any(Array),
+                undefined  // User prompt is undefined when empty
+            );
+        });
+
+        it('should pass user prompt to analysis when provided', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/test.ts b/test.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' }, prompt: 'focus on security' },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockPromptGenerator.generateToolCallingUserPrompt).toHaveBeenCalledWith(
+                expect.any(Array),
+                'focus on security'
             );
         });
 
@@ -1089,6 +1123,320 @@ describe('ChatParticipantService', () => {
                 expect(branchMockStream.markdown.mock.calls).toEqual(changesMockStream.markdown.mock.calls);
                 expect(branchResult.metadata).toEqual(changesResult.metadata);
             });
+        });
+    });
+
+    describe('exploration mode (no command)', () => {
+        let capturedHandler: any;
+        let mockStream: any;
+        let mockToken: any;
+        let mockToolExecutor: any;
+        let mockToolRegistry: any;
+        let mockWorkspaceSettings: any;
+        let mockPromptGenerator: any;
+
+        beforeEach(() => {
+            const mockParticipant = { dispose: vi.fn() };
+            mockStream = {
+                markdown: vi.fn(),
+                progress: vi.fn(),
+                filetree: vi.fn()
+            };
+            mockToken = {
+                isCancellationRequested: false,
+                onCancellationRequested: vi.fn()
+            };
+            mockToolExecutor = {
+                getAvailableTools: vi.fn().mockReturnValue([]),
+                resetToolCallCount: vi.fn()
+            };
+            mockToolRegistry = {
+                getToolNames: vi.fn().mockReturnValue([])
+            };
+            mockWorkspaceSettings = {
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getMaxIterations: vi.fn().mockReturnValue(100)
+            };
+            mockPromptGenerator = {
+                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('Analysis system prompt'),
+                generateExplorationSystemPrompt: vi.fn().mockReturnValue('Exploration system prompt'),
+                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+            };
+
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                (_id: string, handler: any) => {
+                    capturedHandler = handler;
+                    return mockParticipant;
+                }
+            );
+        });
+
+        it('should route no-command requests to exploration mode', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Here is my explanation of the code...'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'What does ConversationRunner do?', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockPromptGenerator.generateExplorationSystemPrompt).toHaveBeenCalled();
+            expect(mockPromptGenerator.generateToolAwareSystemPrompt).not.toHaveBeenCalled();
+            expect(result.metadata).toMatchObject({
+                command: 'exploration',
+                cancelled: false
+            });
+        });
+
+        it('should handle follow-up chips (no command) as exploration mode', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Follow-up response...'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'Tell me more about the security concerns', model: { id: 'test-model' } },
+                { history: [] },
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith('Follow-up response...');
+            expect(result.metadata.command).toBe('exploration');
+        });
+
+        it('should work without diff context', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Exploration response'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            await capturedHandler(
+                { command: undefined, prompt: 'Explain the auth flow', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.filetree).not.toHaveBeenCalled();
+            expect(mockPromptGenerator.generateToolCallingUserPrompt).not.toHaveBeenCalled();
+        });
+
+        it('should return error when dependencies not injected', async () => {
+            ChatParticipantService.getInstance();
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'What does this do?', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Configuration Error')
+            );
+            expect(result).toHaveProperty('errorDetails');
+        });
+
+        it('should handle errors with ChatResponseBuilder', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockRejectedValue(new Error('LLM error')),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'Explain this', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Exploration Error')
+            );
+            expect(result).toHaveProperty('errorDetails');
+            expect(result.metadata).toHaveProperty('responseIsIncomplete', true);
+            expect(result.metadata.command).toBe('exploration');
+        });
+
+        it('should handle pre-cancelled token', async () => {
+            const cancelledToken = {
+                isCancellationRequested: true,
+                onCancellationRequested: vi.fn()
+            };
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'What does this do?', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                cancelledToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis Cancelled')
+            );
+            expect(result.metadata).toEqual({
+                cancelled: true,
+                responseIsIncomplete: true
+            });
+        });
+
+        it('should handle cancellation during exploration', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Conversation cancelled by user'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'Explain the architecture', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis Cancelled')
+            );
+            expect(result.metadata).toEqual({
+                cancelled: true,
+                responseIsIncomplete: true
+            });
+        });
+
+        it('should treat error as cancellation if token is cancelled', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockImplementation(async () => {
+                    mockToken.isCancellationRequested = true;
+                    throw new Error('Operation cancelled');
+                }),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'What is this?', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                expect.stringContaining('Analysis Cancelled')
+            );
+            expect(result.metadata).toEqual({
+                cancelled: true,
+                responseIsIncomplete: true
+            });
+        });
+
+        it('should include analysisTimestamp in metadata', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Response'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: undefined, prompt: 'Explain this', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(result.metadata.analysisTimestamp).toBeDefined();
+            expect(typeof result.metadata.analysisTimestamp).toBe('number');
+        });
+
+        it('should show progress while thinking', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Response'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            await capturedHandler(
+                { command: undefined, prompt: 'Explain this', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.progress).toHaveBeenCalledWith(
+                expect.stringContaining('Understanding your question')
+            );
         });
     });
 });

@@ -95,4 +95,61 @@ describe('ChatFollowupProvider', () => {
         expect(followups.some(f => f.label === '✅ What\'s Good')).toBe(true);
         expect(followups.some(f => f.label === '💬 Explain Changes')).toBe(true);
     });
+
+    // NEW TESTS for Issue #3: No follow-ups in exploration mode
+    it('should return empty array for exploration mode', () => {
+        const result: vscode.ChatResult = {
+            metadata: {
+                command: 'exploration',
+                cancelled: false
+            } as ChatAnalysisMetadata
+        };
+        const followups = provider.provideFollowups(result, {} as any, {} as any) as vscode.ChatFollowup[];
+
+        expect(followups).toHaveLength(0);
+    });
+
+    // NEW TESTS for Issue #4: All follow-ups use exploration mode (command: '')
+    it('should set command to empty string on all contextual follow-ups', () => {
+        const result: vscode.ChatResult = {
+            metadata: {
+                command: 'branch',
+                hasCriticalIssues: true,
+                hasSecurityIssues: true,
+                issuesFound: true
+            } as ChatAnalysisMetadata
+        };
+        const followups = provider.provideFollowups(result, {} as any, {} as any) as vscode.ChatFollowup[];
+
+        expect(followups.length).toBeGreaterThan(0);
+        for (const followup of followups) {
+            expect(followup.command).toBe('');
+        }
+    });
+
+    it('should set command to empty string on default follow-ups', () => {
+        const result: vscode.ChatResult = {};
+        const followups = provider.provideFollowups(result, {} as any, {} as any) as vscode.ChatFollowup[];
+
+        expect(followups.length).toBeGreaterThan(0);
+        for (const followup of followups) {
+            expect(followup.command).toBe('');
+        }
+    });
+
+    it('should set command to empty string on general follow-ups', () => {
+        const result: vscode.ChatResult = {
+            metadata: {
+                command: 'changes',
+                issuesFound: false
+            } as ChatAnalysisMetadata
+        };
+        const followups = provider.provideFollowups(result, {} as any, {} as any) as vscode.ChatFollowup[];
+
+        expect(followups.length).toBeGreaterThan(0);
+        // Check that general follow-ups like "What's Good" have empty command
+        const whatsGood = followups.find(f => f.label === '✅ What\'s Good');
+        expect(whatsGood).toBeDefined();
+        expect(whatsGood!.command).toBe('');
+    });
 });

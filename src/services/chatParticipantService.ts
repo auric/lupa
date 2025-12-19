@@ -30,6 +30,24 @@ export interface ChatParticipantDependencies {
 }
 
 /**
+ * Creates a ChatToolCallHandler that bridges ConversationRunner events to ChatResponseStream.
+ * Extracted for DRY usage across exploration and analysis modes.
+ *
+ * @param stream The VS Code chat response stream for output
+ * @returns ChatToolCallHandler implementation
+ */
+function createChatStreamHandler(stream: vscode.ChatResponseStream): ChatToolCallHandler {
+    return {
+        onProgress: (msg) => stream.progress(msg),
+        onToolStart: () => { },
+        onToolComplete: () => { },
+        onFileReference: () => { },
+        onThinking: (thought) => stream.progress(`${ACTIVITY.thinking} ${thought}`),
+        onMarkdown: (content) => stream.markdown(content)
+    };
+}
+
+/**
  * Service that registers and manages the Lupa chat participant for VS Code Copilot Chat.
  * Provides the `@lupa` mention capability with `/branch` and `/changes` commands.
  *
@@ -99,7 +117,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
     private async handleRequest(
         request: vscode.ChatRequest,
-        _context: vscode.ChatContext,
+        context: vscode.ChatContext,
         stream: vscode.ChatResponseStream,
         token: vscode.CancellationToken
     ): Promise<vscode.ChatResult> {
@@ -111,8 +129,7 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleChangesCommand(request, stream, token);
         }
 
-        stream.markdown('Lupa chat participant registered. Commands coming soon!');
-        return {};
+        return this.handleExplorationMode(request, context, stream, token);
     }
 
     /**
@@ -151,6 +168,98 @@ export class ChatParticipantService implements vscode.Disposable {
             'You have no uncommitted changes to analyze. Your working tree is clean!',
             'uncommitted changes'
         );
+    }
+
+    /**
+     * Handle exploration mode for answering questions about the codebase.
+     * Triggered when no slash command is provided (e.g., follow-up chips).
+     */
+    private async handleExplorationMode(
+        request: vscode.ChatRequest,
+        _context: vscode.ChatContext,
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): Promise<vscode.ChatResult> {
+        Log.info('[ChatParticipantService]: Exploration mode activated');
+
+        if (!this.deps) {
+            Log.error('[ChatParticipantService]: Dependencies not injected');
+            const response = new ChatResponseBuilder()
+                .addErrorSection('Configuration Error', 'Lupa is still initializing. Please try again in a moment.')
+                .build();
+            stream.markdown(response);
+            return { errorDetails: { message: 'Service not initialized' } };
+        }
+
+        if (token.isCancellationRequested) {
+            return this.handleCancellation(stream);
+        }
+
+        try {
+            stream.progress(`${ACTIVITY.thinking} Understanding your question...`);
+
+            const timeoutMs = this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+            const client = new ChatLLMClient(request.model, timeoutMs);
+            const runner = new ConversationRunner(client, this.deps.toolExecutor);
+            const conversation = new ConversationManager();
+            const availableTools = this.deps.toolExecutor.getAvailableTools();
+            const systemPrompt = this.deps.promptGenerator.generateExplorationSystemPrompt(availableTools);
+
+            conversation.addUserMessage(request.prompt);
+
+            const uiHandler = createChatStreamHandler(stream);
+            const debouncedHandler = new DebouncedStreamHandler(uiHandler);
+            const adapter = new ToolCallStreamAdapter(debouncedHandler);
+
+            const result = await runner.run(
+                {
+                    systemPrompt,
+                    maxIterations: this.deps.workspaceSettings.getMaxIterations(),
+                    tools: availableTools,
+                    label: 'Chat exploration'
+                },
+                conversation,
+                token,
+                adapter
+            );
+
+            debouncedHandler.flush();
+
+            if (result === CANCELLATION_MESSAGE) {
+                return this.handleCancellation(stream);
+            }
+
+            stream.markdown(result);
+
+            return {
+                metadata: {
+                    command: 'exploration',
+                    cancelled: false,
+                    analysisTimestamp: Date.now(),
+                } satisfies ChatAnalysisMetadata,
+            };
+        } catch (error) {
+            if (token.isCancellationRequested) {
+                return this.handleCancellation(stream);
+            }
+
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            Log.error('[ChatParticipantService]: Exploration mode failed', error);
+
+            const response = new ChatResponseBuilder()
+                .addErrorSection('Exploration Error', 'Something went wrong while exploring. Please try again.', errorMessage)
+                .build();
+            stream.markdown(response);
+
+            return {
+                errorDetails: { message: errorMessage },
+                metadata: {
+                    command: 'exploration',
+                    cancelled: false,
+                    responseIsIncomplete: true
+                }
+            };
+        }
     }
 
     /**
@@ -255,19 +364,13 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.filetree(fileTree, workspaceFolder.uri);
         }
 
-        const userPrompt = this.deps!.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
+        const userPrompt = this.deps!.promptGenerator.generateToolCallingUserPrompt(
+            parsedDiff,
+            request.prompt || undefined
+        );
         conversation.addUserMessage(userPrompt);
 
-        const uiHandler: ChatToolCallHandler = {
-            onProgress: (msg) => stream.progress(msg),
-            onToolStart: () => { },
-            onToolComplete: () => { },
-            onFileReference: () => { },
-            // onThinking is currently unused by ToolCallStreamAdapter but required by interface
-            onThinking: (thought) => stream.progress(`${ACTIVITY.thinking} ${thought}`),
-            onMarkdown: (content) => stream.markdown(content)
-        };
-
+        const uiHandler = createChatStreamHandler(stream);
         const debouncedHandler = new DebouncedStreamHandler(uiHandler);
         const adapter = new ToolCallStreamAdapter(debouncedHandler);
 

@@ -47,7 +47,7 @@ export interface Finding {
  */
 export interface ChatAnalysisMetadata {
     /** The command that was used */
-    command?: 'branch' | 'changes';
+    command?: 'branch' | 'changes' | 'exploration';
     /** Base branch for comparison (when command is 'branch') */
     baseBranch?: string;
     /** Target branch being analyzed (when command is 'branch') */

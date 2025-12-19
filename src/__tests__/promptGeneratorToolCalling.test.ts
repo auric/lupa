@@ -175,6 +175,49 @@ index 1234567..abcdefg 100644
         });
     });
 
+    describe('user focus instructions', () => {
+        it('should include user focus section when instructions provided', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                'focus on security vulnerabilities'
+            );
+
+            expect(userPrompt).toContain('<user_focus>');
+            expect(userPrompt).toContain('focus on security vulnerabilities');
+            expect(userPrompt).toContain('prioritize findings related to this request');
+        });
+
+        it('should not include user focus section when no instructions', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+
+            expect(userPrompt).not.toContain('<user_focus>');
+        });
+
+        it('should not include user focus section when instructions are empty', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff, '');
+
+            expect(userPrompt).not.toContain('<user_focus>');
+        });
+
+        it('should not include user focus section when instructions are whitespace', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff, '   ');
+
+            expect(userPrompt).not.toContain('<user_focus>');
+        });
+
+        it('should place user focus section before instructions', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                'check for race conditions'
+            );
+
+            const userFocusIndex = userPrompt.indexOf('<user_focus>');
+            const instructionsIndex = userPrompt.indexOf('<instructions>');
+
+            expect(userFocusIndex).toBeLessThan(instructionsIndex);
+        });
+    });
+
     describe('tool information deprecation', () => {
         it('should still support legacy getToolInformation method', () => {
             const toolInfo = promptGenerator.getToolInformation();

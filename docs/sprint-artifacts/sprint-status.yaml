@@ -70,8 +70,8 @@ development_status:
   # ^ All issues documented with fix targets in Epic 3
 
   # Epic 3: Exploration Mode & Polish
-  epic-3: backlog
-  3-1-exploration-mode: backlog
+  epic-3: in-progress
+  3-1-exploration-mode: done
   3-2-conversation-history-integration: backlog
   3-3-disambiguation-auto-routing: backlog
   epic-3-retrospective: optional
