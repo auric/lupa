@@ -976,18 +976,48 @@ Story 0.5 created ChatResponseBuilder but Epic 1 used inline formatting for simp
     {
       "name": "lupa_getSymbolsOverview",
       "displayName": "Get Symbols Overview",
-      "modelDescription": "Get an overview of all symbols defined in a file with their line numbers and hierarchy.",
+      "modelDescription": "Get a comprehensive overview of all symbols (classes, functions, methods, interfaces, properties) defined in a file or directory with their line numbers and hierarchy. Unlike workspace symbol search which returns flat results, this tool provides a structured hierarchical view showing parent-child relationships. Use for understanding file structure, finding entry points, or analyzing code organization.",
       "canBeReferencedInPrompt": true,
       "toolReferenceName": "symbolsOverview",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "filePath": {
+          "path": {
             "type": "string",
-            "description": "Absolute path to the file"
+            "description": "Relative path to the file or directory (e.g., 'src/services' or 'src/tools/findSymbolTool.ts')"
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Symbol hierarchy depth: 0=top-level only, 1=include direct children, -1=unlimited",
+            "default": 0
+          },
+          "include_body": {
+            "type": "boolean",
+            "description": "Include symbol source code (warning: significantly increases response size)",
+            "default": false
+          },
+          "include_kinds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Only include symbols of these kinds (e.g., ['class', 'function'])"
+          },
+          "exclude_kinds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Exclude symbols of these kinds"
+          },
+          "max_symbols": {
+            "type": "integer",
+            "description": "Maximum number of symbols to return",
+            "default": 100
+          },
+          "show_hierarchy": {
+            "type": "boolean",
+            "description": "Show parent-child relationships in the output",
+            "default": true
           }
         },
-        "required": ["filePath"]
+        "required": ["path"]
       }
     }
   ]

@@ -62,7 +62,7 @@ development_status:
   epic-2: in-progress
   2-1-rich-progress-visualization: done
   2-2-follow-up-suggestions: done
-  2-3-register-agent-mode-tool: backlog
+  2-3-register-agent-mode-tool: done
   epic-2-retrospective: optional
 
   # Epic 3: Exploration Mode & Polish

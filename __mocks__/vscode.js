@@ -610,6 +610,12 @@ vscodeMock.LanguageModelTextPart = class LanguageModelTextPart {
   }
 };
 
+vscodeMock.LanguageModelToolResult = class LanguageModelToolResult {
+  constructor(content) {
+    this.content = content;
+  }
+};
+
 vscodeMock.LanguageModelToolCallPart = class LanguageModelToolCallPart {
   constructor(callId, name, input) {
     this.callId = callId;
@@ -629,6 +635,7 @@ vscodeMock.LanguageModelToolResultPart = class LanguageModelToolResultPart {
 vscodeMock.lm = {
   selectChatModels: vi.fn().mockResolvedValue([]),
   onDidChangeChatModels: vi.fn(() => ({ dispose: vi.fn() })),
+  registerTool: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 };
 
 // Mock chat namespace and selectChatModels
@@ -687,6 +694,7 @@ export const LanguageModelChatMessageRole = vscodeMock.LanguageModelChatMessageR
 export const LanguageModelChatMessage = vscodeMock.LanguageModelChatMessage;
 export const LanguageModelChat = vscodeMock.LanguageModelChat;
 export const LanguageModelTextPart = vscodeMock.LanguageModelTextPart;
+export const LanguageModelToolResult = vscodeMock.LanguageModelToolResult;
 export const LanguageModelToolCallPart = vscodeMock.LanguageModelToolCallPart;
 export const LanguageModelToolResultPart = vscodeMock.LanguageModelToolResultPart;
 export const lm = vscodeMock.lm;

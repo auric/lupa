@@ -10,6 +10,8 @@ import { UIManager } from './uiManager';
 import { GitOperationsManager } from './gitOperationsManager';
 import { ToolTestingWebviewService } from './toolTestingWebview';
 
+import { LanguageModelToolProvider } from './languageModelToolProvider';
+
 // Utility services
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { PromptGenerator } from '../models/promptGenerator';
@@ -70,6 +72,9 @@ export interface IServiceRegistry {
     // Subagent services
     subagentExecutor: SubagentExecutor;
     subagentSessionManager: SubagentSessionManager;
+
+    // Language Model Tool Provider
+    languageModelToolProvider: LanguageModelToolProvider;
 }
 
 /**
@@ -200,6 +205,16 @@ export class ServiceManager implements vscode.Disposable {
             workspaceSettings: this.services.workspaceSettings!,
             promptGenerator: this.services.promptGenerator!
         });
+
+        // Register language model tools for Agent Mode
+        const getSymbolsOverviewTool = this.services.toolRegistry!.getToolByName(
+            "get_symbols_overview"
+        ) as GetSymbolsOverviewTool;
+        if (getSymbolsOverviewTool) {
+            this.services.languageModelToolProvider =
+                new LanguageModelToolProvider(getSymbolsOverviewTool);
+            this.services.languageModelToolProvider.register();
+        }
     }
 
     /**
@@ -262,6 +277,7 @@ export class ServiceManager implements vscode.Disposable {
 
         const servicesToDispose = [
             this.services.promptGenerator,
+            this.services.languageModelToolProvider,
             this.services.toolCallingAnalysisProvider,
             this.services.conversationManager,
             this.services.toolExecutor,

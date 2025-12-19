@@ -68,6 +68,61 @@
                     }
                 ]
             }
+        ],
+        "languageModelTools": [
+            {
+                "name": "lupa_getSymbolsOverview",
+                "displayName": "Get Symbols Overview",
+                "modelDescription": "Get a comprehensive overview of all symbols (classes, functions, methods, interfaces, properties) defined in a file or directory with their line numbers and hierarchy. Unlike workspace symbol search which returns flat results, this tool provides a structured hierarchical view showing parent-child relationships. Use for understanding file structure, finding entry points, or analyzing code organization. Supports filtering by symbol type and hierarchy depth control.",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "symbolsOverview",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Relative path to the file or directory (e.g., 'src/services' or 'src/tools/findSymbolTool.ts')"
+                        },
+                        "max_depth": {
+                            "type": "integer",
+                            "description": "Symbol hierarchy depth: 0=top-level only, 1=include direct children, -1=unlimited",
+                            "default": 0
+                        },
+                        "include_body": {
+                            "type": "boolean",
+                            "description": "Include symbol source code (warning: significantly increases response size)",
+                            "default": false
+                        },
+                        "include_kinds": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "Include only these symbol types: 'class', 'function', 'method', 'interface', 'property', 'variable', 'constant', 'enum'"
+                        },
+                        "exclude_kinds": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "Exclude these symbol types. Takes precedence over include_kinds."
+                        },
+                        "max_symbols": {
+                            "type": "integer",
+                            "description": "Maximum number of symbols to return",
+                            "default": 100
+                        },
+                        "show_hierarchy": {
+                            "type": "boolean",
+                            "description": "Show indented hierarchy structure (true) vs flat list (false)",
+                            "default": true
+                        }
+                    },
+                    "required": [
+                        "path"
+                    ]
+                }
+            }
         ]
     },
     "scripts": {

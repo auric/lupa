@@ -366,12 +366,42 @@ participant.followupProvider = {
       "inputSchema": {
         "type": "object",
         "properties": {
-          "filePath": {
+          "path": {
             "type": "string",
-            "description": "Absolute path to the file"
+            "description": "Relative path to the file or directory"
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "Symbol hierarchy depth: 0=top-level only, 1=include direct children, -1=unlimited",
+            "default": 0
+          },
+          "include_body": {
+            "type": "boolean",
+            "description": "Include symbol source code",
+            "default": false
+          },
+          "include_kinds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Only include symbols of these kinds"
+          },
+          "exclude_kinds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Exclude symbols of these kinds"
+          },
+          "max_symbols": {
+            "type": "integer",
+            "description": "Maximum number of symbols to return",
+            "default": 100
+          },
+          "show_hierarchy": {
+            "type": "boolean",
+            "description": "Show parent-child relationships",
+            "default": true
           }
         },
-        "required": ["filePath"]
+        "required": ["path"]
       }
     }
   ]
@@ -1175,7 +1205,7 @@ private async initializePhase4(): Promise<void> {
     this.promptGenerator
   );
 
-  this.languageModelToolProvider = new LanguageModelToolProvider();
+  this.languageModelToolProvider = new LanguageModelToolProvider(getSymbolsOverviewTool);
   this.languageModelToolProvider.register();
 }
 ```
