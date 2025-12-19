@@ -46,12 +46,24 @@ export interface Finding {
  * Used by ChatParticipantService to track analysis context across conversation turns.
  */
 export interface ChatAnalysisMetadata {
-    /** The analysis mode that was used */
-    mode?: 'branch' | 'changes';
-    /** Base branch for comparison (when mode is 'branch') */
+    /** The command that was used */
+    command?: 'branch' | 'changes';
+    /** Base branch for comparison (when command is 'branch') */
     baseBranch?: string;
-    /** Target branch being analyzed (when mode is 'branch') */
+    /** Target branch being analyzed (when command is 'branch') */
     targetBranch?: string;
+    /** Number of files in the analyzed diff */
+    filesAnalyzed?: number;
+    /** Whether any issues were found */
+    issuesFound?: boolean;
+    /** Whether critical (🔴) issues were found */
+    hasCriticalIssues?: boolean;
+    /** Whether security (🔒) issues were found */
+    hasSecurityIssues?: boolean;
+    /** Whether testing (🧪) suggestions were included */
+    hasTestingSuggestions?: boolean;
+    /** Whether analysis was cancelled */
+    cancelled?: boolean;
     /** Unix timestamp when analysis was performed */
     analysisTimestamp?: number;
 }

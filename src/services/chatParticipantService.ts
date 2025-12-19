@@ -15,7 +15,8 @@ import { buildFileTree } from '../utils/fileTreeBuilder';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
-import type { ChatToolCallHandler } from '../types/chatTypes';
+import type { ChatToolCallHandler, ChatAnalysisMetadata } from '../types/chatTypes';
+import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
  * Dependencies required for ChatParticipantService to execute analysis commands.
@@ -83,6 +84,8 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.handleRequest.bind(this)
             );
             if (this.participant) {
+                this.participant.followupProvider = createFollowupProvider();
+
                 this.disposables.push(this.participant);
             }
             Log.info('[ChatParticipantService]: Chat participant registered successfully');
@@ -288,7 +291,41 @@ export class ChatParticipantService implements vscode.Disposable {
 
         stream.markdown(analysisResult);
 
-        return {};
+        const contentAnalysis = this.analyzeResultContent(analysisResult);
+
+        return {
+            metadata: {
+                command: request.command as 'branch' | 'changes',
+                filesAnalyzed: parsedDiff.length,
+                issuesFound: contentAnalysis.issuesFound,
+                hasCriticalIssues: contentAnalysis.hasCriticalIssues,
+                hasSecurityIssues: contentAnalysis.hasSecurityIssues,
+                hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
+                cancelled: false,
+                analysisTimestamp: Date.now(),
+            } satisfies ChatAnalysisMetadata,
+        };
+    }
+
+    /**
+     * Analyzes LLM output to detect issue types for follow-up generation.
+     * Uses simple string matching—not guaranteed accurate but sufficient for UX.
+     */
+    private analyzeResultContent(analysisResult: string): {
+        issuesFound: boolean;
+        hasCriticalIssues: boolean;
+        hasSecurityIssues: boolean;
+        hasTestingSuggestions: boolean;
+    } {
+        return {
+            issuesFound:
+                analysisResult.includes('🔴') ||
+                analysisResult.includes('🟠') ||
+                analysisResult.includes('🟡'),
+            hasCriticalIssues: analysisResult.includes('🔴'),
+            hasSecurityIssues: analysisResult.includes('🔒'),
+            hasTestingSuggestions: analysisResult.includes('🧪'),
+        };
     }
 
     /**

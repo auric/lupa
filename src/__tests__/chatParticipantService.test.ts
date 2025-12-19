@@ -196,7 +196,10 @@ describe('ChatParticipantService', () => {
 
             expect(mockGitService.compareBranches).toHaveBeenCalledWith({});
             expect(mockStream.progress).toHaveBeenCalled();
-            expect(result).toEqual({});
+            expect(result.metadata).toMatchObject({
+                command: 'branch',
+                cancelled: false
+            });
         });
 
         it('should return helpful message for empty diff', async () => {
@@ -408,7 +411,10 @@ describe('ChatParticipantService', () => {
 
             expect(mockGitService.getUncommittedChanges).toHaveBeenCalled();
             expect(mockStream.progress).toHaveBeenCalled();
-            expect(result).toEqual({});
+            expect(result.metadata).toMatchObject({
+                command: 'changes',
+                cancelled: false
+            });
         });
 
         it('should return helpful message for no uncommitted changes', async () => {
@@ -593,6 +599,48 @@ describe('ChatParticipantService', () => {
             expect(mockStream.progress).toHaveBeenCalledWith(
                 expect.stringContaining('uncommitted changes')
             );
+        });
+
+        it('should return metadata with analysis results', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/test.ts b/test.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Analysis with 🔴 critical issue and 🔒 security risk'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const result = await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(result.metadata).toMatchObject({
+                command: 'changes',
+                filesAnalyzed: 1,
+                issuesFound: true,
+                hasCriticalIssues: true,
+                hasSecurityIssues: true,
+                hasTestingSuggestions: false
+            });
+            expect(result.metadata.analysisTimestamp).toBeDefined();
         });
 
         it('should call stream.filetree with parsed diff files', async () => {
