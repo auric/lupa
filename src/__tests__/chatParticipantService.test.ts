@@ -1438,5 +1438,170 @@ describe('ChatParticipantService', () => {
                 expect.stringContaining('Understanding your question')
             );
         });
+
+        it('should show "Continuing conversation" progress when history exists', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Follow-up response'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            // Create mock history with proper structure
+            const mockHistory = [
+                { prompt: 'Previous question', participant: 'lupa.chat-participant' },
+                {
+                    response: [{ value: { value: 'Previous answer' } }],
+                    participant: 'lupa.chat-participant'
+                }
+            ];
+
+            await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'Follow-up question',
+                    model: {
+                        id: 'test-model',
+                        maxInputTokens: 50000,
+                        countTokens: vi.fn().mockResolvedValue(10)
+                    }
+                },
+                { history: mockHistory },
+                mockStream,
+                mockToken
+            );
+
+            expect(mockStream.progress).toHaveBeenCalledWith(
+                expect.stringContaining('Continuing conversation')
+            );
+        });
+
+        it('should not include history for /branch command', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                compareBranches: vi.fn().mockResolvedValue({
+                    diffText: 'mock diff',
+                    refName: 'feature/test',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Analysis result'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const mockHistory = [
+                { prompt: 'Previous question', participant: 'lupa.chat-participant' }
+            ];
+
+            await capturedHandler(
+                { command: 'branch', model: { id: 'test-model' } },
+                { history: mockHistory },
+                mockStream,
+                mockToken
+            );
+
+            // Should not show "Continuing conversation" for commands
+            expect(mockStream.progress).not.toHaveBeenCalledWith(
+                expect.stringContaining('Continuing conversation')
+            );
+        });
+
+        it('should not include history for /changes command', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'mock diff',
+                    refName: 'uncommitted changes',
+                    error: undefined
+                })
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Analysis result'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            const mockHistory = [
+                { prompt: 'Previous question', participant: 'lupa.chat-participant' }
+            ];
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                { history: mockHistory },
+                mockStream,
+                mockToken
+            );
+
+            // Should not show "Continuing conversation" for commands
+            expect(mockStream.progress).not.toHaveBeenCalledWith(
+                expect.stringContaining('Continuing conversation')
+            );
+        });
+
+        it('should gracefully handle history processing errors', async () => {
+            vi.mocked(ConversationRunner).mockImplementation(() => ({
+                run: vi.fn().mockResolvedValue('Response despite history error'),
+                reset: vi.fn()
+            }) as any);
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolExecutor: mockToolExecutor,
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator
+            });
+
+            // Create a model that throws on countTokens
+            const mockHistory = [
+                { prompt: 'Previous question', participant: 'lupa.chat-participant' }
+            ];
+
+            const result = await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'Question',
+                    model: {
+                        id: 'test-model',
+                        maxInputTokens: 50000,
+                        countTokens: vi.fn().mockRejectedValue(new Error('Token counting failed'))
+                    }
+                },
+                { history: mockHistory },
+                mockStream,
+                mockToken
+            );
+
+            // Should still succeed and return a response
+            expect(mockStream.markdown).toHaveBeenCalledWith('Response despite history error');
+            expect(result.metadata.command).toBe('exploration');
+            expect(result.metadata.cancelled).toBe(false);
+        });
     });
 });

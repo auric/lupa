@@ -669,6 +669,38 @@ vscodeMock.ChatResponseFileTreePart = class ChatResponseFileTreePart {
   }
 };
 
+vscodeMock.ChatResponseMarkdownPart = class ChatResponseMarkdownPart {
+  constructor(value) {
+    this.value = value;
+  }
+};
+
+vscodeMock.ChatResponseAnchorPart = class ChatResponseAnchorPart {
+  constructor(value, title) {
+    this.value = value;
+    this.title = title;
+  }
+};
+
+vscodeMock.ChatResponseCommandButtonPart = class ChatResponseCommandButtonPart {
+  constructor(command) {
+    this.command = command;
+  }
+};
+
+vscodeMock.MarkdownString = class MarkdownString {
+  constructor(value) {
+    this.value = value || '';
+    this.isTrusted = false;
+    this.supportThemeIcons = false;
+    this.supportHtml = false;
+    this.baseUri = undefined;
+  }
+  appendText(value) { this.value += value; return this; }
+  appendMarkdown(value) { this.value += value; return this; }
+  appendCodeblock(value, language) { this.value += '\n```' + (language || '') + '\n' + value + '\n```\n'; return this; }
+};
+
 export const commands = vscodeMock.commands;
 export const chat = vscodeMock.chat;
 export const workspace = vscodeMock.workspace;
@@ -704,6 +736,10 @@ export const env = vscodeMock.env;
 export const FileType = vscodeMock.FileType;
 export const FileStat = vscodeMock.FileStat;
 export const ChatResponseFileTreePart = vscodeMock.ChatResponseFileTreePart;
+export const ChatResponseMarkdownPart = vscodeMock.ChatResponseMarkdownPart;
+export const ChatResponseAnchorPart = vscodeMock.ChatResponseAnchorPart;
+export const ChatResponseCommandButtonPart = vscodeMock.ChatResponseCommandButtonPart;
+export const MarkdownString = vscodeMock.MarkdownString;
 
 // Default export for direct imports
 export default vscodeMock;

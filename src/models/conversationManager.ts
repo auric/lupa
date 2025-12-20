@@ -70,6 +70,16 @@ export class ConversationManager {
   }
 
   /**
+   * Prepends history messages at the beginning of the conversation.
+   * Used to inject prior conversation context before the current user message.
+   * @param messages Array of history messages to prepend
+   */
+  prependHistoryMessages(messages: Message[]): void {
+    const clonedMessages = messages.map(m => this.deepCloneMessage(m));
+    this.messages = [...clonedMessages, ...this.messages];
+  }
+
+  /**
    * Add a user message to the conversation.
    * @param content The user's message content
    */

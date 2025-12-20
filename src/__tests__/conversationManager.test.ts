@@ -206,6 +206,76 @@ describe('ConversationManager', () => {
       conversationManager.clearHistory();
       expect(conversationManager.getMessageCount()).toBe(0);
     });
+
+    it('should prepend history messages at the beginning', () => {
+      conversationManager.clearHistory();
+      conversationManager.addUserMessage('Current message');
+
+      const historyMessages: Message[] = [
+        { role: 'user', content: 'Old question' },
+        { role: 'assistant', content: 'Old answer' }
+      ];
+
+      conversationManager.prependHistoryMessages(historyMessages);
+
+      const history = conversationManager.getHistory();
+      expect(history).toHaveLength(3);
+      expect(history[0].content).toBe('Old question');
+      expect(history[1].content).toBe('Old answer');
+      expect(history[2].content).toBe('Current message');
+    });
+
+    it('should prepend to empty conversation', () => {
+      conversationManager.clearHistory();
+
+      const historyMessages: Message[] = [
+        { role: 'user', content: 'History 1' },
+        { role: 'assistant', content: 'History 2' }
+      ];
+
+      conversationManager.prependHistoryMessages(historyMessages);
+
+      expect(conversationManager.getMessageCount()).toBe(2);
+      expect(conversationManager.getHistory()[0].content).toBe('History 1');
+    });
+
+    it('should handle empty prepend array', () => {
+      const initialCount = conversationManager.getMessageCount();
+      conversationManager.prependHistoryMessages([]);
+
+      expect(conversationManager.getMessageCount()).toBe(initialCount);
+    });
+
+    it('should deep clone prepended messages', () => {
+      conversationManager.clearHistory();
+      const historyMessages: Message[] = [
+        { role: 'user', content: 'Original' }
+      ];
+
+      conversationManager.prependHistoryMessages(historyMessages);
+
+      // Modify the original array
+      historyMessages[0].content = 'Modified';
+
+      // Internal state should be unchanged
+      expect(conversationManager.getHistory()[0].content).toBe('Original');
+    });
+
+    it('should preserve order when prepending multiple messages', () => {
+      conversationManager.clearHistory();
+      conversationManager.addUserMessage('Current');
+
+      const historyMessages: Message[] = [
+        { role: 'user', content: 'First' },
+        { role: 'assistant', content: 'Second' },
+        { role: 'user', content: 'Third' }
+      ];
+
+      conversationManager.prependHistoryMessages(historyMessages);
+
+      const history = conversationManager.getHistory();
+      expect(history.map(m => m.content)).toEqual(['First', 'Second', 'Third', 'Current']);
+    });
   });
 
   describe('Message Types and Validation', () => {

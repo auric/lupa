@@ -9,6 +9,7 @@ import { ConversationManager } from '../models/conversationManager';
 import { ChatLLMClient } from '../models/chatLLMClient';
 import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
+import { ChatContextManager } from '../models/chatContextManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -173,10 +174,11 @@ export class ChatParticipantService implements vscode.Disposable {
     /**
      * Handle exploration mode for answering questions about the codebase.
      * Triggered when no slash command is provided (e.g., follow-up chips).
+     * Includes conversation history for contextual follow-ups.
      */
     private async handleExplorationMode(
         request: vscode.ChatRequest,
-        _context: vscode.ChatContext,
+        context: vscode.ChatContext,
         stream: vscode.ChatResponseStream,
         token: vscode.CancellationToken
     ): Promise<vscode.ChatResult> {
@@ -196,14 +198,33 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
-            stream.progress(`${ACTIVITY.thinking} Understanding your question...`);
-
             const timeoutMs = this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
             const client = new ChatLLMClient(request.model, timeoutMs);
             const runner = new ConversationRunner(client, this.deps.toolExecutor);
             const conversation = new ConversationManager();
             const availableTools = this.deps.toolExecutor.getAvailableTools();
             const systemPrompt = this.deps.promptGenerator.generateExplorationSystemPrompt(availableTools);
+
+            const hasHistory = context.history && context.history.length > 0;
+            if (hasHistory) {
+                stream.progress(`${ACTIVITY.thinking} Continuing conversation...`);
+                try {
+                    const contextManager = new ChatContextManager();
+                    const historyMessages = await contextManager.prepareConversationHistory(
+                        context.history,
+                        request.model,
+                        systemPrompt,
+                        token
+                    );
+                    if (historyMessages.length > 0) {
+                        conversation.prependHistoryMessages(historyMessages);
+                    }
+                } catch (error) {
+                    Log.warn('[ChatParticipantService]: History processing failed, continuing without', error);
+                }
+            } else {
+                stream.progress(`${ACTIVITY.thinking} Understanding your question...`);
+            }
 
             conversation.addUserMessage(request.prompt);
 

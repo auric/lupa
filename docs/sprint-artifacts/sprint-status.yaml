@@ -72,6 +72,10 @@ development_status:
   # Epic 3: Exploration Mode & Polish
   epic-3: in-progress
   3-1-exploration-mode: done
-  3-2-conversation-history-integration: backlog
+  3-2-conversation-history-integration: done
+  # ^ Completed 2025-12-19: ChatContextManager with sliding window truncation
+  # ^ All 10 ACs met, 941 tests passing, ready for code review
+  # ^ Story drafted 2025-12-19: Token budget tracking, sliding window truncation
+  # ^ Fixes Epic 2 Retro Issues 3 (missing history) and 4 (missing ChatContextManager)
   3-3-disambiguation-auto-routing: backlog
   epic-3-retrospective: optional
