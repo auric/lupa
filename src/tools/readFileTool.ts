@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { BaseTool } from './baseTool';

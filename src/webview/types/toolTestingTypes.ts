@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 
 // Base interfaces for tool testing
 export interface ToolTestSession {

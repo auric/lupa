@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { z } from 'zod';
+import * as z from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { ToolResult } from '../types/toolResultTypes';

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';

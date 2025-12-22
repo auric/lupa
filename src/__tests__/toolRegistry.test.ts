@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
-import { z } from 'zod';
+import * as z from 'zod';
 
 // Mock tool for testing
 class MockTool implements ITool {

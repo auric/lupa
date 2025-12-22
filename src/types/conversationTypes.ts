@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import type { MessageRole } from './modelTypes';
 
 type ConversationRole = Exclude<MessageRole, 'system'>;

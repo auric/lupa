@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { z } from 'zod/v4';
+import * as z from 'zod';
 import { Log } from './loggingService';
 import { WorkspaceSettingsSchema, WorkspaceSettings, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 

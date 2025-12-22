@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffHunk } from '../types/contextTypes';
-import { z } from 'zod';
+import * as z from 'zod';
 import * as vscode from 'vscode';
 
 // Mock tool for testing
