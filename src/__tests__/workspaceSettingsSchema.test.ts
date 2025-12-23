@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { z } from 'zod/v4';
+import * as z from 'zod';
 import { WorkspaceSettingsSchema, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 
 describe('WorkspaceSettingsSchema', () => {

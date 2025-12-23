@@ -100,6 +100,8 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         minify: isProduction,
         target: 'es2020',
         emptyOutDir: false,
+        // Suppress chunk size warning for webview (React + dependencies are large)
+        chunkSizeWarningLimit: 700,
     };
 
     // Node.js library configuration
@@ -175,9 +177,17 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     };
 
     if (command === 'build') {
+        // SSR options for Node.js extension build - force bundling of runtime dependencies
+        const ssrConfig = process.env.BUILD_TARGET === 'webview' ? undefined : {
+            // SSR mode externalizes all bare imports by default.
+            // noExternal: true forces bundling of all dependencies except those in rollupOptions.external
+            noExternal: true as const,
+        };
+
         config = {
             ...config,
             build: buildConfig,
+            ssr: ssrConfig,
             plugins: [
                 react({
                     babel: {

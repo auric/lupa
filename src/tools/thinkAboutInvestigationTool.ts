@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 
@@ -6,7 +6,7 @@ import { ToolResult, toolSuccess } from '../types/toolResultTypes';
  * Self-reflection tool optimized for subagent investigations.
  * Call midway through investigation to evaluate progress and ensure
  * the investigation stays on track and delivers useful results.
- * 
+ *
  * Also useful for main agent during complex investigations.
  */
 export class ThinkAboutInvestigationTool extends BaseTool {

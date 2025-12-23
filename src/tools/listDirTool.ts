@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import * as z from 'zod';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import ignore from 'ignore'

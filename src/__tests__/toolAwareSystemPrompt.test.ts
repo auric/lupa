@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { ITool } from '../tools/ITool';
-import { z } from 'zod';
+import * as z from 'zod';
 import * as vscode from 'vscode';
 
 // Mock tools for testing
