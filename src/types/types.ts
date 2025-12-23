@@ -1,10 +1,9 @@
 /**
- * Supported languages for indexing and analysis
+ * Supported languages for analysis
  */
 export interface SupportedLanguage {
     extension: string;
     language: string;
-    treeSitterGrammar?: string; // The tree-sitter grammar module name
     variant?: string; // For languages with variants like TypeScript/TSX
     lineCommentMarker: string | undefined; // The marker for single-line comments
 }
@@ -13,22 +12,22 @@ export interface SupportedLanguage {
  * Map of supported file extensions to language details
  */
 export const SUPPORTED_LANGUAGES: Record<string, SupportedLanguage> = {
-    'js': { extension: 'js', language: 'javascript', treeSitterGrammar: 'tree-sitter-javascript', lineCommentMarker: '//' },
-    'jsx': { extension: 'jsx', language: 'javascript', treeSitterGrammar: 'tree-sitter-javascript', lineCommentMarker: '//' },
-    'ts': { extension: 'ts', language: 'typescript', treeSitterGrammar: 'tree-sitter-typescript', lineCommentMarker: '//' },
-    'tsx': { extension: 'tsx', language: 'typescript', treeSitterGrammar: 'tree-sitter-typescript', variant: 'tsx', lineCommentMarker: '//' },
-    'py': { extension: 'py', language: 'python', treeSitterGrammar: 'tree-sitter-python', lineCommentMarker: '#' },
-    'pyw': { extension: 'pyw', language: 'python', treeSitterGrammar: 'tree-sitter-python', lineCommentMarker: '#' },
-    'java': { extension: 'java', language: 'java', treeSitterGrammar: 'tree-sitter-java', lineCommentMarker: '//' },
-    'c': { extension: 'c', language: 'c', treeSitterGrammar: 'tree-sitter-cpp', lineCommentMarker: '//' },
-    'cpp': { extension: 'cpp', language: 'cpp', treeSitterGrammar: 'tree-sitter-cpp', lineCommentMarker: '//' },
-    'h': { extension: 'h', language: 'cpp', treeSitterGrammar: 'tree-sitter-cpp', lineCommentMarker: '//' },
-    'hpp': { extension: 'hpp', language: 'cpp', treeSitterGrammar: 'tree-sitter-cpp', lineCommentMarker: '//' },
-    'cs': { extension: 'cs', language: 'csharp', treeSitterGrammar: 'tree-sitter-c-sharp', lineCommentMarker: '//' },
-    'go': { extension: 'go', language: 'go', treeSitterGrammar: 'tree-sitter-go', lineCommentMarker: '//' },
-    'rb': { extension: 'rb', language: 'ruby', treeSitterGrammar: 'tree-sitter-ruby', lineCommentMarker: '#' },
-    'rs': { extension: 'rs', language: 'rust', treeSitterGrammar: 'tree-sitter-rust', lineCommentMarker: '//' },
-    'css': { extension: 'css', language: 'css', treeSitterGrammar: 'tree-sitter-css', lineCommentMarker: undefined },
+    'js': { extension: 'js', language: 'javascript', lineCommentMarker: '//' },
+    'jsx': { extension: 'jsx', language: 'javascript', lineCommentMarker: '//' },
+    'ts': { extension: 'ts', language: 'typescript', lineCommentMarker: '//' },
+    'tsx': { extension: 'tsx', language: 'typescript', variant: 'tsx', lineCommentMarker: '//' },
+    'py': { extension: 'py', language: 'python', lineCommentMarker: '#' },
+    'pyw': { extension: 'pyw', language: 'python', lineCommentMarker: '#' },
+    'java': { extension: 'java', language: 'java', lineCommentMarker: '//' },
+    'c': { extension: 'c', language: 'c', lineCommentMarker: '//' },
+    'cpp': { extension: 'cpp', language: 'cpp', lineCommentMarker: '//' },
+    'h': { extension: 'h', language: 'cpp', lineCommentMarker: '//' },
+    'hpp': { extension: 'hpp', language: 'cpp', lineCommentMarker: '//' },
+    'cs': { extension: 'cs', language: 'csharp', lineCommentMarker: '//' },
+    'go': { extension: 'go', language: 'go', lineCommentMarker: '//' },
+    'rb': { extension: 'rb', language: 'ruby', lineCommentMarker: '#' },
+    'rs': { extension: 'rs', language: 'rust', lineCommentMarker: '//' },
+    'css': { extension: 'css', language: 'css', lineCommentMarker: undefined },
 };
 
 /**

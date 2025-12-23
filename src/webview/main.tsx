@@ -8,7 +8,6 @@ import './globals.css';
 interface AnalysisData {
     title: string;
     diffText: string;
-    context: string;
     analysis: string;
     toolCalls: ToolCallsData | null;
 }
@@ -42,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <AnalysisView
                 title={analysisData.title}
                 diffText={analysisData.diffText}
-                context={analysisData.context}
                 analysis={analysisData.analysis}
                 toolCalls={analysisData.toolCalls}
             />
@@ -65,7 +63,6 @@ if (document.readyState === 'loading') {
                     <AnalysisView
                         title={analysisData.title}
                         diffText={analysisData.diffText}
-                        context={analysisData.context}
                         analysis={analysisData.analysis}
                         toolCalls={analysisData.toolCalls}
                     />

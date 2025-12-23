@@ -102,7 +102,6 @@ export class UIManager {
     public generatePRAnalysisHtml(
         title: string,
         diffText: string,
-        context: string,
         analysis: string,
         panel: vscode.WebviewPanel,
         toolCalls: ToolCallsData | undefined
@@ -173,7 +172,6 @@ export class UIManager {
                 window.analysisData = {
                     title: ${JSON.stringify(titleTruncated)},
                     diffText: ${JSON.stringify(diffText)},
-                    context: ${JSON.stringify(context)},
                     analysis: ${JSON.stringify(cleanedAnalysis)},
                     toolCalls: ${JSON.stringify(toolCalls ?? null)}
                 };
@@ -192,41 +190,11 @@ export class UIManager {
     }
 
     /**
-     * Show database management options
-     */
-    public async showDatabaseManagementOptions(): Promise<string | undefined> {
-        const options = [
-            'Optimize database',
-            'Rebuild entire database',
-            'Show database statistics'
-        ];
-
-        return await vscode.window.showQuickPick(options, {
-            placeHolder: 'Select database management action'
-        });
-    }
-
-    /**
-     * Show model selection options
-     */
-    public async showModelSelectionOptions(): Promise<string | undefined> {
-        const options = [
-            'Use default model (MiniLM)',
-            'Use high-memory model (Jina Embeddings)'
-        ];
-
-        return await vscode.window.showQuickPick(options, {
-            placeHolder: 'Select embedding model'
-        });
-    }
-
-    /**
      * Display analysis results in a webview (reuses existing panel if open)
      */
     public displayAnalysisResults(
         title: string,
         diffText: string,
-        context: string,
         analysis: string,
         toolCalls: ToolCallsData | undefined = undefined
     ): vscode.WebviewPanel {
@@ -247,7 +215,7 @@ export class UIManager {
             this.activeAnalysisPanel = panel;
         }
 
-        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, context, analysis, panel, toolCalls);
+        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, analysis, panel, toolCalls);
 
         // Set up message listeners for webview communication
         this.setupWebviewMessageHandlers(panel.webview);

@@ -1,5 +1,4 @@
 import { z } from 'zod/v4';
-import { EmbeddingModel } from '../services/embeddingModelSelectionService';
 import { LOG_LEVELS } from './loggingTypes';
 
 export const ANALYSIS_LIMITS = {
@@ -12,11 +11,8 @@ export const SUBAGENT_LIMITS = {
 } as const;
 
 export const WorkspaceSettingsSchema = z.looseObject({
-    selectedEmbeddingModel: z.enum(EmbeddingModel).optional(),
     selectedRepositoryPath: z.string().optional(),
-    lastIndexingTimestamp: z.number().positive().optional(),
     preferredModelVersion: z.string().optional(),
-    enableEmbeddingLspAlgorithm: z.boolean().default(false),
     maxIterations: z.number()
         .min(ANALYSIS_LIMITS.maxIterations.min)
         .max(ANALYSIS_LIMITS.maxIterations.max)

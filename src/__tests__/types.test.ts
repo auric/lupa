@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { 
-    SUPPORTED_LANGUAGES, 
-    getSupportedFilesGlob, 
-    getExcludePattern, 
+import {
+    SUPPORTED_LANGUAGES,
+    getSupportedFilesGlob,
+    getExcludePattern,
     getLanguageForExtension,
-    type SupportedLanguage 
+    type SupportedLanguage
 } from '../types/types';
 
 describe('types.ts', () => {
@@ -13,7 +13,6 @@ describe('types.ts', () => {
             const language: SupportedLanguage = {
                 extension: 'ts',
                 language: 'typescript',
-                treeSitterGrammar: 'tree-sitter-typescript',
                 lineCommentMarker: '//'
             };
 
@@ -26,7 +25,6 @@ describe('types.ts', () => {
             const language: SupportedLanguage = {
                 extension: 'css',
                 language: 'css',
-                treeSitterGrammar: 'tree-sitter-css',
                 lineCommentMarker: undefined
             };
 
@@ -37,7 +35,7 @@ describe('types.ts', () => {
     describe('SUPPORTED_LANGUAGES constant', () => {
         it('should contain all expected language extensions', () => {
             const expectedExtensions = [
-                'js', 'jsx', 'ts', 'tsx', 'py', 'pyw', 'java', 
+                'js', 'jsx', 'ts', 'tsx', 'py', 'pyw', 'java',
                 'c', 'cpp', 'h', 'hpp', 'cs', 'go', 'rb', 'rs', 'css'
             ];
 
@@ -71,16 +69,13 @@ describe('types.ts', () => {
                 expect(lang.language).toBeDefined();
                 expect(typeof lang.extension).toBe('string');
                 expect(typeof lang.language).toBe('string');
-                
+
                 // Optional properties should be either string or undefined
-                if (lang.treeSitterGrammar !== undefined) {
-                    expect(typeof lang.treeSitterGrammar).toBe('string');
-                }
                 if (lang.variant !== undefined) {
                     expect(typeof lang.variant).toBe('string');
                 }
-                
-                // New property should be either string or undefined
+
+                // lineCommentMarker should be either string or undefined
                 if (lang.lineCommentMarker !== undefined) {
                     expect(typeof lang.lineCommentMarker).toBe('string');
                     expect(lang.lineCommentMarker.length).toBeGreaterThan(0);
@@ -151,7 +146,7 @@ describe('types.ts', () => {
                     // Should gracefully handle languages without line comments
                     return codeText; // No filtering for languages like CSS
                 }
-                
+
                 // Would normally filter out comments here
                 return codeText.split('\n')
                     .filter(line => !line.trim().startsWith(lang.lineCommentMarker!))
@@ -164,7 +159,7 @@ describe('types.ts', () => {
 
             // Should not throw for CSS (undefined marker)
             expect(() => processLanguageComments(cssLang, testCode)).not.toThrow();
-            
+
             // Should work normally for JS
             expect(() => processLanguageComments(jsLang, testCode)).not.toThrow();
         });

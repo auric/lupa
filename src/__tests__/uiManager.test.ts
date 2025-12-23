@@ -104,10 +104,9 @@ describe('UIManager', () => {
         it('should create webview panel and set up message handlers', () => {
             const title = 'Test Analysis';
             const diffText = 'diff --git a/file.ts b/file.ts';
-            const context = 'Test context';
             const analysis = 'Test analysis';
 
-            const panel = uiManager.displayAnalysisResults(title, diffText, context, analysis);
+            const panel = uiManager.displayAnalysisResults(title, diffText, analysis);
 
             expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
                 'prAnalyzerResults',
@@ -124,7 +123,7 @@ describe('UIManager', () => {
     describe('openFile message handling', () => {
         beforeEach(() => {
             // Set up webview by calling displayAnalysisResults
-            uiManager.displayAnalysisResults('Test', 'diff', 'context', 'analysis');
+            uiManager.displayAnalysisResults('Test', 'diff', 'analysis');
         });
 
         it('should handle openFile message with valid file path', async () => {
@@ -249,7 +248,7 @@ describe('UIManager', () => {
 
     describe('theme handling', () => {
         it('should set up theme change listeners', () => {
-            uiManager.displayAnalysisResults('Test', 'diff', 'context', 'analysis');
+            uiManager.displayAnalysisResults('Test', 'diff', 'analysis');
 
             expect(vscode.window.onDidChangeActiveColorTheme).toHaveBeenCalled();
         });
@@ -298,7 +297,7 @@ describe('UIManager', () => {
             } as any;
             const analysis = '<suggestion_security>Security issue</suggestion_security>';
 
-            const html = uiManager.generatePRAnalysisHtml('Test', 'diff', 'context', analysis, mockPanel);
+            const html = uiManager.generatePRAnalysisHtml('Test', 'diff', analysis, mockPanel, undefined);
 
             expect(html).toContain('Security issue');
             expect(html).not.toContain('<suggestion_security>');

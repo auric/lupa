@@ -233,7 +233,7 @@ const EmptyState = () => (
         </svg>
         <div className="tool-calls-empty-title">No Tool Calls</div>
         <div className="tool-calls-empty-description">
-            The analysis was performed without using any tools, or the legacy embedding-based approach was used.
+            The analysis was performed without using any tools.
         </div>
     </div>
 );

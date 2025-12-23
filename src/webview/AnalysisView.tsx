@@ -10,12 +10,11 @@ import type { ToolCallsData } from '../types/toolCallTypes';
 interface AnalysisViewProps {
     title: string;
     diffText: string;
-    context: string;
     analysis: string;
     toolCalls: ToolCallsData | null;
 }
 
-const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, context, analysis, toolCalls }) => {
+const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, analysis, toolCalls }) => {
     const [windowWidth, setWindowWidth] = useState<number>(window.innerWidth);
 
     // Use custom hooks

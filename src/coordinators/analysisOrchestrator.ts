@@ -4,8 +4,9 @@ import type { ToolCallsData, AnalysisProgressCallback } from '../types/toolCallT
 import { IServiceRegistry } from '../services/serviceManager';
 
 /**
- * AnalysisOrchestrator handles the core PR analysis workflow
- * Orchestrates the interaction between UI, Git, and analysis services
+ * AnalysisOrchestrator handles the core PR analysis workflow.
+ * Orchestrates the interaction between UI, Git, and analysis services.
+ * Uses tool-calling analysis exclusively.
  */
 export class AnalysisOrchestrator implements vscode.Disposable {
     private isAnalysisRunning = false;
@@ -48,7 +49,6 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 vscode.window.showErrorMessage('No active Git repository could be determined.');
                 return;
             }
-            const gitRootPath = repository.rootUri.fsPath;
 
             // Get analysis options from user
             const analysisOptions = await this.getUserAnalysisOptions();
@@ -70,7 +70,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
             }
 
             // Run the analysis with a progress notification
-            await this.runAnalysisWithProgress(diffText, refName, gitRootPath, analysisMode);
+            await this.runAnalysisWithProgress(diffText, refName);
 
         } catch (error) {
             if (error instanceof Error && error.message.includes('cancelled')) {
@@ -87,16 +87,12 @@ export class AnalysisOrchestrator implements vscode.Disposable {
     }
 
     /**
-     * Run analysis with VS Code progress notification
-     * The notification appears automatically and can be minimized by user.
-     * When minimized, it moves to the status bar area near the bell icon.
-     * Clicking the status bar or bell icon reopens the notification.
+     * Run analysis with VS Code progress notification.
+     * Uses tool-calling analysis exclusively.
      */
     private async runAnalysisWithProgress(
         diffText: string,
-        refName: string,
-        gitRootPath: string,
-        analysisMode: AnalysisMode
+        refName: string
     ): Promise<void> {
         await vscode.window.withProgress(
             {
@@ -113,45 +109,26 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 });
 
                 try {
-                    const useEmbeddingLspAlgorithm = this.services.workspaceSettings.isEmbeddingLspAlgorithmEnabled();
-
-                    let analysis: string;
-                    let context: string;
-                    let toolCallsData: ToolCallsData | undefined;
-
                     const updateProgress = (message: string) => {
                         progress.report({ message });
                     };
 
                     updateProgress('Starting analysis...');
 
-                    if (useEmbeddingLspAlgorithm) {
-                        const result = await this.services.analysisProvider.analyzePullRequest(
-                            diffText,
-                            gitRootPath,
-                            analysisMode,
-                            updateProgress,
-                            cancellationTokenSource.token
-                        );
+                    const progressCallback: AnalysisProgressCallback = updateProgress;
 
-                        analysis = result.analysis;
-                        context = result.context;
-                    } else {
-                        const progressCallback: AnalysisProgressCallback = updateProgress;
+                    const result = await this.services.toolCallingAnalysisProvider.analyze(
+                        diffText,
+                        cancellationTokenSource.token,
+                        progressCallback
+                    );
 
-                        const result = await this.services.toolCallingAnalysisProvider.analyze(
-                            diffText,
-                            cancellationTokenSource.token,
-                            progressCallback
-                        );
-                        analysis = result.analysis;
-                        toolCallsData = result.toolCalls;
-                        context = '';
-                    }
+                    const analysis = result.analysis;
+                    const toolCallsData: ToolCallsData | undefined = result.toolCalls;
 
                     // Display results in webview
                     const title = `PR Analysis: ${refName}`;
-                    this.services.uiManager.displayAnalysisResults(title, diffText, context, analysis, toolCallsData);
+                    this.services.uiManager.displayAnalysisResults(title, diffText, analysis, toolCallsData);
 
                     this.services.statusBar.showTemporaryMessage('Analysis complete', 3000, 'check');
                 } finally {

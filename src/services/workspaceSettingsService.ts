@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { z } from 'zod/v4';
-import { EmbeddingModel } from './embeddingModelSelectionService';
 import { Log } from './loggingService';
 import { WorkspaceSettingsSchema, WorkspaceSettings, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 
@@ -177,22 +176,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the selected embedding model for this workspace
-     */
-    public getSelectedEmbeddingModel(): EmbeddingModel | undefined {
-        return this.settings.selectedEmbeddingModel;
-    }
-
-    /**
-     * Set the selected embedding model for this workspace
-     * @param model The model to set as selected
-     */
-    public setSelectedEmbeddingModel(model: EmbeddingModel | undefined): void {
-        this.settings.selectedEmbeddingModel = model;
-        this.debouncedSaveSettings();
-    }
-
-    /**
      * Get the selected repository path for this workspace
      */
     public getSelectedRepositoryPath(): string | undefined {
@@ -221,37 +204,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      */
     public setPreferredModelVersion(version: string | undefined): void {
         this.settings.preferredModelVersion = version;
-        this.debouncedSaveSettings();
-    }
-
-    /**
-     * Get the last indexing timestamp
-     */
-    public getLastIndexingTimestamp(): number | undefined {
-        return this.settings.lastIndexingTimestamp;
-    }
-
-    /**
-     * Update the last indexing timestamp to current time
-     */
-    public updateLastIndexingTimestamp(): void {
-        this.settings.lastIndexingTimestamp = Date.now();
-        this.debouncedSaveSettings();
-    }
-
-    /**
-     * Get whether embedding-based LSP algorithm is enabled
-     */
-    public isEmbeddingLspAlgorithmEnabled(): boolean {
-        return this.settings.enableEmbeddingLspAlgorithm;
-    }
-
-    /**
-     * Set whether embedding-based LSP algorithm is enabled
-     * @param enabled Whether to enable the embedding LSP algorithm
-     */
-    public setEmbeddingLspAlgorithmEnabled(enabled: boolean): void {
-        this.settings.enableEmbeddingLspAlgorithm = enabled;
         this.debouncedSaveSettings();
     }
 
@@ -290,15 +242,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Clear all workspace settings (except for selected models and repository)
      */
     public clearWorkspaceSettings(): void {
-        const selectedEmbeddingModel = this.settings.selectedEmbeddingModel;
         const preferredModelVersion = this.settings.preferredModelVersion;
         const selectedRepositoryPath = this.settings.selectedRepositoryPath;
 
         this.settings = getDefaultSettings();
-
-        if (selectedEmbeddingModel) {
-            this.settings.selectedEmbeddingModel = selectedEmbeddingModel;
-        }
 
         if (preferredModelVersion) {
             this.settings.preferredModelVersion = preferredModelVersion;
