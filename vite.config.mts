@@ -100,6 +100,8 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         minify: isProduction,
         target: 'es2020',
         emptyOutDir: false,
+        // Suppress chunk size warning for webview (React + dependencies are large)
+        chunkSizeWarningLimit: 700,
     };
 
     // Node.js library configuration
