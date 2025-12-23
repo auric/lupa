@@ -362,6 +362,7 @@ export class GitService {
 
     /**
      * Get the default branch of the repository
+     * Uses local-only methods first, falling back to network calls only as a last resort
      */
     public async getDefaultBranch(): Promise<string | undefined> {
         if (this.defaultBranchCache) {
@@ -373,7 +374,7 @@ export class GitService {
                 throw new Error('Git repository not initialized');
             }
 
-            // Try to get the default branch from upstream remote
+            // Method 1: Try to get from git config (local, no network)
             const remotes = await this.repository.getConfigs();
             const originHead = remotes.find(config => config.key === 'remote.origin.head');
 
@@ -382,31 +383,48 @@ export class GitService {
                 const match = originHead.value.match(/refs\/heads\/(.+)/);
                 if (match) {
                     this.defaultBranchCache = match[1];
+                    Log.info(`Default branch from config: ${match[1]}`);
                     return match[1];
                 }
             }
 
-            // Try to get the default branch from origin remote via git command
-            const remote = this.repository.state.remotes.find(r => r.name === 'origin');
-            if (remote) {
-                // Execute git command to get the default branch info
-                const result = await vscode.window.withProgress(
-                    { location: vscode.ProgressLocation.Notification, title: 'Fetching default branch information' },
-                    async () => {
-                        const gitOutput = await this.executeGitCommand(['remote', 'show', remote.name]);
-                        const match = gitOutput.match(/HEAD branch: (.+)/);
-                        return match ? match[1] : undefined;
+            // Method 2: Try symbolic-ref for origin/HEAD (local, no network)
+            // This reference is set when cloning and persists locally
+            try {
+                const symbolicRef = await this.executeGitCommand([
+                    'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'
+                ]);
+                if (symbolicRef) {
+                    // Result is like "origin/main", extract just the branch name
+                    const branchName = symbolicRef.replace(/^origin\//, '').trim();
+                    if (branchName) {
+                        this.defaultBranchCache = branchName;
+                        Log.info(`Default branch from symbolic-ref: ${branchName}`);
+                        return branchName;
                     }
-                );
+                }
+            } catch {
+                // symbolic-ref fails if refs/remotes/origin/HEAD doesn't exist, continue
+            }
 
-                if (result) {
-                    this.defaultBranchCache = result;
-                    return result;
+            // Method 3: Check for remote tracking branches locally
+            // These exist after clone/fetch without requiring network access
+            const commonDefaults = ['main', 'master', 'develop', 'dev'];
+            for (const branch of commonDefaults) {
+                try {
+                    await this.executeGitCommand([
+                        'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`
+                    ]);
+                    // If we get here, the remote tracking branch exists
+                    this.defaultBranchCache = branch;
+                    Log.info(`Default branch from remote tracking ref: ${branch}`);
+                    return branch;
+                } catch {
+                    // Branch doesn't exist, try next
                 }
             }
 
-            // Fallback to common default branch names
-            const commonDefaults = ['develop', 'main', 'master', 'dev'];
+            // Method 4: Check for local branches with common names
             const branchRefs = await this.repository.getRefs({
                 pattern: commonDefaults,
                 count: 1
@@ -416,12 +434,35 @@ export class GitService {
                 const defaultBranch = branchRefs[0].name;
                 if (defaultBranch) {
                     this.defaultBranchCache = defaultBranch;
+                    Log.info(`Default branch from local refs: ${defaultBranch}`);
                     return defaultBranch;
                 }
             }
 
-            // If none found, use current HEAD if it's a branch
-            return this.repository.state.HEAD?.name;
+            // Method 5: Try network call as LAST RESORT
+            // This may fail if user doesn't have remote access (SSH keys, permissions, etc.)
+            const remote = this.repository.state.remotes.find(r => r.name === 'origin');
+            if (remote) {
+                try {
+                    const gitOutput = await this.executeGitCommand(['remote', 'show', remote.name]);
+                    const match = gitOutput.match(/HEAD branch: (.+)/);
+                    if (match) {
+                        this.defaultBranchCache = match[1];
+                        Log.info(`Default branch from remote: ${match[1]}`);
+                        return match[1];
+                    }
+                } catch (networkError) {
+                    // Network/permission error - expected in offline or restricted environments
+                    Log.info('Could not fetch default branch from remote (requires network/SSH access), using local fallback');
+                }
+            }
+
+            // Method 6: Final fallback - use current HEAD if it's a branch
+            const headBranch = this.repository.state.HEAD?.name;
+            if (headBranch) {
+                Log.info(`Using current HEAD as default branch fallback: ${headBranch}`);
+            }
+            return headBranch;
         } catch (error) {
             Log.error('Error getting default branch:', error);
             return undefined;
