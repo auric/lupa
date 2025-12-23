@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod/v4';
 import { WorkspaceSettingsSchema, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
-import { EmbeddingModel } from '../services/embeddingModelSelectionService';
 
 describe('WorkspaceSettingsSchema', () => {
     describe('valid settings', () => {
@@ -9,7 +8,6 @@ describe('WorkspaceSettingsSchema', () => {
             const result = WorkspaceSettingsSchema.safeParse({});
             expect(result.success).toBe(true);
             if (result.success) {
-                expect(result.data.enableEmbeddingLspAlgorithm).toBe(false);
                 expect(result.data.maxIterations).toBe(ANALYSIS_LIMITS.maxIterations.default);
                 expect(result.data.requestTimeoutSeconds).toBe(ANALYSIS_LIMITS.requestTimeoutSeconds.default);
                 expect(result.data.maxSubagentsPerSession).toBe(SUBAGENT_LIMITS.maxPerSession.default);
@@ -19,10 +17,7 @@ describe('WorkspaceSettingsSchema', () => {
 
         it('should accept all valid properties and preserve them', () => {
             const validSettings = {
-                selectedEmbeddingModel: EmbeddingModel.JinaEmbeddings,
-                lastIndexingTimestamp: 1732800000000,
                 preferredModelVersion: '0613',
-                enableEmbeddingLspAlgorithm: true,
                 maxIterations: 20,
                 requestTimeoutSeconds: 120,
                 maxSubagentsPerSession: 15,
@@ -80,13 +75,6 @@ describe('WorkspaceSettingsSchema', () => {
     });
 
     describe('invalid settings', () => {
-        it('should reject invalid embedding model', () => {
-            const result = WorkspaceSettingsSchema.safeParse({
-                selectedEmbeddingModel: 'invalid-model',
-            });
-            expect(result.success).toBe(false);
-        });
-
         it('should reject maxIterations below minimum', () => {
             const result = WorkspaceSettingsSchema.safeParse({
                 maxIterations: 1,
@@ -129,17 +117,9 @@ describe('WorkspaceSettingsSchema', () => {
             expect(result.success).toBe(false);
         });
 
-        it('should reject negative lastIndexingTimestamp', () => {
-            const result = WorkspaceSettingsSchema.safeParse({
-                lastIndexingTimestamp: -1,
-            });
-            expect(result.success).toBe(false);
-        });
-
         it('should reject wrong types', () => {
             const result = WorkspaceSettingsSchema.safeParse({
                 maxIterations: 'fifty',
-                enableEmbeddingLspAlgorithm: 'yes',
             });
             expect(result.success).toBe(false);
         });

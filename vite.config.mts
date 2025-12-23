@@ -58,19 +58,17 @@ const isExternalDependency = (source: string, importer: string | undefined, isRe
         return source === 'vscode';
     }
 
-    // For extension and workers, externalize these Node.js packages
-    // Note: @vscode/ripgrep downloads its binaries via postinstall, no need to externalize
-    return ['vscode', 'onnxruntime-node', 'hnswlib-node', '@vscode/sqlite3', '@tailwindcss/vite'].includes(source);
+    // For extension, externalize these Node.js packages
+    return ['vscode', '@tailwindcss/vite'].includes(source);
 };
 
 export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     const isProduction = mode === 'production';
 
-    // Node.js library configuration (extension and workers)
+    // Node.js library configuration (extension)
     const libOptions: LibraryOptions = {
         entry: {
             extension: resolve(__dirname, 'src/extension.ts'),
-            'workers/embeddingGeneratorWorker': resolve(__dirname, 'src/workers/embeddingGeneratorWorker.ts'),
         },
         formats: ['cjs'],
         fileName: (_format, entryName) => `${entryName}.js`,
@@ -122,27 +120,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     };
 
     const staticCopyTargets: Target[] = [
-        {
-            src: 'node_modules/onnxruntime-node/',
-            dest: 'node_modules',
-        },
-        {
-            src: 'node_modules/@vscode/sqlite3/build/Release/vscode-sqlite3.node',
-            dest: '.',
-        },
-        {
-            src: 'node_modules/@vscode/tree-sitter-wasm/wasm/tree-sitter-*.wasm',
-            dest: 'grammars',
-        },
-        {
-            src: 'node_modules/web-tree-sitter/tree-sitter.wasm',
-            dest: '.',
-        },
         // Note: @vscode/ripgrep is NOT copied - it downloads its own binaries via postinstall
-        {
-            src: 'models/',
-            dest: '.',
-        },
     ];
 
     // Determine which build config to use

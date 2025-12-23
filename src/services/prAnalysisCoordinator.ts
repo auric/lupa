@@ -1,25 +1,21 @@
 import * as vscode from 'vscode';
 import { ServiceManager, IServiceRegistry } from './serviceManager';
 import { AnalysisOrchestrator } from '../coordinators/analysisOrchestrator';
-import { EmbeddingModelCoordinator } from '../coordinators/embeddingModelCoordinator';
 import { CopilotModelCoordinator } from '../coordinators/copilotModelCoordinator';
-import { DatabaseOrchestrator } from '../coordinators/databaseOrchestrator';
 import { CommandRegistry } from '../coordinators/commandRegistry';
 
 /**
- * Refactored PRAnalysisCoordinator with decomposed architecture
- * Uses specialized coordinators to manage different aspects of the system
- * Eliminates circular dependencies through proper service management
+ * PRAnalysisCoordinator is the main entry point for the extension.
+ * Uses specialized coordinators to manage different aspects of the system.
+ * Eliminates circular dependencies through proper service management.
  */
 export class PRAnalysisCoordinator implements vscode.Disposable {
     private serviceManager: ServiceManager;
     private services: IServiceRegistry | null = null;
-    
+
     // Specialized coordinators
     private analysisOrchestrator: AnalysisOrchestrator | null = null;
-    private embeddingModelCoordinator: EmbeddingModelCoordinator | null = null;
     private copilotModelCoordinator: CopilotModelCoordinator | null = null;
-    private databaseOrchestrator: DatabaseOrchestrator | null = null;
     private commandRegistry: CommandRegistry | null = null;
 
     /**
@@ -41,20 +37,16 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
 
             // Create specialized coordinators
             this.analysisOrchestrator = new AnalysisOrchestrator(this.context, this.services);
-            this.embeddingModelCoordinator = new EmbeddingModelCoordinator(this.context, this.services, this.serviceManager);
             this.copilotModelCoordinator = new CopilotModelCoordinator(this.context, this.services);
-            this.databaseOrchestrator = new DatabaseOrchestrator(this.context, this.services);
 
             // Register all commands through CommandRegistry
             this.commandRegistry = new CommandRegistry(
                 this.context,
                 this.services,
                 this.analysisOrchestrator,
-                this.embeddingModelCoordinator,
-                this.copilotModelCoordinator,
-                this.databaseOrchestrator
+                this.copilotModelCoordinator
             );
-            
+
             this.commandRegistry.registerAllCommands();
 
         } catch (error) {
@@ -72,24 +64,10 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
     }
 
     /**
-     * Get the embedding model coordinator for external access
-     */
-    public getEmbeddingModelCoordinator(): EmbeddingModelCoordinator | null {
-        return this.embeddingModelCoordinator;
-    }
-
-    /**
      * Get the Copilot model coordinator for external access
      */
     public getCopilotModelCoordinator(): CopilotModelCoordinator | null {
         return this.copilotModelCoordinator;
-    }
-
-    /**
-     * Get the database orchestrator for external access
-     */
-    public getDatabaseOrchestrator(): DatabaseOrchestrator | null {
-        return this.databaseOrchestrator;
     }
 
     /**
@@ -105,9 +83,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
     public dispose(): void {
         // Dispose coordinators first
         this.commandRegistry?.dispose();
-        this.databaseOrchestrator?.dispose();
         this.copilotModelCoordinator?.dispose();
-        this.embeddingModelCoordinator?.dispose();
         this.analysisOrchestrator?.dispose();
 
         // Then dispose the service manager (which disposes all services)
