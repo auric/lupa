@@ -453,10 +453,9 @@ export class GitService {
                     }
                 } catch (networkError) {
                     // Network/permission error - expected in offline or restricted environments
+                    const networkErrorMessage = networkError instanceof Error ? networkError.message : String(networkError);
                     Log.info(
-                        `Could not fetch default branch from remote (requires network/SSH access), using local fallback: ${
-                            networkError instanceof Error ? networkError.message : String(networkError)
-                        }`
+                        `Could not fetch default branch from remote (requires network/SSH access), using local fallback: ${networkErrorMessage}`
                     );
                 }
             }
