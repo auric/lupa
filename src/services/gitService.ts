@@ -38,6 +38,9 @@ interface RepositoryQuickPickItem extends vscode.QuickPickItem {
  * GitService handles Git operations for the PR Analyzer
  */
 export class GitService {
+    /** Common default branch names in priority order */
+    private static readonly DEFAULT_BRANCH_CANDIDATES = ['main', 'master', 'develop', 'dev'] as const;
+
     private gitApi: API | null = null;
     private repository: Repository | null = null;
     private static instance: GitService | null = null;
@@ -409,8 +412,7 @@ export class GitService {
 
             // Method 3: Check for remote tracking branches locally
             // These exist after clone/fetch without requiring network access
-            const commonDefaults = ['main', 'master', 'develop', 'dev'];
-            for (const branch of commonDefaults) {
+            for (const branch of GitService.DEFAULT_BRANCH_CANDIDATES) {
                 try {
                     await this.executeGitCommand([
                         'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`
@@ -425,17 +427,18 @@ export class GitService {
             }
 
             // Method 4: Check for local branches with common names
-            const branchRefs = await this.repository.getRefs({
-                pattern: commonDefaults,
-                count: 1
-            });
-
-            if (branchRefs.length > 0) {
-                const defaultBranch = branchRefs[0].name;
-                if (defaultBranch) {
-                    this.defaultBranchCache = defaultBranch;
-                    Log.info(`Default branch from local refs: ${defaultBranch}`);
-                    return defaultBranch;
+            // Use explicit loop to maintain consistent priority order
+            for (const branch of GitService.DEFAULT_BRANCH_CANDIDATES) {
+                try {
+                    await this.executeGitCommand([
+                        'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`
+                    ]);
+                    // If we get here, the local branch exists
+                    this.defaultBranchCache = branch;
+                    Log.info(`Default branch from local branch: ${branch}`);
+                    return branch;
+                } catch {
+                    // Branch doesn't exist, try next
                 }
             }
 
@@ -453,10 +456,7 @@ export class GitService {
                     }
                 } catch (networkError) {
                     // Network/permission error - expected in offline or restricted environments
-                    const networkErrorMessage = networkError instanceof Error ? networkError.message : String(networkError);
-                    Log.info(
-                        `Could not fetch default branch from remote (requires network/SSH access), using local fallback: ${networkErrorMessage}`
-                    );
+                    Log.info('Could not fetch default branch from remote (requires network/SSH access), falling back to current HEAD', networkError);
                 }
             }
 
