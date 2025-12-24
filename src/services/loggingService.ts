@@ -94,6 +94,20 @@ export class LoggingService implements vscode.Disposable {
     }
 
     /**
+     * Format an argument for logging output.
+     * Handles Error objects specially since JSON.stringify returns {} for them.
+     */
+    private formatArg(arg: unknown): string {
+        if (arg instanceof Error) {
+            return arg.stack ?? `${arg.name}: ${arg.message}`;
+        }
+        if (typeof arg === 'object' && arg !== null) {
+            return JSON.stringify(arg, null, 2);
+        }
+        return String(arg);
+    }
+
+    /**
      * Format a log message with timestamp and level
      */
     private formatMessage(level: LogLevel, message: string, ...args: any[]): string {
@@ -104,9 +118,7 @@ export class LoggingService implements vscode.Disposable {
         let formattedMessage = `${timestamp} [${levelStr}] ${message}`;
 
         if (args.length > 0) {
-            const argsStr = args.map(arg =>
-                typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-            ).join(' ');
+            const argsStr = args.map(arg => this.formatArg(arg)).join(' ');
             formattedMessage += ` ${argsStr}`;
         }
 
