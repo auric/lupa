@@ -213,7 +213,7 @@ schema = z.object({
 
 ```typescript
 import * as vscode from "vscode";
-import { z } from "zod";
+import * as z from "zod";
 import { Log } from "./loggingService";
 import { GetSymbolsOverviewTool } from "../tools/getSymbolsOverviewTool";
 import type { ToolResult } from "../types/toolResultTypes";
