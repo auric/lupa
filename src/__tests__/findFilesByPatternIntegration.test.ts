@@ -44,17 +44,19 @@ vi.mock('vscode', async () => {
     };
 });
 
-// Mock fdir
+// Mock fdir - Vitest 4 requires function/class for mocks used as constructors
 vi.mock('fdir', () => ({
-    fdir: vi.fn().mockImplementation(() => ({
-        withGlobFunction: vi.fn().mockReturnThis(),
-        glob: vi.fn().mockReturnThis(),
-        withRelativePaths: vi.fn().mockReturnThis(),
-        exclude: vi.fn().mockReturnThis(),
-        filter: vi.fn().mockReturnThis(),
-        crawl: vi.fn().mockReturnThis(),
-        withPromise: vi.fn()
-    }))
+    fdir: vi.fn().mockImplementation(function () {
+        return {
+            withGlobFunction: vi.fn().mockReturnThis(),
+            glob: vi.fn().mockReturnThis(),
+            withRelativePaths: vi.fn().mockReturnThis(),
+            exclude: vi.fn().mockReturnThis(),
+            filter: vi.fn().mockReturnThis(),
+            crawl: vi.fn().mockReturnThis(),
+            withPromise: vi.fn()
+        };
+    })
 }));
 
 // Mock picomatch
@@ -62,14 +64,16 @@ vi.mock('picomatch', () => ({
     default: vi.fn()
 }));
 
-// Mock ignore
+// Mock ignore - Vitest 4 requires function/class for mocks used as constructors
 vi.mock('ignore', () => ({
-    default: vi.fn(() => ({
-        add: vi.fn().mockReturnThis(),
-        checkIgnore: vi.fn(() => ({ ignored: false })),
-        ignores: vi.fn(() => false),
-        filter: vi.fn().mockImplementation((files) => files)
-    }))
+    default: vi.fn(function () {
+        return {
+            add: vi.fn().mockReturnThis(),
+            checkIgnore: vi.fn(function () { return { ignored: false }; }),
+            ignores: vi.fn(function () { return false; }),
+            filter: vi.fn().mockImplementation(function (files) { return files; })
+        };
+    })
 }));
 
 const mockCopilotModelManager = {
@@ -82,8 +86,9 @@ const mockPromptGenerator = {
 };
 
 // Test utility functions for DRY mocks
+// Vitest 4 requires function/class syntax for mocks used as constructors
 function createMockFdirInstance(syncReturnValue: string[] = []) {
-    return {
+    const instance = {
         withGlobFunction: vi.fn().mockReturnThis(),
         glob: vi.fn().mockReturnThis(),
         globWithOptions: vi.fn().mockReturnThis(),
@@ -94,7 +99,17 @@ function createMockFdirInstance(syncReturnValue: string[] = []) {
         crawl: vi.fn().mockReturnThis(),
         withPromise: vi.fn().mockResolvedValue(syncReturnValue),
         sync: vi.fn().mockReturnValue(syncReturnValue)
-    } as any;
+    };
+    // Make chainable methods return the instance
+    instance.withGlobFunction.mockReturnValue(instance);
+    instance.glob.mockReturnValue(instance);
+    instance.globWithOptions.mockReturnValue(instance);
+    instance.withRelativePaths.mockReturnValue(instance);
+    instance.withFullPaths.mockReturnValue(instance);
+    instance.exclude.mockReturnValue(instance);
+    instance.filter.mockReturnValue(instance);
+    instance.crawl.mockReturnValue(instance);
+    return instance as any;
 }
 
 function createMockGitRepository(gitRootPath: string = '/test/git-repo') {
@@ -173,7 +188,10 @@ describe('FindFileTool Integration Tests', () => {
                 '/test/git-repo/components/Button.tsx',
                 '/test/git-repo/components/Input.tsx'
             ]);
-            vi.mocked(fdir).mockReturnValue(mockFdirInstance);
+            // Vitest 4: use mockImplementation with function syntax for constructor mocks
+            vi.mocked(fdir).mockImplementation(function () {
+                return mockFdirInstance;
+            } as any);
 
             // Execute tool call through the ToolExecutor
             const toolCallResults = await toolExecutor.executeTools([{
@@ -197,10 +215,13 @@ describe('FindFileTool Integration Tests', () => {
 
         it('should handle tool execution errors gracefully', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
-            mockFdirInstance.sync.mockImplementation(() => {
+            mockFdirInstance.sync.mockImplementation(function () {
                 throw new Error('Permission denied');
             });
-            vi.mocked(fdir).mockReturnValue(mockFdirInstance);
+            // Vitest 4: use mockImplementation with function syntax for constructor mocks
+            vi.mocked(fdir).mockImplementation(function () {
+                return mockFdirInstance;
+            } as any);
 
             const toolCallResults = await toolExecutor.executeTools([{
                 name: 'find_files_by_pattern',

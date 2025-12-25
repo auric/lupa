@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SymbolRangeExpander } from '../tools/symbolRangeExpander';
 
-// Mock vscode
+// Mock vscode - Vitest 4 requires function syntax for constructor mocks
 vi.mock('vscode', async () => {
   const actualVscode = await vi.importActual('vscode');
   return {
@@ -10,11 +10,14 @@ vi.mock('vscode', async () => {
     commands: {
       executeCommand: vi.fn()
     },
-    Range: vi.fn().mockImplementation((startLine, startChar, endLine, endChar) => ({
-      start: { line: startLine, character: startChar },
-      end: { line: endLine, character: endChar }
-    })),
-    Position: vi.fn().mockImplementation((line, character) => ({ line, character }))
+    Range: vi.fn().mockImplementation(function (this: any, startLine: number, startChar: number, endLine: number, endChar: number) {
+      this.start = { line: startLine, character: startChar };
+      this.end = { line: endLine, character: endChar };
+    }),
+    Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
+      this.line = line;
+      this.character = character;
+    })
   };
 });
 
@@ -46,7 +49,7 @@ describe('SymbolRangeExpander', () => {
       mockSymbols[0].range.contains = vi.fn().mockReturnValue(true);
 
       vi.mocked(vscode.commands.executeCommand).mockResolvedValue(mockSymbols);
-      
+
       // Setup fallback text in case expandRangeForSymbol is called
       mockDocument.getText.mockReturnValue('class TestClass {\n  // content\n}');
 
@@ -97,7 +100,7 @@ describe('SymbolRangeExpander', () => {
       mockSymbols[0].children[0].range.contains = vi.fn().mockReturnValue(true);
 
       vi.mocked(vscode.commands.executeCommand).mockResolvedValue(mockSymbols);
-      
+
       // Setup fallback text in case expandRangeForSymbol is called
       mockDocument.getText.mockReturnValue('class TestClass {\n  constructor() {}\n}');
 

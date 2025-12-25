@@ -41,8 +41,14 @@ vi.mock('vscode', async () => {
             Dark: 2,
             HighContrast: 3
         },
-        Position: vi.fn().mockImplementation((line, character) => ({ line, character })),
-        Range: vi.fn().mockImplementation((start, end) => ({ start, end }))
+        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
+            this.line = line;
+            this.character = character;
+        }),
+        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
+            this.start = start;
+            this.end = end;
+        })
     };
 });
 

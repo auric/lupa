@@ -18,8 +18,15 @@ vi.mock('vscode', async () => {
         commands: {
             executeCommand: vi.fn()
         },
-        Position: vi.fn().mockImplementation((line, character) => ({ line, character })),
-        Range: vi.fn().mockImplementation((start, end) => ({ start, end, contains: vi.fn(() => true) })),
+        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
+            this.line = line;
+            this.character = character;
+        }),
+        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
+            this.start = start;
+            this.end = end;
+            this.contains = vi.fn(function () { return true; });
+        }),
         Uri: {
             parse: vi.fn((path) => ({ toString: () => path, fsPath: path })),
             joinPath: vi.fn((base, relative) => ({

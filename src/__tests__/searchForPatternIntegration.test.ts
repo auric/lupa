@@ -72,7 +72,11 @@ describe('SearchForPatternTool Integration Tests', () => {
             formatResults: vi.fn()
         };
 
-        vi.mocked(RipgrepSearchService).mockImplementation(() => mockRipgrepService as unknown as RipgrepSearchService);
+        // Vitest 4 requires function syntax for constructor mocks
+        vi.mocked(RipgrepSearchService).mockImplementation(function (this: any) {
+            this.search = mockRipgrepService.search;
+            this.formatResults = mockRipgrepService.formatResults;
+        });
 
         // Initialize tools
         searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);

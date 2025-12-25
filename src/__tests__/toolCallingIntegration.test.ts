@@ -33,8 +33,14 @@ vi.mock('vscode', async () => {
         commands: {
             executeCommand: vi.fn()
         },
-        Position: vi.fn().mockImplementation((line, character) => ({ line, character })),
-        Range: vi.fn().mockImplementation((start, end) => ({ start, end })),
+        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
+            this.line = line;
+            this.character = character;
+        }),
+        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
+            this.start = start;
+            this.end = end;
+        }),
         Uri: {
             parse: vi.fn((path) => ({ toString: () => path, fsPath: path }))
         },
@@ -115,16 +121,17 @@ describe('Tool-Calling Integration Tests', () => {
         // Clear all mocks
         vi.clearAllMocks();
 
-        vi.mocked(vscode.CancellationTokenSource).mockImplementation(() => {
+        // Vitest 4 requires function syntax for constructor mocks
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (this: any) {
             const listeners: Array<(e: any) => any> = [];
             let isCancelled = false;
 
             const token: vscode.CancellationToken = {
                 get isCancellationRequested() { return isCancelled; },
-                onCancellationRequested: vi.fn((listener: (e: any) => any) => {
+                onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
                     listeners.push(listener);
                     return {
-                        dispose: vi.fn(() => {
+                        dispose: vi.fn(function () {
                             const index = listeners.indexOf(listener);
                             if (index !== -1) {
                                 listeners.splice(index, 1);
@@ -134,15 +141,12 @@ describe('Tool-Calling Integration Tests', () => {
                 })
             };
 
-            return {
-                token: token,
-                cancel: vi.fn(() => {
-                    isCancelled = true;
-                    // Create a copy of listeners array before iteration
-                    [...listeners].forEach(listener => listener(undefined)); // Pass undefined or a specific event if needed
-                }),
-                dispose: vi.fn()
-            } as unknown as vscode.CancellationTokenSource; // Cast to assure TS it's a CancellationTokenSource
+            this.token = token;
+            this.cancel = vi.fn(function () {
+                isCancelled = true;
+                [...listeners].forEach(function (listener) { listener(undefined); });
+            });
+            this.dispose = vi.fn();
         });
         tokenSource = new vscode.CancellationTokenSource();
     });

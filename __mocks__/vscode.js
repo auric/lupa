@@ -7,50 +7,48 @@ function createVSCodeMock() {
 
 const vscodeMock = createVSCodeMock();
 
-vscodeMock.TextDocument = vi.fn().mockImplementation(() => ({
-  getText: vi.fn().mockReturnValue('mocked document text'),
-  lineAt: vi.fn().mockReturnValue({ text: 'mocked line text' }),
-  offsetAt: vi.fn().mockReturnValue(10),
-  positionAt: vi.fn((offset) => {
+vscodeMock.TextDocument = vi.fn().mockImplementation(function() {
+  this.getText = vi.fn().mockReturnValue('mocked document text');
+  this.lineAt = vi.fn().mockReturnValue({ text: 'mocked line text' });
+  this.offsetAt = vi.fn().mockReturnValue(10);
+  this.positionAt = vi.fn(function(offset) {
     return new vscodeMock.Position(Math.floor(offset / 10), offset % 10);
-  }),
-  lineCount: 100
-}));
-
-// Add mock for Position class
-vscodeMock.Position = vi.fn((line, character) => {
-  // console.log(`[VSCODE_MOCK Position CONSTRUCTOR CALLED] line: ${line}, character: ${character}`);
-  const posInstance = {
-    line: line,
-    character: character,
-    isEqual: vi.fn((other) => other && other.line === line && other.character === character),
-    isBefore: vi.fn((other) => other && (line < other.line || (line === other.line && character < other.character))),
-    isAfter: vi.fn((other) => other && (line > other.line || (line === other.line && character > other.character))),
-    translate: vi.fn((lineDelta = 0, characterDelta = 0) => new vscodeMock.Position(line + lineDelta, character + characterDelta)),
-    with: vi.fn((lineOrChange, newChar) => {
-      let newLineVal = line;
-      let newCharVal = character;
-      if (typeof lineOrChange === 'number') {
-        newLineVal = lineOrChange;
-        if (newChar !== undefined) newCharVal = newChar;
-      } else {
-        if (lineOrChange.line !== undefined) {
-          newLineVal = lineOrChange.line;
-        }
-        if (lineOrChange.character !== undefined) {
-          newCharVal = lineOrChange.character;
-        }
-      }
-      return new vscodeMock.Position(newLineVal, newCharVal);
-    })
-  };
-  // console.log(`[VSCODE_MOCK Position INSTANCE CREATED]:`, JSON.stringify(posInstance));
-  return posInstance;
+  });
+  this.lineCount = 100;
 });
 
-// Add custom mocks for Range class
-vscodeMock.Range = vi.fn().mockImplementation((startOrStartLine, endOrStartCharacter, endLine, endCharacter) => {
-  // console.log(`[VSCODE_MOCK Range CONSTRUCTOR CALLED]`);
+// Add mock for Position class - Vitest 4 requires function syntax for constructor mocks
+vscodeMock.Position = vi.fn(function(line, character) {
+  this.line = line;
+  this.character = character;
+  this.isEqual = vi.fn(function(other) { return other && other.line === line && other.character === character; });
+  this.isBefore = vi.fn(function(other) { return other && (line < other.line || (line === other.line && character < other.character)); });
+  this.isAfter = vi.fn(function(other) { return other && (line > other.line || (line === other.line && character > other.character)); });
+  this.translate = vi.fn(function(lineDelta, characterDelta) {
+    lineDelta = lineDelta || 0;
+    characterDelta = characterDelta || 0;
+    return new vscodeMock.Position(line + lineDelta, character + characterDelta);
+  });
+  this.with = vi.fn(function(lineOrChange, newChar) {
+    let newLineVal = line;
+    let newCharVal = character;
+    if (typeof lineOrChange === 'number') {
+      newLineVal = lineOrChange;
+      if (newChar !== undefined) newCharVal = newChar;
+    } else {
+      if (lineOrChange.line !== undefined) {
+        newLineVal = lineOrChange.line;
+      }
+      if (lineOrChange.character !== undefined) {
+        newCharVal = lineOrChange.character;
+      }
+    }
+    return new vscodeMock.Position(newLineVal, newCharVal);
+  });
+});
+
+// Add custom mocks for Range class - Vitest 4 requires function syntax for constructor mocks
+vscodeMock.Range = vi.fn().mockImplementation(function(startOrStartLine, endOrStartCharacter, endLine, endCharacter) {
   let startPos, endPos;
   if (typeof startOrStartLine === 'number' && typeof endOrStartCharacter === 'number') {
     startPos = new vscodeMock.Position(startOrStartLine, endOrStartCharacter);
@@ -63,51 +61,40 @@ vscodeMock.Range = vi.fn().mockImplementation((startOrStartLine, endOrStartChara
   // Ensure startPos and endPos are valid before creating the range object
   if (!startPos || typeof startPos.line !== 'number' || typeof startPos.character !== 'number') {
     console.error('[VSCODE_MOCK Range] Invalid start position:', startPos);
-    // Fallback or throw, to avoid downstream errors
     startPos = new vscodeMock.Position(0, 0); // Default fallback
   }
   if (!endPos || typeof endPos.line !== 'number' || typeof endPos.character !== 'number') {
     console.error('[VSCODE_MOCK Range] Invalid end position:', endPos);
     endPos = new vscodeMock.Position(0, 0); // Default fallback
   }
-  // console.log(`[VSCODE_MOCK Range] startPos: ${JSON.stringify(startPos)}, endPos: ${JSON.stringify(endPos)}`);
 
-  const rangeInstance = {
-    start: startPos,
-    end: endPos,
-    isEmpty: startPos.isEqual(endPos),
-    isSingleLine: startPos.line === endPos.line,
-    contains: vi.fn((positionOrRange) => { // Basic mock, can be expanded
-      if (positionOrRange instanceof vscodeMock.Position) {
-        return !positionOrRange.isBefore(startPos) && !positionOrRange.isAfter(endPos);
-      }
-      // Simplified for Range containment
-      return !positionOrRange.start.isBefore(startPos) && !positionOrRange.end.isAfter(endPos);
-    }),
-    isEqual: vi.fn((other) => other && startPos.isEqual(other.start) && endPos.isEqual(other.end)),
-    intersection: vi.fn(), // Not implemented
-    union: vi.fn(),       // Not implemented
-    with: vi.fn()         // Not implemented
-  };
-  // console.log(`[VSCODE_MOCK Range INSTANCE CREATED]: ${JSON.stringify(rangeInstance)}`);
-  return rangeInstance;
+  this.start = startPos;
+  this.end = endPos;
+  this.isEmpty = startPos.isEqual(endPos);
+  this.isSingleLine = startPos.line === endPos.line;
+  this.contains = vi.fn(function(positionOrRange) {
+    if (positionOrRange instanceof vscodeMock.Position) {
+      return !positionOrRange.isBefore(startPos) && !positionOrRange.isAfter(endPos);
+    }
+    return !positionOrRange.start.isBefore(startPos) && !positionOrRange.end.isAfter(endPos);
+  });
+  this.isEqual = vi.fn(function(other) { return other && startPos.isEqual(other.start) && endPos.isEqual(other.end); });
+  this.intersection = vi.fn();
+  this.union = vi.fn();
+  this.with = vi.fn();
 });
 
-// Add custom mocks for InlineCompletionItem class
-vscodeMock.InlineCompletionItem = vi.fn().mockImplementation((insertText, range, command) => {
-  return {
-    insertText,
-    range,
-    command,
-    filterText: undefined, // default values
-  };
+// Add custom mocks for InlineCompletionItem class - Vitest 4 requires function syntax
+vscodeMock.InlineCompletionItem = vi.fn().mockImplementation(function(insertText, range, command) {
+  this.insertText = insertText;
+  this.range = range;
+  this.command = command;
+  this.filterText = undefined;
 });
 
-// Add custom mocks for InlineCompletionList class
-vscodeMock.InlineCompletionList = vi.fn().mockImplementation((items) => {
-  return {
-    items,
-  };
+// Add custom mocks for InlineCompletionList class - Vitest 4 requires function syntax
+vscodeMock.InlineCompletionList = vi.fn().mockImplementation(function(items) {
+  this.items = items;
 });
 
 // Add mock for FileType enum
@@ -118,13 +105,13 @@ vscodeMock.FileType = {
   SymbolicLink: 64
 };
 
-// Add mock for FileStat interface (as a function returning an object)
-vscodeMock.FileStat = vi.fn().mockImplementation((type, ctime, mtime, size) => ({
-  type: type || vscodeMock.FileType.File, // Default to File
-  ctime: ctime || Date.now(),
-  mtime: mtime || Date.now(),
-  size: size || 0
-}));
+// Add mock for FileStat interface - Vitest 4 requires function syntax for constructor mocks
+vscodeMock.FileStat = vi.fn().mockImplementation(function(type, ctime, mtime, size) {
+  this.type = type || vscodeMock.FileType.File;
+  this.ctime = ctime || Date.now();
+  this.mtime = mtime || Date.now();
+  this.size = size || 0;
+});
 
 vscodeMock.workspace = {
   getConfiguration: vi.fn().mockReturnValue({
@@ -186,14 +173,12 @@ vscodeMock.ExtensionKind = {
   Workspace: 2,
 }
 
-vscodeMock.CancellationError = vi.fn().mockImplementation(() => {
-  return {
-    name: 'CancellationError',
-    message: 'The operation was cancelled.',
-    stack: new Error().stack,
-    toString: function () {
-      return `${this.name}: ${this.message}`;
-    }
+vscodeMock.CancellationError = vi.fn().mockImplementation(function() {
+  this.name = 'CancellationError';
+  this.message = 'The operation was cancelled.';
+  this.stack = new Error().stack;
+  this.toString = function() {
+    return `${this.name}: ${this.message}`;
   };
 });
 
@@ -546,37 +531,40 @@ vscodeMock.LanguageModelChatMessageRole = {
   Assistant: 2
 };
 
-// Add custom mocks for LanguageModelChatMessage
-vscodeMock.LanguageModelChatMessage = vi.fn().mockImplementation((role, content, name) => ({
-  role,
-  content,
-  name,
-}));
+// Add custom mocks for LanguageModelChatMessage - Vitest 4 requires function syntax
+vscodeMock.LanguageModelChatMessage = vi.fn().mockImplementation(function(role, content, name) {
+  this.role = role;
+  this.content = content;
+  this.name = name;
+});
 
-vscodeMock.LanguageModelChatMessage.User = vi.fn((content, name) => ({
-  role: vscodeMock.LanguageModelChatMessageRole.User,
-  content,
-  name
-}));
+vscodeMock.LanguageModelChatMessage.User = vi.fn(function(content, name) {
+  return {
+    role: vscodeMock.LanguageModelChatMessageRole.User,
+    content: content,
+    name: name
+  };
+});
 
-vscodeMock.LanguageModelChatMessage.Assistant = vi.fn((content, name) => ({
-  role: vscodeMock.LanguageModelChatMessageRole.Assistant,
-  content,
-  name
-}));
+vscodeMock.LanguageModelChatMessage.Assistant = vi.fn(function(content, name) {
+  return {
+    role: vscodeMock.LanguageModelChatMessageRole.Assistant,
+    content: content,
+    name: name
+  };
+});
 
-// Add custom mocks for LanguageModelChat
-// Note: This is a simplified mock. Adjust sendRequest/countTokens as needed for tests.
-vscodeMock.LanguageModelChat = vi.fn().mockImplementation((id, name, vendor, family, version, maxInputTokens) => ({
-  id: id || 'mock-model-id',
-  name: name || 'mock-model-name',
-  vendor: vendor || 'mock-vendor',
-  family: family || 'mock-family',
-  version: version || '1.0',
-  maxInputTokens: maxInputTokens || 4096,
-  sendRequest: vi.fn().mockResolvedValue({ /* mock response structure */ }),
-  countTokens: vi.fn().mockResolvedValue(10),
-}));
+// Add custom mocks for LanguageModelChat - Vitest 4 requires function syntax
+vscodeMock.LanguageModelChat = vi.fn().mockImplementation(function(id, name, vendor, family, version, maxInputTokens) {
+  this.id = id || 'mock-model-id';
+  this.name = name || 'mock-model-name';
+  this.vendor = vendor || 'mock-vendor';
+  this.family = family || 'mock-family';
+  this.version = version || '1.0';
+  this.maxInputTokens = maxInputTokens || 4096;
+  this.sendRequest = vi.fn().mockResolvedValue({});
+  this.countTokens = vi.fn().mockResolvedValue(10);
+});
 
 // Add mocks for LanguageModelTextPart and LanguageModelToolCallPart
 vscodeMock.LanguageModelTextPart = class LanguageModelTextPart {

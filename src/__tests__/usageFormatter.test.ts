@@ -2,13 +2,19 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UsageFormatter } from '../tools/usageFormatter';
 
-// Mock vscode
+// Mock vscode - Vitest 4 requires function syntax for constructor mocks
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
     return {
         ...actualVscode,
-        Range: vi.fn().mockImplementation((start, end) => ({ start, end })),
-        Position: vi.fn().mockImplementation((line, character) => ({ line, character }))
+        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
+            this.start = start;
+            this.end = end;
+        }),
+        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
+            this.line = line;
+            this.character = character;
+        })
     };
 });
 
