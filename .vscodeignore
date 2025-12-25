@@ -1,9 +1,83 @@
-.vscode/**
-.vscode-test/**
-**/*.js.map
+# =============================================================================
+# VS Code Extension Package Ignore File
+# =============================================================================
+# This file specifies files and directories to exclude when packaging the
+# extension with vsce. Uses .gitignore syntax.
+#
+# NOTE: vsce auto-ignores common files like .gitignore, package-lock.json,
+# yarn.lock, .editorconfig, .eslintrc*, .prettierrc*, webpack.config.js, etc.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Source files and development directories
+# -----------------------------------------------------------------------------
 src/**
-node_modules/**
-.gitignore
+__mocks__/**
+
+# -----------------------------------------------------------------------------
+# Configuration and build files (not needed at runtime)
+# -----------------------------------------------------------------------------
 tsconfig.json
-webpack.config.js
-esbuild.js
+tsconfig.tsbuildinfo
+vite.config.mts
+vitest.jsdom.setup.ts
+components.json
+
+# -----------------------------------------------------------------------------
+# Documentation and project management
+# -----------------------------------------------------------------------------
+docs/**
+*.md
+CLAUDE.md
+
+# -----------------------------------------------------------------------------
+# Development and CI/CD directories
+# -----------------------------------------------------------------------------
+.vscode/**
+.github/**
+.claude/**
+.serena/**
+_bmad/**
+
+# -----------------------------------------------------------------------------
+# Test and coverage artifacts
+# -----------------------------------------------------------------------------
+coverage/**
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# -----------------------------------------------------------------------------
+# Node.js and package management
+# -----------------------------------------------------------------------------
+node_modules/**
+
+# -----------------------------------------------------------------------------
+# Build artifacts and caches
+# -----------------------------------------------------------------------------
+**/*.js.map
+**/*.vsix
+.cache/**
+
+# -----------------------------------------------------------------------------
+# Git files
+# -----------------------------------------------------------------------------
+.git/**
+.gitignore
+.gitattributes
+
+# -----------------------------------------------------------------------------
+# MCP configuration (development only)
+# -----------------------------------------------------------------------------
+.mcp.json
+
+# -----------------------------------------------------------------------------
+# Explicitly include required files (negation patterns)
+# -----------------------------------------------------------------------------
+# The dist folder contains all runtime assets
+!dist/**
+!package.json
+!LICENSE
+!README.md
+!CHANGELOG.md
