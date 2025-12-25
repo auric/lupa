@@ -28,11 +28,12 @@ vi.mock('../services/gitService', () => ({
     }
 }));
 
+// Vitest 4 requires function syntax for constructor mocks
 vi.mock('../models/conversationRunner', () => ({
-    ConversationRunner: vi.fn().mockImplementation(() => ({
-        run: vi.fn().mockResolvedValue('Analysis complete'),
-        reset: vi.fn()
-    }))
+    ConversationRunner: vi.fn().mockImplementation(function (this: any) {
+        this.run = vi.fn().mockResolvedValue('Analysis complete');
+        this.reset = vi.fn();
+    })
 }));
 
 describe('ChatParticipantService', () => {
@@ -646,10 +647,10 @@ describe('ChatParticipantService', () => {
             };
             vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
 
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Analysis with 🔴 critical issue and 🔒 security risk'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Analysis with 🔴 critical issue and 🔒 security risk');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -873,10 +874,10 @@ describe('ChatParticipantService', () => {
                     onCancellationRequested: vi.fn()
                 };
 
-                vi.mocked(ConversationRunner).mockImplementation(() => ({
-                    run: vi.fn().mockResolvedValue('Conversation cancelled by user'),
-                    reset: vi.fn()
-                }) as any);
+                vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                    this.run = vi.fn().mockResolvedValue('Conversation cancelled by user');
+                    this.reset = vi.fn();
+                });
 
                 const mockGitService = {
                     isInitialized: vi.fn().mockReturnValue(true),
@@ -919,10 +920,10 @@ describe('ChatParticipantService', () => {
                     onCancellationRequested: vi.fn()
                 };
 
-                vi.mocked(ConversationRunner).mockImplementation(() => ({
-                    run: vi.fn().mockResolvedValue('Conversation cancelled by user'),
-                    reset: vi.fn()
-                }) as any);
+                vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                    this.run = vi.fn().mockResolvedValue('Conversation cancelled by user');
+                    this.reset = vi.fn();
+                });
 
                 const mockGitService = {
                     isInitialized: vi.fn().mockReturnValue(true),
@@ -1172,10 +1173,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should route no-command requests to exploration mode', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Here is my explanation of the code...'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Here is my explanation of the code...');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1201,10 +1202,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should handle follow-up chips (no command) as exploration mode', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Follow-up response...'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Follow-up response...');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1226,10 +1227,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should work without diff context', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Exploration response'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Exploration response');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1267,10 +1268,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should handle errors with ChatResponseBuilder', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockRejectedValue(new Error('LLM error')),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockRejectedValue(new Error('LLM error'));
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1326,10 +1327,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should handle cancellation during exploration', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Conversation cancelled by user'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Conversation cancelled by user');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1356,13 +1357,13 @@ describe('ChatParticipantService', () => {
         });
 
         it('should treat error as cancellation if token is cancelled', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockImplementation(async () => {
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockImplementation(async () => {
                     mockToken.isCancellationRequested = true;
                     throw new Error('Operation cancelled');
-                }),
-                reset: vi.fn()
-            }) as any);
+                });
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1389,10 +1390,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should include analysisTimestamp in metadata', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Response'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Response');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1414,10 +1415,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should show progress while thinking', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Response'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Response');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1440,10 +1441,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should show "Continuing conversation" progress when history exists', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Follow-up response'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Follow-up response');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1493,10 +1494,10 @@ describe('ChatParticipantService', () => {
             };
             vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
 
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Analysis result'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Analysis result');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1534,10 +1535,10 @@ describe('ChatParticipantService', () => {
             };
             vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
 
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Analysis result'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Analysis result');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -1565,10 +1566,10 @@ describe('ChatParticipantService', () => {
         });
 
         it('should gracefully handle history processing errors', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(() => ({
-                run: vi.fn().mockResolvedValue('Response despite history error'),
-                reset: vi.fn()
-            }) as any);
+            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+                this.run = vi.fn().mockResolvedValue('Response despite history error');
+                this.reset = vi.fn();
+            });
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
