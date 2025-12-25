@@ -1,6 +1,8 @@
 {
     "name": "lupa",
     "displayName": "🔍 Lupa",
+    "publisher": "auric",
+    "repository": "https://github.com/auric/lupa",
     "description": "A VS Code extension for comprehensive pull request analysis using GitHub Copilot models",
     "version": "0.1.0",
     "engines": {
