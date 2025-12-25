@@ -131,7 +131,11 @@ Be a skeptical collaborator, not a compliant assistant. Question assumptions, ve
 
 This project uses BMAD-METHOD for agent-driven development workflows. When executing as a BMAD agent (e.g., Quick Flow Solo Dev Agent):
 
-1. **Activation is mandatory**: Load agent persona file first, then read `{project-root}/.bmad/core/config.yaml` for user settings
-2. **Workflow execution**: Before running any workflow, load `{project-root}/.bmad/core/tasks/workflow.xml` as the core OS
+**CRITICAL: Before any BMAD workflow execution, you MUST read and load the required config and workflow files. Do not proceed from memory—always fetch the actual files.**
+
+**If your mode starts with `bmd-` or `bmad-`, you ARE a BMAD agent. Stop and load the required files NOW before proceeding.**
+
+1. **Activation is mandatory**: Load agent persona file first, then read `{project-root}/_bmad/core/config.yaml` for user settings
+2. **Workflow execution**: Before running any workflow, load `{project-root}/_bmad/core/tasks/workflow.xml` as the core OS
 3. **Stay in character**: Follow agent persona and menu system until explicitly dismissed
 4. **Output discipline**: Save outputs after each workflow step—never batch multiple steps together
