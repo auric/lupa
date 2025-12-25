@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Lupa** is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It uses a tool-calling architecture where the LLM dynamically requests context via LSP queries, file reading, and pattern searching.
+**Lupa** is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It uses a tool-calling architecture where the LLM dynamically requests context via LSP-based tools, enabling deep code understanding without pre-loading entire codebases.
 
 ## Key Technologies
 
@@ -25,7 +25,9 @@ npm run package        # Production build
 npx vitest run src/__tests__/file.test.ts  # Single test
 ```
 
-**Context window warning:** `npm run test` output is massive and will overwhelm context. After running tests, read only the last ~50 lines for the summary. Prefer running specific test files over the full suite. Use `npm run check-types` for quick validation instead of full builds.
+**Context window warning:** `npm run test` output is massive and will overwhelm context. After running tests, read only the last ~50 lines for the summary. Prefer running specific test files over the full suite.
+
+**Terminal note:** This project uses PowerShell on Windows.
 
 ## Architecture
 
@@ -50,14 +52,22 @@ The `ServiceManager` initializes services in strict order to resolve dependencie
 
 ### Key Entry Points
 
-| File                                                                          | Purpose                                  |
-| ----------------------------------------------------------------------------- | ---------------------------------------- |
-| [serviceManager.ts](src/services/serviceManager.ts)                           | DI container, phase-based initialization |
-| [toolCallingAnalysisProvider.ts](src/services/toolCallingAnalysisProvider.ts) | Main analysis loop with tool-calling     |
-| [baseTool.ts](src/tools/baseTool.ts)                                          | Tool base class with Zod schema          |
-| [vite.config.mts](vite.config.mts)                                            | Dual build configuration                 |
+| File                                          | Purpose                                  |
+| --------------------------------------------- | ---------------------------------------- |
+| `src/services/serviceManager.ts`              | DI container, phase-based initialization |
+| `src/services/toolCallingAnalysisProvider.ts` | Main analysis loop with tool-calling     |
+| `src/tools/baseTool.ts`                       | Tool base class with Zod schema          |
+| `vite.config.mts`                             | Dual build configuration                 |
 
-## Conventions
+### Data Flow: Tool-Calling Analysis
+
+1. `AnalysisOrchestrator` → `ToolCallingAnalysisProvider`
+2. LLM requests context via tools (`FindSymbolTool`, `ReadFileTool`, etc.)
+3. `ToolExecutor` runs tools (rate-limited by session)
+4. Multi-turn conversation via `ConversationManager`
+5. Subagent delegation for complex investigations via `RunSubagentTool`
+
+## Code Conventions
 
 ### Logging
 
@@ -81,8 +91,7 @@ Prefer `param: string | undefined` over `param?: string` for explicit nullabilit
 ### New Services
 
 1. Implement `vscode.Disposable`
-2. Use singleton via `getInstance()` if shared
-3. Add to appropriate phase in `ServiceManager`
+2. Add to appropriate phase in `ServiceManager`
 
 ## Testing
 
@@ -97,28 +106,41 @@ Prefer `param: string | undefined` over `param?: string` for explicit nullabilit
   - `createMockGitRepository()` - Git repository
 - **Vitest 4**: Constructor mocks require `function` syntax, not arrow functions
 
-## Data Flow
-
-### Tool-Calling Analysis
-
-1. `AnalysisOrchestrator` → `ToolCallingAnalysisProvider`
-2. LLM requests context via tools (`FindSymbolTool`, `ReadFileTool`, etc.)
-3. `ToolExecutor` runs tools (rate-limited by session)
-4. Multi-turn conversation via `ConversationManager`
-5. Subagent delegation for complex investigations via `RunSubagentTool`
+---
 
 ## Agent Behavior
 
 Be a skeptical collaborator, not a compliant assistant. Question assumptions, verify claims against the codebase, and push back when something seems wrong. I am not always right. Neither are you, but we both strive for accuracy.
 
-**Code quality expectations:**
+### Before Writing Code
+
+1. **Clarify the problem**: What are the actual requirements vs. assumed ones?
+2. **Read existing code**: Understand patterns, conventions, and architectural decisions in this codebase
+3. **Consider alternatives**: Generate 2-3 approaches before committing to one
+4. **Plan the implementation**: Outline the solution with clear steps before coding
+
+**CRITICAL**: Choose a clear technical direction and execute it with precision. Both minimal implementations and sophisticated architectures work—the key is intentionality, not complexity.
+
+### Code Quality Expectations
 
 - Write production-ready TypeScript: DRY, SOLID, properly typed
 - No obvious comments—add comments only when logic is non-trivial or intent is unclear
 - Documentation should read as if written by a senior engineer, not generated
-- Verify changes compile (`npm run build`) and consider test impact
+- Verify changes compile (`npm run check-types`) and consider test impact
 
-**Working style:**
+### Anti-Patterns to Avoid
+
+NEVER produce these patterns:
+
+- **Excessive comments** explaining obvious code (`// increment counter` above `counter++`)
+- **Over-abstraction** when a simple function would suffice
+- **Magic numbers/strings** without named constants
+- **Empty catch blocks** that swallow errors silently
+- **Copy-paste variations** instead of proper parameterization
+- **God objects** that do everything
+- **Premature optimization** without measurement
+
+### Working Style
 
 - Research before implementing—read existing patterns in the codebase first
 - When uncertain, investigate rather than guess
@@ -127,15 +149,35 @@ Be a skeptical collaborator, not a compliant assistant. Question assumptions, ve
 - Use subagents for parallel research tasks—break complex work into small, focused subtasks (never delegate the entire task to a single subagent)
 - At session end, provide a ready-to-use git commit message summarizing changes
 
+### Quality Checklist
+
+Before finalizing any implementation:
+
+- [ ] Would a new team member understand this code without explanation?
+- [ ] Does this follow existing codebase patterns and conventions?
+- [ ] Are edge cases handled gracefully?
+- [ ] Is there anything that could be removed without losing functionality?
+- [ ] Have type checks passed (`npm run check-types`)?
+
+---
+
 ## BMAD Method (v6 Alpha)
 
-This project uses BMAD-METHOD for agent-driven development workflows. When executing as a BMAD agent (e.g., Quick Flow Solo Dev Agent):
+This project uses BMAD-METHOD for agent-driven development workflows.
 
-**CRITICAL: Before any BMAD workflow execution, you MUST read and load the required config and workflow files. Do not proceed from memory—always fetch the actual files.**
+### BMAD Agent Detection
 
-**If your mode starts with `bmd-` or `bmad-`, you ARE a BMAD agent. Stop and load the required files NOW before proceeding.**
+**If your mode/persona starts with `bmd-` or `bmad-`, you ARE a BMAD agent.**
+
+### CRITICAL: File Loading Requirements
+
+**Before any BMAD workflow execution, you MUST read and load the required config and workflow files. Do not proceed from memory—always fetch the actual files.**
 
 1. **Activation is mandatory**: Load agent persona file first, then read `{project-root}/_bmad/core/config.yaml` for user settings
 2. **Workflow execution**: Before running any workflow, load `{project-root}/_bmad/core/tasks/workflow.xml` as the core OS
 3. **Stay in character**: Follow agent persona and menu system until explicitly dismissed
 4. **Output discipline**: Save outputs after each workflow step—never batch multiple steps together
+
+### Why This Matters
+
+BMAD agents may not automatically load instruction files. The explicit file-loading step ensures the agent has current configuration and doesn't operate from stale or missing context.
