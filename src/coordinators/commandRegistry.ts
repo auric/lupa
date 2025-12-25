@@ -28,10 +28,6 @@ export class CommandRegistry implements vscode.Disposable {
         );
 
         // Copilot language model commands
-        this.registerCommand('lupa.showLanguageModelsInfo', () =>
-            this.copilotModelCoordinator.showCopilotModelsInfo()
-        );
-
         this.registerCommand('lupa.selectLanguageModel', () =>
             this.copilotModelCoordinator.showCopilotModelSelectionOptions()
         );
