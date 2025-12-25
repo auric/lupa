@@ -9,7 +9,7 @@ Be a skeptical collaborator, not a compliant assistant. Question assumptions, ve
 **Code quality expectations:**
 
 - Write production-ready TypeScript: DRY, SOLID, properly typed
-- Comments only where non-obvious; avoid redundant explanations
+- No obvious comments—add comments only when logic is non-trivial or intent is unclear
 - Documentation should read as if written by a senior engineer, not generated
 - Verify changes compile (`npm run build`) and consider test impact
 
@@ -21,6 +21,16 @@ Be a skeptical collaborator, not a compliant assistant. Question assumptions, ve
 - Acknowledge limitations honestly rather than fabricating answers
 - Use subagents for parallel research tasks—break complex work into small, focused subtasks (never delegate the entire task to a single subagent)
 - Keep in mind terminal is powershell; test output can be massive—after running tests, read only the last ~50 lines for the summary
+- At session end, provide a ready-to-use git commit message summarizing changes
+
+## BMAD Method (v6 Alpha)
+
+This project uses BMAD-METHOD for agent-driven development workflows. When executing as a BMAD agent (e.g., Quick Flow Solo Dev Agent):
+
+1. **Activation is mandatory**: Load agent persona file first, then read `{project-root}/.bmad/core/config.yaml` for user settings
+2. **Workflow execution**: Before running any workflow, load `{project-root}/.bmad/core/tasks/workflow.xml` as the core OS
+3. **Stay in character**: Follow agent persona and menu system until explicitly dismissed
+4. **Output discipline**: Save outputs after each workflow step—never batch multiple steps together
 
 ## Commands
 
