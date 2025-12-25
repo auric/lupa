@@ -60,6 +60,7 @@
         "package": "npm run clean && npm run check-types && npm run package:node && npm run package:webview",
         "package:node": "vite build --mode production",
         "package:webview": "cross-env BUILD_TARGET=webview vite build --mode production",
+        "package:vsix": "node scripts/package-extension.js",
         "pretest": "npm run check-types",
         "check-types": "tsc --noEmit",
         "clean": "rimraf -g ./*.vsix && rimraf ./dist",

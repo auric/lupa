@@ -11,45 +11,9 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 // Importing Vitest's config type for explicit typing if needed, though UserConfig from Vite includes 'test'
 import type { InlineConfig as VitestInlineConfig } from 'vitest/node';
-import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// Custom plugin to modify package.json for production builds
-const packageJsonFilter = (isProduction: boolean) => ({
-    name: 'package-json-filter',
-    writeBundle() {
-        if (isProduction && process.env.BUILD_TARGET !== 'webview') {
-            // This runs during extension build (not webview build)
-            try {
-                const packagePath = resolve(__dirname, 'package.json');
-                const distPackagePath = resolve(__dirname, 'dist/package.json');
-
-                const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
-
-                // Remove dev-only commands
-                if (pkg.contributes?.commands) {
-                    pkg.contributes.commands = pkg.contributes.commands.filter(
-                        (cmd: any) => !cmd.command.includes('toolTesting') && !cmd.command.includes('testWebview')
-                    );
-                }
-
-                // Remove dev-only keybindings if any
-                if (pkg.contributes?.keybindings) {
-                    pkg.contributes.keybindings = pkg.contributes.keybindings.filter(
-                        (kb: any) => !kb.command.includes('toolTesting') && !kb.command.includes('testWebview')
-                    );
-                }
-
-                fs.writeFileSync(distPackagePath, JSON.stringify(pkg, null, 2));
-                console.log('✓ Filtered dev commands from package.json for production');
-            } catch (error) {
-                console.error('Failed to filter package.json:', error);
-            }
-        }
-    }
-});
 
 // External dependencies function for different entry points
 const isExternalDependency = (source: string, importer: string | undefined, isResolved: boolean): boolean => {
@@ -202,7 +166,6 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
                 viteStaticCopy({
                     targets: staticCopyTargets,
                 }),
-                packageJsonFilter(isProduction),
             ],
         };
     }
