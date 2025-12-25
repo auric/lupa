@@ -117,7 +117,7 @@ export class ToolCallingAnalysisProvider {
       const parsedDiff = DiffUtils.parseDiff(processedDiff);
 
       // Generate user prompt with processed diff
-      let userMessage = this.promptGenerator.generateToolCallingUserPrompt(processedDiff, parsedDiff);
+      let userMessage = this.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
 
       // Add tools disabled message if applicable
       if (toolsDisabledMessage) {
@@ -265,7 +265,7 @@ export class ToolCallingAnalysisProvider {
       // Generate actual system prompt and user message to get real token counts
       const availableTools = this.toolExecutor.getAvailableTools();
       const systemPrompt = this.promptGenerator.generateToolAwareSystemPrompt(availableTools);
-      const userMessage = this.promptGenerator.generateToolCallingUserPrompt(diff, parsedDiff);
+      const userMessage = this.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
 
       // Count real tokens for actual content that will be sent
       const systemPromptTokens = await model.countTokens(systemPrompt);

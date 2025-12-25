@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import { ConversationManager } from './conversationManager';
 import { ToolExecutor, type ToolExecutionRequest } from './toolExecutor';
-import { CopilotModelManager, CopilotApiError } from './copilotModelManager';
+import { ILLMClient } from './ILLMClient';
+import { CopilotApiError } from './copilotModelManager';
 import { TokenValidator } from './tokenValidator';
 import type { ToolCallMessage, ToolCall } from '../types/modelTypes';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
+import { CANCELLATION_MESSAGE } from '../config/constants';
 
 /**
  * Configuration for running a conversation loop.
@@ -27,8 +29,13 @@ export interface ConversationRunnerConfig {
  * Enables the caller to record tool calls without ConversationRunner knowing about the specifics.
  */
 export interface ToolCallHandler {
-    /** Called when a tool execution starts */
-    onToolCallStart?: (toolName: string, toolIndex: number, totalTools: number) => void;
+    /** Called when a tool execution starts, with parsed args for message formatting */
+    onToolCallStart?: (
+        toolName: string,
+        args: Record<string, unknown>,
+        toolIndex: number,
+        totalTools: number
+    ) => void;
 
     /** Called after each tool call completes */
     onToolCallComplete?: (
@@ -63,7 +70,7 @@ export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
 
     constructor(
-        private readonly modelManager: CopilotModelManager,
+        private readonly client: ILLMClient,
         private readonly toolExecutor: ToolExecutor
     ) { }
 
@@ -86,7 +93,7 @@ export class ConversationRunner {
 
             if (token.isCancellationRequested) {
                 Log.info(`${logPrefix} Cancelled before iteration ${iteration}`);
-                return 'Conversation cancelled by user';
+                return CANCELLATION_MESSAGE;
             }
 
             handler?.onIterationStart?.(iteration, config.maxIterations);
@@ -97,7 +104,7 @@ export class ConversationRunner {
 
                 // Initialize token validator if not already done
                 if (!this.tokenValidator) {
-                    const currentModel = await this.modelManager.getCurrentModel();
+                    const currentModel = await this.client.getCurrentModel();
                     this.tokenValidator = new TokenValidator(currentModel);
                 }
 
@@ -137,14 +144,14 @@ export class ConversationRunner {
                     }
                 }
 
-                const response = await this.modelManager.sendRequest({
+                const response = await this.client.sendRequest({
                     messages,
                     tools: vscodeTools
                 }, token);
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
-                    return 'Conversation cancelled by user';
+                    return CANCELLATION_MESSAGE;
                 }
 
                 conversation.addAssistantMessage(
@@ -163,7 +170,7 @@ export class ConversationRunner {
             } catch (error) {
                 if (token.isCancellationRequested || error instanceof vscode.CancellationError || (error instanceof Error && error.message?.toLowerCase().includes('cancel'))) {
                     Log.info(`${logPrefix} Cancelled during iteration ${iteration}`);
-                    return 'Conversation cancelled by user';
+                    return CANCELLATION_MESSAGE;
                 }
 
                 if (this.isFatalModelError(error)) {
@@ -238,11 +245,7 @@ export class ConversationRunner {
         const toolNames = toolCalls.map(tc => tc.function.name).join(', ');
         Log.info(`${logPrefix} Executing ${toolCalls.length} tool(s): ${toolNames}`);
 
-        // Notify handler about tool calls starting
-        for (let i = 0; i < toolCalls.length; i++) {
-            handler?.onToolCallStart?.(toolCalls[i].function.name, i, toolCalls.length);
-        }
-
+        // Pre-parse arguments for all tool calls before notifying handlers
         const toolRequests: ToolExecutionRequest[] = toolCalls.map(call => {
             let parsedArgs: Record<string, unknown> = {};
 
@@ -257,6 +260,16 @@ export class ConversationRunner {
                 args: parsedArgs
             };
         });
+
+        // Notify handler about tool calls starting (with parsed args for message formatting)
+        for (let i = 0; i < toolCalls.length; i++) {
+            handler?.onToolCallStart?.(
+                toolCalls[i].function.name,
+                toolRequests[i].args as Record<string, unknown>,
+                i,
+                toolCalls.length
+            );
+        }
 
         const startTime = Date.now();
         const results = await this.toolExecutor.executeTools(toolRequests);

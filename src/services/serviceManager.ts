@@ -4,10 +4,13 @@ import * as vscode from 'vscode';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { LoggingService } from './loggingService';
 import { StatusBarService } from './statusBarService';
+import { ChatParticipantService } from './chatParticipantService';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { UIManager } from './uiManager';
 import { GitOperationsManager } from './gitOperationsManager';
 import { ToolTestingWebviewService } from './toolTestingWebview';
+
+import { LanguageModelToolProvider } from './languageModelToolProvider';
 
 // Utility services
 import { SymbolExtractor } from '../utils/symbolExtractor';
@@ -55,6 +58,7 @@ export interface IServiceRegistry {
     uiManager: UIManager;
     gitOperations: GitOperationsManager;
     toolTestingWebview: ToolTestingWebviewService;
+    chatParticipantService: ChatParticipantService;
 
     // Utility services
     symbolExtractor: SymbolExtractor;
@@ -68,6 +72,9 @@ export interface IServiceRegistry {
     // Subagent services
     subagentExecutor: SubagentExecutor;
     subagentSessionManager: SubagentSessionManager;
+
+    // Language Model Tool Provider
+    languageModelToolProvider: LanguageModelToolProvider;
 }
 
 /**
@@ -190,6 +197,24 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry,
             this.services.toolExecutor
         );
+
+        this.services.chatParticipantService = ChatParticipantService.getInstance();
+        this.services.chatParticipantService.setDependencies({
+            toolExecutor: this.services.toolExecutor!,
+            toolRegistry: this.services.toolRegistry!,
+            workspaceSettings: this.services.workspaceSettings!,
+            promptGenerator: this.services.promptGenerator!
+        });
+
+        // Register language model tools for Agent Mode
+        const getSymbolsOverviewTool = this.services.toolRegistry!.getToolByName(
+            "get_symbols_overview"
+        ) as GetSymbolsOverviewTool;
+        if (getSymbolsOverviewTool) {
+            this.services.languageModelToolProvider =
+                new LanguageModelToolProvider(getSymbolsOverviewTool);
+            this.services.languageModelToolProvider.register();
+        }
     }
 
     /**
@@ -252,11 +277,13 @@ export class ServiceManager implements vscode.Disposable {
 
         const servicesToDispose = [
             this.services.promptGenerator,
+            this.services.languageModelToolProvider,
             this.services.toolCallingAnalysisProvider,
             this.services.conversationManager,
             this.services.toolExecutor,
             this.services.toolRegistry,
             this.services.copilotModelManager,
+            this.services.chatParticipantService,
             this.services.gitOperations,
             this.services.statusBar,
             this.services.logging

@@ -102,7 +102,7 @@ index 1234567..abcdefg 100644
 
     describe('generateToolCallingUserPrompt', () => {
         it('should generate a structured tool-calling user prompt', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleDiff, sampleParsedDiff);
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<files_to_review>');
             expect(userPrompt).toContain('<file>');
@@ -113,7 +113,7 @@ index 1234567..abcdefg 100644
         });
 
         it('should include file content section', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleDiff, sampleParsedDiff);
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('function example()');
             expect(userPrompt).toContain('// New comment');
@@ -121,7 +121,7 @@ index 1234567..abcdefg 100644
         });
 
         it('should include tool usage examples', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleDiff, sampleParsedDiff);
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<tool_usage_examples>');
             expect(userPrompt).toContain('<scenario>Encountering unknown function in diff</scenario>');
@@ -133,7 +133,7 @@ index 1234567..abcdefg 100644
         });
 
         it('should include comprehensive tool-calling instructions', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleDiff, sampleParsedDiff);
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('## Tool-Powered Analysis Approach');
             expect(userPrompt).toContain('**Step 1: Initial Context Gathering**');
@@ -144,7 +144,7 @@ index 1234567..abcdefg 100644
         });
 
         it('should structure content according to long context optimization', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleDiff, sampleParsedDiff);
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             // File content should come first for long context optimization
             const fileContentIndex = userPrompt.indexOf('<files_to_review>');
@@ -156,14 +156,14 @@ index 1234567..abcdefg 100644
         });
 
         it('should include thinking tag in response structure', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleDiff, sampleParsedDiff);
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<thinking>');
             expect(userPrompt).toContain('Document your tool usage and reasoning process');
         });
 
         it('should include all required analysis categories', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleDiff, sampleParsedDiff);
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<suggestion_security>');
             expect(userPrompt).toContain('<suggestion_performance>');
@@ -172,6 +172,49 @@ index 1234567..abcdefg 100644
             expect(userPrompt).toContain('<suggestion_type_safety>');
             expect(userPrompt).toContain('<example_fix>');
             expect(userPrompt).toContain('<explanation>');
+        });
+    });
+
+    describe('user focus instructions', () => {
+        it('should include user focus section when instructions provided', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                'focus on security vulnerabilities'
+            );
+
+            expect(userPrompt).toContain('<user_focus>');
+            expect(userPrompt).toContain('focus on security vulnerabilities');
+            expect(userPrompt).toContain('prioritize findings related to this request');
+        });
+
+        it('should not include user focus section when no instructions', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+
+            expect(userPrompt).not.toContain('<user_focus>');
+        });
+
+        it('should not include user focus section when instructions are empty', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff, '');
+
+            expect(userPrompt).not.toContain('<user_focus>');
+        });
+
+        it('should not include user focus section when instructions are whitespace', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff, '   ');
+
+            expect(userPrompt).not.toContain('<user_focus>');
+        });
+
+        it('should place user focus section before instructions', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                'check for race conditions'
+            );
+
+            const userFocusIndex = userPrompt.indexOf('<user_focus>');
+            const instructionsIndex = userPrompt.indexOf('<instructions>');
+
+            expect(userFocusIndex).toBeLessThan(instructionsIndex);
         });
     });
 
@@ -194,7 +237,6 @@ index 1234567..abcdefg 100644
         it('should maintain compatibility with existing generateUserPrompt', () => {
             const contextString = 'Some context information';
             const legacyPrompt = promptGenerator.generateUserPrompt(
-                sampleDiff,
                 sampleParsedDiff,
                 contextString,
                 true
@@ -225,7 +267,7 @@ index 1234567..abcdefg 100644
     describe('error handling', () => {
         it('should handle empty diff gracefully', () => {
             expect(() => {
-                promptGenerator.generateToolCallingUserPrompt('', []);
+                promptGenerator.generateToolCallingUserPrompt([]);
             }).not.toThrow();
         });
 
@@ -239,7 +281,7 @@ index 1234567..abcdefg 100644
             }];
 
             expect(() => {
-                promptGenerator.generateToolCallingUserPrompt(sampleDiff, malformedDiff);
+                promptGenerator.generateToolCallingUserPrompt(malformedDiff);
             }).not.toThrow();
         });
     });

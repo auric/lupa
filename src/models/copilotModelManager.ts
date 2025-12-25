@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 import { Log } from '../services/loggingService';
 import { TokenConstants } from './tokenConstants';
-import { ToolCallRequest, ToolCallResponse, ToolCall } from '../types/modelTypes';
+import { ToolCallRequest, ToolCallResponse } from '../types/modelTypes';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import type { ILLMClient } from './ILLMClient';
+import { ModelRequestHandler } from './modelRequestHandler';
 
 export class CopilotApiError extends Error {
     constructor(message: string, public readonly code: string) {
@@ -30,17 +32,10 @@ export interface ModelSelectionOptions {
 }
 
 /**
- * Task compatibility requirements
- */
-export interface TaskCompatibility {
-    minTokenLimit?: number;
-    requiresThinking?: boolean;
-}
-
-/**
  * Service for managing language models through VS Code's API
  */
-export class CopilotModelManager implements vscode.Disposable {
+export class CopilotModelManager implements vscode.Disposable, ILLMClient {
+    private readonly DEFAULT_MODEL_ID = 'gpt-4.1';
     private currentModel: vscode.LanguageModelChat | null = null;
     private modelCache: ModelDetail[] | null = null;
     private lastModelRefresh: number = 0;
@@ -117,7 +112,7 @@ export class CopilotModelManager implements vscode.Disposable {
             };
 
             if (!options) {
-                selector.id = 'gpt-4.1';
+                selector.id = this.DEFAULT_MODEL_ID;
             }
 
             const models = await vscode.lm.selectChatModels(selector);
@@ -254,130 +249,20 @@ export class CopilotModelManager implements vscode.Disposable {
     }
 
     /**
-     * Wraps a thenable/promise with a timeout. If it doesn't resolve within
-     * the timeout period, it rejects with a timeout error.
-     * The timeout is properly cleaned up when either:
-     * - The request completes (success or failure)
-     * - The cancellation token fires
-     * @param thenable The thenable to wrap
-     * @param timeoutMs The timeout duration in milliseconds
-     * @param token The cancellation token
-     * @returns The result of the thenable if it completes in time
-     */
-    private async withTimeout<T>(
-        thenable: Thenable<T>,
-        timeoutMs: number,
-        token: vscode.CancellationToken
-    ): Promise<T> {
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-        const timeoutPromise = new Promise<never>((_, reject) => {
-            timeoutId = setTimeout(() => {
-                reject(new Error(
-                    `LLM request timed out after ${timeoutMs / 1000} seconds. ` +
-                    `The model may be overloaded. Please try again.`
-                ));
-            }, timeoutMs);
-        });
-
-        const cleanup = () => {
-            if (timeoutId !== undefined) {
-                clearTimeout(timeoutId);
-            }
-        };
-
-        token.onCancellationRequested(cleanup);
-
-        try {
-            const result = await Promise.race([Promise.resolve(thenable), timeoutPromise]);
-            cleanup();
-            return result;
-        } catch (error) {
-            cleanup();
-            throw error;
-        }
-    }
-
-    /**
-     * Send a request to the language model with tool-calling support
+     * Send a request to the language model with tool-calling support.
+     *
+     * Delegates to ModelRequestHandler for message conversion and request execution.
+     * Preserves error handling for CopilotApiError (model_not_supported) detection.
      */
     async sendRequest(request: ToolCallRequest, token: vscode.CancellationToken): Promise<ToolCallResponse> {
         try {
             const model = await this.getCurrentModel();
-
-            // Convert our ToolCallMessage format to vscode.LanguageModelChatMessage format
-            const messages: vscode.LanguageModelChatMessage[] = [];
-
-            for (const msg of request.messages) {
-                if (msg.role === 'system' && msg.content) {
-                    messages.push(vscode.LanguageModelChatMessage.Assistant(msg.content));
-                } else if (msg.role === 'user' && msg.content) {
-                    messages.push(vscode.LanguageModelChatMessage.User(msg.content));
-                } else if (msg.role === 'assistant') {
-                    const content: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
-
-                    // Add text content if present
-                    if (msg.content) {
-                        content.push(new vscode.LanguageModelTextPart(msg.content));
-                    }
-
-                    // Add tool calls if present
-                    if (msg.toolCalls) {
-                        for (const toolCall of msg.toolCalls) {
-                            const input = JSON.parse(toolCall.function.arguments);
-                            content.push(new vscode.LanguageModelToolCallPart(
-                                toolCall.id,
-                                toolCall.function.name,
-                                input
-                            ));
-                        }
-                    }
-
-                    messages.push(vscode.LanguageModelChatMessage.Assistant(content));
-                } else if (msg.role === 'tool') {
-                    // Tool responses become user messages with LanguageModelToolResultPart
-                    const toolResultContent = [new vscode.LanguageModelTextPart(msg.content || '')];
-                    const toolResult = new vscode.LanguageModelToolResultPart(msg.toolCallId || '', toolResultContent);
-                    messages.push(vscode.LanguageModelChatMessage.User([toolResult]));
-                }
-            }
-
-            // Create request options with tools if provided
-            const options: vscode.LanguageModelChatRequestOptions = {
-                tools: request.tools || []
-            };
-
-            // Send the request with timeout
-            const response = await this.withTimeout(
-                model.sendRequest(messages, options, token),
-                this.requestTimeoutMs,
-                token
+            return await ModelRequestHandler.sendRequest(
+                model,
+                request,
+                token,
+                this.requestTimeoutMs
             );
-
-            // Parse the response stream for both text and tool calls
-            let responseText = '';
-            const toolCalls: ToolCall[] = [];
-
-            for await (const chunk of response.stream) {
-                if (chunk instanceof vscode.LanguageModelTextPart) {
-                    responseText += chunk.value;
-                } else if (chunk instanceof vscode.LanguageModelToolCallPart) {
-                    // Parse tool call from response
-                    toolCalls.push({
-                        id: chunk.callId,
-                        function: {
-                            name: chunk.name,
-                            arguments: JSON.stringify(chunk.input)
-                        }
-                    });
-                }
-            }
-
-            return {
-                content: responseText || null,
-                toolCalls: toolCalls.length > 0 ? toolCalls : undefined
-            };
-
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
             const codeMatch = msg.match(/"code"\s*:\s*"([^"]+)"/);

@@ -242,7 +242,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       // Should add tools disabled message to user prompt
       expect(mockPromptGenerator.generateToolCallingUserPrompt).toHaveBeenCalledWith(
-        expect.stringContaining('[... diff truncated due to size ...]'),
         expect.any(Object)
       );
 

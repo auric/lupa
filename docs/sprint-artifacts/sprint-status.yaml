@@ -1,0 +1,81 @@
+# generated: 2025-12-16
+# project: Lupa
+# project_key: lupa-chat-participant
+# tracking_system: file-system
+# story_location: docs/sprint-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - drafted: Story file created in stories folder
+#   - ready-for-dev: Draft approved and story context created
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - completed: Retrospective has been done
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically drafts next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2025-12-16
+project: Lupa
+project_key: lupa-chat-participant
+tracking_system: file-system
+story_location: docs/sprint-artifacts
+
+development_status:
+  # Epic 0: Foundation & Interface Abstraction
+  epic-0: done
+  0-1-create-illmclient-interface-and-modelrequesthandler: done
+  0-2-modify-copilotmodelmanager-to-implement-illmclient: done
+  0-3-modify-conversationrunner-to-accept-illmclient: done
+  0-4-create-emoji-design-system-and-debounced-stream-handler: done
+  0-5-create-chatresponsebuilder-utility: done
+  epic-0-retrospective: completed
+
+  # Epic 1: Core Chat Participant
+  epic-1: done
+  1-1-register-chat-participant: done
+  1-2-implement-branch-command: done
+  1-3-implement-changes-command: done
+  1-4-support-cancellation: done
+  epic-1-retrospective: completed
+
+  # Epic 2: Rich UX & Agent Mode Integration
+  epic-2: done
+  2-1-rich-progress-visualization: done
+  2-2-follow-up-suggestions: done
+  2-3-register-agent-mode-tool: done
+  epic-2-retrospective: completed
+  # ^ Completed 2025-12-19: Full retrospective with subagent research
+  # ^ Key findings: 2 CRITICAL (broken follow-ups, fragile emoji detection)
+  # ^ 2 HIGH (missing history, no ChatContextManager), 2 MEDIUM issues
+  # ^ All issues documented with fix targets in Epic 3
+
+  # Epic 3: Exploration Mode & Polish
+  epic-3: in-progress
+  3-1-exploration-mode: done
+  3-2-conversation-history-integration: done
+  # ^ Completed 2025-12-19: ChatContextManager with sliding window truncation
+  # ^ All 10 ACs met, 941 tests passing, ready for code review
+  # ^ Story drafted 2025-12-19: Token budget tracking, sliding window truncation
+  # ^ Fixes Epic 2 Retro Issues 3 (missing history) and 4 (missing ChatContextManager)
+  3-3-disambiguation-auto-routing: backlog
+  epic-3-retrospective: optional

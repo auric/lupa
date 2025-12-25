@@ -29,6 +29,15 @@ export class ToolRegistry {
   }
 
   /**
+   * Retrieve a tool by its name. Alias for getTool.
+   * @param name The name of the tool to retrieve
+   * @returns The tool instance or undefined if not found
+   */
+  getToolByName(name: string): ITool | undefined {
+    return this.getTool(name);
+  }
+
+  /**
    * Get all registered tool names.
    * @returns Array of registered tool names
    */

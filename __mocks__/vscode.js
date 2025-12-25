@@ -610,6 +610,12 @@ vscodeMock.LanguageModelTextPart = class LanguageModelTextPart {
   }
 };
 
+vscodeMock.LanguageModelToolResult = class LanguageModelToolResult {
+  constructor(content) {
+    this.content = content;
+  }
+};
+
 vscodeMock.LanguageModelToolCallPart = class LanguageModelToolCallPart {
   constructor(callId, name, input) {
     this.callId = callId;
@@ -629,15 +635,21 @@ vscodeMock.LanguageModelToolResultPart = class LanguageModelToolResultPart {
 vscodeMock.lm = {
   selectChatModels: vi.fn().mockResolvedValue([]),
   onDidChangeChatModels: vi.fn(() => ({ dispose: vi.fn() })),
+  registerTool: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 };
 
 // Mock chat namespace and selectChatModels
 vscodeMock.chat = {
   languageModels: {
-    selectChatModels: vi.fn().mockResolvedValue([]), // Mock function to select models
-    onDidChangeLanguageModels: vi.fn(() => ({ dispose: vi.fn() })), // Mock event
-    all: [], // Mock property for all models
-  }
+    selectChatModels: vi.fn().mockResolvedValue([]),
+    onDidChangeLanguageModels: vi.fn(() => ({ dispose: vi.fn() })),
+    all: [],
+  },
+  createChatParticipant: vi.fn().mockReturnValue({
+    dispose: vi.fn(),
+    iconPath: undefined,
+    followupProvider: undefined,
+  }),
 };
 
 // Mock env namespace (for vscode.env.appRoot, etc.)
@@ -648,6 +660,45 @@ vscodeMock.env = {
   machineId: 'mock-machine-id',
   sessionId: 'mock-session-id',
   uriScheme: 'vscode',
+};
+
+vscodeMock.ChatResponseFileTreePart = class ChatResponseFileTreePart {
+  constructor(value, baseUri) {
+    this.value = value;
+    this.baseUri = baseUri;
+  }
+};
+
+vscodeMock.ChatResponseMarkdownPart = class ChatResponseMarkdownPart {
+  constructor(value) {
+    this.value = value;
+  }
+};
+
+vscodeMock.ChatResponseAnchorPart = class ChatResponseAnchorPart {
+  constructor(value, title) {
+    this.value = value;
+    this.title = title;
+  }
+};
+
+vscodeMock.ChatResponseCommandButtonPart = class ChatResponseCommandButtonPart {
+  constructor(command) {
+    this.command = command;
+  }
+};
+
+vscodeMock.MarkdownString = class MarkdownString {
+  constructor(value) {
+    this.value = value || '';
+    this.isTrusted = false;
+    this.supportThemeIcons = false;
+    this.supportHtml = false;
+    this.baseUri = undefined;
+  }
+  appendText(value) { this.value += value; return this; }
+  appendMarkdown(value) { this.value += value; return this; }
+  appendCodeblock(value, language) { this.value += '\n```' + (language || '') + '\n' + value + '\n```\n'; return this; }
 };
 
 export const commands = vscodeMock.commands;
@@ -675,6 +726,7 @@ export const LanguageModelChatMessageRole = vscodeMock.LanguageModelChatMessageR
 export const LanguageModelChatMessage = vscodeMock.LanguageModelChatMessage;
 export const LanguageModelChat = vscodeMock.LanguageModelChat;
 export const LanguageModelTextPart = vscodeMock.LanguageModelTextPart;
+export const LanguageModelToolResult = vscodeMock.LanguageModelToolResult;
 export const LanguageModelToolCallPart = vscodeMock.LanguageModelToolCallPart;
 export const LanguageModelToolResultPart = vscodeMock.LanguageModelToolResultPart;
 export const lm = vscodeMock.lm;
@@ -683,6 +735,11 @@ export const env = vscodeMock.env;
 // Export the new mocks
 export const FileType = vscodeMock.FileType;
 export const FileStat = vscodeMock.FileStat;
+export const ChatResponseFileTreePart = vscodeMock.ChatResponseFileTreePart;
+export const ChatResponseMarkdownPart = vscodeMock.ChatResponseMarkdownPart;
+export const ChatResponseAnchorPart = vscodeMock.ChatResponseAnchorPart;
+export const ChatResponseCommandButtonPart = vscodeMock.ChatResponseCommandButtonPart;
+export const MarkdownString = vscodeMock.MarkdownString;
 
 // Default export for direct imports
 export default vscodeMock;
