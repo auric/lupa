@@ -27,6 +27,7 @@ USE THIS when you don't know exact symbol names—pattern matching across files.
 PREFER find_symbol when you know the symbol name—it's more precise.
 
 Supports context lines, glob patterns for file filtering, and code-file-only mode.
+Multiline matching is enabled—use \\n to match across lines.
 Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? instead of .*).`;
 
   schema = z.object({
@@ -97,7 +98,8 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
         caseSensitive: case_sensitive,
         includeGlob: include_files || undefined,
         excludeGlob: exclude_files || undefined,
-        codeFilesOnly: only_code_files
+        codeFilesOnly: only_code_files,
+        multiline: true
       });
 
       if (results.length === 0) {

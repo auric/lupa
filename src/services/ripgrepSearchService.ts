@@ -67,6 +67,7 @@ export interface RipgrepSearchOptions {
     includeGlob?: string;
     excludeGlob?: string;
     codeFilesOnly?: boolean;
+    multiline: boolean;
 }
 
 interface RipgrepJsonMessage {
@@ -221,6 +222,10 @@ export class RipgrepSearchService {
 
         if (options.linesAfter && options.linesAfter > 0) {
             args.push('--after-context', String(options.linesAfter));
+        }
+
+        if (options.multiline) {
+            args.push('--multiline');
         }
 
         if (options.includeGlob) {
