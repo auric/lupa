@@ -86,7 +86,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     };
 
     const staticCopyTargets: Target[] = [
-        // Note: @vscode/ripgrep is NOT copied - it downloads its own binaries via postinstall
+        // Static assets to copy during build (if any)
     ];
 
     // Determine which build config to use

@@ -640,6 +640,16 @@ vscodeMock.chat = {
   }
 };
 
+// Mock env namespace (for vscode.env.appRoot, etc.)
+vscodeMock.env = {
+  appRoot: '/mock/vscode/app',
+  appName: 'Visual Studio Code',
+  language: 'en',
+  machineId: 'mock-machine-id',
+  sessionId: 'mock-session-id',
+  uriScheme: 'vscode',
+};
+
 export const commands = vscodeMock.commands;
 export const chat = vscodeMock.chat;
 export const workspace = vscodeMock.workspace;
@@ -668,6 +678,7 @@ export const LanguageModelTextPart = vscodeMock.LanguageModelTextPart;
 export const LanguageModelToolCallPart = vscodeMock.LanguageModelToolCallPart;
 export const LanguageModelToolResultPart = vscodeMock.LanguageModelToolResultPart;
 export const lm = vscodeMock.lm;
+export const env = vscodeMock.env;
 
 // Export the new mocks
 export const FileType = vscodeMock.FileType;

@@ -1,6 +1,49 @@
 import { spawn, ChildProcess } from 'child_process';
-import { rgPath } from '@vscode/ripgrep';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as vscode from 'vscode';
 import { CodeFileDetector } from '../utils/codeFileDetector';
+
+/**
+ * Gets the path to ripgrep binary bundled with VS Code.
+ *
+ * VS Code ships with ripgrep in one of two locations:
+ * - node_modules/@vscode/ripgrep/bin/ (standard installation)
+ * - node_modules.asar.unpacked/@vscode/ripgrep/bin/ (asar-packed builds)
+ *
+ * This function checks both paths and returns the first one that exists.
+ *
+ * If VS Code changes this path in the future, the extension should fall back
+ * to platform-specific packaging with @vscode/ripgrep as a bundled dependency.
+ * See: https://code.visualstudio.com/api/working-with-extensions/publishing-extension#platformspecific-extensions
+ */
+function getVSCodeRipgrepPath(): string {
+    const rgBinary = process.platform === 'win32' ? 'rg.exe' : 'rg';
+    const appRoot = vscode.env.appRoot;
+
+    // Try both possible locations
+    const candidatePaths = [
+        path.join(appRoot, 'node_modules', '@vscode', 'ripgrep', 'bin', rgBinary),
+        path.join(appRoot, 'node_modules.asar.unpacked', '@vscode', 'ripgrep', 'bin', rgBinary),
+    ];
+
+    for (const candidatePath of candidatePaths) {
+        if (fs.existsSync(candidatePath)) {
+            return candidatePath;
+        }
+    }
+
+    // Return the first path for error messaging (will fail validation)
+    return candidatePaths[0];
+}
+
+/**
+ * Validates that the VS Code ripgrep binary exists at the expected path.
+ * @returns true if the binary exists, false otherwise
+ */
+export function validateRipgrepPath(rgPath: string): boolean {
+    return fs.existsSync(rgPath);
+}
 
 export interface RipgrepMatch {
     filePath: string;
@@ -78,6 +121,20 @@ interface RipgrepSummaryData {
 }
 
 export class RipgrepSearchService {
+    private readonly rgPath: string;
+
+    constructor() {
+        this.rgPath = getVSCodeRipgrepPath();
+
+        // Validate ripgrep binary exists at startup
+        if (!validateRipgrepPath(this.rgPath)) {
+            const errorMsg = `VS Code ripgrep binary not found at: ${this.rgPath}. ` +
+                `This may indicate VS Code has changed its internal structure. ` +
+                `Please report this issue at https://github.com/auric/lupa/issues`;
+            throw new Error(errorMsg);
+        }
+    }
+
     async search(options: RipgrepSearchOptions): Promise<RipgrepFileResult[]> {
         const args = this.buildArgs(options);
 
@@ -85,7 +142,7 @@ export class RipgrepSearchService {
             const results = new Map<string, RipgrepMatch[]>();
             let stderr = '';
 
-            const rg: ChildProcess = spawn(rgPath, args, {
+            const rg: ChildProcess = spawn(this.rgPath, args, {
                 cwd: options.cwd,
                 stdio: ['ignore', 'pipe', 'pipe']
             });

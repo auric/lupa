@@ -8,7 +8,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService, RipgrepFileResult } from '../services/ripgrepSearchService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-import { createMockWorkspaceSettings, createMockRipgrepService, createMockGitRepository } from './testUtils/mockFactories';
+import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
 // Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');

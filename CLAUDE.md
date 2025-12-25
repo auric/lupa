@@ -13,7 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Build Tool**: Vite (dual build: Node.js extension + browser webview)
 - **Testing**: Vitest with VS Code mocks
 - **UI**: React 19 with React Compiler, shadcn/ui, Tailwind CSS v4
-- **Search**: @vscode/ripgrep for pattern matching
+- **Search**: VS Code's built-in ripgrep (via `vscode.env.appRoot`)
 
 ## Development Commands
 
