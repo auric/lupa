@@ -1,6 +1,4 @@
 import * as vscode from 'vscode';
-import { CopilotModelManager } from '../models/copilotModelManager';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { IServiceRegistry } from '../services/serviceManager';
 
 /**
@@ -18,60 +16,54 @@ export class CopilotModelCoordinator implements vscode.Disposable {
      */
     public async showCopilotModelSelectionOptions(): Promise<void> {
         try {
-            // First show available models
-            await this.services.copilotModelManager.showModelsInfo();
-
-            // Get available model families
+            // Get available models
             const models = await this.services.copilotModelManager.listAvailableModels();
-            const families = Array.from(new Set(models.map(m => m.family)));
 
-            if (families.length === 0) {
+            if (models.length === 0) {
                 vscode.window.showInformationMessage('No language models available. Please ensure GitHub Copilot is installed and authorized.');
                 return;
             }
 
-            // Create quickpick options for model families
-            const options = [
-                ...models.map(model => ({
-                    label: `${model.name}`,
-                    description: model.version
-                }))
-            ];
+            const formatTokens = (tokens: number): string => {
+                if (tokens >= 1000000) {
+                    return `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 1)}M`;
+                }
+                if (tokens >= 1000) {
+                    return `${(tokens / 1000).toFixed(tokens % 1000 === 0 ? 0 : 1)}K`;
+                }
+                return tokens.toString();
+            };
 
-            // Ask user to select model family
+            const options = models.map(model => ({
+                label: model.name,
+                description: `${formatTokens(model.maxInputTokens)} tokens`,
+                detail: model.id,
+                model
+            }));
+
             const selectedModelOption = await vscode.window.showQuickPick(options, {
-                placeHolder: 'Select Copilot language model',
-                matchOnDescription: true
+                placeHolder: 'Select language model',
+                matchOnDescription: true,
+                matchOnDetail: true
             });
 
             if (!selectedModelOption) {
                 return;
             }
 
-            const selectedModel = models.find(m => {
-                return m.name === selectedModelOption.label;
-            })!;
+            const selectedModel = selectedModelOption.model;
 
-            // Save selected model preferences
             this.services.workspaceSettings.setPreferredModelVersion(selectedModel.version);
-            vscode.window.showInformationMessage(`Copilot language model set to ${selectedModel.name} (version: ${selectedModel.version})`);
+            vscode.window.showInformationMessage(`Language model set to ${selectedModel.name} (version: ${selectedModel.version})`);
 
-            // Try to select the model to verify it's available
             await this.services.copilotModelManager.selectModel({
                 version: selectedModel.version
             });
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(`Error selecting Copilot language model: ${errorMessage}`);
+            vscode.window.showErrorMessage(`Error selecting language model: ${errorMessage}`);
         }
-    }
-
-    /**
-     * Show Copilot language models information
-     */
-    public async showCopilotModelsInfo(): Promise<void> {
-        await this.services.copilotModelManager.showModelsInfo();
     }
 
     /**

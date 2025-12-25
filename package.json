@@ -26,10 +26,6 @@
                 "title": "Lupa: Analyze Pull Request"
             },
             {
-                "command": "lupa.showLanguageModelsInfo",
-                "title": "Lupa: Show Language Models Info"
-            },
-            {
                 "command": "lupa.selectLanguageModel",
                 "title": "Lupa: Select Language Model"
             },
