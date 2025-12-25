@@ -10,6 +10,9 @@ vi.mock('../services/loggingService', () => ({
     },
 }));
 
+/** Default token estimation: ~4 characters per token */
+const DEFAULT_TOKEN_COUNTER = (text: string) => Math.ceil(text.length / 4);
+
 function createMockRequestTurn(prompt: string): vscode.ChatRequestTurn {
     return {
         prompt,
@@ -32,8 +35,7 @@ function createMockResponseTurn(textContent: string): vscode.ChatResponseTurn {
 }
 
 function createMockModel(maxInputTokens: number, tokenCounter?: (text: string) => number): vscode.LanguageModelChat {
-    const defaultCounter = (text: string) => Math.ceil(text.length / 4);
-    const counter = tokenCounter ?? defaultCounter;
+    const counter = tokenCounter ?? DEFAULT_TOKEN_COUNTER;
 
     return {
         id: 'test-model',
@@ -157,7 +159,7 @@ describe('ChatContextManager', () => {
             // Budget: (6000 - 4000) * 0.8 = 1600 tokens
             // System prompt ~15 tokens, leaves ~1585
             // Each message ~10-15 tokens, so room for 2-3 recent ones
-            const model = createMockModel(6000, (text) => Math.ceil(text.length / 4));
+            const model = createMockModel(6000, DEFAULT_TOKEN_COUNTER);
             const token = createMockToken();
 
             const result = await manager.prepareConversationHistory(
