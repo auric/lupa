@@ -9,46 +9,20 @@ vi.mock('../utils/gitUtils', () => ({
     readGitignore: vi.fn().mockResolvedValue('node_modules/\n*.log')
 }));
 
-// Mock vscode
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
     return {
-        ...actualVscode,
+        ...vscodeMock,
         workspace: {
+            ...vscodeMock.workspace,
             textDocuments: [],
             openTextDocument: vi.fn(),
-            asRelativePath: vi.fn((uri) => `relative/path/file.ts`),
+            asRelativePath: vi.fn(() => `relative/path/file.ts`),
             fs: {
                 readDirectory: vi.fn(),
                 stat: vi.fn(),
                 readFile: vi.fn()
             }
-        },
-        commands: {
-            executeCommand: vi.fn()
-        },
-        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
-            this.line = line;
-            this.character = character;
-        }),
-        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
-            this.start = start;
-            this.end = end;
-        }),
-        Uri: {
-            parse: vi.fn((path) => ({ toString: () => path, fsPath: path })),
-            file: vi.fn((path) => ({ toString: () => path, fsPath: path }))
-        },
-        FileType: {
-            File: 1,
-            Directory: 2
-        },
-        SymbolKind: {
-            Class: 5,
-            Function: 12,
-            Interface: 11,
-            Method: 6,
-            Variable: 13
         }
     };
 });

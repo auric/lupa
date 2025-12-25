@@ -2,19 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RunSubagentTool } from '../tools/runSubagentTool';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { SubagentLimits } from '../models/toolConstants';
 import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 import type { SubagentResult } from '../types/modelTypes';
-
-const createMockWorkspaceSettings = (overrides: Partial<{
-    maxIterations: number;
-    maxSubagentsPerSession: number;
-}> = {}): WorkspaceSettingsService => ({
-    getMaxIterations: vi.fn().mockReturnValue(overrides.maxIterations ?? 10),
-    getMaxSubagentsPerSession: vi.fn().mockReturnValue(overrides.maxSubagentsPerSession ?? SUBAGENT_LIMITS.maxPerSession.default),
-    getRequestTimeoutSeconds: vi.fn().mockReturnValue(30)
-} as unknown as WorkspaceSettingsService);
+import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
 const createMockExecutor = (result: Partial<SubagentResult> = {}): SubagentExecutor => ({
     execute: vi.fn().mockResolvedValue({

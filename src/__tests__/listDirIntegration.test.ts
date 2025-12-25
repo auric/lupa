@@ -7,24 +7,15 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ListDirTool } from '../tools/listDirTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
+import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';
 
-/**
- * Create a mock WorkspaceSettingsService for testing
- */
-function createMockWorkspaceSettings(): WorkspaceSettingsService {
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
     return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
-    } as WorkspaceSettingsService;
-}
-
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
-    return {
-        ...actualVscode,
+        ...vscodeMock,
         workspace: {
+            ...vscodeMock.workspace,
             workspaceFolders: [
                 {
                     uri: {
@@ -38,11 +29,8 @@ vi.mock('vscode', async () => {
             }
         },
         Uri: {
+            ...vscodeMock.Uri,
             file: vi.fn((filePath) => ({ fsPath: filePath, toString: () => filePath }))
-        },
-        FileType: {
-            File: 1,
-            Directory: 2
         }
     };
 });
@@ -74,7 +62,7 @@ describe('ListDirTool Integration Tests', () => {
     let mockReadDirectory: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
-    let subagentSessioinManager: SubagentSessionManager;
+    let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -98,7 +86,7 @@ describe('ListDirTool Integration Tests', () => {
         listDirTool = new ListDirTool(mockGitOperationsManager);
         toolRegistry.registerTool(listDirTool);
 
-        subagentSessioinManager = new SubagentSessionManager(mockWorkspaceSettings);
+        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
 
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
@@ -107,7 +95,7 @@ describe('ListDirTool Integration Tests', () => {
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
             mockWorkspaceSettings,
-            subagentSessioinManager
+            subagentSessionManager
         );
 
         mockReadDirectory = vscode.workspace.fs.readDirectory as ReturnType<typeof vi.fn>;
@@ -121,32 +109,12 @@ describe('ListDirTool Integration Tests', () => {
                 fsPath: '/test/git-repo'
             }
         });
-        // Vitest 4 requires function syntax for constructor mocks
+        // Use shared CancellationTokenSource mock from mockFactories
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (this: any) {
-            const listeners: Array<(e: any) => any> = [];
-            let isCancelled = false;
-
-            const token: vscode.CancellationToken = {
-                get isCancellationRequested() { return isCancelled; },
-                onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
-                    listeners.push(listener);
-                    return {
-                        dispose: vi.fn(function () {
-                            const index = listeners.indexOf(listener);
-                            if (index !== -1) {
-                                listeners.splice(index, 1);
-                            }
-                        })
-                    };
-                })
-            };
-
-            this.token = token;
-            this.cancel = vi.fn(function () {
-                isCancelled = true;
-                [...listeners].forEach(function (listener) { listener(undefined); });
-            });
-            this.dispose = vi.fn();
+            const mock = createMockCancellationTokenSource();
+            this.token = mock.token;
+            this.cancel = mock.cancel;
+            this.dispose = mock.dispose;
         });
         tokenSource = new vscode.CancellationTokenSource();
     });

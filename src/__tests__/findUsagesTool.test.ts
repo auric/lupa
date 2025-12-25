@@ -2,37 +2,18 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 
-// Mock vscode
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
     return {
-        ...actualVscode,
+        ...vscodeMock,
         workspace: {
+            ...vscodeMock.workspace,
             workspaceFiles: [],
             openTextDocument: vi.fn(),
-            asRelativePath: vi.fn((uri) => `relative/path/file.ts`),
+            asRelativePath: vi.fn(() => `relative/path/file.ts`),
             workspaceFolders: [{
                 uri: { fsPath: '/test/workspace' }
             }]
-        },
-        commands: {
-            executeCommand: vi.fn()
-        },
-        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
-            this.line = line;
-            this.character = character;
-        }),
-        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
-            this.start = start;
-            this.end = end;
-            this.contains = vi.fn(function () { return true; });
-        }),
-        Uri: {
-            parse: vi.fn((path) => ({ toString: () => path, fsPath: path })),
-            joinPath: vi.fn((base, relative) => ({
-                toString: () => `${base.fsPath}/${relative}`,
-                fsPath: `${base.fsPath}/${relative}`
-            }))
         }
     };
 });

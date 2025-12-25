@@ -7,18 +7,8 @@ import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService, RipgrepFileResult } from '../services/ripgrepSearchService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-
-/**
- * Create a mock WorkspaceSettingsService for testing
- */
-function createMockWorkspaceSettings(): WorkspaceSettingsService {
-    return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
-    } as WorkspaceSettingsService;
-}
+import { createMockWorkspaceSettings, createMockRipgrepService, createMockGitRepository } from './testUtils/mockFactories';
 
 // Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');

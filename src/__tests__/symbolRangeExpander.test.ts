@@ -2,24 +2,7 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SymbolRangeExpander } from '../tools/symbolRangeExpander';
 
-// Mock vscode - Vitest 4 requires function syntax for constructor mocks
-vi.mock('vscode', async () => {
-  const actualVscode = await vi.importActual('vscode');
-  return {
-    ...actualVscode,
-    commands: {
-      executeCommand: vi.fn()
-    },
-    Range: vi.fn().mockImplementation(function (this: any, startLine: number, startChar: number, endLine: number, endChar: number) {
-      this.start = { line: startLine, character: startChar };
-      this.end = { line: endLine, character: endChar };
-    }),
-    Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
-      this.line = line;
-      this.character = character;
-    })
-  };
-});
+vi.mock('vscode');
 
 describe('SymbolRangeExpander', () => {
   let expander: SymbolRangeExpander;

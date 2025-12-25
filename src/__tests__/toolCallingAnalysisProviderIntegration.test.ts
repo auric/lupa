@@ -7,19 +7,9 @@ import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import type { DiffHunk } from '../types/contextTypes';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-
-/**
- * Create a mock WorkspaceSettingsService for testing
- */
-function createMockWorkspaceSettings(): WorkspaceSettingsService {
-    return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
-    } as WorkspaceSettingsService;
-}
+import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';
 
 vi.mock('vscode');
 
@@ -52,7 +42,7 @@ describe('ToolCallingAnalysisProvider Integration', () => {
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
     let sampleDiff: string;
-    let subagentSessioinManager: SubagentSessionManager;
+    let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -106,7 +96,7 @@ index 1234567..abcdefg 100644
         mockPromptGenerator = new PromptGenerator();
 
         const mockWorkspaceSettings = createMockWorkspaceSettings();
-        subagentSessioinManager = new SubagentSessionManager(mockWorkspaceSettings);
+        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
 
         provider = new ToolCallingAnalysisProvider(
             mockConversationManager,
@@ -114,34 +104,14 @@ index 1234567..abcdefg 100644
             mockCopilotModelManager,
             mockPromptGenerator,
             mockWorkspaceSettings,
-            subagentSessioinManager
+            subagentSessionManager
         );
-        // Vitest 4 requires function syntax for constructor mocks
+        // Use shared CancellationTokenSource mock from mockFactories
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (this: any) {
-            const listeners: Array<(e: any) => any> = [];
-            let isCancelled = false;
-
-            const token: vscode.CancellationToken = {
-                get isCancellationRequested() { return isCancelled; },
-                onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
-                    listeners.push(listener);
-                    return {
-                        dispose: vi.fn(function () {
-                            const index = listeners.indexOf(listener);
-                            if (index !== -1) {
-                                listeners.splice(index, 1);
-                            }
-                        })
-                    };
-                })
-            };
-
-            this.token = token;
-            this.cancel = vi.fn(function () {
-                isCancelled = true;
-                [...listeners].forEach(function (listener) { listener(undefined); });
-            });
-            this.dispose = vi.fn();
+            const mock = createMockCancellationTokenSource();
+            this.token = mock.token;
+            this.cancel = mock.cancel;
+            this.dispose = mock.dispose;
         });
         tokenSource = new vscode.CancellationTokenSource();
     });

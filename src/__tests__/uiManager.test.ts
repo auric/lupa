@@ -2,18 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UIManager } from '../services/uiManager';
 import * as vscode from 'vscode';
 
-// Mock vscode
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
     return {
-        ...actualVscode,
+        ...vscodeMock,
         window: {
+            ...vscodeMock.window,
             createWebviewPanel: vi.fn(() => ({
                 webview: {
                     html: '',
                     onDidReceiveMessage: vi.fn(),
                     postMessage: vi.fn(),
-                    asWebviewUri: vi.fn().mockImplementation((uri) => uri)
+                    asWebviewUri: vi.fn().mockImplementation((uri: any) => uri)
                 },
                 onDidDispose: vi.fn(),
                 dispose: vi.fn()
@@ -22,33 +22,13 @@ vi.mock('vscode', async () => {
             showErrorMessage: vi.fn(),
             onDidChangeActiveColorTheme: vi.fn(),
             activeColorTheme: {
-                kind: 1, // ColorThemeKind.Light
+                kind: 1 // ColorThemeKind.Light
             }
         },
         workspace: {
+            ...vscodeMock.workspace,
             openTextDocument: vi.fn()
-        },
-        Uri: {
-            file: vi.fn().mockImplementation((path) => ({ fsPath: path, path })),
-            joinPath: vi.fn().mockImplementation((...args) => args.join('/'))
-        },
-        ViewColumn: {
-            One: 1,
-            Beside: -2
-        },
-        ColorThemeKind: {
-            Light: 1,
-            Dark: 2,
-            HighContrast: 3
-        },
-        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
-            this.line = line;
-            this.character = character;
-        }),
-        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
-            this.start = start;
-            this.end = end;
-        })
+        }
     };
 });
 

@@ -5,25 +5,15 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
-
-/**
- * Create a mock WorkspaceSettingsService for testing
- */
-function createMockWorkspaceSettings(): WorkspaceSettingsService {
-    return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
-    } as WorkspaceSettingsService;
-}
+import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
 // Mock vscode with more realistic behavior
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
     return {
-        ...actualVscode,
+        ...vscodeMock,
         workspace: {
+            ...vscodeMock.workspace,
             fs: {
                 stat: vi.fn(),
                 readDirectory: vi.fn(),
@@ -34,22 +24,12 @@ vi.mock('vscode', async () => {
             executeCommand: vi.fn()
         },
         Uri: {
+            ...vscodeMock.Uri,
             file: vi.fn((path) => ({
                 toString: () => path,
                 fsPath: path,
                 path: path
             }))
-        },
-        FileType: {
-            File: 1,
-            Directory: 2
-        },
-        SymbolKind: {
-            Class: 5,
-            Function: 12,
-            Interface: 11,
-            Method: 6,
-            Variable: 13
         }
     };
 });

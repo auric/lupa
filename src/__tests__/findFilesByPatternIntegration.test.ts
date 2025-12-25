@@ -7,26 +7,16 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 import { fdir } from 'fdir';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
+import { createMockWorkspaceSettings, createMockFdirInstance, createMockGitRepository } from './testUtils/mockFactories';
 
-/**
- * Create a mock WorkspaceSettingsService for testing
- */
-function createMockWorkspaceSettings(): WorkspaceSettingsService {
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
     return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default,
-        getMaxSubagentsPerSession: () => SUBAGENT_LIMITS.maxPerSession.default
-    } as WorkspaceSettingsService;
-}
-
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
-    return {
-        ...actualVscode,
+        ...vscodeMock,
         workspace: {
+            ...vscodeMock.workspace,
             workspaceFolders: [
                 {
                     uri: {
@@ -39,6 +29,7 @@ vi.mock('vscode', async () => {
             }
         },
         Uri: {
+            ...vscodeMock.Uri,
             file: vi.fn((filePath) => ({ fsPath: filePath, toString: () => filePath }))
         }
     };
@@ -84,41 +75,6 @@ const mockPromptGenerator = {
     getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
     getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: find_files_by_pattern')
 };
-
-// Test utility functions for DRY mocks
-// Vitest 4 requires function/class syntax for mocks used as constructors
-function createMockFdirInstance(syncReturnValue: string[] = []) {
-    const instance = {
-        withGlobFunction: vi.fn().mockReturnThis(),
-        glob: vi.fn().mockReturnThis(),
-        globWithOptions: vi.fn().mockReturnThis(),
-        withRelativePaths: vi.fn().mockReturnThis(),
-        withFullPaths: vi.fn().mockReturnThis(),
-        exclude: vi.fn().mockReturnThis(),
-        filter: vi.fn().mockReturnThis(),
-        crawl: vi.fn().mockReturnThis(),
-        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
-        sync: vi.fn().mockReturnValue(syncReturnValue)
-    };
-    // Make chainable methods return the instance
-    instance.withGlobFunction.mockReturnValue(instance);
-    instance.glob.mockReturnValue(instance);
-    instance.globWithOptions.mockReturnValue(instance);
-    instance.withRelativePaths.mockReturnValue(instance);
-    instance.withFullPaths.mockReturnValue(instance);
-    instance.exclude.mockReturnValue(instance);
-    instance.filter.mockReturnValue(instance);
-    instance.crawl.mockReturnValue(instance);
-    return instance as any;
-}
-
-function createMockGitRepository(gitRootPath: string = '/test/git-repo') {
-    return {
-        rootUri: {
-            fsPath: gitRootPath
-        }
-    };
-}
 
 describe('FindFileTool Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;

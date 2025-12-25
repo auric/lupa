@@ -221,7 +221,44 @@ vscodeMock.ProgressLocation = {
 vscodeMock.ViewColumn = {
   One: 1,
   Two: 2,
-  Beside: 2
+  Beside: -2, // Match VS Code's actual value
+  Active: -1
+};
+
+vscodeMock.ColorThemeKind = {
+  Light: 1,
+  Dark: 2,
+  HighContrast: 3,
+  HighContrastLight: 4
+};
+
+vscodeMock.SymbolKind = {
+  File: 0,
+  Module: 1,
+  Namespace: 2,
+  Package: 3,
+  Class: 4,
+  Method: 5,
+  Property: 6,
+  Field: 7,
+  Constructor: 8,
+  Enum: 9,
+  Interface: 10,
+  Function: 11,
+  Variable: 12,
+  Constant: 13,
+  String: 14,
+  Number: 15,
+  Boolean: 16,
+  Array: 17,
+  Object: 18,
+  Key: 19,
+  Null: 20,
+  EnumMember: 21,
+  Struct: 22,
+  Event: 23,
+  Operator: 24,
+  TypeParameter: 25
 };
 
 vscodeMock.Uri = vi.fn(function (scheme, authority, path, query, fragment) {
@@ -620,6 +657,8 @@ export const CancellationError = vscodeMock.CancellationError;
 export const CancellationTokenSource = vscodeMock.CancellationTokenSource;
 export const ProgressLocation = vscodeMock.ProgressLocation;
 export const ViewColumn = vscodeMock.ViewColumn;
+export const ColorThemeKind = vscodeMock.ColorThemeKind;
+export const SymbolKind = vscodeMock.SymbolKind;
 export const languages = vscodeMock.languages;
 export const ThemeIcon = vscodeMock.ThemeIcon;
 export const LanguageModelChatMessageRole = vscodeMock.LanguageModelChatMessageRole;

@@ -6,24 +6,15 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
+import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';
 
-/**
- * Create a mock WorkspaceSettingsService for testing
- */
-function createMockWorkspaceSettings(): WorkspaceSettingsService {
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
     return {
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds.default
-    } as WorkspaceSettingsService;
-}
-
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
-    return {
-        ...actualVscode,
+        ...vscodeMock,
         workspace: {
+            ...vscodeMock.workspace,
             textDocuments: [],
             openTextDocument: vi.fn(),
             asRelativePath: vi.fn((uri) => 'src/test.ts'),
@@ -34,16 +25,8 @@ vi.mock('vscode', async () => {
         commands: {
             executeCommand: vi.fn()
         },
-        Position: vi.fn().mockImplementation(function (this: any, line: number, character: number) {
-            this.line = line;
-            this.character = character;
-        }),
-        Range: vi.fn().mockImplementation(function (this: any, start: any, end: any) {
-            this.start = start;
-            this.end = end;
-            this.contains = vi.fn(function () { return true; });
-        }),
         Uri: {
+            ...vscodeMock.Uri,
             parse: vi.fn((path) => ({ toString: () => path, fsPath: path })),
             joinPath: vi.fn((base, relative) => ({
                 toString: () => `${base.fsPath}/${relative}`,
@@ -77,7 +60,7 @@ describe('FindUsages Integration Tests', () => {
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findUsagesTool: FindUsagesTool;
-    let subagentSessioinManager: SubagentSessionManager;
+    let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -91,7 +74,7 @@ describe('FindUsages Integration Tests', () => {
         findUsagesTool = new FindUsagesTool();
         toolRegistry.registerTool(findUsagesTool);
 
-        subagentSessioinManager = new SubagentSessionManager(mockWorkspaceSettings);
+        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
 
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
@@ -100,38 +83,18 @@ describe('FindUsages Integration Tests', () => {
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
             mockWorkspaceSettings,
-            subagentSessioinManager
+            subagentSessionManager
         );
 
         // Clear all mocks
         vi.clearAllMocks();
 
-        // Vitest 4 requires function syntax for constructor mocks
+        // Use shared CancellationTokenSource mock from mockFactories
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (this: any) {
-            const listeners: Array<(e: any) => any> = [];
-            let isCancelled = false;
-
-            const token: vscode.CancellationToken = {
-                get isCancellationRequested() { return isCancelled; },
-                onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
-                    listeners.push(listener);
-                    return {
-                        dispose: vi.fn(function () {
-                            const index = listeners.indexOf(listener);
-                            if (index !== -1) {
-                                listeners.splice(index, 1);
-                            }
-                        })
-                    };
-                })
-            };
-
-            this.token = token;
-            this.cancel = vi.fn(function () {
-                isCancelled = true;
-                [...listeners].forEach(function (listener) { listener(undefined); });
-            });
-            this.dispose = vi.fn();
+            const mock = createMockCancellationTokenSource();
+            this.token = mock.token;
+            this.cancel = mock.cancel;
+            this.dispose = mock.dispose;
         });
         tokenSource = new vscode.CancellationTokenSource();
     });
