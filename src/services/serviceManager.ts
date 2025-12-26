@@ -227,7 +227,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(findSymbolTool);
 
             // Register the FindUsagesTool (Find Usages functionality)
-            const findUsagesTool = new FindUsagesTool();
+            const findUsagesTool = new FindUsagesTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(findUsagesTool);
 
             // Register the ListDirTool (List Directory functionality)

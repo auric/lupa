@@ -1,10 +1,12 @@
 import * as z from 'zod';
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { BaseTool } from './baseTool';
 import { UsageFormatter } from './usageFormatter';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { GitOperationsManager } from '../services/gitOperationsManager';
 
 const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
 
@@ -23,6 +25,10 @@ COMBINE with find_symbol: first understand the definition, then find who uses it
 Requires file_path where the symbol is defined as starting point.`;
 
   private readonly formatter = new UsageFormatter();
+
+  constructor(private readonly gitOperationsManager: GitOperationsManager) {
+    super();
+  }
 
   schema = z.object({
     symbol_name: z.string().min(1, 'Symbol name cannot be empty')
@@ -55,14 +61,16 @@ Requires file_path where the symbol is defined as starting point.`;
       const sanitizedSymbolName = trimmedSymbol;
       const sanitizedFilePath = PathSanitizer.sanitizePath(trimmedPath);
 
-      // Get the document containing the symbol definition
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      if (!workspaceFolder) {
-        return toolError('No workspace folder is open');
+      // Get the git repository root for path resolution
+      const gitRootDirectory = this.gitOperationsManager.getRepository()?.rootUri.fsPath;
+      if (!gitRootDirectory) {
+        return toolError('Git repository not found');
       }
 
-      // Convert relative path to absolute path
-      const absolutePath = vscode.Uri.joinPath(workspaceFolder.uri, sanitizedFilePath);
+      // Convert relative path to absolute path using git root
+      const absolutePath = vscode.Uri.file(
+        path.join(gitRootDirectory, sanitizedFilePath)
+      );
 
       let document: vscode.TextDocument;
       try {
