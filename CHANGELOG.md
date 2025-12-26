@@ -5,7 +5,7 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.1] - 2025-12-26
+## [0.1.2] - 2025-12-26
 
 ### Changed
 
@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Markdown links for file references**: LLM prompts now instruct models to use markdown link format `[file.ts:42](file.ts:42)` instead of backtick format
 - **Webview markdown link rendering**: File path links in markdown are now rendered as clickable FileLink components
 - **Simplified implementation**: Removed regex-based plain text file path detection in favor of standard markdown links
+
+## [0.1.1] - 2025-12-26
+
+### Changed
 
 #### React Compiler Adoption
 
