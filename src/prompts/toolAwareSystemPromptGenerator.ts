@@ -201,7 +201,7 @@ Tailor your response to the question type:
 
 ### Formatting Guidelines
 - Use markdown link format for file references: \`[src/auth/handler.ts:42](src/auth/handler.ts:42)\`
-- Use fenced code blocks with language identifier
+- Use fenced code blocks with language identifier (MUST start on a new line, not inline with text)
 - Keep answers focused—provide depth where requested
 - If the question has multiple parts, address each clearly
 </output_format>`;
@@ -728,7 +728,7 @@ Always find at least one positive observation, even in problematic PRs:
 
 ### Formatting Rules
 - Always use markdown link format for file references: \`[path/file.ts:line](path/file.ts:line)\`
-- Use fenced code blocks with language identifier
+- Use fenced code blocks with language identifier (code fences MUST be on their own line, never inline)
 - Keep suggestions actionable and specific
 - Don't suggest changes to code outside the diff unless directly affected
 </output_format>`;
