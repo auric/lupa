@@ -39,6 +39,7 @@ CLAUDE.md
 .claude/**
 .serena/**
 _bmad/**
+_bmad-output/**
 
 # -----------------------------------------------------------------------------
 # Test and coverage artifacts
