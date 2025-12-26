@@ -349,6 +349,51 @@ describe('pathUtils', () => {
                 column: 5
             });
         });
+
+        it('should handle root-level files without directory prefix', () => {
+            // Root-level files like README.md, package.json are common in projects
+            const result1 = parseFilePathFromUrl('README.md:10');
+            expect(result1).toEqual({
+                filePath: 'README.md',
+                line: 10,
+                endLine: undefined,
+                column: undefined
+            });
+
+            const result2 = parseFilePathFromUrl('package.json:25');
+            expect(result2).toEqual({
+                filePath: 'package.json',
+                line: 25,
+                endLine: undefined,
+                column: undefined
+            });
+
+            const result3 = parseFilePathFromUrl('tsconfig.json');
+            expect(result3).toEqual({
+                filePath: 'tsconfig.json',
+                line: undefined,
+                endLine: undefined,
+                column: undefined
+            });
+
+            const result4 = parseFilePathFromUrl('vite.config.mts:42:8');
+            expect(result4).toEqual({
+                filePath: 'vite.config.mts',
+                line: 42,
+                endLine: undefined,
+                column: 8
+            });
+        });
+
+        it('should handle root-level files with line ranges', () => {
+            const result = parseFilePathFromUrl('CHANGELOG.md:1-50');
+            expect(result).toEqual({
+                filePath: 'CHANGELOG.md',
+                line: 1,
+                endLine: 50,
+                column: undefined
+            });
+        });
     });
 
     describe('parseMarkdownFileLinks', () => {
