@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,7 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
     const [isCopied, setIsCopied] = useState(false);
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-    const handleClick = useCallback(() => {
+    const handleClick = () => {
         // Clear any existing timeout
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
@@ -34,7 +34,7 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
             setIsCopied(false);
             timeoutRef.current = null;
         }, 1000);
-    }, [text, onCopy]);
+    };
 
     return (
         <Button

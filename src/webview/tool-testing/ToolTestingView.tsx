@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ToolLibrarySidebar } from './components/ToolLibrarySidebar';
 import { ParameterInputPanel } from './components/ParameterInputPanel';
 import { ResultsPanel } from './components/ResultsPanel';
@@ -61,18 +61,19 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   }, [vscode]);
 
   // Get current tool info
-  const currentToolInfo = React.useMemo(() => {
+  // React Compiler handles memoization automatically
+  const currentToolInfo = (() => {
     if (!selectedTool || !tools.length) return undefined;
     return tools.find(t => t.name === selectedTool);
-  }, [selectedTool, tools]);
+  })();
 
   // Event handlers
-  const handleToolSelect = useCallback((toolName: string) => {
+  const handleToolSelect = (toolName: string) => {
     setSelectedTool(toolName);
     clearSession(); // Clear previous results when selecting new tool
-  }, [clearSession]);
+  };
 
-  const handleExecute = useCallback(async (parameters: Record<string, any>) => {
+  const handleExecute = async (parameters: Record<string, any>) => {
     if (!selectedTool) return;
 
     try {
@@ -81,15 +82,15 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
       // Error handling is managed by useToolExecution hook
       console.error('Tool execution failed:', error);
     }
-  }, [selectedTool, executeToolTest]);
+  };
 
 
-  const handleNavigateToFile = useCallback((filePath: string, line?: number) => {
+  const handleNavigateToFile = (filePath: string, line?: number) => {
     vscode?.postMessage({
       command: 'openFile',
       payload: { filePath, line }
     });
-  }, [vscode]);
+  };
 
   // Auto-switch to results tab when execution starts
   useEffect(() => {

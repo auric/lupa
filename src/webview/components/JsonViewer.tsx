@@ -49,7 +49,7 @@ const vscodeTheme = {
     }
 };
 
-export const JsonViewer = React.memo(function JsonViewer({
+export const JsonViewer = function JsonViewer({
     data,
     className = '',
     rootKey = 'data',
@@ -78,4 +78,4 @@ export const JsonViewer = React.memo(function JsonViewer({
             </div>
         </div>
     );
-});
+};

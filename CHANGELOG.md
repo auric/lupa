@@ -5,6 +5,18 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2025-12-26
+
+### Changed
+
+#### React Compiler Adoption
+
+- **Removed manual memoization**: Eliminated all `React.memo()`, `useMemo()`, and `useCallback()` from webview components
+- **Automatic optimization**: React Compiler now handles memoization automatically, providing equal or better performance
+- **Simplified codebase**: Cleaner component code without explicit memoization boilerplate
+
+---
+
 ## [0.1.0] - 2025-12-26
 
 ### Added
@@ -85,4 +97,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[0.1.0]: https://github.com/user/lupa/releases/tag/v0.1.0
+[0.1.1]: https://github.com/auric/lupa/releases/tag/v0.1.1
+[0.1.0]: https://github.com/auric/lupa/releases/tag/v0.1.0

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface UseLiveTimerOptions {
   /** Whether the timer should be running */
@@ -18,46 +18,47 @@ interface LiveTimerResult {
 
 /**
  * Custom hook for managing a live timer that updates continuously while running
+ * React Compiler handles memoization automatically
  */
-export const useLiveTimer = ({ 
-  isRunning, 
-  updateInterval = 100 
+export const useLiveTimer = ({
+  isRunning,
+  updateInterval = 100
 }: UseLiveTimerOptions): LiveTimerResult => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef<number | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const formatTime = useCallback((totalMs: number): string => {
+  const formatTime = (totalMs: number): string => {
     const minutes = Math.floor(totalMs / 60000);
     const seconds = Math.floor((totalMs % 60000) / 1000);
     const milliseconds = Math.floor(totalMs % 1000);
-    
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${milliseconds.toString().padStart(3, '0')}`;
-  }, []);
 
-  const updateTimer = useCallback(() => {
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${milliseconds.toString().padStart(3, '0')}`;
+  };
+
+  const updateTimer = () => {
     if (startTimeRef.current !== null && isRunning) {
       const now = performance.now();
       const elapsed = Math.round(now - startTimeRef.current);
       setElapsedTime(elapsed);
     }
-  }, [isRunning]);
+  };
 
-  const reset = useCallback(() => {
+  const reset = () => {
     setElapsedTime(0);
     startTimeRef.current = null;
-    
+
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    
+
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (isRunning) {
@@ -65,7 +66,7 @@ export const useLiveTimer = ({
       if (startTimeRef.current === null) {
         startTimeRef.current = performance.now();
       }
-      
+
       // Use setInterval for consistent updates
       intervalRef.current = setInterval(updateTimer, updateInterval);
     } else {

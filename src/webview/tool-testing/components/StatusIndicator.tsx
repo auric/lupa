@@ -61,12 +61,12 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = ({
   }
 
   return (
-    <div 
+    <div
       className={`flex items-center gap-2 text-sm font-medium ${config.className} ${className}`.trim()}
       role="status"
       aria-label={`Status: ${config.text}`}
     >
-      <span 
+      <span
         className={`text-base flex items-center justify-center ${status === 'running' ? 'animate-pulse' : ''}`.trim()}
         aria-hidden="true"
       >
@@ -81,4 +81,4 @@ export const StatusIndicator: React.FC<StatusIndicatorProps> = ({
   );
 };
 
-export default React.memo(StatusIndicator);
+export default StatusIndicator;

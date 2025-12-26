@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React from 'react';
 import { Diff, Hunk, tokenize, markEdits, parseDiff } from 'react-diff-view';
 import 'react-diff-view/style/index.css';
 
@@ -7,46 +7,42 @@ interface DiffTabProps {
     viewType: 'split' | 'unified';
 }
 
-export const DiffTab = memo<DiffTabProps>(({ diffText, viewType }) => {
+export const DiffTab = ({ diffText, viewType }: DiffTabProps) => {
     console.time('Diff tab render');
 
-    const diffFiles = useMemo(() => {
-        if (!diffText) return [];
-
+    // Parse diff - React Compiler handles memoization
+    let diffFiles: ReturnType<typeof parseDiff> = [];
+    if (diffText) {
         console.time('Diff parsing');
         try {
-            const files = parseDiff(diffText);
+            diffFiles = parseDiff(diffText);
             console.timeEnd('Diff parsing');
-            return files;
         } catch (error) {
             console.error('Error parsing diff:', error);
             console.timeEnd('Diff parsing');
-            return [];
         }
-    }, [diffText]);
+    }
 
     if (diffFiles.length === 0) {
         return <div className="text-center text-muted-foreground p-8">No changes to display</div>;
     }
 
     // Tokenize files for word-level diff highlighting
-    const tokenizedFiles = useMemo(() => {
-        return diffFiles.map(file => {
-            try {
-                // Use tokenize with markEdits enhancer for word-level highlighting
-                const options = {
-                    enhancers: [
-                        markEdits(file.hunks, { type: 'line' })
-                    ]
-                };
-                const tokens = tokenize(file.hunks, options);
-                return { ...file, tokens };
-            } catch (error) {
-                console.warn('Failed to tokenize file:', file.newPath || file.oldPath, error);
-                return { ...file, tokens: null };
-            }
-        });
-    }, [diffFiles]);
+    const tokenizedFiles = diffFiles.map(file => {
+        try {
+            // Use tokenize with markEdits enhancer for word-level highlighting
+            const options = {
+                enhancers: [
+                    markEdits(file.hunks, { type: 'line' })
+                ]
+            };
+            const tokens = tokenize(file.hunks, options);
+            return { ...file, tokens };
+        } catch (error) {
+            console.warn('Failed to tokenize file:', file.newPath || file.oldPath, error);
+            return { ...file, tokens: null };
+        }
+    });
 
     const result = (
         <div className="border rounded-lg bg-background flex-1 min-h-0 overflow-auto">
@@ -82,4 +78,4 @@ export const DiffTab = memo<DiffTabProps>(({ diffText, viewType }) => {
 
     console.timeEnd('Diff tab render');
     return result;
-});
+};

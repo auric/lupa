@@ -47,11 +47,11 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         };
 
     // Webview app configuration (browser-like)
+    // Note: PrismAsyncLight creates separate chunks for each language - this is expected
     const webviewBuildConfig: BuildOptions = {
         rollupOptions: {
             input: webviewInputs,
             output: {
-                inlineDynamicImports: false,
                 entryFileNames: 'webview/[name].js',
                 chunkFileNames: 'webview/[name].js',
                 assetFileNames: 'webview/[name].[ext]',

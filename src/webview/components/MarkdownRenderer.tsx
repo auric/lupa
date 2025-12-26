@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -15,12 +15,17 @@ interface MarkdownRendererProps {
     onCopy?: (text: string) => void;
 }
 
-// Memoized component for processing text with file links
-const ProcessedText = memo<{
+// Component for processing text with file links
+// React Compiler handles memoization automatically
+const ProcessedText = ({
+    children,
+    elementType,
+    componentId,
+}: {
     children: React.ReactNode;
     elementType: string;
     componentId: string;
-}>(({ children, elementType, componentId }) => {
+}) => {
 
     // Handle both string and array children
     const processChildrenRecursively = (children: React.ReactNode): React.ReactNode => {
@@ -82,15 +87,15 @@ const ProcessedText = memo<{
     };
 
     return <>{processChildrenRecursively(children)}</>;
-});
+};
 
-export const MarkdownRenderer = memo<MarkdownRendererProps>(({
+export const MarkdownRenderer = ({
     content,
     id,
     isDarkTheme,
     showCopy = true,
     onCopy
-}) => {
+}: MarkdownRendererProps) => {
 
     // Custom components with file path replacement
     const customComponents = {
@@ -293,13 +298,4 @@ export const MarkdownRenderer = memo<MarkdownRendererProps>(({
             </div>
         </div>
     );
-}, (prevProps, nextProps) => {
-    // Simple comparison - no need to check copy states since buttons manage their own state
-    return (
-        prevProps.content === nextProps.content &&
-        prevProps.id === nextProps.id &&
-        prevProps.isDarkTheme === nextProps.isDarkTheme &&
-        prevProps.showCopy === nextProps.showCopy &&
-        prevProps.onCopy === nextProps.onCopy
-    );
-});
+};

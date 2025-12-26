@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { ToolInfo, FormValidationError } from '../../types/toolTestingTypes';
 import { Checkbox } from '../../../components/ui/checkbox';
 import { Input } from '../../../components/ui/input';
@@ -41,7 +41,8 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
   const [showOptionalParams, setShowOptionalParams] = useState(false);
 
   // Extract parameter info from tool schema
-  const parameterInfos = React.useMemo(() => {
+  // React Compiler handles memoization automatically
+  const parameterInfos = (() => {
     if (!toolInfo?.schema) return [];
 
     const infos: ParameterInfo[] = [];
@@ -94,7 +95,7 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
       if (!a.required && b.required) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [toolInfo?.schema]);
+  })();
 
   // Reset parameters when tool changes
   useEffect(() => {
@@ -110,14 +111,14 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
     }
   }, [toolInfo, initialParameters, parameterInfos]);
 
-  const handleParameterChange = useCallback((name: string, value: any) => {
+  const handleParameterChange = (name: string, value: any) => {
     setParameters(prev => ({
       ...prev,
       [name]: value
     }));
-  }, []);
+  };
 
-  const parseParameterValue = useCallback((value: any, paramType: string): any => {
+  const parseParameterValue = (value: any, paramType: string): any => {
     if (value === '' || value === null || value === undefined) {
       return value;
     }
@@ -146,9 +147,9 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
     }
 
     return value;
-  }, []);
+  };
 
-  const handleExecute = useCallback(async () => {
+  const handleExecute = async () => {
     if (!toolInfo || isExecuting) return;
 
     const filteredParams = Object.entries(parameters).reduce((acc, [key, value]) => {
@@ -160,9 +161,9 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
     }, {} as Record<string, any>);
 
     await onExecute(filteredParams);
-  }, [toolInfo, isExecuting, parameters, parameterInfos, onExecute, parseParameterValue]);
+  };
 
-  const handleClearForm = useCallback(() => {
+  const handleClearForm = () => {
     const clearedParams = parameterInfos.reduce((acc, param) => {
       if (param.defaultValue !== undefined) {
         acc[param.name] = param.defaultValue;
@@ -170,19 +171,19 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
       return acc;
     }, {} as Record<string, any>);
     setParameters(clearedParams);
-  }, [parameterInfos]);
+  };
 
-  const getValidationError = useCallback((fieldName: string) => {
+  const getValidationError = (fieldName: string) => {
     return validationErrors.find(error => error.field === fieldName);
-  }, [validationErrors]);
+  };
 
-  const isFormValid = React.useMemo(() => {
+  const isFormValid = (() => {
     const requiredParams = parameterInfos.filter(p => p.required);
     return requiredParams.every(param => {
       const value = parameters[param.name];
       return value !== undefined && value !== '' && value !== null;
     }) && validationErrors.length === 0;
-  }, [parameterInfos, parameters, validationErrors]);
+  })();
 
   const requiredParams = parameterInfos.filter(p => p.required);
   const optionalParams = parameterInfos.filter(p => !p.required);
@@ -307,13 +308,13 @@ interface ParameterFieldProps {
   error?: FormValidationError;
 }
 
-const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
+const ParameterField: React.FC<ParameterFieldProps> = ({
   parameter,
   value,
   onChange,
   error
 }) => {
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     let newValue: any = e.target.value;
 
     // Type conversion based on parameter type
@@ -324,7 +325,7 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
     }
 
     onChange(parameter.name, newValue);
-  }, [parameter.name, parameter.type, onChange]);
+  };
 
   const renderInput = () => {
     const commonProps = {
@@ -476,4 +477,4 @@ const ParameterField: React.FC<ParameterFieldProps> = React.memo(({
       )}
     </div>
   );
-});
+};

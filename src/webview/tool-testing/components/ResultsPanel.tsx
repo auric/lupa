@@ -193,4 +193,4 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   );
 };
 
-export default React.memo(ResultsPanel);
+export default ResultsPanel;

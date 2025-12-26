@@ -3,7 +3,7 @@
 **Intelligent Pull Request Analysis for VS Code using GitHub Copilot**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.0-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](./CHANGELOG.md)
 
 Lupa is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It uses a tool-calling architecture where the LLM dynamically requests context via LSP-based tools, enabling deep code understanding without pre-loading entire codebases.
 

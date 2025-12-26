@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React from 'react';
 import type { ToolInfo } from '../../types/toolTestingTypes';
 import { Input } from '../../../components/ui/input';
 
@@ -10,6 +10,7 @@ interface ToolLibrarySidebarProps {
   onSearchChange: (query: string) => void;
 }
 
+// React Compiler handles memoization automatically
 export const ToolLibrarySidebar: React.FC<ToolLibrarySidebarProps> = ({
   tools,
   selectedTool,
@@ -19,20 +20,18 @@ export const ToolLibrarySidebar: React.FC<ToolLibrarySidebarProps> = ({
 }) => {
 
   // Filter tools based on search query
-  const filteredTools = useMemo(() => {
-    if (!searchQuery) return tools;
-
-    return tools.filter(tool =>
+  const filteredTools = searchQuery
+    ? tools.filter(tool =>
       tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       tool.description.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [tools, searchQuery]);
+    )
+    : tools;
 
-  const handleToolSelect = useCallback((toolName: string) => {
+  const handleToolSelect = (toolName: string) => {
     onToolSelect(toolName);
-  }, [onToolSelect]);
+  };
 
-  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       // Select first tool in filtered results
       const firstTool = filteredTools[0];
@@ -40,11 +39,11 @@ export const ToolLibrarySidebar: React.FC<ToolLibrarySidebarProps> = ({
         handleToolSelect(firstTool.name);
       }
     }
-  }, [filteredTools, handleToolSelect]);
+  };
 
-  const handleClearSearch = useCallback(() => {
+  const handleClearSearch = () => {
     onSearchChange('');
-  }, [onSearchChange]);
+  };
 
   return (
     <div className="flex flex-col h-full bg-transparent">
@@ -112,28 +111,28 @@ interface ToolItemProps {
   onSelect: (toolName: string) => void;
 }
 
-const ToolItem: React.FC<ToolItemProps> = React.memo(({
+const ToolItem: React.FC<ToolItemProps> = ({
   tool,
   isSelected,
   onSelect
 }) => {
-  const handleClick = useCallback(() => {
+  const handleClick = () => {
     onSelect(tool.name);
-  }, [tool.name, onSelect]);
+  };
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onSelect(tool.name);
     }
-  }, [tool.name, onSelect]);
+  };
 
   return (
     <div
       className={`
         flex items-start gap-2 p-1.5 cursor-pointer rounded-sm transition-colors outline-none
-        ${isSelected 
-          ? 'bg-accent text-accent-foreground' 
+        ${isSelected
+          ? 'bg-accent text-accent-foreground'
           : 'hover:bg-accent/50 hover:text-accent-foreground'
         }
       `}
@@ -155,6 +154,6 @@ const ToolItem: React.FC<ToolItemProps> = React.memo(({
       </div>
     </div>
   );
-});
+};
 
-export default React.memo(ToolLibrarySidebar);
+export default ToolLibrarySidebar;

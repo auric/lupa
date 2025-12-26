@@ -22,9 +22,9 @@ export const LiveTimer: React.FC<LiveTimerProps> = ({
   showWhenIdle = true,
   updateInterval = 100
 }) => {
-  const { formattedTime } = useLiveTimer({ 
-    isRunning, 
-    updateInterval 
+  const { formattedTime } = useLiveTimer({
+    isRunning,
+    updateInterval
   });
 
   // Don't render if not running and showWhenIdle is false
@@ -33,7 +33,7 @@ export const LiveTimer: React.FC<LiveTimerProps> = ({
   }
 
   return (
-    <span 
+    <span
       className={`font-mono text-sm ${isRunning ? 'text-foreground' : 'text-muted-foreground'} ${className}`.trim()}
       role="timer"
       aria-live="polite"
@@ -44,4 +44,4 @@ export const LiveTimer: React.FC<LiveTimerProps> = ({
   );
 };
 
-export default React.memo(LiveTimer);
+export default LiveTimer;

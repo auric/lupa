@@ -1,8 +1,8 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { useVSCodeApi } from './useVSCodeApi';
-import type { 
-  ToolTestSession, 
-  ToolTestResult, 
+import type {
+  ToolTestSession,
+  ToolTestResult,
   FormValidationError
 } from '../types/toolTestingTypes';
 
@@ -11,17 +11,17 @@ export const useToolExecution = () => {
   const [currentSession, setCurrentSession] = useState<ToolTestSession | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [validationErrors, setValidationErrors] = useState<FormValidationError[]>([]);
-  
+
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Execute a tool test
-  const executeToolTest = useCallback(async (
-    toolName: string, 
+  const executeToolTest = async (
+    toolName: string,
     parameters: Record<string, any>
   ): Promise<ToolTestSession> => {
     // Clear previous errors
     setValidationErrors([]);
-    
+
     // Create new session
     const session: ToolTestSession = {
       id: `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -35,7 +35,7 @@ export const useToolExecution = () => {
     // Set up execution context
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
-    
+
     const startTime = performance.now();
 
     try {
@@ -46,10 +46,10 @@ export const useToolExecution = () => {
       const executionPromise = new Promise<ToolTestResult[]>((resolve, reject) => {
         const messageHandler = (event: MessageEvent) => {
           const message = event.data;
-          
+
           if (message.type === 'toolExecutionResult' && message.payload.sessionId === session.id) {
             window.removeEventListener('message', messageHandler);
-            
+
             if (message.payload.error) {
               reject(new Error(message.payload.error));
             } else {
@@ -118,14 +118,14 @@ export const useToolExecution = () => {
       setIsExecuting(false);
       abortControllerRef.current = null;
     }
-  }, [vscode]);
+  };
 
   // Cancel current execution
-  const cancelExecution = useCallback(() => {
+  const cancelExecution = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     if (currentSession && currentSession.status === 'running') {
       setCurrentSession(prev => prev ? {
         ...prev,
@@ -133,18 +133,18 @@ export const useToolExecution = () => {
         error: 'Execution cancelled by user'
       } : null);
     }
-    
+
     setIsExecuting(false);
-  }, [currentSession]);
+  };
 
   // Validate parameters against tool schema
-  const validateParameters = useCallback((
+  const validateParameters = (
     toolName: string,
     parameters: Record<string, any>,
     toolSchema: any
   ): FormValidationError[] => {
     const errors: FormValidationError[] = [];
-    
+
     try {
       // Use Zod to validate parameters
       toolSchema.parse(parameters);
@@ -155,39 +155,39 @@ export const useToolExecution = () => {
           errors.push({
             field,
             message: error.message,
-            type: error.code === 'invalid_type' ? 'invalid' : 
-                  error.code === 'too_small' ? 'required' :
-                  error.code === 'custom' ? 'format' : 'invalid'
+            type: error.code === 'invalid_type' ? 'invalid' :
+              error.code === 'too_small' ? 'required' :
+                error.code === 'custom' ? 'format' : 'invalid'
           });
         });
       }
     }
-    
+
     setValidationErrors(errors);
     return errors;
-  }, []);
+  };
 
   // Clear current session
-  const clearSession = useCallback(() => {
+  const clearSession = () => {
     if (isExecuting) {
       cancelExecution();
     }
     setCurrentSession(null);
     setValidationErrors([]);
-  }, [isExecuting, cancelExecution]);
+  };
 
   return {
     // State
     currentSession,
     isExecuting,
     validationErrors,
-    
+
     // Actions
     executeToolTest,
     cancelExecution,
     validateParameters,
     clearSession,
-    
+
     // Utils
     isSessionRunning: currentSession?.status === 'running',
     hasValidationErrors: validationErrors.length > 0,

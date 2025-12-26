@@ -1,4 +1,4 @@
-import React, { memo, useState, useCallback, useMemo } from 'react';
+import React, { useState } from 'react';
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
 import type { ToolCallsData, ToolCallRecord } from '../../types/toolCallTypes';
@@ -93,17 +93,17 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     </svg>
 );
 
-const ToolCallItem = memo<ToolCallItemProps>(({ call, index, prefix = '', isNested = false }) => {
+const ToolCallItem = ({ call, index, prefix = '', isNested = false }: ToolCallItemProps) => {
     const [expanded, setExpanded] = useState(false);
     const [nestedExpanded, setNestedExpanded] = useState(false);
 
-    const handleToggle = useCallback(() => {
+    const handleToggle = () => {
         setExpanded(prev => !prev);
-    }, []);
+    };
 
-    const handleNestedToggle = useCallback(() => {
+    const handleNestedToggle = () => {
         setNestedExpanded(prev => !prev);
-    }, []);
+    };
 
     const formatDuration = (ms: number | undefined): string => {
         if (ms === undefined) return '';
@@ -218,7 +218,7 @@ const ToolCallItem = memo<ToolCallItemProps>(({ call, index, prefix = '', isNest
             </div>
         </div>
     );
-});
+};
 
 const EmptyState = () => (
     <div className="tool-calls-empty">
@@ -238,14 +238,14 @@ const EmptyState = () => (
     </div>
 );
 
-export const ToolCallsTab = memo<ToolCallsTabProps>(({ toolCalls, onCopy }) => {
+export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
     if (!toolCalls || toolCalls.calls.length === 0) {
         return <EmptyState />;
     }
 
     const { calls, totalCalls, successfulCalls, failedCalls, analysisCompleted, analysisError } = toolCalls;
 
-    const markdownText = useMemo(() => formatToolCallsAsMarkdown(toolCalls), [toolCalls]);
+    const markdownText = formatToolCallsAsMarkdown(toolCalls);
 
     return (
         <div className="tool-calls-container">
@@ -294,4 +294,4 @@ export const ToolCallsTab = memo<ToolCallsTabProps>(({ toolCalls, onCopy }) => {
             </div>
         </div>
     );
-});
+};
