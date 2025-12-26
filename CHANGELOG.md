@@ -5,6 +5,19 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-12-26
+
+### Changed
+
+- **Portable repository path settings**: Repository path is now stored as `.` when it matches the workspace root, making `.vscode/lupa.json` portable across machines with different absolute paths
+
+### Fixed
+
+- **Git root vs workspace folder**: Tools and services now correctly use the Git repository root instead of the VS Code workspace folder. This fixes issues when the Git repository is in a parent directory or different location than the workspace folder:
+  - `FindUsagesTool` now uses `GitOperationsManager` for path resolution
+  - `ChatParticipantService` now uses Git root for file links and filetree display
+  - `WorkspaceSettingsService` stores relative path marker (`.`) for workspace-matching repositories
+
 ## [0.1.2] - 2025-12-26
 
 ### Changed
@@ -114,6 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.3]: https://github.com/auric/lupa/releases/tag/v0.1.3
 [0.1.2]: https://github.com/auric/lupa/releases/tag/v0.1.2
 [0.1.1]: https://github.com/auric/lupa/releases/tag/v0.1.1
 [0.1.0]: https://github.com/auric/lupa/releases/tag/v0.1.0
