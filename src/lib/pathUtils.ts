@@ -95,7 +95,8 @@ function isValidFilePath(path: string): boolean {
  * Parse a markdown link URL to extract file path and location information.
  * Supports formats like:
  * - src/file.ts:42
- * - src/file.ts:42:10
+ * - src/file.ts:42:10 (line:column)
+ * - src/file.ts:104-115 (line range)
  * - src/file.ts
  * - C:\src\file.ts:42 (Windows absolute paths)
  * - D:\project\main.ts:10:5
@@ -103,19 +104,19 @@ function isValidFilePath(path: string): boolean {
  * @param url The URL from a markdown link
  * @returns Parsed path information or null if not a file path
  */
-export function parseFilePathFromUrl(url: string): { filePath: string; line?: number; column?: number } | null {
+export function parseFilePathFromUrl(url: string): { filePath: string; line?: number; endLine?: number; column?: number } | null {
     // Skip external URLs (http:, https:, mailto:, etc.) but NOT Windows drive letters
     // Windows drive letters are single letters followed by colon, e.g., C: or D:
     if (/^[a-z]{2,}:/i.test(url)) {
         return null;
     }
 
-    // Match file paths with optional line and column numbers
-    // Supports both Unix and Windows paths:
-    // - Unix: src/file.ts, /home/user/file.ts
-    // - Windows: C:\src\file.ts, D:\project\main.ts
-    // The regex allows an optional Windows drive letter prefix (e.g., C:\ or D:/)
-    const match = url.match(/^((?:[a-zA-Z]:[/\\])?[^:]+\.[a-zA-Z0-9]+)(?::(\d+))?(?::(\d+))?$/);
+    // Match file paths with optional line info:
+    // - :line (single line)
+    // - :line-endLine (line range)
+    // - :line:column (line and column)
+    // Supports both Unix and Windows paths
+    const match = url.match(/^((?:[a-zA-Z]:[/\\])?[^:]+\.[a-zA-Z0-9]+)(?::(\d+)(?:-(\d+)|:(\d+))?)?$/);
 
     if (!match) {
         return null;
@@ -123,13 +124,14 @@ export function parseFilePathFromUrl(url: string): { filePath: string; line?: nu
 
     const filePath = match[1];
     const line = match[2] ? parseInt(match[2], 10) : undefined;
-    const column = match[3] ? parseInt(match[3], 10) : undefined;
+    const endLine = match[3] ? parseInt(match[3], 10) : undefined;  // For :line-endLine format
+    const column = match[4] ? parseInt(match[4], 10) : undefined;   // For :line:column format
 
     if (!isValidFilePath(filePath)) {
         return null;
     }
 
-    return { filePath, line, column };
+    return { filePath, line, endLine, column };
 }
 
 /**
@@ -140,8 +142,10 @@ export interface MarkdownSegment {
     content: string;
     /** For file links: the parsed file path */
     filePath?: string;
-    /** For file links: the line number (1-based) */
+    /** For file links: the start line number (1-based) */
     line?: number;
+    /** For file links: the end line for ranges (1-based), e.g., :104-115 */
+    endLine?: number;
     /** For file links: the column number (1-based) */
     column?: number;
     /** For file links: the display title from markdown link text */
@@ -187,6 +191,7 @@ export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
                 content: fullMatch,
                 filePath: parsedPath.filePath,
                 line: parsedPath.line,
+                endLine: parsedPath.endLine,
                 column: parsedPath.column,
                 title
             });

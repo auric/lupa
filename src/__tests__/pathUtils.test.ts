@@ -301,6 +301,7 @@ describe('pathUtils', () => {
                 content: '[file.ts:42](file.ts:42)',
                 filePath: 'file.ts',
                 line: 42,
+                endLine: undefined,
                 column: undefined,
                 title: 'file.ts:42'
             });
@@ -314,6 +315,7 @@ describe('pathUtils', () => {
                 content: '[handler](src/auth/handler.ts:45)',
                 filePath: 'src/auth/handler.ts',
                 line: 45,
+                endLine: undefined,
                 column: undefined,
                 title: 'handler'
             });
@@ -347,6 +349,7 @@ describe('pathUtils', () => {
                 content: '[main.ts](C:\\project\\main.ts:100)',
                 filePath: 'C:\\project\\main.ts',
                 line: 100,
+                endLine: undefined,
                 column: undefined,
                 title: 'main.ts'
             });
@@ -359,9 +362,35 @@ describe('pathUtils', () => {
                 content: '[file.ts:10:5](file.ts:10:5)',
                 filePath: 'file.ts',
                 line: 10,
+                endLine: undefined,
                 column: 5,
                 title: 'file.ts:10:5'
             });
+        });
+
+        it('should handle file links with line range', () => {
+            const result = parseMarkdownFileLinks('Check [file.cpp:104-115](src/file.cpp:104-115)');
+            expect(result).toHaveLength(2);
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content: '[file.cpp:104-115](src/file.cpp:104-115)',
+                filePath: 'src/file.cpp',
+                line: 104,
+                endLine: 115,
+                column: undefined,
+                title: 'file.cpp:104-115'
+            });
+        });
+
+        it('should handle long paths with line ranges', () => {
+            const markdown = 'at [`src/SampleApp/Plugins/Plugin/Source/File.cpp:104-115`](src/SampleApp/Plugins/Plugin/Source/File.cpp:104-115)';
+            const result = parseMarkdownFileLinks(markdown);
+            expect(result).toHaveLength(2);
+            expect(result[0]).toEqual({ type: 'text', content: 'at ' });
+            expect(result[1].type).toBe('fileLink');
+            expect(result[1].filePath).toBe('src/SampleApp/Plugins/Plugin/Source/File.cpp');
+            expect(result[1].line).toBe(104);
+            expect(result[1].endLine).toBe(115);
         });
 
         it('should handle empty string', () => {

@@ -29,12 +29,16 @@ export function streamMarkdownWithAnchors(
             const fileUri = resolveFileUri(segment.filePath, workspaceRoot);
 
             if (segment.line !== undefined) {
-                // Create a Location with line (0-based in VS Code)
-                const position = new vscode.Position(
-                    segment.line - 1,
-                    segment.column !== undefined ? segment.column - 1 : 0
+                // Create a Location with line or range (convert 1-based to 0-based)
+                const startLine = segment.line - 1;
+                const endLine = segment.endLine !== undefined ? segment.endLine - 1 : startLine;
+                const column = segment.column !== undefined ? segment.column - 1 : 0;
+
+                const range = new vscode.Range(
+                    new vscode.Position(startLine, 0),
+                    new vscode.Position(endLine, column)
                 );
-                const location = new vscode.Location(fileUri, position);
+                const location = new vscode.Location(fileUri, range);
                 stream.anchor(location, segment.title);
             } else {
                 // Just a file reference without line number
