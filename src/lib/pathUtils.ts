@@ -168,7 +168,7 @@ export interface MarkdownSegment {
  * Matches markdown links like:
  * - [file.ts:42](file.ts:42)
  * - [src/main.ts](src/main.ts:10:5)
- * - [handler.ts#L45](src/auth/handler.ts:45)
+ * - [handler.ts:45](src/auth/handler.ts:45)
  *
  * @param markdown The markdown content to parse
  * @returns Array of segments alternating between text and file links
