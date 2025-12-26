@@ -68,13 +68,18 @@ export function parseFilePaths(text: string): ParsedPath[] {
  * @returns True if it looks like a valid file path
  */
 function isValidFilePath(path: string): boolean {
-    // Must have a file extension
-    if (!/\.[a-zA-Z0-9]+$/.test(path)) {
+    // Get the filename (last segment of path)
+    const filename = path.split(/[/\\]/).pop() || path;
+
+    // Must have a file extension OR be a dot-prefixed file (like .gitignore, .env)
+    const hasDotPrefix = filename.startsWith('.') && filename.length > 1;
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(path);
+    if (!hasDotPrefix && !hasExtension) {
         return false;
     }
 
     // Must not be too short or too long
-    if (path.length < 3 || path.length > 1000) {
+    if (path.length < 2 || path.length > 1000) {
         return false;
     }
 
@@ -83,8 +88,8 @@ function isValidFilePath(path: string): boolean {
         return false;
     }
 
-    // Must not be just dots
-    if (/^\.+$/.test(path.replace(/[/\\]/g, ''))) {
+    // Must not be just dots (like . or ..)
+    if (/^\.\.?$/.test(filename)) {
         return false;
     }
 
@@ -98,6 +103,7 @@ function isValidFilePath(path: string): boolean {
  * - src/file.ts:42:10 (line:column)
  * - src/file.ts:104-115 (line range)
  * - src/file.ts
+ * - .gitignore, .env (dot files)
  * - C:\src\file.ts:42 (Windows absolute paths)
  * - D:\project\main.ts:10:5
  *
@@ -115,9 +121,12 @@ export function parseFilePathFromUrl(url: string): { filePath: string; line?: nu
     // - :line (single line)
     // - :line-endLine (line range)
     // - :line:column (line and column)
-    // Supports both Unix and Windows paths
-    const match = url.match(/^((?:[a-zA-Z]:[/\\])?[^:]+\.[a-zA-Z0-9]+)(?::(\d+)(?:-(\d+)|:(\d+))?)?$/);
-
+    // Supports:
+    // - Paths with extensions: src/file.ts, C:\file.ts
+    // - Dot files: .gitignore, src/.env
+    const match = url.match(
+        /^((?:[a-zA-Z]:[/\\])?(?:[^:]*\/)?(?:\.[^:/\\]+|[^:]+\.[a-zA-Z0-9]+))(?::(\d+)(?:-(\d+)|:(\d+))?)?$/
+    );
     if (!match) {
         return null;
     }

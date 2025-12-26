@@ -12,6 +12,7 @@ export interface WebviewMessage<T = any> {
 export interface OpenFilePayload {
     filePath: string;
     line?: number;
+    endLine?: number;
     column?: number;
 }
 

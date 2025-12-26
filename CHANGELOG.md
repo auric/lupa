@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Windows path support in markdown links**: Fixed `parseFilePathFromUrl` to correctly handle Windows absolute paths with drive letters (e.g., `C:\src\file.ts:42`). The regex was incorrectly rejecting paths containing colons.
 - **Line range support in file links**: Added support for line ranges like `file.ts:104-115` in markdown file references. Previously only single lines (`:42`) or line:column (`:42:10`) were supported.
 - **Chat participant file links**: File references in chat output now use VS Code's `stream.anchor()` API for proper clickable navigation instead of plain markdown links. This fixes the issue where markdown file links like `[file.ts:42](file.ts:42)` were not clickable in VS Code Chat.
+- **Dot file support in file links**: Added support for files starting with a dot (e.g., `.gitignore`, `.env`, `src/.eslintrc.js`). These files are now correctly parsed as valid file references.
 
 ## [0.1.1] - 2025-12-26
 

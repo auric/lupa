@@ -32,11 +32,16 @@ export function streamMarkdownWithAnchors(
                 // Create a Location with line or range (convert 1-based to 0-based)
                 const startLine = segment.line - 1;
                 const endLine = segment.endLine !== undefined ? segment.endLine - 1 : startLine;
-                const column = segment.column !== undefined ? segment.column - 1 : 0;
+
+                // For line ranges, use MAX_VALUE for end column so VS Code clamps to line end.
+                // For line:column format, use the specified column.
+                const endColumn = segment.column !== undefined
+                    ? segment.column - 1
+                    : (segment.endLine !== undefined ? Number.MAX_SAFE_INTEGER : 0);
 
                 const range = new vscode.Range(
                     new vscode.Position(startLine, 0),
-                    new vscode.Position(endLine, column)
+                    new vscode.Position(endLine, endColumn)
                 );
                 const location = new vscode.Location(fileUri, range);
                 stream.anchor(location, segment.title);

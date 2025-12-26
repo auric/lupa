@@ -26,19 +26,20 @@ export const MarkdownRenderer = ({
     const customComponents = {
         a: ({ href, children, ...props }: any) => {
             const parsedPath = href ? parseFilePathFromUrl(href) : null;
-            
+
             if (parsedPath) {
                 return (
                     <FileLink
                         filePath={parsedPath.filePath}
                         line={parsedPath.line}
+                        endLine={parsedPath.endLine}
                         column={parsedPath.column}
                     >
                         {children}
                     </FileLink>
                 );
             }
-            
+
             return <a href={href} {...props}>{children}</a>;
         },
         pre: ({ children }: any) => {

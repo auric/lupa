@@ -164,6 +164,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'src/components/Button.tsx',
                 line: undefined,
+                endLine: undefined,
                 column: undefined
             });
         });
@@ -173,6 +174,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'src/utils/helper.ts',
                 line: 45,
+                endLine: undefined,
                 column: undefined
             });
         });
@@ -182,7 +184,54 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'src/main.ts',
                 line: 12,
+                endLine: undefined,
                 column: 34
+            });
+        });
+
+        it('should parse file path with line range', () => {
+            const result = parseFilePathFromUrl('src/file.cpp:104-115');
+            expect(result).toEqual({
+                filePath: 'src/file.cpp',
+                line: 104,
+                endLine: 115,
+                column: undefined
+            });
+        });
+
+        it('should handle dot files without extensions', () => {
+            const result1 = parseFilePathFromUrl('.gitignore');
+            expect(result1).toEqual({
+                filePath: '.gitignore',
+                line: undefined,
+                endLine: undefined,
+                column: undefined
+            });
+
+            const result2 = parseFilePathFromUrl('.env');
+            expect(result2).toEqual({
+                filePath: '.env',
+                line: undefined,
+                endLine: undefined,
+                column: undefined
+            });
+
+            const result3 = parseFilePathFromUrl('src/.env:10');
+            expect(result3).toEqual({
+                filePath: 'src/.env',
+                line: 10,
+                endLine: undefined,
+                column: undefined
+            });
+        });
+
+        it('should handle dot files with extensions', () => {
+            const result = parseFilePathFromUrl('.eslintrc.js:25');
+            expect(result).toEqual({
+                filePath: '.eslintrc.js',
+                line: 25,
+                endLine: undefined,
+                column: undefined
             });
         });
 
@@ -193,7 +242,7 @@ describe('pathUtils', () => {
             expect(parseFilePathFromUrl('ftp://server.com/file.txt')).toBeNull();
         });
 
-        it('should return null for paths without extension', () => {
+        it('should return null for paths without extension or dot prefix', () => {
             expect(parseFilePathFromUrl('src/components/Button')).toBeNull();
             expect(parseFilePathFromUrl('no-extension')).toBeNull();
         });
@@ -209,6 +258,7 @@ describe('pathUtils', () => {
             expect(result1).toEqual({
                 filePath: './src/file.ts',
                 line: undefined,
+                endLine: undefined,
                 column: undefined
             });
 
@@ -216,6 +266,7 @@ describe('pathUtils', () => {
             expect(result2).toEqual({
                 filePath: '../lib/util.js',
                 line: 10,
+                endLine: undefined,
                 column: undefined
             });
         });
@@ -225,6 +276,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: '/home/user/project/file.py',
                 line: 25,
+                endLine: undefined,
                 column: undefined
             });
         });
@@ -234,6 +286,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'C:\\src\\file.ts',
                 line: 42,
+                endLine: undefined,
                 column: undefined
             });
         });
@@ -243,6 +296,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'D:\\project\\src\\main.ts',
                 line: 10,
+                endLine: undefined,
                 column: 5
             });
         });
@@ -252,6 +306,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'C:/Users/test/file.txt',
                 line: 100,
+                endLine: undefined,
                 column: undefined
             });
         });
@@ -261,6 +316,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'E:\\dev\\copilot-review\\src\\extension.ts',
                 line: undefined,
+                endLine: undefined,
                 column: undefined
             });
         });
@@ -271,7 +327,17 @@ describe('pathUtils', () => {
 
         it('should return null for paths that are too short', () => {
             expect(parseFilePathFromUrl('a')).toBeNull();
-            expect(parseFilePathFromUrl('.b')).toBeNull();
+        });
+
+        it('should handle very short dot files', () => {
+            // Short dot files like .b are valid (similar to .a, .z, etc.)
+            const result = parseFilePathFromUrl('.b');
+            expect(result).toEqual({
+                filePath: '.b',
+                line: undefined,
+                endLine: undefined,
+                column: undefined
+            });
         });
 
         it('should handle paths with multiple dots in filename', () => {
@@ -279,6 +345,7 @@ describe('pathUtils', () => {
             expect(result).toEqual({
                 filePath: 'src/file.spec.ts',
                 line: 10,
+                endLine: undefined,
                 column: 5
             });
         });
