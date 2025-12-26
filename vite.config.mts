@@ -62,7 +62,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         outDir: resolve(__dirname, 'dist'),
         sourcemap: !isProduction,
         minify: isProduction,
-        target: 'es2020',
+        target: 'es2024',
         emptyOutDir: false,
         // Suppress chunk size warning for webview (React + dependencies are large)
         chunkSizeWarningLimit: 700,
