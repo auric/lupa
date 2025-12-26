@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFilePaths, ParsedPath, FILE_PATH_REGEX } from '../lib/pathUtils';
+import { parseFilePaths, parseFilePathFromUrl, ParsedPath, FILE_PATH_REGEX } from '../lib/pathUtils';
 
 describe('pathUtils', () => {
     describe('FILE_PATH_REGEX', () => {
@@ -155,6 +155,96 @@ describe('pathUtils', () => {
             expect(paths).toHaveLength(1);
             expect(paths[0].filePath).toBe('d:\\dev\\test.cpp');
             expect(paths[0].line).toBe(45);
+        });
+    });
+
+    describe('parseFilePathFromUrl', () => {
+        it('should parse file path without line numbers', () => {
+            const result = parseFilePathFromUrl('src/components/Button.tsx');
+            expect(result).toEqual({
+                filePath: 'src/components/Button.tsx',
+                line: undefined,
+                column: undefined
+            });
+        });
+
+        it('should parse file path with line number', () => {
+            const result = parseFilePathFromUrl('src/utils/helper.ts:45');
+            expect(result).toEqual({
+                filePath: 'src/utils/helper.ts',
+                line: 45,
+                column: undefined
+            });
+        });
+
+        it('should parse file path with line and column', () => {
+            const result = parseFilePathFromUrl('src/main.ts:12:34');
+            expect(result).toEqual({
+                filePath: 'src/main.ts',
+                line: 12,
+                column: 34
+            });
+        });
+
+        it('should return null for external URLs', () => {
+            expect(parseFilePathFromUrl('https://example.com/file.ts')).toBeNull();
+            expect(parseFilePathFromUrl('http://localhost:3000/test.js')).toBeNull();
+            expect(parseFilePathFromUrl('mailto:test@example.com')).toBeNull();
+            expect(parseFilePathFromUrl('ftp://server.com/file.txt')).toBeNull();
+        });
+
+        it('should return null for paths without extension', () => {
+            expect(parseFilePathFromUrl('src/components/Button')).toBeNull();
+            expect(parseFilePathFromUrl('no-extension')).toBeNull();
+        });
+
+        it('should return null for invalid file paths', () => {
+            expect(parseFilePathFromUrl('invalid:path')).toBeNull();
+            expect(parseFilePathFromUrl('..')).toBeNull();
+            expect(parseFilePathFromUrl('.')).toBeNull();
+        });
+
+        it('should handle relative paths with ./ and ../', () => {
+            const result1 = parseFilePathFromUrl('./src/file.ts');
+            expect(result1).toEqual({
+                filePath: './src/file.ts',
+                line: undefined,
+                column: undefined
+            });
+
+            const result2 = parseFilePathFromUrl('../lib/util.js:10');
+            expect(result2).toEqual({
+                filePath: '../lib/util.js',
+                line: 10,
+                column: undefined
+            });
+        });
+
+        it('should handle absolute Unix paths', () => {
+            const result = parseFilePathFromUrl('/home/user/project/file.py:25');
+            expect(result).toEqual({
+                filePath: '/home/user/project/file.py',
+                line: 25,
+                column: undefined
+            });
+        });
+
+        it('should return null for empty string', () => {
+            expect(parseFilePathFromUrl('')).toBeNull();
+        });
+
+        it('should return null for paths that are too short', () => {
+            expect(parseFilePathFromUrl('a')).toBeNull();
+            expect(parseFilePathFromUrl('.b')).toBeNull();
+        });
+
+        it('should handle paths with multiple dots in filename', () => {
+            const result = parseFilePathFromUrl('src/file.spec.ts:10:5');
+            expect(result).toEqual({
+                filePath: 'src/file.spec.ts',
+                line: 10,
+                column: 5
+            });
         });
     });
 });
