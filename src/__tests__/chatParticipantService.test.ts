@@ -134,6 +134,7 @@ describe('ChatParticipantService', () => {
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
+        let mockGitOperations: any;
 
         beforeEach(() => {
             const mockParticipant = { dispose: vi.fn() };
@@ -161,6 +162,11 @@ describe('ChatParticipantService', () => {
                 generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
                 generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
             };
+            mockGitOperations = {
+                getRepository: vi.fn().mockReturnValue({
+                    rootUri: { fsPath: '/test/git-root' }
+                })
+            };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
                 (_id: string, handler: any) => {
@@ -186,7 +192,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -220,7 +227,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -252,7 +260,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -295,7 +304,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -323,7 +333,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -349,6 +360,7 @@ describe('ChatParticipantService', () => {
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
+        let mockGitOperations: any;
 
         beforeEach(() => {
             const mockParticipant = { dispose: vi.fn() };
@@ -376,6 +388,11 @@ describe('ChatParticipantService', () => {
                 generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
                 generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
             };
+            mockGitOperations = {
+                getRepository: vi.fn().mockReturnValue({
+                    rootUri: { fsPath: '/test/git-root' }
+                })
+            };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
                 (_id: string, handler: any) => {
@@ -401,7 +418,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -435,7 +453,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -465,7 +484,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -493,7 +513,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -527,7 +548,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             await capturedHandler(
@@ -557,7 +579,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             await capturedHandler(
@@ -589,7 +612,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             await capturedHandler(
@@ -621,7 +645,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             await capturedHandler(
@@ -657,7 +682,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -700,7 +726,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             await capturedHandler(
@@ -753,6 +780,7 @@ describe('ChatParticipantService', () => {
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
+        let mockGitOperations: any;
 
         beforeEach(() => {
             const mockParticipant = { dispose: vi.fn() };
@@ -775,6 +803,11 @@ describe('ChatParticipantService', () => {
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
                 generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+            };
+            mockGitOperations = {
+                getRepository: vi.fn().mockReturnValue({
+                    rootUri: { fsPath: '/test/git-root' }
+                })
             };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
@@ -807,7 +840,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 const result = await capturedHandler(
@@ -847,7 +881,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 const result = await capturedHandler(
@@ -894,7 +929,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 const result = await capturedHandler(
@@ -940,7 +976,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 await capturedHandler(
@@ -977,7 +1014,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 const result = await capturedHandler(
@@ -1016,7 +1054,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 const result = await capturedHandler(
@@ -1058,7 +1097,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 const result = await capturedHandler(
@@ -1101,7 +1141,8 @@ describe('ChatParticipantService', () => {
                     toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
-                    promptGenerator: mockPromptGenerator
+                    promptGenerator: mockPromptGenerator,
+                    gitOperations: mockGitOperations
                 });
 
                 const branchMockStream = { markdown: vi.fn(), progress: vi.fn() };
@@ -1135,6 +1176,7 @@ describe('ChatParticipantService', () => {
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
+        let mockGitOperations: any;
 
         beforeEach(() => {
             const mockParticipant = { dispose: vi.fn() };
@@ -1163,6 +1205,11 @@ describe('ChatParticipantService', () => {
                 generateExplorationSystemPrompt: vi.fn().mockReturnValue('Exploration system prompt'),
                 generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
             };
+            mockGitOperations = {
+                getRepository: vi.fn().mockReturnValue({
+                    rootUri: { fsPath: '/test/git-root' }
+                })
+            };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
                 (_id: string, handler: any) => {
@@ -1183,7 +1230,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -1212,7 +1260,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -1237,7 +1286,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             await capturedHandler(
@@ -1278,7 +1328,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -1307,7 +1358,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -1337,7 +1389,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -1370,7 +1423,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -1400,7 +1454,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const result = await capturedHandler(
@@ -1425,7 +1480,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             await capturedHandler(
@@ -1451,7 +1507,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             // Create mock history with proper structure
@@ -1504,7 +1561,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const mockHistory = [
@@ -1545,7 +1603,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             const mockHistory = [
@@ -1576,7 +1635,8 @@ describe('ChatParticipantService', () => {
                 toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
-                promptGenerator: mockPromptGenerator
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations
             });
 
             // Create a model that throws on countTokens

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FindUsagesTool } from '../tools/findUsagesTool';
+import { createMockGitOperationsManager } from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -20,9 +21,11 @@ vi.mock('vscode', async (importOriginal) => {
 
 describe('FindUsagesTool', () => {
     let findUsagesTool: FindUsagesTool;
+    let mockGitOperationsManager: ReturnType<typeof createMockGitOperationsManager>;
 
     beforeEach(() => {
-        findUsagesTool = new FindUsagesTool();
+        mockGitOperationsManager = createMockGitOperationsManager('/test/workspace');
+        findUsagesTool = new FindUsagesTool(mockGitOperationsManager as any);
         vi.clearAllMocks();
 
         // Ensure workspace folders are properly set up for all tests
@@ -107,8 +110,8 @@ describe('FindUsagesTool', () => {
             expect(result.error).toContain('File path cannot be empty');
         });
 
-        it('should handle missing workspace folder', async () => {
-            (vscode.workspace as any).workspaceFolders = null;
+        it('should handle missing git repository', async () => {
+            mockGitOperationsManager.getRepository.mockReturnValue(null);
 
             const result = await findUsagesTool.execute({
                 symbol_name: 'MyClass',
@@ -116,7 +119,7 @@ describe('FindUsagesTool', () => {
             });
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain('No workspace folder is open');
+            expect(result.error).toContain('Git repository not found');
         });
 
         it('should handle file not found error', async () => {
@@ -363,10 +366,10 @@ describe('FindUsagesTool', () => {
 
     describe('error handling', () => {
         it('should handle general execution errors', async () => {
-            // Mock a general error by making Uri.joinPath throw
-            const originalJoinPath = vscode.Uri.joinPath;
-            (vscode.Uri as any).joinPath = vi.fn().mockImplementation(() => {
-                throw new Error('Unexpected error in Uri.joinPath');
+            // Mock a general error by making Uri.file throw
+            const originalFile = vscode.Uri.file;
+            (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
+                throw new Error('Unexpected error in Uri.file');
             });
 
             const result = await findUsagesTool.execute({
@@ -374,11 +377,11 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts'
             });
 
+            // Restore original function
+            (vscode.Uri as any).file = originalFile;
+
             expect(result.success).toBe(false);
             expect(result.error).toContain('Error finding symbol usages');
-
-            // Restore original function
-            (vscode.Uri as any).joinPath = originalJoinPath;
         });
     });
 

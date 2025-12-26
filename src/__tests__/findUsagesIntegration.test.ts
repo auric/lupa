@@ -7,7 +7,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';
+import { createMockWorkspaceSettings, createMockCancellationTokenSource, createMockGitOperationsManager } from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -70,8 +70,9 @@ describe('FindUsages Integration Tests', () => {
         toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
-        // Initialize tools
-        findUsagesTool = new FindUsagesTool();
+        // Initialize tools with mock GitOperationsManager
+        const mockGitOperations = createMockGitOperationsManager('/test/workspace');
+        findUsagesTool = new FindUsagesTool(mockGitOperations as any);
         toolRegistry.registerTool(findUsagesTool);
 
         subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
