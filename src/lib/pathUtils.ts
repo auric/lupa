@@ -124,8 +124,9 @@ export function parseFilePathFromUrl(url: string): { filePath: string; line?: nu
     // Supports:
     // - Paths with extensions: src/file.ts, C:\file.ts
     // - Dot files: .gitignore, src/.env
+    // - Both forward and backslash separators (Windows and Unix)
     const match = url.match(
-        /^((?:[a-zA-Z]:[/\\])?(?:[^:]*\/)?(?:\.[^:/\\]+|[^:]+\.[a-zA-Z0-9]+))(?::(\d+)(?:-(\d+)|:(\d+))?)?$/
+        /^((?:[a-zA-Z]:[/\\])?(?:[^:]*[/\\])?(?:\.[^:/\\]+|[^:]+\.[a-zA-Z0-9]+))(?::(\d+)(?:-(\d+)|:(\d+))?)?$/
     );
     if (!match) {
         return null;
