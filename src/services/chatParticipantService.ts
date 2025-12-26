@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Log } from './loggingService';
 import { GitService } from './gitService';
+import { GitOperationsManager } from './gitOperationsManager';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
@@ -29,6 +30,7 @@ export interface ChatParticipantDependencies {
     toolRegistry: ToolRegistry;
     workspaceSettings: WorkspaceSettingsService;
     promptGenerator: PromptGenerator;
+    gitOperations: GitOperationsManager;
 }
 
 /**
@@ -251,8 +253,8 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
-            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
-            streamMarkdownWithAnchors(stream, result, workspaceRoot);
+            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
+            streamMarkdownWithAnchors(stream, result, gitRootUri);
 
             return {
                 metadata: {
@@ -381,10 +383,10 @@ export class ChatParticipantService implements vscode.Disposable {
 
         const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
 
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        if (workspaceFolder && parsedDiff.length > 0) {
+        const gitRootUri = this.deps!.gitOperations.getRepository()?.rootUri;
+        if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);
-            stream.filetree(fileTree, workspaceFolder.uri);
+            stream.filetree(fileTree, gitRootUri);
         }
 
         const userPrompt = this.deps!.promptGenerator.generateToolCallingUserPrompt(
@@ -415,7 +417,7 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
-        streamMarkdownWithAnchors(stream, analysisResult, workspaceFolder?.uri);
+        streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
         const contentAnalysis = this.analyzeResultContent(analysisResult);
 

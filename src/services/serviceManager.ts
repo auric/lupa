@@ -203,7 +203,8 @@ export class ServiceManager implements vscode.Disposable {
             toolExecutor: this.services.toolExecutor!,
             toolRegistry: this.services.toolRegistry!,
             workspaceSettings: this.services.workspaceSettings!,
-            promptGenerator: this.services.promptGenerator!
+            promptGenerator: this.services.promptGenerator!,
+            gitOperations: this.services.gitOperations!
         });
 
         // Register language model tools for Agent Mode
