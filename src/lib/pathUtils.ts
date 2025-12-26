@@ -68,13 +68,18 @@ export function parseFilePaths(text: string): ParsedPath[] {
  * @returns True if it looks like a valid file path
  */
 function isValidFilePath(path: string): boolean {
-    // Must have a file extension
-    if (!/\.[a-zA-Z0-9]+$/.test(path)) {
+    // Get the filename (last segment of path)
+    const filename = path.split(/[/\\]/).pop() || path;
+
+    // Must have a file extension OR be a dot-prefixed file (like .gitignore, .env)
+    const hasDotPrefix = filename.startsWith('.') && filename.length > 1;
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(path);
+    if (!hasDotPrefix && !hasExtension) {
         return false;
     }
 
     // Must not be too short or too long
-    if (path.length < 3 || path.length > 1000) {
+    if (path.length < 2 || path.length > 1000) {
         return false;
     }
 
@@ -83,10 +88,141 @@ function isValidFilePath(path: string): boolean {
         return false;
     }
 
-    // Must not be just dots
-    if (/^\.+$/.test(path.replace(/[/\\]/g, ''))) {
+    // Must not be just dots (like . or ..)
+    if (/^\.\.?$/.test(filename)) {
         return false;
     }
 
     return true;
+}
+
+/**
+ * Parse a markdown link URL to extract file path and location information.
+ * Supports formats like:
+ * - src/file.ts:42
+ * - src/file.ts:42:10 (line:column)
+ * - src/file.ts:104-115 (line range)
+ * - src/file.ts
+ * - .gitignore, .env (dot files)
+ * - C:\src\file.ts:42 (Windows absolute paths)
+ * - D:\project\main.ts:10:5
+ *
+ * @param url The URL from a markdown link
+ * @returns Parsed path information or null if not a file path
+ */
+export function parseFilePathFromUrl(url: string): { filePath: string; line?: number; endLine?: number; column?: number } | null {
+    // Skip external URLs (http:, https:, mailto:, etc.) but NOT Windows drive letters
+    // Windows drive letters are single letters followed by colon, e.g., C: or D:
+    if (/^[a-z]{2,}:/i.test(url)) {
+        return null;
+    }
+
+    // Match file paths with optional line info:
+    // - :line (single line)
+    // - :line-endLine (line range)
+    // - :line:column (line and column)
+    // Supports:
+    // - Paths with extensions: src/file.ts, C:\file.ts
+    // - Dot files: .gitignore, src/.env
+    // - Both forward and backslash separators (Windows and Unix)
+    const match = url.match(
+        /^((?:[a-zA-Z]:[/\\])?(?:[^:]*[/\\])?(?:\.[^:/\\]+|[^:]+\.[a-zA-Z0-9]+))(?::(\d+)(?:-(\d+)|:(\d+))?)?$/
+    );
+    if (!match) {
+        return null;
+    }
+
+    const filePath = match[1];
+    const line = match[2] ? parseInt(match[2], 10) : undefined;
+    const endLine = match[3] ? parseInt(match[3], 10) : undefined;  // For :line-endLine format
+    const column = match[4] ? parseInt(match[4], 10) : undefined;   // For :line:column format
+
+    if (!isValidFilePath(filePath)) {
+        return null;
+    }
+
+    return { filePath, line, endLine, column };
+}
+
+/**
+ * Represents a segment of markdown content that can be either text or a file link.
+ */
+export interface MarkdownSegment {
+    type: 'text' | 'fileLink';
+    content: string;
+    /** For file links: the parsed file path */
+    filePath?: string;
+    /** For file links: the start line number (1-based) */
+    line?: number;
+    /** For file links: the end line for ranges (1-based), e.g., :104-115 */
+    endLine?: number;
+    /** For file links: the column number (1-based) */
+    column?: number;
+    /** For file links: the display title from markdown link text */
+    title?: string;
+}
+
+/**
+ * Parse markdown content to extract file links and split into segments.
+ * This allows streaming markdown with proper file link handling in VS Code Chat.
+ *
+ * Matches markdown links like:
+ * - [file.ts:42](file.ts:42)
+ * - [src/main.ts](src/main.ts:10:5)
+ * - [handler.ts:45](src/auth/handler.ts:45)
+ *
+ * @param markdown The markdown content to parse
+ * @returns Array of segments alternating between text and file links
+ */
+export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
+    const segments: MarkdownSegment[] = [];
+
+    // Match markdown links: [title](url)
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = linkRegex.exec(markdown)) !== null) {
+        const [fullMatch, title, url] = match;
+        const parsedPath = parseFilePathFromUrl(url);
+
+        // Add text before this match
+        if (match.index > lastIndex) {
+            segments.push({
+                type: 'text',
+                content: markdown.slice(lastIndex, match.index)
+            });
+        }
+
+        if (parsedPath) {
+            // This is a file link
+            segments.push({
+                type: 'fileLink',
+                content: fullMatch,
+                filePath: parsedPath.filePath,
+                line: parsedPath.line,
+                endLine: parsedPath.endLine,
+                column: parsedPath.column,
+                title
+            });
+        } else {
+            // Not a file link, keep as text (regular markdown link)
+            segments.push({
+                type: 'text',
+                content: fullMatch
+            });
+        }
+
+        lastIndex = match.index + fullMatch.length;
+    }
+
+    // Add remaining text after last match
+    if (lastIndex < markdown.length) {
+        segments.push({
+            type: 'text',
+            content: markdown.slice(lastIndex)
+        });
+    }
+
+    return segments;
 }

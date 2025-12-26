@@ -69,7 +69,7 @@ Your response MUST include:
 
 ### Findings
 For each issue discovered, provide:
-- **Location**: \`file/path.ts:lineNumber\`
+- **Location**: [file/path.ts:lineNumber](file/path.ts:lineNumber)
 - **Evidence**: Code snippet demonstrating the issue
 - **Severity**: 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low
 - **Explanation**: Why this is a problem

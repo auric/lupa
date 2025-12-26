@@ -5,6 +5,23 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-12-26
+
+### Changed
+
+#### File Link Format
+
+- **Markdown links for file references**: LLM prompts now instruct models to use markdown link format `[file.ts:42](file.ts:42)` instead of backtick format
+- **Webview markdown link rendering**: File path links in markdown are now rendered as clickable FileLink components
+- **Simplified implementation**: Removed regex-based plain text file path detection in favor of standard markdown links
+
+### Fixed
+
+- **Windows path support in markdown links**: Fixed `parseFilePathFromUrl` to correctly handle Windows absolute paths with drive letters (e.g., `C:\src\file.ts:42`). The regex was incorrectly rejecting paths containing colons.
+- **Line range support in file links**: Added support for line ranges like `file.ts:104-115` in markdown file references. Previously only single lines (`:42`) or line:column (`:42:10`) were supported.
+- **Chat participant file links**: File references in chat output now use VS Code's `stream.anchor()` API for proper clickable navigation instead of plain markdown links. This fixes the issue where markdown file links like `[file.ts:42](file.ts:42)` were not clickable in VS Code Chat.
+- **Dot file support in file links**: Added support for files starting with a dot (e.g., `.gitignore`, `.env`, `src/.eslintrc.js`). These files are now correctly parsed as valid file references.
+
 ## [0.1.1] - 2025-12-26
 
 ### Changed
@@ -97,5 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.2]: https://github.com/auric/lupa/releases/tag/v0.1.2
 [0.1.1]: https://github.com/auric/lupa/releases/tag/v0.1.1
 [0.1.0]: https://github.com/auric/lupa/releases/tag/v0.1.0

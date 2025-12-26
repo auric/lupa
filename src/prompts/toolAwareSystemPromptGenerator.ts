@@ -191,7 +191,7 @@ Tailor your response to the question type:
 - Any important patterns or considerations
 
 **For "Where is X?" questions:**
-- Direct answer with file:line reference
+- Direct answer with markdown file link: \`[src/auth/handler.ts:42](src/auth/handler.ts:42)\`
 - Brief context about why it's there
 
 **For architectural questions:**
@@ -200,8 +200,8 @@ Tailor your response to the question type:
 - Design decisions if evident from code
 
 ### Formatting Guidelines
-- Use \`file:line\` format for code references (e.g., \`src/auth/handler.ts:42\`)
-- Use fenced code blocks with language identifier
+- Use markdown link format for file references: \`[src/auth/handler.ts:42](src/auth/handler.ts:42)\`
+- Use fenced code blocks with language identifier (MUST start on a new line, not inline with text)
 - Keep answers focused—provide depth where requested
 - If the question has multiple parts, address each clearly
 </output_format>`;
@@ -212,7 +212,7 @@ Tailor your response to the question type:
 
 - Finding subtle bugs and logic errors that automated tools miss
 - Identifying security vulnerabilities before they reach production
-- Providing specific, actionable feedback with exact file:line references
+- Providing specific, actionable feedback with exact file references as markdown links
 - Balancing thoroughness with respect for the author's time
 - Using tools proactively to verify assumptions before making claims
 
@@ -665,7 +665,7 @@ Issues that MUST be fixed before merging:
 
 > 🔴 **CRITICAL: [Brief Title]**
 >
-> **Location**: \`src/path/file.ts:42\`
+> **Location**: [src/path/file.ts:42](src/path/file.ts:42)
 >
 > **Issue**: Clear description of the problem
 >
@@ -686,21 +686,21 @@ Issues that MUST be fixed before merging:
 Group by type with severity indicators:
 
 #### Security
-- 🟠 **[\`file.ts:15\`]** Issue description
+- 🟠 **Issue description** at [file.ts:15](file.ts:15)
   - Evidence: \`code snippet\`
   - Recommendation: What to do
 
 #### Performance
-- 🟡 **[\`file.ts:30\`]** Issue description
+- 🟡 **Issue description** at [file.ts:30](file.ts:30)
   - Evidence: \`code snippet\`
   - Recommendation: What to do
 
 #### Code Quality
-- 🟢 **[\`file.ts:45\`]** Issue description
+- 🟢 **Issue description** at [file.ts:45](file.ts:45)
   - Recommendation: What to do
 
 #### Error Handling
-- 🟡 **[\`file.ts:60\`]** Issue description
+- 🟡 **Issue description** at [file.ts:60](file.ts:60)
   - Recommendation: What to do
 
 ### 4. Test Considerations
@@ -710,7 +710,7 @@ Group by type with severity indicators:
 
 ### 5. What's Good (REQUIRED - never skip this section)
 Always find at least one positive observation, even in problematic PRs:
-- Good pattern at \`file.ts:20\` - [description]
+- Good pattern at [file.ts:20](file.ts:20) - [description]
 - Clean implementation of [feature]
 - Thorough error handling in [area]
 
@@ -727,8 +727,8 @@ Always find at least one positive observation, even in problematic PRs:
 - 🟢 **LOW/NITPICK**: Nice to have. Style, minor improvements.
 
 ### Formatting Rules
-- Always include \`file:line\` references using backtick format
-- Use fenced code blocks with language identifier
+- Always use markdown link format for file references: \`[path/file.ts:line](path/file.ts:line)\`
+- Use fenced code blocks with language identifier (code fences MUST be on their own line, never inline)
 - Keep suggestions actionable and specific
 - Don't suggest changes to code outside the diff unless directly affected
 </output_format>`;

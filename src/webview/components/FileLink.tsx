@@ -5,17 +5,19 @@ import { ValidatePathPayload, PathValidationResultPayload } from '../../types/we
 interface FileLinkProps {
     filePath: string;
     line?: number;
+    endLine?: number;
     column?: number;
     children: React.ReactNode;
     className?: string;
 }
 
-export const FileLink: React.FC<FileLinkProps> = ({ 
-    filePath, 
-    line, 
-    column, 
-    children, 
-    className = '' 
+export const FileLink: React.FC<FileLinkProps> = ({
+    filePath,
+    line,
+    endLine,
+    column,
+    children,
+    className = ''
 }) => {
     const [isValid, setIsValid] = useState<boolean | null>(null); // null = pending, false = invalid, true = valid
     const [resolvedPath, setResolvedPath] = useState<string | undefined>();
@@ -27,7 +29,7 @@ export const FileLink: React.FC<FileLinkProps> = ({
 
         const validatePath = () => {
             const requestId = `filelink-${filePath}-${Date.now()}`;
-            
+
             const payload: ValidatePathPayload = {
                 filePath,
                 requestId
@@ -47,7 +49,7 @@ export const FileLink: React.FC<FileLinkProps> = ({
             const message = event.data;
             if (message.command === 'pathValidationResult') {
                 const payload: PathValidationResultPayload = message.payload;
-                
+
                 // Only update if this is our path
                 if (payload.filePath === filePath) {
                     setIsValid(payload.isValid);
@@ -68,6 +70,7 @@ export const FileLink: React.FC<FileLinkProps> = ({
                 payload: {
                     filePath: resolvedPath || filePath,
                     line,
+                    endLine,
                     column
                 }
             });
@@ -77,7 +80,7 @@ export const FileLink: React.FC<FileLinkProps> = ({
     // Show as regular text while validating or if invalid
     if (isValid === null || !isValid) {
         return (
-            <span 
+            <span
                 className={`${isValid === null ? 'text-gray-500' : 'text-inherit'} ${className}`}
                 title={isValid === null ? `Validating: ${filePath}` : `Invalid path: ${filePath}`}
             >

@@ -84,6 +84,12 @@ vscodeMock.Range = vi.fn().mockImplementation(function(startOrStartLine, endOrSt
   this.with = vi.fn();
 });
 
+// Add custom mocks for Location class - Vitest 4 requires function syntax
+vscodeMock.Location = vi.fn().mockImplementation(function(uri, rangeOrPosition) {
+  this.uri = uri;
+  this.range = rangeOrPosition;
+});
+
 // Add custom mocks for InlineCompletionItem class - Vitest 4 requires function syntax
 vscodeMock.InlineCompletionItem = vi.fn().mockImplementation(function(insertText, range, command) {
   this.insertText = insertText;
@@ -708,6 +714,7 @@ export const window = vscodeMock.window;
 export const Uri = vscodeMock.Uri;
 export const Position = vscodeMock.Position;
 export const Range = vscodeMock.Range;
+export const Location = vscodeMock.Location;
 export const TextDocument = vscodeMock.TextDocument;
 export const InlineCompletionItem = vscodeMock.InlineCompletionItem;
 export const InlineCompletionList = vscodeMock.InlineCompletionList;

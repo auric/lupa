@@ -211,7 +211,7 @@ describe('UIManager', () => {
             expect(vscode.Range).toHaveBeenCalled();
         });
 
-        it('should handle negative line/column values', async () => {
+        it('should handle openFile message with line range', async () => {
             const mockDocument = { uri: { fsPath: 'test.ts' } };
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
             (vscode.window.showTextDocument as any).mockResolvedValue(undefined);
@@ -220,15 +220,21 @@ describe('UIManager', () => {
                 command: 'openFile',
                 payload: {
                     filePath: '/path/to/test.ts',
-                    line: -5,
-                    column: -3
+                    line: 10,
+                    endLine: 15,
+                    column: 5
                 }
             };
 
             await messageHandler(message);
 
-            // Should clamp negative values to 0
-            expect(vscode.Position).toHaveBeenCalledWith(0, 0);
+            // Should create a range from line 10 to 15
+            expect(vscode.Position).toHaveBeenCalledWith(9, 4); // 0-based: line 10-1=9, column 5-1=4
+            expect(vscode.Position).toHaveBeenCalledWith(14, Number.MAX_SAFE_INTEGER); // 0-based: endLine 15-1=14, end of line
+            expect(vscode.Range).toHaveBeenCalledWith(
+                expect.any(Object), // start position
+                expect.any(Object)  // end position
+            );
         });
     });
 

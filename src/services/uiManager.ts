@@ -280,8 +280,17 @@ export class UIManager {
                 const line = Math.max(0, payload.line - 1); // Convert to 0-based indexing
                 const column = Math.max(0, (payload.column ?? 1) - 1); // Convert to 0-based indexing
 
-                const position = new vscode.Position(line, column);
-                showOptions.selection = new vscode.Range(position, position);
+                if (payload.endLine !== undefined) {
+                    // Create range for line range selection
+                    const endLine = Math.max(0, payload.endLine - 1); // Convert to 0-based indexing
+                    const startPosition = new vscode.Position(line, column);
+                    const endPosition = new vscode.Position(endLine, Number.MAX_SAFE_INTEGER); // End of endLine
+                    showOptions.selection = new vscode.Range(startPosition, endPosition);
+                } else {
+                    // Single line selection
+                    const position = new vscode.Position(line, column);
+                    showOptions.selection = new vscode.Range(position, position);
+                }
             }
 
             // Show the document in the editor

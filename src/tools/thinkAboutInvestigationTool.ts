@@ -27,7 +27,7 @@ export class ThinkAboutInvestigationTool extends BaseTool {
 
 ### Evidence Gathered
 - What concrete evidence have I found?
-- Do I have file:line references for each finding?
+- Do I have markdown file links for each finding?
 - Are my findings supported by code snippets?
 
 ### Tool Budget

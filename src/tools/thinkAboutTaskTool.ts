@@ -34,7 +34,7 @@ Have I evaluated:
 
 ### Finding Quality
 For each finding I plan to report:
-□ Do I have a specific file:line reference?
+□ Do I have a specific markdown file link?
 □ Can I show evidence (code snippet)?
 □ Is my severity assessment justified?
 □ Is my recommendation actionable?

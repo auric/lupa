@@ -5,7 +5,7 @@ import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { CopyButton } from './CopyButton';
 import { FileLink } from './FileLink';
-import { parseFilePaths } from '../../lib/pathUtils';
+import { parseFilePathFromUrl } from '../../lib/pathUtils';
 
 interface MarkdownRendererProps {
     content: string;
@@ -15,80 +15,6 @@ interface MarkdownRendererProps {
     onCopy?: (text: string) => void;
 }
 
-// Component for processing text with file links
-// React Compiler handles memoization automatically
-const ProcessedText = ({
-    children,
-    elementType,
-    componentId,
-}: {
-    children: React.ReactNode;
-    elementType: string;
-    componentId: string;
-}) => {
-
-    // Handle both string and array children
-    const processChildrenRecursively = (children: React.ReactNode): React.ReactNode => {
-        // If it's a string, process it for file links
-        if (typeof children === 'string') {
-            return processStringForLinks(children);
-        }
-
-        // If it's an array, recursively process each child
-        if (Array.isArray(children)) {
-            return <>{children.map((child, index) => (
-                <React.Fragment key={index}>
-                    {processChildrenRecursively(child)}
-                </React.Fragment>
-            ))}</>;
-        }
-
-        // For other React nodes, return as-is
-        return children;
-    };
-
-    const processStringForLinks = (text: string): React.ReactNode => {
-        const parsedPaths = parseFilePaths(text);
-        if (parsedPaths.length === 0) {
-            return text;
-        }
-
-        // Split text and replace ALL detected paths with FileLink components
-        let result: React.ReactNode[] = [];
-        let lastIndex = 0;
-
-        parsedPaths.forEach((path, index) => {
-            // Add text before this path
-            if (path.startIndex > lastIndex) {
-                result.push(text.slice(lastIndex, path.startIndex));
-            }
-
-            // Always add FileLink - it will handle validation internally
-            result.push(
-                <FileLink
-                    key={`${componentId}-link-${index}`}
-                    filePath={path.filePath}
-                    line={path.line}
-                    column={path.column}
-                >
-                    {path.fullMatch.trim()}
-                </FileLink>
-            );
-
-            lastIndex = path.endIndex;
-        });
-
-        // Add remaining text after last path
-        if (lastIndex < text.length) {
-            result.push(text.slice(lastIndex));
-        }
-
-        return <>{result}</>;
-    };
-
-    return <>{processChildrenRecursively(children)}</>;
-};
-
 export const MarkdownRenderer = ({
     content,
     id,
@@ -97,100 +23,25 @@ export const MarkdownRenderer = ({
     onCopy
 }: MarkdownRendererProps) => {
 
-    // Custom components with file path replacement
     const customComponents = {
-        // Override paragraph and heading rendering to handle file path replacement
-        p: ({ children, ...props }: any) => (
-            <p {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="p"
-                    componentId={id}
-                />
-            </p>
-        ),
-        h1: ({ children, ...props }: any) => (
-            <h1 {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="h1"
-                    componentId={id}
-                />
-            </h1>
-        ),
-        h2: ({ children, ...props }: any) => (
-            <h2 {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="h2"
-                    componentId={id}
-                />
-            </h2>
-        ),
-        h3: ({ children, ...props }: any) => (
-            <h3 {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="h3"
-                    componentId={id}
-                />
-            </h3>
-        ),
-        h4: ({ children, ...props }: any) => (
-            <h4 {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="h4"
-                    componentId={id}
-                />
-            </h4>
-        ),
-        h5: ({ children, ...props }: any) => (
-            <h5 {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="h5"
-                    componentId={id}
-                />
-            </h5>
-        ),
-        h6: ({ children, ...props }: any) => (
-            <h6 {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="h6"
-                    componentId={id}
-                />
-            </h6>
-        ),
-        li: ({ children, ...props }: any) => (
-            <li {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="li"
-                    componentId={id}
-                />
-            </li>
-        ),
-        strong: ({ children, ...props }: any) => (
-            <strong {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="strong"
-                    componentId={id}
-                />
-            </strong>
-        ),
-        em: ({ children, ...props }: any) => (
-            <em {...props}>
-                <ProcessedText
-                    children={children}
-                    elementType="em"
-                    componentId={id}
-                />
-            </em>
-        ),
-        // Keep existing code block handling
+        a: ({ href, children, ...props }: any) => {
+            const parsedPath = href ? parseFilePathFromUrl(href) : null;
+
+            if (parsedPath) {
+                return (
+                    <FileLink
+                        filePath={parsedPath.filePath}
+                        line={parsedPath.line}
+                        endLine={parsedPath.endLine}
+                        column={parsedPath.column}
+                    >
+                        {children}
+                    </FileLink>
+                );
+            }
+
+            return <a href={href} {...props}>{children}</a>;
+        },
         pre: ({ children }: any) => {
             return <>{children}</>;
         },
@@ -256,7 +107,6 @@ export const MarkdownRenderer = ({
                     </div>
                 );
             } else {
-                // Inline code - process for file links
                 return (
                     <code
                         className="bg-muted px-1 py-0.5 rounded"
@@ -267,11 +117,7 @@ export const MarkdownRenderer = ({
                         }}
                         {...props}
                     >
-                        <ProcessedText
-                            children={children}
-                            elementType="code"
-                            componentId={id}
-                        />
+                        {children}
                     </code>
                 );
             }

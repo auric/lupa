@@ -124,21 +124,22 @@
 
 ## Utilities (`src/utils/`)
 
-| Utility               | File                     | Description                       |
-| --------------------- | ------------------------ | --------------------------------- |
-| `DiffUtils`           | `diffUtils.ts`           | Parse and analyze diffs           |
-| `PathSanitizer`       | `pathSanitizer.ts`       | Path validation and security      |
-| `SymbolExtractor`     | `symbolExtractor.ts`     | VS Code symbol extraction         |
-| `SymbolMatcher`       | `symbolMatcher.ts`       | Symbol name matching and cleaning |
-| `SymbolFormatter`     | `symbolFormatter.ts`     | Symbol formatting utilities       |
-| `OutputFormatter`     | `outputFormatter.ts`     | Tool output formatting            |
-| `FileDiscoverer`      | `fileDiscoverer.ts`      | File discovery with fdir          |
-| `FileTreeBuilder`     | `fileTreeBuilder.ts`     | Build file tree for chat UI       |
-| `CodeFileDetector`    | `codeFileDetector.ts`    | Detect source code files          |
-| `CodeFileUtils`       | `codeFileUtils.ts`       | Code file utilities               |
-| `GitUtils`            | `gitUtils.ts`            | Git helper functions              |
-| `AsyncUtils`          | `asyncUtils.ts`          | Async utilities (withTimeout)     |
-| `ChatResponseBuilder` | `chatResponseBuilder.ts` | Chat response formatting          |
+| Utility                | File                      | Description                            |
+| ---------------------- | ------------------------- | -------------------------------------- |
+| `DiffUtils`            | `diffUtils.ts`            | Parse and analyze diffs                |
+| `PathSanitizer`        | `pathSanitizer.ts`        | Path validation and security           |
+| `SymbolExtractor`      | `symbolExtractor.ts`      | VS Code symbol extraction              |
+| `SymbolMatcher`        | `symbolMatcher.ts`        | Symbol name matching and cleaning      |
+| `SymbolFormatter`      | `symbolFormatter.ts`      | Symbol formatting utilities            |
+| `OutputFormatter`      | `outputFormatter.ts`      | Tool output formatting                 |
+| `FileDiscoverer`       | `fileDiscoverer.ts`       | File discovery with fdir               |
+| `FileTreeBuilder`      | `fileTreeBuilder.ts`      | Build file tree for chat UI            |
+| `CodeFileDetector`     | `codeFileDetector.ts`     | Detect source code files               |
+| `CodeFileUtils`        | `codeFileUtils.ts`        | Code file utilities                    |
+| `GitUtils`             | `gitUtils.ts`             | Git helper functions                   |
+| `AsyncUtils`           | `asyncUtils.ts`           | Async utilities (withTimeout)          |
+| `ChatResponseBuilder`  | `chatResponseBuilder.ts`  | Chat response formatting               |
+| `ChatMarkdownStreamer` | `chatMarkdownStreamer.ts` | Stream markdown with clickable anchors |
 
 ---
 
@@ -203,10 +204,11 @@
 
 ## UI Library (`src/lib/` and `src/components/`)
 
-| File              | Description                          |
-| ----------------- | ------------------------------------ |
-| `lib/utils.ts`    | `cn()` utility for className merging |
-| `components/ui/*` | shadcn/ui generated components       |
+| File               | Description                                 |
+| ------------------ | ------------------------------------------- |
+| `lib/utils.ts`     | `cn()` utility for className merging        |
+| `lib/pathUtils.ts` | File path parsing, markdown link extraction |
+| `components/ui/*`  | shadcn/ui generated components              |
 
 ---
 
