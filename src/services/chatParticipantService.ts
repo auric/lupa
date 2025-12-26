@@ -13,6 +13,7 @@ import { ChatContextManager } from '../models/chatContextManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
+import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
@@ -250,7 +251,8 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
-            stream.markdown(result);
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+            streamMarkdownWithAnchors(stream, result, workspaceRoot);
 
             return {
                 metadata: {
@@ -413,7 +415,7 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
-        stream.markdown(analysisResult);
+        streamMarkdownWithAnchors(stream, analysisResult, workspaceFolder?.uri);
 
         const contentAnalysis = this.analyzeResultContent(analysisResult);
 

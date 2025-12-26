@@ -97,17 +97,26 @@ function isValidFilePath(path: string): boolean {
  * - src/file.ts:42
  * - src/file.ts:42:10
  * - src/file.ts
- * 
+ * - C:\src\file.ts:42 (Windows absolute paths)
+ * - D:\project\main.ts:10:5
+ *
  * @param url The URL from a markdown link
  * @returns Parsed path information or null if not a file path
  */
 export function parseFilePathFromUrl(url: string): { filePath: string; line?: number; column?: number } | null {
-    if (/^[a-z]+:/i.test(url)) {
+    // Skip external URLs (http:, https:, mailto:, etc.) but NOT Windows drive letters
+    // Windows drive letters are single letters followed by colon, e.g., C: or D:
+    if (/^[a-z]{2,}:/i.test(url)) {
         return null;
     }
 
-    const match = url.match(/^([^:]+\.[a-zA-Z0-9]+)(?::(\d+))?(?::(\d+))?$/);
-    
+    // Match file paths with optional line and column numbers
+    // Supports both Unix and Windows paths:
+    // - Unix: src/file.ts, /home/user/file.ts
+    // - Windows: C:\src\file.ts, D:\project\main.ts
+    // The regex allows an optional Windows drive letter prefix (e.g., C:\ or D:/)
+    const match = url.match(/^((?:[a-zA-Z]:[/\\])?[^:]+\.[a-zA-Z0-9]+)(?::(\d+))?(?::(\d+))?$/);
+
     if (!match) {
         return null;
     }
@@ -121,4 +130,84 @@ export function parseFilePathFromUrl(url: string): { filePath: string; line?: nu
     }
 
     return { filePath, line, column };
+}
+
+/**
+ * Represents a segment of markdown content that can be either text or a file link.
+ */
+export interface MarkdownSegment {
+    type: 'text' | 'fileLink';
+    content: string;
+    /** For file links: the parsed file path */
+    filePath?: string;
+    /** For file links: the line number (1-based) */
+    line?: number;
+    /** For file links: the column number (1-based) */
+    column?: number;
+    /** For file links: the display title from markdown link text */
+    title?: string;
+}
+
+/**
+ * Parse markdown content to extract file links and split into segments.
+ * This allows streaming markdown with proper file link handling in VS Code Chat.
+ *
+ * Matches markdown links like:
+ * - [file.ts:42](file.ts:42)
+ * - [src/main.ts](src/main.ts:10:5)
+ * - [handler.ts#L45](src/auth/handler.ts:45)
+ *
+ * @param markdown The markdown content to parse
+ * @returns Array of segments alternating between text and file links
+ */
+export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
+    const segments: MarkdownSegment[] = [];
+
+    // Match markdown links: [title](url)
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = linkRegex.exec(markdown)) !== null) {
+        const [fullMatch, title, url] = match;
+        const parsedPath = parseFilePathFromUrl(url);
+
+        // Add text before this match
+        if (match.index > lastIndex) {
+            segments.push({
+                type: 'text',
+                content: markdown.slice(lastIndex, match.index)
+            });
+        }
+
+        if (parsedPath) {
+            // This is a file link
+            segments.push({
+                type: 'fileLink',
+                content: fullMatch,
+                filePath: parsedPath.filePath,
+                line: parsedPath.line,
+                column: parsedPath.column,
+                title
+            });
+        } else {
+            // Not a file link, keep as text (regular markdown link)
+            segments.push({
+                type: 'text',
+                content: fullMatch
+            });
+        }
+
+        lastIndex = match.index + fullMatch.length;
+    }
+
+    // Add remaining text after last match
+    if (lastIndex < markdown.length) {
+        segments.push({
+            type: 'text',
+            content: markdown.slice(lastIndex)
+        });
+    }
+
+    return segments;
 }

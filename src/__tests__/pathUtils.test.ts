@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFilePaths, parseFilePathFromUrl, ParsedPath, FILE_PATH_REGEX } from '../lib/pathUtils';
+import { parseFilePaths, parseFilePathFromUrl, parseMarkdownFileLinks, ParsedPath, FILE_PATH_REGEX, MarkdownSegment } from '../lib/pathUtils';
 
 describe('pathUtils', () => {
     describe('FILE_PATH_REGEX', () => {
@@ -229,6 +229,42 @@ describe('pathUtils', () => {
             });
         });
 
+        it('should handle Windows absolute paths with drive letter', () => {
+            const result = parseFilePathFromUrl('C:\\src\\file.ts:42');
+            expect(result).toEqual({
+                filePath: 'C:\\src\\file.ts',
+                line: 42,
+                column: undefined
+            });
+        });
+
+        it('should handle Windows paths with line and column', () => {
+            const result = parseFilePathFromUrl('D:\\project\\src\\main.ts:10:5');
+            expect(result).toEqual({
+                filePath: 'D:\\project\\src\\main.ts',
+                line: 10,
+                column: 5
+            });
+        });
+
+        it('should handle Windows paths with forward slashes', () => {
+            const result = parseFilePathFromUrl('C:/Users/test/file.txt:100');
+            expect(result).toEqual({
+                filePath: 'C:/Users/test/file.txt',
+                line: 100,
+                column: undefined
+            });
+        });
+
+        it('should handle Windows paths without line numbers', () => {
+            const result = parseFilePathFromUrl('E:\\dev\\copilot-review\\src\\extension.ts');
+            expect(result).toEqual({
+                filePath: 'E:\\dev\\copilot-review\\src\\extension.ts',
+                line: undefined,
+                column: undefined
+            });
+        });
+
         it('should return null for empty string', () => {
             expect(parseFilePathFromUrl('')).toBeNull();
         });
@@ -244,6 +280,104 @@ describe('pathUtils', () => {
                 filePath: 'src/file.spec.ts',
                 line: 10,
                 column: 5
+            });
+        });
+    });
+
+    describe('parseMarkdownFileLinks', () => {
+        it('should parse simple markdown with no links', () => {
+            const result = parseMarkdownFileLinks('Hello world');
+            expect(result).toEqual([
+                { type: 'text', content: 'Hello world' }
+            ]);
+        });
+
+        it('should parse single file link', () => {
+            const result = parseMarkdownFileLinks('Check [file.ts:42](file.ts:42)');
+            expect(result).toHaveLength(2);
+            expect(result[0]).toEqual({ type: 'text', content: 'Check ' });
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content: '[file.ts:42](file.ts:42)',
+                filePath: 'file.ts',
+                line: 42,
+                column: undefined,
+                title: 'file.ts:42'
+            });
+        });
+
+        it('should parse file link with path', () => {
+            const result = parseMarkdownFileLinks('See [handler](src/auth/handler.ts:45)');
+            expect(result).toHaveLength(2);
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content: '[handler](src/auth/handler.ts:45)',
+                filePath: 'src/auth/handler.ts',
+                line: 45,
+                column: undefined,
+                title: 'handler'
+            });
+        });
+
+        it('should parse multiple file links', () => {
+            const markdown = 'Check [a.ts](a.ts:10) and [b.ts](b.ts:20)';
+            const result = parseMarkdownFileLinks(markdown);
+            expect(result).toHaveLength(4);
+            expect(result[0]).toEqual({ type: 'text', content: 'Check ' });
+            expect(result[1].type).toBe('fileLink');
+            expect(result[1].filePath).toBe('a.ts');
+            expect(result[2]).toEqual({ type: 'text', content: ' and ' });
+            expect(result[3].type).toBe('fileLink');
+            expect(result[3].filePath).toBe('b.ts');
+        });
+
+        it('should preserve external links as text', () => {
+            const result = parseMarkdownFileLinks('Visit [Google](https://google.com)');
+            expect(result).toEqual([
+                { type: 'text', content: 'Visit ' },
+                { type: 'text', content: '[Google](https://google.com)' }
+            ]);
+        });
+
+        it('should handle Windows paths in links', () => {
+            const result = parseMarkdownFileLinks('See [main.ts](C:\\project\\main.ts:100)');
+            expect(result).toHaveLength(2);
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content: '[main.ts](C:\\project\\main.ts:100)',
+                filePath: 'C:\\project\\main.ts',
+                line: 100,
+                column: undefined,
+                title: 'main.ts'
+            });
+        });
+
+        it('should handle file links with line and column', () => {
+            const result = parseMarkdownFileLinks('Error at [file.ts:10:5](file.ts:10:5)');
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content: '[file.ts:10:5](file.ts:10:5)',
+                filePath: 'file.ts',
+                line: 10,
+                column: 5,
+                title: 'file.ts:10:5'
+            });
+        });
+
+        it('should handle empty string', () => {
+            const result = parseMarkdownFileLinks('');
+            expect(result).toEqual([]);
+        });
+
+        it('should handle mixed content with code blocks', () => {
+            const markdown = 'Issue in [utils.ts](utils.ts:42)\n\n```ts\nconst x = 1;\n```';
+            const result = parseMarkdownFileLinks(markdown);
+            expect(result).toHaveLength(3);
+            expect(result[0]).toEqual({ type: 'text', content: 'Issue in ' });
+            expect(result[1].type).toBe('fileLink');
+            expect(result[2]).toEqual({
+                type: 'text',
+                content: '\n\n```ts\nconst x = 1;\n```'
             });
         });
     });

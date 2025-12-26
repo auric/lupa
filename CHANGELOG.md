@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Webview markdown link rendering**: File path links in markdown are now rendered as clickable FileLink components
 - **Simplified implementation**: Removed regex-based plain text file path detection in favor of standard markdown links
 
+### Fixed
+
+- **Windows path support in markdown links**: Fixed `parseFilePathFromUrl` to correctly handle Windows absolute paths with drive letters (e.g., `C:\src\file.ts:42`). The regex was incorrectly rejecting paths containing colons.
+- **Chat participant file links**: File references in chat output now use VS Code's `stream.anchor()` API for proper clickable navigation instead of plain markdown links. This fixes the issue where markdown file links like `[file.ts:42](file.ts:42)` were not clickable in VS Code Chat.
+
 ## [0.1.1] - 2025-12-26
 
 ### Changed
