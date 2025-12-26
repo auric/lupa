@@ -8,6 +8,12 @@ import { WorkspaceSettingsSchema, WorkspaceSettings, ANALYSIS_LIMITS, SUBAGENT_L
 const getDefaultSettings = (): WorkspaceSettings => WorkspaceSettingsSchema.parse({});
 
 /**
+ * Marker used to indicate the repository path matches the workspace root.
+ * Using "." makes settings portable across machines with different absolute paths.
+ */
+const WORKSPACE_ROOT_MARKER = '.';
+
+/**
  * Service for persisting and loading workspace-specific settings
  */
 export class WorkspaceSettingsService implements vscode.Disposable {
@@ -176,18 +182,54 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the selected repository path for this workspace
+     * Get the primary workspace root path
      */
-    public getSelectedRepositoryPath(): string | undefined {
-        return this.settings.selectedRepositoryPath;
+    private getWorkspaceRootPath(): string | undefined {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return undefined;
+        }
+        return workspaceFolders[0].uri.fsPath;
     }
 
     /**
-     * Set the selected repository path for this workspace
-     * @param path The absolute path to the repository root
+     * Normalize path for comparison (lowercase on Windows, consistent separators)
      */
-    public setSelectedRepositoryPath(path: string | undefined): void {
-        this.settings.selectedRepositoryPath = path;
+    private normalizePath(p: string): string {
+        const normalized = p.replace(/\\/g, '/');
+        return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+    }
+
+    /**
+     * Get the selected repository path for this workspace.
+     * Resolves the "." marker back to the workspace root path.
+     */
+    public getSelectedRepositoryPath(): string | undefined {
+        const storedPath = this.settings.selectedRepositoryPath;
+        if (storedPath === WORKSPACE_ROOT_MARKER) {
+            return this.getWorkspaceRootPath();
+        }
+        return storedPath;
+    }
+
+    /**
+     * Set the selected repository path for this workspace.
+     * Stores "." when the path matches the workspace root for portability.
+     * @param repoPath The absolute path to the repository root
+     */
+    public setSelectedRepositoryPath(repoPath: string | undefined): void {
+        if (repoPath === undefined) {
+            this.settings.selectedRepositoryPath = undefined;
+            this.debouncedSaveSettings();
+            return;
+        }
+
+        const workspaceRoot = this.getWorkspaceRootPath();
+        if (workspaceRoot && this.normalizePath(repoPath) === this.normalizePath(workspaceRoot)) {
+            this.settings.selectedRepositoryPath = WORKSPACE_ROOT_MARKER;
+        } else {
+            this.settings.selectedRepositoryPath = repoPath;
+        }
         this.debouncedSaveSettings();
     }
 
