@@ -103,9 +103,10 @@ describe('streamMarkdownWithAnchors', () => {
         );
         expect(mockStream.markdown).toHaveBeenCalledWith('.');
 
-        // Verify line:column is correctly converted
-        expect(vscode.Position).toHaveBeenCalledWith(9, 0); // 10-1 = 9 (start)
-        expect(vscode.Position).toHaveBeenCalledWith(9, 4); // 5-1 = 4 (column)
+        // Verify line:column creates zero-width selection at (line, column)
+        // Both start and end should be at the same position (cursor positioning)
+        expect(vscode.Position).toHaveBeenCalledWith(9, 4); // 10-1 = 9, 5-1 = 4
+        expect(vscode.Position).toHaveBeenCalledWith(9, 4); // Same position for zero-width selection
         expect(vscode.Range).toHaveBeenCalled();
         expect(vscode.Location).toHaveBeenCalled();
     });

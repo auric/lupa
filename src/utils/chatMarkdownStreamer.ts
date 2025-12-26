@@ -33,14 +33,17 @@ export function streamMarkdownWithAnchors(
                 const startLine = segment.line - 1;
                 const endLine = segment.endLine !== undefined ? segment.endLine - 1 : startLine;
 
-                // For line ranges, use MAX_VALUE for end column so VS Code clamps to line end.
-                // For line:column format, use the specified column.
-                const endColumn = segment.column !== undefined
-                    ? segment.column - 1
-                    : (segment.endLine !== undefined ? Number.MAX_SAFE_INTEGER : 0);
+                // Determine column positions based on format:
+                // - line:column (e.g., file.ts:42:10) → cursor at specific position (zero-width)
+                // - line-endLine (e.g., file.ts:10-20) → select entire line range
+                // - line only (e.g., file.ts:42) → cursor at start of line (zero-width)
+                const startColumn = segment.column !== undefined ? segment.column - 1 : 0;
+                const endColumn = segment.endLine !== undefined
+                    ? Number.MAX_SAFE_INTEGER  // Line range: select to end of last line
+                    : startColumn;             // Single position: zero-width selection
 
                 const range = new vscode.Range(
-                    new vscode.Position(startLine, 0),
+                    new vscode.Position(startLine, startColumn),
                     new vscode.Position(endLine, endColumn)
                 );
                 const location = new vscode.Location(fileUri, range);
