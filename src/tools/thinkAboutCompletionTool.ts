@@ -28,7 +28,7 @@ My review includes:
 □ Questions - Clarifications needed (if any)
 
 ### Quality Check
-□ Every finding has a specific file:line reference
+□ Every finding has a specific markdown file link
 □ Code examples provided where helpful
 □ Severity levels are justified and consistent
 □ Recommendations are specific and actionable

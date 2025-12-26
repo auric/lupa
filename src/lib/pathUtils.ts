@@ -90,3 +90,39 @@ function isValidFilePath(path: string): boolean {
 
     return true;
 }
+
+/**
+ * Parse a markdown link URL to extract file path and location information.
+ * Supports formats like:
+ * - src/file.ts:42
+ * - src/file.ts:42:10
+ * - src/file.ts
+ * 
+ * @param url The URL from a markdown link
+ * @returns Parsed path information or null if not a file path
+ */
+export function parseFilePathFromUrl(url: string): { filePath: string; line?: number; column?: number } | null {
+    // Ignore external URLs (http://, https://, mailto:, etc.)
+    if (/^[a-z]+:/i.test(url)) {
+        return null;
+    }
+
+    // Match file path with optional line and column numbers
+    // Format: path/to/file.ext or path/to/file.ext:line or path/to/file.ext:line:col
+    const match = url.match(/^([^:]+\.[a-zA-Z0-9]+)(?::(\d+))?(?::(\d+))?$/);
+    
+    if (!match) {
+        return null;
+    }
+
+    const filePath = match[1];
+    const line = match[2] ? parseInt(match[2], 10) : undefined;
+    const column = match[3] ? parseInt(match[3], 10) : undefined;
+
+    // Validate the file path
+    if (!isValidFilePath(filePath)) {
+        return null;
+    }
+
+    return { filePath, line, column };
+}

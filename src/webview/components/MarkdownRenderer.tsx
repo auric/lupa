@@ -5,7 +5,7 @@ import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { CopyButton } from './CopyButton';
 import { FileLink } from './FileLink';
-import { parseFilePaths } from '../../lib/pathUtils';
+import { parseFilePaths, parseFilePathFromUrl } from '../../lib/pathUtils';
 
 interface MarkdownRendererProps {
     content: string;
@@ -190,6 +190,27 @@ export const MarkdownRenderer = ({
                 />
             </em>
         ),
+        // Handle markdown links - convert file path links to FileLink components
+        a: ({ href, children, ...props }: any) => {
+            // Try to parse the href as a file path
+            const parsedPath = href ? parseFilePathFromUrl(href) : null;
+            
+            if (parsedPath) {
+                // This is a file path link - render as FileLink
+                return (
+                    <FileLink
+                        filePath={parsedPath.filePath}
+                        line={parsedPath.line}
+                        column={parsedPath.column}
+                    >
+                        {children}
+                    </FileLink>
+                );
+            }
+            
+            // Not a file path - render as regular link
+            return <a href={href} {...props}>{children}</a>;
+        },
         // Keep existing code block handling
         pre: ({ children }: any) => {
             return <>{children}</>;

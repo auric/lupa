@@ -93,20 +93,20 @@ describe('ToolAwareSystemPromptGenerator', () => {
     });
 
     describe('file path format (AC-2.1.9)', () => {
-        it('should use backtick format for file paths', () => {
+        it('should use markdown link format for file paths', () => {
             const prompt = generator.generateSystemPrompt([]);
-            // Check for backtick file format pattern like `file.ts:15`
-            expect(prompt).toMatch(/`[a-zA-Z/]+\.ts:\d+`/);
+            // Check for markdown link format pattern like [file.ts:15](file.ts:15)
+            expect(prompt).toMatch(/\[[a-zA-Z/]+\.ts:\d+\]\([a-zA-Z/]+\.ts:\d+\)/);
         });
 
-        it('should include Location field with backtick format', () => {
+        it('should include Location field with markdown link format', () => {
             const prompt = generator.generateSystemPrompt([]);
-            expect(prompt).toContain('**Location**: `src/path/file.ts:42`');
+            expect(prompt).toContain('[src/path/file.ts:42](src/path/file.ts:42)');
         });
 
-        it('should include formatting rule about backtick format', () => {
+        it('should include formatting rule about markdown link format', () => {
             const prompt = generator.generateSystemPrompt([]);
-            expect(prompt).toContain('`file:line` references using backtick format');
+            expect(prompt).toContain('markdown link format for file references');
         });
     });
 
