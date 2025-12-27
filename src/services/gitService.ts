@@ -384,7 +384,7 @@ export class GitService {
             if (originHead) {
                 // Extract branch name from value like 'refs/heads/main'
                 const match = originHead.value.match(/refs\/heads\/(.+)/);
-                if (match) {
+                if (match && match[1]) {
                     this.defaultBranchCache = match[1];
                     Log.info(`Default branch from config: ${match[1]}`);
                     return match[1];
@@ -449,7 +449,7 @@ export class GitService {
                 try {
                     const gitOutput = await this.executeGitCommand(['remote', 'show', remote.name]);
                     const match = gitOutput.match(/HEAD branch: (.+)/);
-                    if (match) {
+                    if (match && match[1]) {
                         this.defaultBranchCache = match[1];
                         Log.info(`Default branch from remote: ${match[1]}`);
                         return match[1];

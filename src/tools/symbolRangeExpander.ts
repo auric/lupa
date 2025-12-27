@@ -71,7 +71,9 @@ export class SymbolRangeExpander {
 
     // Expand backwards to include comments and decorators
     for (let line = startLine - 1; line >= 0; line--) {
-      const lineText = lines[line].trim();
+      const currentLine = lines[line];
+      if (!currentLine) break;
+      const lineText = currentLine.trim();
       if (lineText.startsWith('//') || lineText.startsWith('/*') || lineText.startsWith('@') || lineText === '') {
         expandedStartLine = line;
       } else {
@@ -85,6 +87,7 @@ export class SymbolRangeExpander {
 
     for (let line = startLine; line < lines.length; line++) {
       const lineText = lines[line];
+      if (!lineText) continue;
 
       // Count braces to find the end of blocks
       for (const char of lineText) {
@@ -95,7 +98,8 @@ export class SymbolRangeExpander {
           braceCount--;
           if (inFunction && braceCount === 0) {
             expandedEndLine = line;
-            return new vscode.Range(expandedStartLine, 0, expandedEndLine, lines[expandedEndLine].length);
+            const endLineText = lines[expandedEndLine];
+            return new vscode.Range(expandedStartLine, 0, expandedEndLine, endLineText?.length ?? 0);
           }
         }
       }
@@ -110,6 +114,7 @@ export class SymbolRangeExpander {
     // Default expansion: include a few lines of context
     expandedEndLine = Math.min(document.lineCount - 1, symbolRange.end.line + 5);
 
-    return new vscode.Range(expandedStartLine, 0, expandedEndLine, lines[expandedEndLine].length);
+    const endLineText = lines[expandedEndLine];
+    return new vscode.Range(expandedStartLine, 0, expandedEndLine, endLineText?.length ?? 0);
   }
 }

@@ -220,8 +220,16 @@ export class TokenValidator {
         }
 
         const assistantMessage = messages[assistantIndex];
+        if (!assistantMessage || !assistantMessage.toolCalls) {
+            return {
+                found: false,
+                messages,
+                toolResultsRemoved: 0,
+                assistantMessagesRemoved: 0
+            };
+        }
         const toolCallIds = new Set(
-            assistantMessage.toolCalls!.map(call => call.id)
+            assistantMessage.toolCalls.map(call => call.id)
         );
 
         // Filter out the assistant message and ALL its corresponding tool results

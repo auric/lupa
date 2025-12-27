@@ -138,7 +138,8 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
       const fileUri = vscode.Uri.file(targetPath);
       const { symbols, document } = await this.symbolExtractor.extractSymbolsWithContext(fileUri);
 
-      if (symbols.length > 0 && 'children' in symbols[0]) {
+      const firstSymbol = symbols[0];
+      if (symbols.length > 0 && firstSymbol && 'children' in firstSymbol) {
         const result = SymbolFormatter.formatSymbolsWithHierarchy(
           symbols as vscode.DocumentSymbol[],
           document,
@@ -174,7 +175,8 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
         const document = options.includeBody ? await this.symbolExtractor.getTextDocument(fileUri) : undefined;
 
         // Only process DocumentSymbols for hierarchy (SymbolInformation doesn't have hierarchy)
-        if (symbols.length > 0 && 'children' in symbols[0]) {
+        const firstSymbol = symbols[0];
+        if (symbols.length > 0 && firstSymbol && 'children' in firstSymbol) {
           const remainingSymbols = options.maxSymbols - totalSymbolCount;
           const result = SymbolFormatter.formatSymbolsWithHierarchy(
             symbols as vscode.DocumentSymbol[],

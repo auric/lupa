@@ -22,6 +22,7 @@ export class DiffUtils {
             if (fileMatch) {
                 const oldPath = fileMatch[1];
                 const newPath = fileMatch[2];
+                if (!oldPath || !newPath) continue;
 
                 // Determine file operation type
                 const isNewFile = oldPath === 'dev/null';
@@ -29,7 +30,7 @@ export class DiffUtils {
                 const filePath = isDeletedFile ? oldPath : newPath;
 
                 currentFile = {
-                    filePath: filePath,
+                    filePath,
                     hunks: [],
                     isNewFile: isNewFile,
                     isDeletedFile: isDeletedFile,
@@ -53,9 +54,13 @@ export class DiffUtils {
                 // Check for hunk header (@@ -oldStart,oldLines +newStart,newLines @@)
                 const hunkHeaderMatch = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(line);
                 if (hunkHeaderMatch) {
-                    const oldStart = parseInt(hunkHeaderMatch[1], 10);
+                    const oldStartStr = hunkHeaderMatch[1];
+                    const newStartStr = hunkHeaderMatch[3];
+                    if (!oldStartStr || !newStartStr) continue;
+
+                    const oldStart = parseInt(oldStartStr, 10);
                     const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1;
-                    const newStart = parseInt(hunkHeaderMatch[3], 10);
+                    const newStart = parseInt(newStartStr, 10);
                     const newLines = hunkHeaderMatch[4] ? parseInt(hunkHeaderMatch[4], 10) : 1;
 
                     currentHunk = {
@@ -145,7 +150,7 @@ export class DiffUtils {
 
         for (const line of lines) {
             const fileMatch = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
-            if (fileMatch) {
+            if (fileMatch && fileMatch[2]) {
                 filePaths.push(fileMatch[2]); // Use the "b/" path (new file path)
             }
         }

@@ -345,7 +345,7 @@ export class UIManager {
 
             // Strategy 3: Relative to workspace root (fallback)
             if (!isValid && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-                const workspaceRoot = vscode.workspace.workspaceFolders[0].uri;
+                const workspaceRoot = vscode.workspace.workspaceFolders[0]!.uri;
                 const workspaceRelativeUri = vscode.Uri.joinPath(workspaceRoot, payload.filePath);
                 try {
                     const fileStat = await vscode.workspace.fs.stat(workspaceRelativeUri);

@@ -165,8 +165,8 @@ Requires file_path where the symbol is defined as starting point.`;
    */
   private findWholeWordIndex(line: string, symbolName: string): number {
     const escaped = symbolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const firstChar = symbolName[0];
-    const lastChar = symbolName[symbolName.length - 1];
+    const firstChar = symbolName[0] ?? '';
+    const lastChar = symbolName[symbolName.length - 1] ?? '';
     const isFirstWordChar = /\w/.test(firstChar);
     const isLastWordChar = /\w/.test(lastChar);
 
@@ -191,6 +191,7 @@ Requires file_path where the symbol is defined as starting point.`;
     // Look for the symbol in the document
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
+      if (!line) continue;
       const symbolIndex = this.findWholeWordIndex(line, symbolName);
 
       if (symbolIndex !== -1) {
@@ -220,6 +221,7 @@ Requires file_path where the symbol is defined as starting point.`;
     // If no definition found, return the first occurrence as fallback
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
+      if (!line) continue;
       const symbolIndex = this.findWholeWordIndex(line, symbolName);
 
       if (symbolIndex !== -1) {

@@ -63,7 +63,7 @@ export class SymbolMatcher {
     // If symbol is longer than target, check that the next character indicates end of identifier
     // This prevents "Shutdown" from matching "ShutdownMethod" but allows "Shutdown()", "Shutdown.Service", etc.
     if (symbolName.length > targetName.length) {
-      const nextChar = symbolName[targetName.length];
+      const nextChar = symbolName[targetName.length] ?? '';
       // Reject if followed by alphanumeric or underscore (indicates we're in middle of different identifier)
       // Allow any other character (punctuation, operators, etc.) - this handles all languages universally
       return !/^[a-zA-Z0-9_]/.test(nextChar);
@@ -188,12 +188,16 @@ export class SymbolMatcher {
 
     if (pathSegments.length === 1) {
       // Simple search: just match symbol name
-      return this.isExactSymbolMatch(symbol.name, pathSegments[0]);
+      const target = pathSegments[0];
+      if (!target) return false;
+      return this.isExactSymbolMatch(symbol.name, target);
     }
 
     if (pathSegments.length === 2) {
       // Most common case: "Container/symbol"
-      const [targetContainer, targetSymbol] = pathSegments;
+      const targetContainer = pathSegments[0];
+      const targetSymbol = pathSegments[1];
+      if (!targetContainer || !targetSymbol) return false;
       return this.matchesContainer(symbol.containerName, targetContainer) &&
         this.isExactSymbolMatch(symbol.name, targetSymbol);
     }
@@ -235,6 +239,10 @@ export class SymbolMatcher {
       for (let i = 0; i < needle.length; i++) {
         const haystackItem = haystack[start + i];
         const needleItem = needle[i];
+        if (!haystackItem || !needleItem) {
+          matches = false;
+          break;
+        }
 
         // For the last item (symbol name), use smart symbol matching
         if (i === needle.length - 1) {

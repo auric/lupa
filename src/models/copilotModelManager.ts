@@ -122,7 +122,7 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
                 return this.selectFallbackModel();
             }
 
-            const [model] = models;
+            const model = models[0]!;
             this.currentModel = model;
 
             if (options?.version) {
@@ -161,8 +161,9 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
                 throw new Error('No language models available');
             }
 
-            this.currentModel = models[0];
-            return models[0];
+            const model = models[0]!;
+            this.currentModel = model;
+            return model;
         } catch (err) {
             Log.error('Failed to select any model:', err);
             throw new Error('No language models available');

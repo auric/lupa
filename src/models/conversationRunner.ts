@@ -263,9 +263,11 @@ export class ConversationRunner {
 
         // Notify handler about tool calls starting (with parsed args for message formatting)
         for (let i = 0; i < toolCalls.length; i++) {
+            const toolCall = toolCalls[i]!;
+            const toolRequest = toolRequests[i]!;
             handler?.onToolCallStart?.(
-                toolCalls[i].function.name,
-                toolRequests[i].args as Record<string, unknown>,
+                toolCall.function.name,
+                toolRequest.args as Record<string, unknown>,
                 i,
                 toolCalls.length
             );
@@ -277,10 +279,10 @@ export class ConversationRunner {
         const avgDuration = results.length > 0 ? Math.floor((endTime - startTime) / results.length) : 0;
 
         for (let i = 0; i < results.length; i++) {
-            const result = results[i];
-            const toolCall = toolCalls[i];
+            const result = results[i]!;
+            const toolCall = toolCalls[i]!;
+            const request = toolRequests[i]!;
             const toolCallId = toolCall.id || `tool_call_${i}`;
-            const request = toolRequests[i];
 
             const baseContent = result.success && result.result
                 ? result.result
