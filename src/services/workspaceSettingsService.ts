@@ -193,10 +193,14 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Normalize path for comparison (lowercase on Windows, consistent separators)
+     * Normalize path for comparison.
+     * Handles: backslashes, trailing slashes, double slashes, and case sensitivity on Windows.
      */
     private normalizePath(p: string): string {
-        const normalized = p.replace(/\\/g, '/');
+        let normalized = p
+            .replace(/\\/g, '/')           // Convert backslashes to forward slashes
+            .replace(/\/+/g, '/')          // Collapse multiple slashes to single
+            .replace(/\/$/, '');           // Remove trailing slash
         return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
     }
 
