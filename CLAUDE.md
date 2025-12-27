@@ -79,6 +79,7 @@ Use `Log` from `loggingService.ts`, not `console.log`. Exception: webviews may u
 
 - Use `gitOperationsManager.getRepository()?.rootUri.fsPath` for the Git root
 - Never use `vscode.workspace.workspaceFolders[0]` for file operations in tools
+- Never use `vscode.workspace.asRelativePath()` — it computes paths relative to workspace folders, not git root. Use `path.relative(gitRoot, absolutePath)` instead
 - `WorkspaceSettingsService` stores `.` as a relative marker when repo path equals workspace root (for portability)
 
 ### Tool Results

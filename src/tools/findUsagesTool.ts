@@ -111,7 +111,7 @@ Requires file_path where the symbol is defined as starting point.`;
         for (const reference of uniqueReferences) {
           try {
             const refDocument = await vscode.workspace.openTextDocument(reference.uri);
-            const relativeFilePath = vscode.workspace.asRelativePath(reference.uri);
+            const relativeFilePath = path.relative(gitRootDirectory, reference.uri.fsPath).replace(/\\/g, '/');
 
             // Extract context lines around the reference
             const contextText = this.formatter.extractContextLines(
@@ -129,7 +129,7 @@ Requires file_path where the symbol is defined as starting point.`;
 
             formattedUsages.push(formattedUsage);
           } catch (error) {
-            const relativeFilePath = vscode.workspace.asRelativePath(reference.uri);
+            const relativeFilePath = path.relative(gitRootDirectory, reference.uri.fsPath).replace(/\\/g, '/');
             const errorUsage = this.formatter.formatErrorUsage(
               relativeFilePath,
               sanitizedSymbolName,

@@ -17,7 +17,6 @@ vi.mock('vscode', async (importOriginal) => {
             ...vscodeMock.workspace,
             textDocuments: [],
             openTextDocument: vi.fn(),
-            asRelativePath: vi.fn((uri) => 'src/test.ts'),
             workspaceFolders: [{
                 uri: { fsPath: '/test/workspace' }
             }]
@@ -105,19 +104,19 @@ describe('FindUsages Integration Tests', () => {
             // Setup mock document and references
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('class MyClass {\n  method() {}\n}\n\nconst instance = new MyClass();'),
-                uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferences = [
                 {
-                    uri: { toString: () => 'file:///src/test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: {
                         start: { line: 4, character: 21 },
                         end: { line: 4, character: 28 }
                     }
                 },
                 {
-                    uri: { toString: () => 'file:///src/other.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/other.ts', fsPath: '/test/workspace/src/other.ts' },
                     range: {
                         start: { line: 2, character: 10 },
                         end: { line: 2, character: 17 }
@@ -134,7 +133,7 @@ describe('FindUsages Integration Tests', () => {
             (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeDefinitionProvider') {
                     return Promise.resolve([{
-                        uri: { toString: () => 'file:///src/test.ts' },
+                        uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                         range: { contains: () => true }
                     }]);
                 }
@@ -193,7 +192,7 @@ describe('FindUsages Integration Tests', () => {
         it('should handle no usages found scenario', async () => {
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('class UnusedClass {}'),
-                uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
@@ -240,19 +239,19 @@ describe('FindUsages Integration Tests', () => {
         it('should handle multiple tool calls in sequence', async () => {
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('class ClassA {}\nclass ClassB {}'),
-                uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferencesA = [
                 {
-                    uri: { toString: () => 'file:///src/usage.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/usage.ts', fsPath: '/test/workspace/src/usage.ts' },
                     range: { start: { line: 0, character: 15 }, end: { line: 0, character: 21 } }
                 }
             ];
 
             const mockReferencesB = [
                 {
-                    uri: { toString: () => 'file:///src/usage.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/usage.ts', fsPath: '/test/workspace/src/usage.ts' },
                     range: { start: { line: 1, character: 15 }, end: { line: 1, character: 21 } }
                 }
             ];
@@ -345,7 +344,7 @@ describe('FindUsages Integration Tests', () => {
         it('should handle shouldIncludeDeclaration parameter correctly', async () => {
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('class MyClass {}'),
-                uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
@@ -388,12 +387,12 @@ describe('FindUsages Integration Tests', () => {
         it('should respect context_line_count parameter', async () => {
             const mockDocument = {
                 getText: vi.fn().mockReturnValue('line1\nline2\nclass MyClass {}\nline4\nline5'),
-                uri: { toString: () => 'file:///src/test.ts', fsPath: '/src/test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferences = [
                 {
-                    uri: { toString: () => 'file:///src/test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: { start: { line: 2, character: 6 }, end: { line: 2, character: 13 } }
                 }
             ];

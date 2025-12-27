@@ -11,7 +11,6 @@ vi.mock('vscode', async (importOriginal) => {
             ...vscodeMock.workspace,
             workspaceFiles: [],
             openTextDocument: vi.fn(),
-            asRelativePath: vi.fn(() => `relative/path/file.ts`),
             workspaceFolders: [{
                 uri: { fsPath: '/test/workspace' }
             }]
@@ -153,12 +152,12 @@ describe('FindUsagesTool', () => {
         it('should find and format symbol usages with context', async () => {
             const mockDocument = {
                 getText: () => 'class MyClass {\n  method() {}\n}\nconst instance = new MyClass();',
-                uri: { toString: () => 'file:///test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferences = [
                 {
-                    uri: { toString: () => 'file:///test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: {
                         start: { line: 3, character: 21 },
                         end: { line: 3, character: 28 }
@@ -173,7 +172,7 @@ describe('FindUsagesTool', () => {
             (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeDefinitionProvider') {
                     return Promise.resolve([{
-                        uri: { toString: () => 'file:///test.ts' },
+                        uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                         range: { contains: () => true }
                     }]);
                 }
@@ -191,7 +190,7 @@ describe('FindUsagesTool', () => {
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
-            expect(result.data).toContain('=== relative/path/file.ts ===');
+            expect(result.data).toContain('=== src/test.ts ===');
             expect(result.data).toContain('3: }');
             expect(result.data).not.toContain('"location"');
         });
@@ -221,19 +220,19 @@ describe('FindUsagesTool', () => {
         it('should deduplicate references correctly', async () => {
             const mockDocument = {
                 getText: () => 'class MyClass {}',
-                uri: { toString: () => 'file:///test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const duplicateReferences = [
                 {
-                    uri: { toString: () => 'file:///test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: {
                         start: { line: 0, character: 6 },
                         end: { line: 0, character: 13 }
                     }
                 },
                 {
-                    uri: { toString: () => 'file:///test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: {
                         start: { line: 0, character: 6 },
                         end: { line: 0, character: 13 }
@@ -290,12 +289,12 @@ describe('FindUsagesTool', () => {
         it('should handle document reading errors for references', async () => {
             const mockInitialDocument = {
                 getText: () => 'class MyClass {}',
-                uri: { toString: () => 'file:///test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferences = [
                 {
-                    uri: { toString: () => 'file:///error.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/error.ts', fsPath: '/test/workspace/src/error.ts' },
                     range: {
                         start: { line: 0, character: 0 },
                         end: { line: 0, character: 7 }
@@ -327,12 +326,12 @@ describe('FindUsagesTool', () => {
         it('should respect contextLines parameter', async () => {
             const mockDocument = {
                 getText: () => 'line1\nline2\nclass MyClass {}\nline4\nline5',
-                uri: { toString: () => 'file:///test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferences = [
                 {
-                    uri: { toString: () => 'file:///test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: {
                         start: { line: 2, character: 6 },
                         end: { line: 2, character: 13 }
@@ -357,7 +356,7 @@ describe('FindUsagesTool', () => {
             });
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('=== relative/path/file.ts ===');
+            expect(result.data).toContain('=== src/test.ts ===');
             // Should include line before and after the reference line
             expect(result.data).toContain('2: line2');
             expect(result.data).toContain('line4');
@@ -404,12 +403,12 @@ describe('FindUsagesTool', () => {
         it('should match exact word - "User" should match standalone "User" but not "UserService"', async () => {
             const mockDocument = {
                 getText: () => 'class UserService {}\nconst user: User = new User();',
-                uri: { toString: () => 'file:///test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferences = [
                 {
-                    uri: { toString: () => 'file:///test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: {
                         start: { line: 1, character: 12 },
                         end: { line: 1, character: 16 }
@@ -422,7 +421,7 @@ describe('FindUsagesTool', () => {
             (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeDefinitionProvider') {
                     return Promise.resolve([{
-                        uri: { toString: () => 'file:///test.ts' },
+                        uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                         range: { contains: () => true }
                     }]);
                 }
@@ -445,12 +444,12 @@ describe('FindUsagesTool', () => {
         it('should handle special regex characters - "$scope" should work correctly', async () => {
             const mockDocument = {
                 getText: () => 'const scope = 1;\nconst $scope = angular.scope;\n$scope.apply();',
-                uri: { toString: () => 'file:///test.ts' }
+                uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' }
             };
 
             const mockReferences = [
                 {
-                    uri: { toString: () => 'file:///test.ts' },
+                    uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                     range: {
                         start: { line: 1, character: 6 },
                         end: { line: 1, character: 12 }
@@ -463,7 +462,7 @@ describe('FindUsagesTool', () => {
             (vscode.commands.executeCommand as any).mockImplementation((command: string) => {
                 if (command === 'vscode.executeDefinitionProvider') {
                     return Promise.resolve([{
-                        uri: { toString: () => 'file:///test.ts' },
+                        uri: { toString: () => 'file:///test/workspace/src/test.ts', fsPath: '/test/workspace/src/test.ts' },
                         range: { contains: () => true }
                     }]);
                 }

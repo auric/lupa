@@ -216,23 +216,25 @@ describe('WorkspaceSettingsService', () => {
                 const originalPlatform = process.platform;
                 Object.defineProperty(process, 'platform', { value: 'win32' });
 
-                (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: 'C:\\Test\\Workspace' } }
-                ];
+                try {
+                    (vscode.workspace as any).workspaceFolders = [
+                        { uri: { fsPath: 'C:\\Test\\Workspace' } }
+                    ];
 
-                service = new WorkspaceSettingsService(mockContext);
+                    service = new WorkspaceSettingsService(mockContext);
 
-                service.setSelectedRepositoryPath('c:\\test\\workspace');
-                vi.advanceTimersByTime(600);
+                    service.setSelectedRepositoryPath('c:\\test\\workspace');
+                    vi.advanceTimersByTime(600);
 
-                expect(fs.writeFileSync).toHaveBeenCalledWith(
-                    expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "."'),
-                    'utf-8'
-                );
-
-                // Restore platform
-                Object.defineProperty(process, 'platform', { value: originalPlatform });
+                    expect(fs.writeFileSync).toHaveBeenCalledWith(
+                        expect.any(String),
+                        expect.stringContaining('"selectedRepositoryPath": "."'),
+                        'utf-8'
+                    );
+                } finally {
+                    // Always restore platform, even if test fails
+                    Object.defineProperty(process, 'platform', { value: originalPlatform });
+                }
             });
 
             it('should handle paths with multiple consecutive slashes', () => {
