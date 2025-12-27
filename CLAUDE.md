@@ -73,6 +73,15 @@ The `ServiceManager` initializes services in strict order to resolve dependencie
 
 Use `Log` from `loggingService.ts`, not `console.log`. Exception: webviews may use `console.log`.
 
+### Path Resolution
+
+**Always use Git repository root, not workspace folder**, for file path operations. The Git repo may be in a parent directory or different location than the VS Code workspace.
+
+- Use `gitOperationsManager.getRepository()?.rootUri.fsPath` for the Git root
+- Never use `vscode.workspace.workspaceFolders[0]` for file operations in tools
+- Never use `vscode.workspace.asRelativePath()` — it computes paths relative to workspace folders, not git root. Use `path.relative(gitRoot, absolutePath)` instead
+- `WorkspaceSettingsService` stores `.` as a relative marker when repo path equals workspace root (for portability)
+
 ### Tool Results
 
 Use `toolSuccess(data)` and `toolError(message)` helpers from `src/types/toolResultTypes.ts`.

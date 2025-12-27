@@ -203,7 +203,8 @@ export class ServiceManager implements vscode.Disposable {
             toolExecutor: this.services.toolExecutor!,
             toolRegistry: this.services.toolRegistry!,
             workspaceSettings: this.services.workspaceSettings!,
-            promptGenerator: this.services.promptGenerator!
+            promptGenerator: this.services.promptGenerator!,
+            gitOperations: this.services.gitOperations!
         });
 
         // Register language model tools for Agent Mode
@@ -227,7 +228,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(findSymbolTool);
 
             // Register the FindUsagesTool (Find Usages functionality)
-            const findUsagesTool = new FindUsagesTool();
+            const findUsagesTool = new FindUsagesTool(this.services.gitOperations!);
             this.services.toolRegistry!.registerTool(findUsagesTool);
 
             // Register the ListDirTool (List Directory functionality)
