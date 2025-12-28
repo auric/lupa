@@ -42,18 +42,14 @@ export class CommandRegistry implements vscode.Disposable {
             this.resetAnalysisLimitsToDefaults()
         );
 
-        // Development-only commands - only register in development mode
-        if (this.context.extensionMode === vscode.ExtensionMode.Development) {
-            // Tool testing interface command
-            this.registerCommand('lupa.openToolTesting', () =>
-                this.services.toolTestingWebview.openToolTestingInterface()
-            );
+        // Development/testing commands
+        // Note: These are always registered but only discoverable when included in package.json.
+        // The package-extension.js script controls which commands appear in production vs internal builds.
+        this.registerCommand('lupa.openToolTesting', () =>
+            this.services.toolTestingWebview.openToolTestingInterface()
+        );
 
-            // Test webview command for development
-            this.registerCommand('lupa.testWebview', () =>
-                this.showTestWebview()
-            );
-        }
+        this.registerCommand('lupa.testWebview', () => this.showTestWebview());
     }
 
     /**

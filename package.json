@@ -124,7 +124,7 @@
     },
     "scripts": {
         "prepare": "husky",
-        "vscode:prepublish": "npm run package",
+        "vscode:prepublish": "node scripts/prepublish.js",
         "build": "npm run check-types && npm run build:node && npm run build:webview",
         "build:node": "vite build --mode development",
         "build:webview": "cross-env BUILD_TARGET=webview vite build --mode development",
@@ -133,6 +133,7 @@
         "package:node": "vite build --mode production",
         "package:webview": "cross-env BUILD_TARGET=webview vite build --mode production",
         "package:vsix": "node scripts/package-extension.js",
+        "package:vsix:internal": "node scripts/package-extension.js --internal",
         "licenses:generate": "license-report --output=markdown > THIRD_PARTY_LICENSES.md",
         "licenses:check": "license-checker --summary",
         "pretest": "npm run check-types",
