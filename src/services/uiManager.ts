@@ -122,7 +122,7 @@ export class UIManager {
             titleTruncated = title.substring(0, 97) + '...';
         }
 
-        // Generate nonce for CSP - required for inline scripts in VS Code webviews
+        // Generate nonce for CSP
         const nonce = this.generateNonce();
 
         // Generate URIs for the assets using extension context
@@ -147,6 +147,24 @@ export class UIManager {
         // CSP source for webview resources
         const cspSource = panel.webview.cspSource;
 
+        // Prepare data for meta tag injection (VS Code recommended pattern)
+        // This avoids race conditions with inline scripts
+        const analysisDataJson = JSON.stringify({
+            title: titleTruncated,
+            diffText: diffText,
+            analysis: cleanedAnalysis,
+            toolCalls: toolCalls ?? null,
+        });
+
+        const themeDataJson = JSON.stringify({
+            kind: vscode.window.activeColorTheme.kind,
+            isDarkTheme:
+                vscode.window.activeColorTheme.kind ===
+                    vscode.ColorThemeKind.Dark ||
+                vscode.window.activeColorTheme.kind ===
+                    vscode.ColorThemeKind.HighContrast,
+        });
+
         return `
         <!DOCTYPE html>
         <html>
@@ -154,6 +172,8 @@ export class UIManager {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${cspSource}; font-src ${cspSource}; img-src ${cspSource} data:;">
+            <meta id="analysis-data" data-value="${this.escapeAttribute(analysisDataJson)}">
+            <meta id="theme-data" data-value="${this.escapeAttribute(themeDataJson)}">
             <title>${titleTruncated}</title>
             <link href="${mainStylesUri}" rel="stylesheet">
             <style>
@@ -183,39 +203,22 @@ export class UIManager {
             <div id="root">
                 <div class="loading">Loading analysis...</div>
             </div>
-
-            <script nonce="${nonce}">
-                // Acquire VSCode API immediately and make it globally available
-                window.vscode = (function() {
-                    if (typeof acquireVsCodeApi !== 'undefined') {
-                        return acquireVsCodeApi();
-                    }
-                    return null;
-                })();
-
-                // Inject analysis data into window object
-                window.analysisData = {
-                    title: ${JSON.stringify(titleTruncated)},
-                    diffText: ${JSON.stringify(diffText)},
-                    analysis: ${JSON.stringify(cleanedAnalysis)},
-                    toolCalls: ${JSON.stringify(toolCalls ?? null)}
-                };
-
-                // Inject initial theme data
-                window.initialTheme = {
-                    kind: ${vscode.window.activeColorTheme.kind},
-                    isDarkTheme: ${
-                        vscode.window.activeColorTheme.kind ===
-                            vscode.ColorThemeKind.Dark ||
-                        vscode.window.activeColorTheme.kind ===
-                            vscode.ColorThemeKind.HighContrast
-                    }
-                };
-            </script>
             <script nonce="${nonce}" type="module" src="${mainScriptUri}"></script>
         </body>
         </html>
         `;
+    }
+
+    /**
+     * Escape a string for use in an HTML attribute
+     */
+    private escapeAttribute(value: string): string {
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     /**
