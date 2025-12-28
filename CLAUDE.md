@@ -109,10 +109,10 @@ Prefer `param: string | undefined` over `param?: string` for explicit nullabilit
 - Vitest config uses alias: `vscode` → `__mocks__/vscode.js`
 - React tests: `.tsx` with jsdom environment
 - **Shared mock factories**: Use `src/__tests__/testUtils/mockFactories.ts` for common mocks
-  - `createMockCancellationTokenSource()` - CancellationToken with proper listener tracking
-  - `createMockWorkspaceSettings()` - WorkspaceSettingsService
-  - `createMockFdirInstance()` - fdir file discovery
-  - `createMockGitRepository()` - Git repository
+    - `createMockCancellationTokenSource()` - CancellationToken with proper listener tracking
+    - `createMockWorkspaceSettings()` - WorkspaceSettingsService
+    - `createMockFdirInstance()` - fdir file discovery
+    - `createMockGitRepository()` - Git repository
 - **Vitest 4**: Constructor mocks require `function` syntax, not arrow functions
 
 ---

@@ -257,19 +257,19 @@ All tools extend `BaseTool` and define a Zod schema:
 
 ```typescript
 export abstract class BaseTool implements ITool {
-  abstract name: string;
-  abstract description: string;
-  abstract schema: z.ZodType;
+    abstract name: string;
+    abstract description: string;
+    abstract schema: z.ZodType;
 
-  getVSCodeTool(): vscode.LanguageModelChatTool {
-    return {
-      name: this.name,
-      description: this.description,
-      inputSchema: z.toJSONSchema(this.schema),
-    };
-  }
+    getVSCodeTool(): vscode.LanguageModelChatTool {
+        return {
+            name: this.name,
+            description: this.description,
+            inputSchema: z.toJSONSchema(this.schema),
+        };
+    }
 
-  abstract execute(args: z.infer<this["schema"]>): Promise<ToolResult>;
+    abstract execute(args: z.infer<this['schema']>): Promise<ToolResult>;
 }
 ```
 
@@ -458,10 +458,10 @@ VS Code API mocked via `__mocks__/vscode.js`:
 
 ```json
 {
-  "maxIterations": 25,
-  "requestTimeoutSeconds": 180,
-  "maxSubagentsPerSession": 3,
-  "preferredModelVersion": "gpt-4.1"
+    "maxIterations": 25,
+    "requestTimeoutSeconds": 180,
+    "maxSubagentsPerSession": 3,
+    "preferredModelVersion": "gpt-4.1"
 }
 ```
 
@@ -476,12 +476,12 @@ VS Code API mocked via `__mocks__/vscode.js`:
 Use `Log` from `loggingService.ts`:
 
 ```typescript
-import { Log } from "./services/loggingService";
+import { Log } from './services/loggingService';
 
-Log.info("Analysis started");
-Log.debug("Tool arguments:", args);
-Log.warn("Rate limit approaching");
-Log.error("Tool execution failed:", error);
+Log.info('Analysis started');
+Log.debug('Tool arguments:', args);
+Log.warn('Rate limit approaching');
+Log.error('Tool execution failed:', error);
 ```
 
 **Never use `console.log` in extension code.** Exception: webview code may use console.

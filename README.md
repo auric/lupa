@@ -85,11 +85,11 @@ Settings are stored in `.vscode/lupa.json`:
 
 ```json
 {
-  "preferredModelVersion": "gpt-4.1",
-  "maxIterations": 100,
-  "requestTimeoutSeconds": 300,
-  "maxSubagentsPerSession": 10,
-  "logLevel": "info"
+    "preferredModelVersion": "gpt-4.1",
+    "maxIterations": 100,
+    "requestTimeoutSeconds": 300,
+    "maxSubagentsPerSession": 10,
+    "logLevel": "info"
 }
 ```
 
