@@ -86,6 +86,9 @@ describe('ListDirTool Integration Tests', () => {
         listDirTool = new ListDirTool(mockGitOperationsManager);
         toolRegistry.registerTool(listDirTool);
 
+        // Spy on executeTools to verify it's called
+        vi.spyOn(toolExecutor, 'executeTools');
+
         subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
 
         // Initialize orchestrator
