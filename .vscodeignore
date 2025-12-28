@@ -18,6 +18,7 @@ __mocks__/**
 # -----------------------------------------------------------------------------
 # Configuration and build files (not needed at runtime)
 # -----------------------------------------------------------------------------
+.oxlintrc.json
 tsconfig.json
 tsconfig.tsbuildinfo
 vite.config.mts
@@ -38,6 +39,7 @@ CLAUDE.md
 .github/**
 .claude/**
 .serena/**
+.husky/**
 _bmad/**
 _bmad-output/**
 
