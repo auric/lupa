@@ -287,9 +287,14 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     const gitRootDirectory = this.symbolExtractor.getGitRootPath();
     if (!gitRootDirectory) return [];
 
+    if (pathSegments.length === 0) {
+      Log.warn(`Empty pathSegments array provided for findSymbolsInPath`);
+      return [];
+    }
+
     const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
     const targetPath = path.join(gitRootDirectory, sanitizedPath);
-    const symbolName = pathSegments[pathSegments.length - 1];
+    const symbolName = pathSegments[pathSegments.length - 1]!;
     const startTime = Date.now();
 
     try {
@@ -317,7 +322,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
           const fileUri = vscode.Uri.file(fullFilePath);
           const document = await this.symbolExtractor.getTextDocument(fileUri);
 
-          if (symbols.length > 0 && this.isDocumentSymbol(symbols[0])) {
+          const firstSymbol = symbols[0];
+          if (symbols.length > 0 && firstSymbol && this.isDocumentSymbol(firstSymbol)) {
             // Use simple recursive document symbol search
             const documentMatches = this.findInDocumentSymbolsRecursive(
               symbols as vscode.DocumentSymbol[],
@@ -465,11 +471,13 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
    * @returns True if the path matches the pattern
    */
   private pathMatchesPattern(fullPath: string[], pathSegments: string[]): boolean {
-    if (pathSegments.length === 0) return false;
+    if (pathSegments.length === 0) {
+      return false;
+    }
 
     if (pathSegments.length === 1) {
-      const targetName = pathSegments[0];
-      const lastName = fullPath[fullPath.length - 1];
+      const targetName = pathSegments[0]!;
+      const lastName = fullPath[fullPath.length - 1] ?? '';
       return SymbolMatcher.isExactSymbolMatch(lastName, targetName);
     }
 

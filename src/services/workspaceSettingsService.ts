@@ -62,7 +62,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         }
 
         // Use the first workspace folder as the root
-        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+        const workspaceRoot = workspaceFolders[0]!.uri.fsPath;
         const vscodeDir = path.join(workspaceRoot, '.vscode');
 
         // Create the .vscode directory if it doesn't exist
@@ -189,7 +189,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         if (!workspaceFolders || workspaceFolders.length === 0) {
             return undefined;
         }
-        return workspaceFolders[0].uri.fsPath;
+        return workspaceFolders[0]!.uri.fsPath;
     }
 
     /**

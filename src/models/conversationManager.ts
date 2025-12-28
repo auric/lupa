@@ -42,7 +42,7 @@ export class ConversationManager {
    * @returns The last message or undefined if no messages exist
    */
   getLastMessage(): Message | undefined {
-    return this.messages.length > 0 ? this.deepCloneMessage(this.messages[this.messages.length - 1]) : undefined;
+    return this.messages.length > 0 ? this.deepCloneMessage(this.messages[this.messages.length - 1]!) : undefined;
   }
 
   /**

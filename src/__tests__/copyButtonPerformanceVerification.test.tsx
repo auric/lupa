@@ -153,19 +153,19 @@ describe('Copy Button Performance Verification', () => {
         const buttons = Array.from(document.querySelectorAll('button[title*="Copy"]')).slice(0, 3);
 
         // Click first button
-        fireEvent.click(buttons[0]);
+        fireEvent.click(buttons[0]!);
 
         // First button should show "Copied!" while others show "Copy to clipboard"
-        expect(buttons[0].getAttribute('title')).toBe('Copied!');
-        expect(buttons[1].getAttribute('title')).toBe('Copy to clipboard');
-        expect(buttons[2].getAttribute('title')).toBe('Copy to clipboard');
+        expect(buttons[0]!.getAttribute('title')).toBe('Copied!');
+        expect(buttons[1]!.getAttribute('title')).toBe('Copy to clipboard');
+        expect(buttons[2]!.getAttribute('title')).toBe('Copy to clipboard');
 
         // Click second button
-        fireEvent.click(buttons[1]);
+        fireEvent.click(buttons[1]!);
 
         // Now first and second should show "Copied!"
-        expect(buttons[0].getAttribute('title')).toBe('Copied!');
-        expect(buttons[1].getAttribute('title')).toBe('Copied!');
-        expect(buttons[2].getAttribute('title')).toBe('Copy to clipboard');
+        expect(buttons[0]!.getAttribute('title')).toBe('Copied!');
+        expect(buttons[1]!.getAttribute('title')).toBe('Copied!');
+        expect(buttons[2]!.getAttribute('title')).toBe('Copy to clipboard');
     });
 });

@@ -205,7 +205,6 @@ export class TokenValidator {
         toolResultsRemoved: number;
         assistantMessagesRemoved: number;
     } {
-        // Find the oldest assistant message with tool calls
         const assistantIndex = messages.findIndex(
             msg => msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0
         );
@@ -219,7 +218,7 @@ export class TokenValidator {
             };
         }
 
-        const assistantMessage = messages[assistantIndex];
+        const assistantMessage = messages[assistantIndex]!;
         const toolCallIds = new Set(
             assistantMessage.toolCalls!.map(call => call.id)
         );

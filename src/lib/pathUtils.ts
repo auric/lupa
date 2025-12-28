@@ -31,6 +31,8 @@ export function parseFilePaths(text: string): ParsedPath[] {
 
     while ((match = regex.exec(text)) !== null) {
         let filePath = match[1];
+        if (!filePath) continue;
+
         const lineStr = match[2] || match[4]; // Handle both formats: :123 and "at line 123"
         const columnStr = match[3];
 
@@ -46,8 +48,9 @@ export function parseFilePaths(text: string): ParsedPath[] {
         const column = columnStr ? parseInt(columnStr, 10) : undefined;
 
         // Calculate correct start and end indices
-        const filePathStart = match.index + match[0].indexOf(match[1]);
-        const filePathEnd = filePathStart + match[1].length;
+        const matchedFilePath = match[1]!;
+        const filePathStart = match.index + match[0].indexOf(matchedFilePath);
+        const filePathEnd = filePathStart + matchedFilePath.length;
 
         paths.push({
             fullMatch: match[0],
@@ -128,7 +131,7 @@ export function parseFilePathFromUrl(url: string): { filePath: string; line?: nu
     const match = url.match(
         /^((?:[a-zA-Z]:[/\\])?(?:[^:]*[/\\])?(?:\.[^:/\\]+|[^:]+\.[a-zA-Z0-9]+))(?::(\d+)(?:-(\d+)|:(\d+))?)?$/
     );
-    if (!match) {
+    if (!match || !match[1]) {
         return null;
     }
 
@@ -184,6 +187,7 @@ export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
 
     while ((match = linkRegex.exec(markdown)) !== null) {
         const [fullMatch, title, url] = match;
+        if (!url) continue;
         const parsedPath = parseFilePathFromUrl(url);
 
         // Add text before this match

@@ -109,6 +109,9 @@ export class SymbolFormatter {
 
     // Check if we have DocumentSymbol or SymbolInformation
     const firstSymbol = symbols[0];
+    if (!firstSymbol) {
+      return [];
+    }
 
     if ('children' in firstSymbol) {
       // DocumentSymbol - return top-level symbols only
@@ -182,7 +185,7 @@ export class SymbolFormatter {
             // Add first few lines of body with proper indentation
             for (let i = 0; i < Math.min(bodyLines.length, 5); i++) {
               const line = bodyLines[i];
-              if (line.trim()) {
+              if (line && line.trim()) {
                 const bodyLineNumber = lineNumber + i;
                 lines.push(`${bodyLineNumber}: ${bodyIndent}${line.trim()}`);
               }

@@ -34,7 +34,7 @@ function getVSCodeRipgrepPath(): string {
     }
 
     // Return the first path for error messaging (will fail validation)
-    return candidatePaths[0];
+    return candidatePaths[0]!;
 }
 
 /**
@@ -313,7 +313,7 @@ export class RipgrepSearchService {
             const groups = this.groupConsecutiveLines(sortedMatches);
 
             for (let i = 0; i < groups.length; i++) {
-                const group = groups[i];
+                const group = groups[i]!;
                 for (const match of group) {
                     lines.push(`${match.lineNumber}: ${match.content}`);
                 }
@@ -331,12 +331,13 @@ export class RipgrepSearchService {
     private groupConsecutiveLines(matches: RipgrepMatch[]): RipgrepMatch[][] {
         if (matches.length === 0) return [];
 
+        const firstMatch = matches[0]!;
         const groups: RipgrepMatch[][] = [];
-        let currentGroup: RipgrepMatch[] = [matches[0]];
+        let currentGroup: RipgrepMatch[] = [firstMatch];
 
         for (let i = 1; i < matches.length; i++) {
-            const current = matches[i];
-            const previous = currentGroup[currentGroup.length - 1];
+            const current = matches[i]!;
+            const previous = currentGroup[currentGroup.length - 1]!;
 
             // Allow gap of 1 line between groups
             if (current.lineNumber <= previous.lineNumber + 2) {
