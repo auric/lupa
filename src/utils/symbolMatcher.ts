@@ -184,20 +184,19 @@ export class SymbolMatcher {
    * @returns True if symbol matches the hierarchical pattern
    */
   static matchesWorkspaceSymbol(symbol: vscode.SymbolInformation, pathSegments: string[]): boolean {
-    if (pathSegments.length === 0) return false;
+    if (pathSegments.length === 0) {
+      return false;
+    }
 
     if (pathSegments.length === 1) {
-      // Simple search: just match symbol name
-      const target = pathSegments[0];
-      if (!target) return false;
+      const target = pathSegments[0]!;
       return this.isExactSymbolMatch(symbol.name, target);
     }
 
     if (pathSegments.length === 2) {
       // Most common case: "Container/symbol"
-      const targetContainer = pathSegments[0];
-      const targetSymbol = pathSegments[1];
-      if (!targetContainer || !targetSymbol) return false;
+      const targetContainer = pathSegments[0]!;
+      const targetSymbol = pathSegments[1]!;
       return this.matchesContainer(symbol.containerName, targetContainer) &&
         this.isExactSymbolMatch(symbol.name, targetSymbol);
     }
