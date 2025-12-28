@@ -83,11 +83,35 @@ npm run prepare     # Reinstall hooks
 
 ### Production
 
-| Command                     | Description                     |
-| --------------------------- | ------------------------------- |
-| `npm run package`           | Production build (minified)     |
-| `npm run package:vsix`      | Create .vsix package            |
-| `npm run vscode:prepublish` | Pre-publish hook (runs package) |
+| Command                         | Description                            |
+| ------------------------------- | -------------------------------------- |
+| `npm run package`               | Production build (minified)            |
+| `npm run package:vsix`          | Create .vsix package (production)      |
+| `npm run package:vsix:internal` | Create .vsix with dev features enabled |
+| `npm run vscode:prepublish`     | Pre-publish hook (runs package)        |
+
+### Build Profiles
+
+The extension supports two build profiles for packaging:
+
+| Profile      | Commands                | Webview                 | Use Case                    |
+| ------------ | ----------------------- | ----------------------- | --------------------------- |
+| `production` | Core only               | Core only               | Public release              |
+| `internal`   | All (incl. toolTesting) | All (incl. toolTesting) | Internal testing/dogfooding |
+
+**Production build** (default): Strips development-only commands from package.json and excludes dev webview bundles.
+
+**Internal build**: Full-featured build for internal testing. All commands and webviews included.
+
+```bash
+# Production release
+npm run package:vsix
+
+# Internal build with dev tools
+npm run package:vsix:internal
+```
+
+The profile is controlled via `BUILD_PROFILE` environment variable, with configuration centralized in `scripts/build-profiles.js`.
 
 ---
 

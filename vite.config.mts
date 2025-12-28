@@ -5,7 +5,13 @@
 
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defineConfig, type LibraryOptions, type BuildOptions, type UserConfig, type ConfigEnv } from 'vite';
+import {
+    defineConfig,
+    type LibraryOptions,
+    type BuildOptions,
+    type UserConfig,
+    type ConfigEnv,
+} from 'vite';
 import { viteStaticCopy, type Target } from 'vite-plugin-static-copy';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
@@ -16,7 +22,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // External dependencies function for different entry points
-const isExternalDependency = (source: string, importer: string | undefined, _isResolved: boolean): boolean => {
+const isExternalDependency = (
+    source: string,
+    importer: string | undefined,
+    _isResolved: boolean
+): boolean => {
     // For webview entry, only externalize vscode
     if (importer && importer.includes('src/webview/')) {
         return source === 'vscode';
@@ -28,6 +38,12 @@ const isExternalDependency = (source: string, importer: string | undefined, _isR
 
 export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     const isProduction = mode === 'production';
+    // BUILD_PROFILE controls feature inclusion: 'internal' includes dev features in production builds
+    const buildProfile =
+        process.env.BUILD_PROFILE ||
+        (isProduction ? 'production' : 'development');
+    const includeDevFeatures =
+        buildProfile === 'internal' || buildProfile === 'development';
 
     // Node.js library configuration (extension)
     const libOptions: LibraryOptions = {
@@ -38,13 +54,16 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         fileName: (_format, entryName) => `${entryName}.js`,
     };
 
-    // Webview entry points - exclude toolTesting from production builds
-    const webviewInputs: Record<string, string> = isProduction
-        ? { main: resolve(__dirname, 'src/webview/main.tsx') }
-        : {
-            main: resolve(__dirname, 'src/webview/main.tsx'),
-            toolTesting: resolve(__dirname, 'src/webview/tool-testing/toolTesting.tsx')
-        };
+    // Webview entry points - exclude toolTesting from production builds (unless internal profile)
+    const webviewInputs: Record<string, string> = includeDevFeatures
+        ? {
+              main: resolve(__dirname, 'src/webview/main.tsx'),
+              toolTesting: resolve(
+                  __dirname,
+                  'src/webview/tool-testing/toolTesting.tsx'
+              ),
+          }
+        : { main: resolve(__dirname, 'src/webview/main.tsx') };
 
     // Webview app configuration (browser-like)
     // Note: PrismAsyncLight creates separate chunks for each language - this is expected
@@ -57,7 +76,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
                 assetFileNames: 'webview/[name].[ext]',
                 format: 'esm',
             },
-            external: []
+            external: [],
         },
         outDir: resolve(__dirname, 'dist'),
         sourcemap: !isProduction,
@@ -77,7 +96,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         target: 'es2024',
         rollupOptions: {
             output: {
-                exports: 'named'
+                exports: 'named',
             },
             external: isExternalDependency,
         },
@@ -90,7 +109,10 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     ];
 
     // Determine which build config to use
-    const buildConfig = process.env.BUILD_TARGET === 'webview' ? webviewBuildConfig : nodeBuildConfig;
+    const buildConfig =
+        process.env.BUILD_TARGET === 'webview'
+            ? webviewBuildConfig
+            : nodeBuildConfig;
 
     // Vitest Configuration (from existing setup)
     const testConfig: VitestInlineConfig = {
@@ -109,8 +131,8 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
                     exclude: ['src/**/*.{test,spec}.tsx'],
                     alias: {
                         vscode: resolve(__dirname, './__mocks__/vscode.js'),
-                    }
-                }
+                    },
+                },
             },
             {
                 test: {
@@ -120,18 +142,18 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
                     setupFiles: ['./vitest.jsdom.setup.ts'],
                     alias: {
                         '@': resolve(__dirname, './src'),
-                    }
-                }
-            }
-        ]
+                    },
+                },
+            },
+        ],
     };
 
     // Vite Resolve Configuration (from existing setup)
     const resolveConfig = {
         alias: {
-            'vscode': resolve(__dirname, './__mocks__/vscode.js'),
-            '@': resolve(__dirname, './src')
-        }
+            vscode: resolve(__dirname, './__mocks__/vscode.js'),
+            '@': resolve(__dirname, './src'),
+        },
     };
 
     // Base configuration shared between serve and build
@@ -142,11 +164,14 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
 
     if (command === 'build') {
         // SSR options for Node.js extension build - force bundling of runtime dependencies
-        const ssrConfig = process.env.BUILD_TARGET === 'webview' ? undefined : {
-            // SSR mode externalizes all bare imports by default.
-            // noExternal: true forces bundling of all dependencies except those in rollupOptions.external
-            noExternal: true as const,
-        };
+        const ssrConfig =
+            process.env.BUILD_TARGET === 'webview'
+                ? undefined
+                : {
+                      // SSR mode externalizes all bare imports by default.
+                      // noExternal: true forces bundling of all dependencies except those in rollupOptions.external
+                      noExternal: true as const,
+                  };
 
         config = {
             ...config,
@@ -156,11 +181,14 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
                 react({
                     babel: {
                         plugins: [
-                            ["babel-plugin-react-compiler", {
-                                target: "19" // React 19 support - provides automatic memoization
-                            }]
-                        ]
-                    }
+                            [
+                                'babel-plugin-react-compiler',
+                                {
+                                    target: '19', // React 19 support - provides automatic memoization
+                                },
+                            ],
+                        ],
+                    },
                 }),
                 tailwindcss(),
                 viteStaticCopy({
