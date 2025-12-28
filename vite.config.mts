@@ -45,6 +45,13 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
     const includeDevFeatures =
         buildProfile === 'internal' || buildProfile === 'development';
 
+    // Log profile for debugging (visible during build)
+    if (command === 'build') {
+        console.log(
+            `[vite] BUILD_PROFILE=${buildProfile}, includeDevFeatures=${includeDevFeatures}`
+        );
+    }
+
     // Node.js library configuration (extension)
     const libOptions: LibraryOptions = {
         entry: {
@@ -54,7 +61,7 @@ export default defineConfig(({ mode, command }: ConfigEnv): UserConfig => {
         fileName: (_format, entryName) => `${entryName}.js`,
     };
 
-    // Webview entry points - exclude toolTesting from production builds (unless internal profile)
+    // Webview entry points - include toolTesting only in development mode or internal profile
     const webviewInputs: Record<string, string> = includeDevFeatures
         ? {
               main: resolve(__dirname, 'src/webview/main.tsx'),
