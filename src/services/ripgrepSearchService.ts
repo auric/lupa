@@ -23,8 +23,22 @@ function getVSCodeRipgrepPath(): string {
 
     // Try both possible locations
     const candidatePaths = [
-        path.join(appRoot, 'node_modules', '@vscode', 'ripgrep', 'bin', rgBinary),
-        path.join(appRoot, 'node_modules.asar.unpacked', '@vscode', 'ripgrep', 'bin', rgBinary),
+        path.join(
+            appRoot,
+            'node_modules',
+            '@vscode',
+            'ripgrep',
+            'bin',
+            rgBinary
+        ),
+        path.join(
+            appRoot,
+            'node_modules.asar.unpacked',
+            '@vscode',
+            'ripgrep',
+            'bin',
+            rgBinary
+        ),
     ];
 
     for (const candidatePath of candidatePaths) {
@@ -72,7 +86,12 @@ export interface RipgrepSearchOptions {
 
 interface RipgrepJsonMessage {
     type: 'begin' | 'match' | 'context' | 'end' | 'summary';
-    data: RipgrepBeginData | RipgrepMatchData | RipgrepContextData | RipgrepEndData | RipgrepSummaryData;
+    data:
+        | RipgrepBeginData
+        | RipgrepMatchData
+        | RipgrepContextData
+        | RipgrepEndData
+        | RipgrepSummaryData;
 }
 
 interface RipgrepBeginData {
@@ -129,7 +148,8 @@ export class RipgrepSearchService {
 
         // Validate ripgrep binary exists at startup
         if (!validateRipgrepPath(this.rgPath)) {
-            const errorMsg = `VS Code ripgrep binary not found at: ${this.rgPath}. ` +
+            const errorMsg =
+                `VS Code ripgrep binary not found at: ${this.rgPath}. ` +
                 `This may indicate VS Code has changed its internal structure. ` +
                 `Please report this issue at https://github.com/auric/lupa/issues`;
             throw new Error(errorMsg);
@@ -145,7 +165,7 @@ export class RipgrepSearchService {
 
             const rg: ChildProcess = spawn(this.rgPath, args, {
                 cwd: options.cwd,
-                stdio: ['ignore', 'pipe', 'pipe']
+                stdio: ['ignore', 'pipe', 'pipe'],
             });
 
             let buffer = '';
@@ -156,7 +176,9 @@ export class RipgrepSearchService {
                 buffer = lines.pop() ?? '';
 
                 for (const line of lines) {
-                    if (!line.trim()) continue;
+                    if (!line.trim()) {
+                        continue;
+                    }
 
                     try {
                         const message = JSON.parse(line) as RipgrepJsonMessage;
@@ -175,7 +197,9 @@ export class RipgrepSearchService {
                 // Process remaining buffer
                 if (buffer.trim()) {
                     try {
-                        const message = JSON.parse(buffer) as RipgrepJsonMessage;
+                        const message = JSON.parse(
+                            buffer
+                        ) as RipgrepJsonMessage;
                         this.processMessage(message, results, options.cwd);
                     } catch {
                         // Skip malformed JSON
@@ -207,7 +231,7 @@ export class RipgrepSearchService {
             '--json',
             '--no-heading',
             '--line-number',
-            '--with-filename'
+            '--with-filename',
         ];
 
         if (!options.caseSensitive) {
@@ -259,16 +283,19 @@ export class RipgrepSearchService {
         if (message.type === 'match' || message.type === 'context') {
             const data = message.data as RipgrepMatchData | RipgrepContextData;
             const filePath = this.extractText(data.path);
-            if (!filePath) return;
+            if (!filePath) {
+                return;
+            }
 
             const relativePath = this.normalizeFilePath(filePath, cwd);
-            const lineContent = this.extractText(data.lines)?.replace(/\n$/, '') ?? '';
+            const lineContent =
+                this.extractText(data.lines)?.replace(/\n$/, '') ?? '';
 
             const match: RipgrepMatch = {
                 filePath: relativePath,
                 lineNumber: data.line_number,
                 content: lineContent,
-                isContext: message.type === 'context'
+                isContext: message.type === 'context',
             };
 
             const existing = results.get(relativePath);
@@ -280,8 +307,13 @@ export class RipgrepSearchService {
         }
     }
 
-    private extractText(obj: { text?: string; bytes?: string }): string | undefined {
-        if (obj.text) return obj.text;
+    private extractText(obj: {
+        text?: string;
+        bytes?: string;
+    }): string | undefined {
+        if (obj.text) {
+            return obj.text;
+        }
         if (obj.bytes) {
             try {
                 return Buffer.from(obj.bytes, 'base64').toString('utf-8');
@@ -307,7 +339,9 @@ export class RipgrepSearchService {
             lines.push(`=== ${fileResult.filePath} ===`);
 
             // Sort matches by line number
-            const sortedMatches = [...fileResult.matches].sort((a, b) => a.lineNumber - b.lineNumber);
+            const sortedMatches = [...fileResult.matches].sort(
+                (a, b) => a.lineNumber - b.lineNumber
+            );
 
             // Group consecutive lines
             const groups = this.groupConsecutiveLines(sortedMatches);
@@ -329,7 +363,9 @@ export class RipgrepSearchService {
     }
 
     private groupConsecutiveLines(matches: RipgrepMatch[]): RipgrepMatch[][] {
-        if (matches.length === 0) return [];
+        if (matches.length === 0) {
+            return [];
+        }
 
         const firstMatch = matches[0]!;
         const groups: RipgrepMatch[][] = [];

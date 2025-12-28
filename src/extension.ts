@@ -14,7 +14,9 @@ export async function activate(context: vscode.ExtensionContext) {
         console.log('Lupa extension activated successfully');
     } catch (error) {
         console.error('Failed to activate extension:', error);
-        vscode.window.showErrorMessage(`Failed to activate Lupa: ${error instanceof Error ? error.message : String(error)}`);
+        vscode.window.showErrorMessage(
+            `Failed to activate Lupa: ${error instanceof Error ? error.message : String(error)}`
+        );
     }
 }
 

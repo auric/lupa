@@ -50,4 +50,3 @@
 | kessler    | stuff      | vite-plugin-static-copy         | perpetual      | material              | MIT           | git+https://github.com/sapphi-red/vite-plugin-static-copy.git                | 3.1.4          | 3.1.4             | ^3.1.4          | sapphi-red (https://github.com/sapphi-red)                  |
 | kessler    | stuff      | vitest                          | perpetual      | material              | MIT           | git+https://github.com/vitest-dev/vitest.git                                 | 4.0.16         | 4.0.16            | ^4.0.16         | Anthony Fu <anthonyfu117@hotmail.com>                       |
 | kessler    | stuff      | zod                             | perpetual      | material              | MIT           | git+https://github.com/colinhacks/zod.git                                    | 4.2.1          | 4.2.1             | ^4.2.1          | Colin McDonnell <zod@colinhacks.com>                        |
-

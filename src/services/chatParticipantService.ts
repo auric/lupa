@@ -15,10 +15,13 @@ import { PromptGenerator } from '../models/promptGenerator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
-import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
+import { ACTIVITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
-import type { ChatToolCallHandler, ChatAnalysisMetadata } from '../types/chatTypes';
+import type {
+    ChatToolCallHandler,
+    ChatAnalysisMetadata,
+} from '../types/chatTypes';
 import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
@@ -40,14 +43,17 @@ export interface ChatParticipantDependencies {
  * @param stream The VS Code chat response stream for output
  * @returns ChatToolCallHandler implementation
  */
-function createChatStreamHandler(stream: vscode.ChatResponseStream): ChatToolCallHandler {
+function createChatStreamHandler(
+    stream: vscode.ChatResponseStream
+): ChatToolCallHandler {
     return {
         onProgress: (msg) => stream.progress(msg),
-        onToolStart: () => { },
-        onToolComplete: () => { },
-        onFileReference: () => { },
-        onThinking: (thought) => stream.progress(`${ACTIVITY.thinking} ${thought}`),
-        onMarkdown: (content) => stream.markdown(content)
+        onToolStart: () => {},
+        onToolComplete: () => {},
+        onFileReference: () => {},
+        onThinking: (thought) =>
+            stream.progress(`${ACTIVITY.thinking} ${thought}`),
+        onMarkdown: (content) => stream.markdown(content),
     };
 }
 
@@ -110,7 +116,9 @@ export class ChatParticipantService implements vscode.Disposable {
 
                 this.disposables.push(this.participant);
             }
-            Log.info('[ChatParticipantService]: Chat participant registered successfully');
+            Log.info(
+                '[ChatParticipantService]: Chat participant registered successfully'
+            );
         } catch (error) {
             Log.warn(
                 '[ChatParticipantService]: Chat participant registration failed - Copilot may not be installed',
@@ -190,7 +198,10 @@ export class ChatParticipantService implements vscode.Disposable {
         if (!this.deps) {
             Log.error('[ChatParticipantService]: Dependencies not injected');
             const response = new ChatResponseBuilder()
-                .addErrorSection('Configuration Error', 'Lupa is still initializing. Please try again in a moment.')
+                .addErrorSection(
+                    'Configuration Error',
+                    'Lupa is still initializing. Please try again in a moment.'
+                )
                 .build();
             stream.markdown(response);
             return { errorDetails: { message: 'Service not initialized' } };
@@ -201,32 +212,47 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
-            const timeoutMs = this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+            const timeoutMs =
+                this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
             const client = new ChatLLMClient(request.model, timeoutMs);
-            const runner = new ConversationRunner(client, this.deps.toolExecutor);
+            const runner = new ConversationRunner(
+                client,
+                this.deps.toolExecutor
+            );
             const conversation = new ConversationManager();
             const availableTools = this.deps.toolExecutor.getAvailableTools();
-            const systemPrompt = this.deps.promptGenerator.generateExplorationSystemPrompt(availableTools);
+            const systemPrompt =
+                this.deps.promptGenerator.generateExplorationSystemPrompt(
+                    availableTools
+                );
 
             const hasHistory = context.history && context.history.length > 0;
             if (hasHistory) {
-                stream.progress(`${ACTIVITY.thinking} Continuing conversation...`);
+                stream.progress(
+                    `${ACTIVITY.thinking} Continuing conversation...`
+                );
                 try {
                     const contextManager = new ChatContextManager();
-                    const historyMessages = await contextManager.prepareConversationHistory(
-                        context.history,
-                        request.model,
-                        systemPrompt,
-                        token
-                    );
+                    const historyMessages =
+                        await contextManager.prepareConversationHistory(
+                            context.history,
+                            request.model,
+                            systemPrompt,
+                            token
+                        );
                     if (historyMessages.length > 0) {
                         conversation.prependHistoryMessages(historyMessages);
                     }
                 } catch (error) {
-                    Log.warn('[ChatParticipantService]: History processing failed, continuing without', error);
+                    Log.warn(
+                        '[ChatParticipantService]: History processing failed, continuing without',
+                        error
+                    );
                 }
             } else {
-                stream.progress(`${ACTIVITY.thinking} Understanding your question...`);
+                stream.progress(
+                    `${ACTIVITY.thinking} Understanding your question...`
+                );
             }
 
             conversation.addUserMessage(request.prompt);
@@ -238,9 +264,10 @@ export class ChatParticipantService implements vscode.Disposable {
             const result = await runner.run(
                 {
                     systemPrompt,
-                    maxIterations: this.deps.workspaceSettings.getMaxIterations(),
+                    maxIterations:
+                        this.deps.workspaceSettings.getMaxIterations(),
                     tools: availableTools,
-                    label: 'Chat exploration'
+                    label: 'Chat exploration',
                 },
                 conversation,
                 token,
@@ -268,11 +295,19 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            Log.error('[ChatParticipantService]: Exploration mode failed', error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            Log.error(
+                '[ChatParticipantService]: Exploration mode failed',
+                error
+            );
 
             const response = new ChatResponseBuilder()
-                .addErrorSection('Exploration Error', 'Something went wrong while exploring. Please try again.', errorMessage)
+                .addErrorSection(
+                    'Exploration Error',
+                    'Something went wrong while exploring. Please try again.',
+                    errorMessage
+                )
                 .build();
             stream.markdown(response);
 
@@ -281,8 +316,8 @@ export class ChatParticipantService implements vscode.Disposable {
                 metadata: {
                     command: 'exploration',
                     cancelled: false,
-                    responseIsIncomplete: true
-                }
+                    responseIsIncomplete: true,
+                },
             };
         }
     }
@@ -295,16 +330,25 @@ export class ChatParticipantService implements vscode.Disposable {
         stream: vscode.ChatResponseStream,
         token: vscode.CancellationToken,
         progressMessage: string,
-        gitOp: () => Promise<{ diffText: string; refName: string; error?: string }>,
+        gitOp: () => Promise<{
+            diffText: string;
+            refName: string;
+            error?: string;
+        }>,
         noChangesMessage: string,
         scopeLabel: string
     ): Promise<vscode.ChatResult> {
-        Log.info(`[ChatParticipantService]: /${request.command} command received`);
+        Log.info(
+            `[ChatParticipantService]: /${request.command} command received`
+        );
 
         if (!this.deps) {
             Log.error('[ChatParticipantService]: Dependencies not injected');
             const response = new ChatResponseBuilder()
-                .addErrorSection('Configuration Error', 'Lupa is still initializing. Please try again in a moment.')
+                .addErrorSection(
+                    'Configuration Error',
+                    'Lupa is still initializing. Please try again in a moment.'
+                )
                 .build();
             stream.markdown(response);
             return { errorDetails: { message: 'Service not initialized' } };
@@ -316,17 +360,25 @@ export class ChatParticipantService implements vscode.Disposable {
             const gitService = GitService.getInstance();
             if (!gitService.isInitialized()) {
                 const response = new ChatResponseBuilder()
-                    .addErrorSection('Git Not Initialized', 'Could not find a Git repository. Please ensure you have a Git repository open.')
+                    .addErrorSection(
+                        'Git Not Initialized',
+                        'Could not find a Git repository. Please ensure you have a Git repository open.'
+                    )
                     .build();
                 stream.markdown(response);
-                return { errorDetails: { message: 'Git service not initialized' } };
+                return {
+                    errorDetails: { message: 'Git service not initialized' },
+                };
             }
 
             const diffResult = await gitOp();
 
             if (diffResult.error || !diffResult.diffText) {
                 // Format message with refName if available (for branch command)
-                const message = noChangesMessage.replace('${refName}', diffResult.refName || 'unknown');
+                const message = noChangesMessage.replace(
+                    '${refName}',
+                    diffResult.refName || 'unknown'
+                );
                 const response = new ChatResponseBuilder()
                     .addVerdictLine('success', 'No Changes Found')
                     .addFollowupPrompt(message)
@@ -335,24 +387,39 @@ export class ChatParticipantService implements vscode.Disposable {
                 return {};
             }
 
-            const finalScopeLabel = request.command === 'branch' ? diffResult.refName : scopeLabel;
+            const finalScopeLabel =
+                request.command === 'branch' ? diffResult.refName : scopeLabel;
 
-            return this.runAnalysis(request, stream, token, diffResult, finalScopeLabel);
+            return this.runAnalysis(
+                request,
+                stream,
+                token,
+                diffResult,
+                finalScopeLabel
+            );
         } catch (error) {
             if (token.isCancellationRequested) {
                 return this.handleCancellation(stream);
             }
 
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            Log.error(`[ChatParticipantService]: /${request.command} analysis failed`, error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            Log.error(
+                `[ChatParticipantService]: /${request.command} analysis failed`,
+                error
+            );
 
             const response = new ChatResponseBuilder()
-                .addErrorSection('Analysis Error', 'Something went wrong during analysis. Please try again.', errorMessage)
+                .addErrorSection(
+                    'Analysis Error',
+                    'Something went wrong during analysis. Please try again.',
+                    errorMessage
+                )
                 .build();
             stream.markdown(response);
             return {
                 errorDetails: { message: errorMessage },
-                metadata: { responseIsIncomplete: true }
+                metadata: { responseIsIncomplete: true },
             };
         }
     }
@@ -374,12 +441,16 @@ export class ChatParticipantService implements vscode.Disposable {
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
 
-        const timeoutMs = this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+        const timeoutMs =
+            this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
         const client = new ChatLLMClient(request.model, timeoutMs);
         const runner = new ConversationRunner(client, this.deps!.toolExecutor);
         const conversation = new ConversationManager();
         const availableTools = this.deps!.toolExecutor.getAvailableTools();
-        const systemPrompt = this.deps!.promptGenerator.generateToolAwareSystemPrompt(availableTools);
+        const systemPrompt =
+            this.deps!.promptGenerator.generateToolAwareSystemPrompt(
+                availableTools
+            );
 
         const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
 
@@ -389,10 +460,11 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.filetree(fileTree, gitRootUri);
         }
 
-        const userPrompt = this.deps!.promptGenerator.generateToolCallingUserPrompt(
-            parsedDiff,
-            request.prompt || undefined
-        );
+        const userPrompt =
+            this.deps!.promptGenerator.generateToolCallingUserPrompt(
+                parsedDiff,
+                request.prompt || undefined
+            );
         conversation.addUserMessage(userPrompt);
 
         const uiHandler = createChatStreamHandler(stream);
@@ -404,7 +476,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 systemPrompt,
                 maxIterations: this.deps!.workspaceSettings.getMaxIterations(),
                 tools: availableTools,
-                label: `Chat /${scopeLabel}`
+                label: `Chat /${scopeLabel}`,
             },
             conversation,
             token,
@@ -459,20 +531,24 @@ export class ChatParticipantService implements vscode.Disposable {
     /**
      * Format a user-friendly cancellation response with correct metadata.
      */
-    private handleCancellation(stream: vscode.ChatResponseStream): vscode.ChatResult {
+    private handleCancellation(
+        stream: vscode.ChatResponseStream
+    ): vscode.ChatResult {
         Log.info('[ChatParticipantService]: Analysis cancelled by user');
 
         const response = new ChatResponseBuilder()
             .addVerdictLine('cancelled', 'Analysis Cancelled')
-            .addFollowupPrompt('Analysis was stopped before findings could be generated.\n\n*Run the command again when you\'re ready.*')
+            .addFollowupPrompt(
+                "Analysis was stopped before findings could be generated.\n\n*Run the command again when you're ready.*"
+            )
             .build();
         stream.markdown(response);
 
         return {
             metadata: {
                 cancelled: true,
-                responseIsIncomplete: true
-            }
+                responseIsIncomplete: true,
+            },
         };
     }
 

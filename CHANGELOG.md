@@ -14,9 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Git root vs workspace folder**: Tools and services now correctly use the Git repository root instead of the VS Code workspace folder. This fixes issues when the Git repository is in a parent directory or different location than the workspace folder:
-  - `FindUsagesTool` now uses `GitOperationsManager` for path resolution
-  - `ChatParticipantService` now uses Git root for file links and filetree display
-  - `WorkspaceSettingsService` stores relative path marker (`.`) for workspace-matching repositories
+    - `FindUsagesTool` now uses `GitOperationsManager` for path resolution
+    - `ChatParticipantService` now uses Git root for file links and filetree display
+    - `WorkspaceSettingsService` stores relative path marker (`.`) for workspace-matching repositories
 
 ## [0.1.2] - 2025-12-26
 
@@ -83,11 +83,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### User Interface
 
 - **Webview Mode**: Full-featured analysis panel with rich UI
-  - Markdown rendering with syntax highlighting
-  - Copy-to-clipboard functionality
+    - Markdown rendering with syntax highlighting
+    - Copy-to-clipboard functionality
 - **Chat Participant Mode**: Native VS Code chat integration
-  - `@lupa /branch` - Analyze changes on current branch vs base
-  - `@lupa /changes` - Analyze unstaged/uncommitted changes
+    - `@lupa /branch` - Analyze changes on current branch vs base
+    - `@lupa /changes` - Analyze unstaged/uncommitted changes
 
 #### Model Management
 

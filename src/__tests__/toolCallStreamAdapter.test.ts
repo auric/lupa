@@ -14,7 +14,7 @@ describe('ToolCallStreamAdapter', () => {
             onToolComplete: vi.fn(),
             onFileReference: vi.fn(),
             onThinking: vi.fn(),
-            onMarkdown: vi.fn()
+            onMarkdown: vi.fn(),
         };
         adapter = new ToolCallStreamAdapter(mockChatHandler);
     });
@@ -34,16 +34,29 @@ describe('ToolCallStreamAdapter', () => {
 
     describe('onToolCallStart', () => {
         it('should forward to onProgress and onToolStart with tool name and args', () => {
-            adapter.onToolCallStart('find_symbol', { name_path: 'MyClass' }, 0, 3);
+            adapter.onToolCallStart(
+                'find_symbol',
+                { name_path: 'MyClass' },
+                0,
+                3
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.searching} Finding symbol \`MyClass\`...`
             );
-            expect(mockChatHandler.onToolStart).toHaveBeenCalledWith('find_symbol', { name_path: 'MyClass' });
+            expect(mockChatHandler.onToolStart).toHaveBeenCalledWith(
+                'find_symbol',
+                { name_path: 'MyClass' }
+            );
         });
 
         it('should format read_file message with file path', () => {
-            adapter.onToolCallStart('read_file', { file_path: 'src/index.ts' }, 0, 1);
+            adapter.onToolCallStart(
+                'read_file',
+                { file_path: 'src/index.ts' },
+                0,
+                1
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.reading} Reading src/index.ts...`
@@ -51,7 +64,12 @@ describe('ToolCallStreamAdapter', () => {
         });
 
         it('should format find_usages message with symbol name', () => {
-            adapter.onToolCallStart('find_usages', { symbol_name: 'processData' }, 0, 1);
+            adapter.onToolCallStart(
+                'find_usages',
+                { symbol_name: 'processData' },
+                0,
+                1
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.analyzing} Finding usages of \`processData\`...`
@@ -59,7 +77,12 @@ describe('ToolCallStreamAdapter', () => {
         });
 
         it('should format list_directory message with path', () => {
-            adapter.onToolCallStart('list_directory', { path: 'src/utils' }, 0, 1);
+            adapter.onToolCallStart(
+                'list_directory',
+                { path: 'src/utils' },
+                0,
+                1
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.reading} Listing src/utils...`
@@ -67,7 +90,12 @@ describe('ToolCallStreamAdapter', () => {
         });
 
         it('should format find_files_by_pattern message', () => {
-            adapter.onToolCallStart('find_files_by_pattern', { pattern: '*.test.ts' }, 0, 1);
+            adapter.onToolCallStart(
+                'find_files_by_pattern',
+                { pattern: '*.test.ts' },
+                0,
+                1
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.searching} Finding files matching \`*.test.ts\`...`
@@ -75,7 +103,12 @@ describe('ToolCallStreamAdapter', () => {
         });
 
         it('should format get_symbols_overview message', () => {
-            adapter.onToolCallStart('get_symbols_overview', { path: 'src/service.ts' }, 0, 1);
+            adapter.onToolCallStart(
+                'get_symbols_overview',
+                { path: 'src/service.ts' },
+                0,
+                1
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.analyzing} Getting symbols in src/service.ts...`
@@ -83,7 +116,12 @@ describe('ToolCallStreamAdapter', () => {
         });
 
         it('should format search_for_pattern message', () => {
-            adapter.onToolCallStart('search_for_pattern', { pattern: 'TODO:' }, 0, 1);
+            adapter.onToolCallStart(
+                'search_for_pattern',
+                { pattern: 'TODO:' },
+                0,
+                1
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.searching} Searching for \`TODO:\`...`
@@ -91,7 +129,12 @@ describe('ToolCallStreamAdapter', () => {
         });
 
         it('should format run_subagent message', () => {
-            adapter.onToolCallStart('run_subagent', { task: 'investigate security' }, 0, 1);
+            adapter.onToolCallStart(
+                'run_subagent',
+                { task: 'investigate security' },
+                0,
+                1
+            );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 '🤖 Spawning subagent investigation...'

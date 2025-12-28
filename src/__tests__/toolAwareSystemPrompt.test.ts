@@ -10,19 +10,25 @@ class MockFindSymbolTool implements ITool {
     description = 'Find code symbol definitions (functions, classes, methods)';
     schema = z.object({
         symbolName: z.string().describe('The name of the symbol to find'),
-        relativePath: z.string().optional().describe('Optional relative path to search within'),
-        includeFullBody: z.boolean().default(true).describe('Whether to include the full symbol body')
+        relativePath: z
+            .string()
+            .optional()
+            .describe('Optional relative path to search within'),
+        includeFullBody: z
+            .boolean()
+            .default(true)
+            .describe('Whether to include the full symbol body'),
     });
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
         return {
             name: this.name,
             description: this.description,
-            inputSchema: this.schema as any
+            inputSchema: this.schema as any,
         };
     }
 
-    async execute(args: any): Promise<any> {
+    async execute(_args: any): Promise<any> {
         return [];
     }
 }
@@ -32,19 +38,25 @@ class MockSearchPatternTool implements ITool {
     description = 'Search for text patterns across the codebase';
     schema = z.object({
         pattern: z.string().describe('The regex pattern to search for'),
-        include: z.string().optional().describe('Optional glob pattern to filter files'),
-        path: z.string().optional().describe('Optional relative path to search within')
+        include: z
+            .string()
+            .optional()
+            .describe('Optional glob pattern to filter files'),
+        path: z
+            .string()
+            .optional()
+            .describe('Optional relative path to search within'),
     });
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
         return {
             name: this.name,
             description: this.description,
-            inputSchema: this.schema as any
+            inputSchema: this.schema as any,
         };
     }
 
-    async execute(args: any): Promise<any> {
+    async execute(_args: any): Promise<any> {
         return [];
     }
 }
@@ -55,10 +67,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
     beforeEach(() => {
         generator = new ToolAwareSystemPromptGenerator();
-        mockTools = [
-            new MockFindSymbolTool(),
-            new MockSearchPatternTool()
-        ];
+        mockTools = [new MockFindSymbolTool(), new MockSearchPatternTool()];
     });
 
     describe('generateSystemPrompt', () => {
@@ -154,16 +163,28 @@ describe('ToolAwareSystemPromptGenerator', () => {
                 description: 'A tool with complex parameters',
                 schema: z.object({
                     requiredParam: z.string().describe('A required parameter'),
-                    optionalParam: z.number().optional().describe('An optional parameter'),
-                    booleanParam: z.boolean().default(false).describe('A boolean parameter')
+                    optionalParam: z
+                        .number()
+                        .optional()
+                        .describe('An optional parameter'),
+                    booleanParam: z
+                        .boolean()
+                        .default(false)
+                        .describe('A boolean parameter'),
                 }),
-                getVSCodeTool: () => ({ name: 'complex_tool', description: '', parametersSchema: {} as any }),
-                execute: async () => ({ success: true, data: '' })
+                getVSCodeTool: () => ({
+                    name: 'complex_tool',
+                    description: '',
+                    parametersSchema: {} as any,
+                }),
+                execute: async () => ({ success: true, data: '' }),
             };
 
             const prompt = generator.generateSystemPrompt([complexTool]);
 
-            expect(prompt).toContain('**complex_tool**: A tool with complex parameters');
+            expect(prompt).toContain(
+                '**complex_tool**: A tool with complex parameters'
+            );
             expect(prompt).toContain('requiredParam');
             expect(prompt).toContain('optionalParam');
             expect(prompt).toContain('booleanParam');
@@ -174,7 +195,9 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
             // Check that the prompt has proper section ordering
             const roleIndex = prompt.indexOf('Staff Engineer');
-            const toolsIndex = prompt.indexOf('## Available Code Analysis Tools');
+            const toolsIndex = prompt.indexOf(
+                '## Available Code Analysis Tools'
+            );
             const methodologyIndex = prompt.indexOf('## Analysis Methodology');
             const outputIndex = prompt.indexOf('## Output Format');
 
@@ -190,8 +213,12 @@ describe('ToolAwareSystemPromptGenerator', () => {
                 name: 'bad_tool',
                 description: 'A tool with problematic schema',
                 schema: null as any,
-                getVSCodeTool: () => ({ name: 'bad_tool', description: '', parametersSchema: {} as any }),
-                execute: async () => ({ success: true, data: '' })
+                getVSCodeTool: () => ({
+                    name: 'bad_tool',
+                    description: '',
+                    parametersSchema: {} as any,
+                }),
+                execute: async () => ({ success: true, data: '' }),
             };
 
             expect(() => {
@@ -205,10 +232,14 @@ describe('ToolAwareSystemPromptGenerator', () => {
                 description: 'A simple tool',
                 schema: z.object({
                     param1: z.string(),
-                    param2: z.number()
+                    param2: z.number(),
                 }),
-                getVSCodeTool: () => ({ name: 'simple_tool', description: '', parametersSchema: {} as any }),
-                execute: async () => ({ success: true, data: '' })
+                getVSCodeTool: () => ({
+                    name: 'simple_tool',
+                    description: '',
+                    parametersSchema: {} as any,
+                }),
+                execute: async () => ({ success: true, data: '' }),
             };
 
             const prompt = generator.generateSystemPrompt([simpleTool]);

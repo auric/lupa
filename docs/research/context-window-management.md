@@ -42,7 +42,7 @@ Copilot Chat (the official extension) implements sophisticated summarization for
 
 ```typescript
 interface ChatContext {
-  readonly history: ReadonlyArray<ChatRequestTurn | ChatResponseTurn>;
+    readonly history: ReadonlyArray<ChatRequestTurn | ChatResponseTurn>;
 }
 ```
 
@@ -50,11 +50,11 @@ interface ChatContext {
 
 ```typescript
 class ChatRequestTurn {
-  readonly prompt: string; // User's input
-  readonly command: string | undefined;
-  readonly references: ChatPromptReference[];
-  readonly participant: string;
-  readonly toolReferences: ChatLanguageModelToolReference[];
+    readonly prompt: string; // User's input
+    readonly command: string | undefined;
+    readonly references: ChatPromptReference[];
+    readonly participant: string;
+    readonly toolReferences: ChatLanguageModelToolReference[];
 }
 ```
 
@@ -62,15 +62,15 @@ class ChatRequestTurn {
 
 ```typescript
 class ChatResponseTurn {
-  readonly response: ReadonlyArray<
-    | ChatResponseMarkdownPart
-    | ChatResponseFileTreePart
-    | ChatResponseAnchorPart
-    | ChatResponseCommandButtonPart
-    | ChatToolInvocationPart // Proposed API
-  >;
-  readonly result: ChatResult;
-  readonly participant: string;
+    readonly response: ReadonlyArray<
+        | ChatResponseMarkdownPart
+        | ChatResponseFileTreePart
+        | ChatResponseAnchorPart
+        | ChatResponseCommandButtonPart
+        | ChatToolInvocationPart // Proposed API
+    >;
+    readonly result: ChatResult;
+    readonly participant: string;
 }
 ```
 
@@ -88,13 +88,13 @@ class ChatResponseTurn {
 
 ```typescript
 interface LanguageModelChat {
-  readonly maxInputTokens: number;
-  readonly maxOutputTokens: number;
+    readonly maxInputTokens: number;
+    readonly maxOutputTokens: number;
 
-  countTokens(
-    text: string | LanguageModelChatMessage,
-    token?: CancellationToken
-  ): Thenable<number>;
+    countTokens(
+        text: string | LanguageModelChatMessage,
+        token?: CancellationToken
+    ): Thenable<number>;
 }
 ```
 
@@ -108,28 +108,28 @@ interface LanguageModelChat {
 
 ```typescript
 async function countConversationTokens(
-  model: vscode.LanguageModelChat,
-  messages: vscode.LanguageModelChatMessage[],
-  token: vscode.CancellationToken
+    model: vscode.LanguageModelChat,
+    messages: vscode.LanguageModelChatMessage[],
+    token: vscode.CancellationToken
 ): Promise<number> {
-  let totalTokens = 0;
+    let totalTokens = 0;
 
-  for (const message of messages) {
-    const count = await model.countTokens(message, token);
-    totalTokens += count;
-  }
+    for (const message of messages) {
+        const count = await model.countTokens(message, token);
+        totalTokens += count;
+    }
 
-  return totalTokens;
+    return totalTokens;
 }
 
 async function isApproachingLimit(
-  model: vscode.LanguageModelChat,
-  messages: vscode.LanguageModelChatMessage[],
-  reserveForOutput: number = 4000
+    model: vscode.LanguageModelChat,
+    messages: vscode.LanguageModelChatMessage[],
+    reserveForOutput: number = 4000
 ): Promise<boolean> {
-  const used = await countConversationTokens(model, messages);
-  const available = model.maxInputTokens - reserveForOutput;
-  return used > available * 0.8; // 80% threshold
+    const used = await countConversationTokens(model, messages);
+    const available = model.maxInputTokens - reserveForOutput;
+    return used > available * 0.8; // 80% threshold
 }
 ```
 
@@ -158,10 +158,10 @@ The official Copilot Chat extension (`microsoft/vscode-copilot-chat`) implements
 
 ```json
 {
-  "github.copilot.chat.summarizeAgentConversationHistoryThreshold": "...",
-  "github.copilot.chat.agentHistorySummarizationMode": "...",
-  "github.copilot.chat.agentHistorySummarizationWithPromptCache": true,
-  "github.copilot.chat.useResponsesApiTruncation": true
+    "github.copilot.chat.summarizeAgentConversationHistoryThreshold": "...",
+    "github.copilot.chat.agentHistorySummarizationMode": "...",
+    "github.copilot.chat.agentHistorySummarizationWithPromptCache": true,
+    "github.copilot.chat.useResponsesApiTruncation": true
 }
 ```
 
@@ -180,10 +180,10 @@ The official Copilot Chat extension (`microsoft/vscode-copilot-chat`) implements
 
 ```typescript
 interface ChatSummarizer {
-  provideChatSummary(
-    context: ChatContext,
-    token: CancellationToken
-  ): ProviderResult<string>;
+    provideChatSummary(
+        context: ChatContext,
+        token: CancellationToken
+    ): ProviderResult<string>;
 }
 ```
 
@@ -192,11 +192,11 @@ interface ChatSummarizer {
 ```typescript
 // On your ChatParticipant
 participant.summarizer = {
-  provideChatSummary(context, token) {
-    // Called by VS Code when summarization is needed
-    const history = context.history;
-    return generateSummary(history);
-  },
+    provideChatSummary(context, token) {
+        // Called by VS Code when summarization is needed
+        const history = context.history;
+        return generateSummary(history);
+    },
 };
 ```
 
@@ -216,42 +216,42 @@ participant.summarizer = {
 
 ```typescript
 class ConversationManager {
-  private readonly TOKEN_BUDGET = 0.8; // Use 80% of max
-  private readonly OUTPUT_RESERVE = 4000;
+    private readonly TOKEN_BUDGET = 0.8; // Use 80% of max
+    private readonly OUTPUT_RESERVE = 4000;
 
-  async prepareMessages(
-    request: vscode.ChatRequest,
-    context: vscode.ChatContext
-  ): Promise<vscode.LanguageModelChatMessage[]> {
-    const model = request.model;
-    const maxTokens = model.maxInputTokens - this.OUTPUT_RESERVE;
-    const targetTokens = maxTokens * this.TOKEN_BUDGET;
+    async prepareMessages(
+        request: vscode.ChatRequest,
+        context: vscode.ChatContext
+    ): Promise<vscode.LanguageModelChatMessage[]> {
+        const model = request.model;
+        const maxTokens = model.maxInputTokens - this.OUTPUT_RESERVE;
+        const targetTokens = maxTokens * this.TOKEN_BUDGET;
 
-    const messages: vscode.LanguageModelChatMessage[] = [];
-    let tokenCount = 0;
+        const messages: vscode.LanguageModelChatMessage[] = [];
+        let tokenCount = 0;
 
-    // Always include system prompt
-    const systemPrompt = this.getSystemPrompt();
-    tokenCount += await model.countTokens(systemPrompt);
-    messages.push(systemPrompt);
+        // Always include system prompt
+        const systemPrompt = this.getSystemPrompt();
+        tokenCount += await model.countTokens(systemPrompt);
+        messages.push(systemPrompt);
 
-    // Add history in reverse order until budget exhausted
-    const historyMessages = this.convertHistory(context.history);
-    for (let i = historyMessages.length - 1; i >= 0; i--) {
-      const msgTokens = await model.countTokens(historyMessages[i]);
-      if (tokenCount + msgTokens > targetTokens) {
-        // Need to summarize or truncate
-        break;
-      }
-      tokenCount += msgTokens;
-      messages.unshift(historyMessages[i]); // Add to front
+        // Add history in reverse order until budget exhausted
+        const historyMessages = this.convertHistory(context.history);
+        for (let i = historyMessages.length - 1; i >= 0; i--) {
+            const msgTokens = await model.countTokens(historyMessages[i]);
+            if (tokenCount + msgTokens > targetTokens) {
+                // Need to summarize or truncate
+                break;
+            }
+            tokenCount += msgTokens;
+            messages.unshift(historyMessages[i]); // Add to front
+        }
+
+        // Add current request
+        messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
+
+        return messages;
     }
-
-    // Add current request
-    messages.push(vscode.LanguageModelChatMessage.User(request.prompt));
-
-    return messages;
-  }
 }
 ```
 
@@ -259,59 +259,59 @@ class ConversationManager {
 
 ```typescript
 class SlidingWindowManager {
-  private readonly MAX_TURNS = 20;
-  private summary: string | null = null;
+    private readonly MAX_TURNS = 20;
+    private summary: string | null = null;
 
-  async prepareContext(
-    context: vscode.ChatContext,
-    model: vscode.LanguageModelChat
-  ): Promise<vscode.LanguageModelChatMessage[]> {
-    const messages: vscode.LanguageModelChatMessage[] = [];
+    async prepareContext(
+        context: vscode.ChatContext,
+        model: vscode.LanguageModelChat
+    ): Promise<vscode.LanguageModelChatMessage[]> {
+        const messages: vscode.LanguageModelChatMessage[] = [];
 
-    if (context.history.length > this.MAX_TURNS) {
-      // Summarize older turns
-      const oldTurns = context.history.slice(0, -this.MAX_TURNS);
-      this.summary = await this.summarizeTurns(oldTurns, model);
+        if (context.history.length > this.MAX_TURNS) {
+            // Summarize older turns
+            const oldTurns = context.history.slice(0, -this.MAX_TURNS);
+            this.summary = await this.summarizeTurns(oldTurns, model);
+        }
+
+        // Include summary if exists
+        if (this.summary) {
+            messages.push(
+                vscode.LanguageModelChatMessage.User(
+                    `Previous conversation summary: ${this.summary}`
+                )
+            );
+        }
+
+        // Include recent turns
+        const recentTurns = context.history.slice(-this.MAX_TURNS);
+        messages.push(...this.convertToMessages(recentTurns));
+
+        return messages;
     }
 
-    // Include summary if exists
-    if (this.summary) {
-      messages.push(
-        vscode.LanguageModelChatMessage.User(
-          `Previous conversation summary: ${this.summary}`
-        )
-      );
+    private async summarizeTurns(
+        turns: ReadonlyArray<ChatRequestTurn | ChatResponseTurn>,
+        model: vscode.LanguageModelChat
+    ): Promise<string> {
+        const summaryPrompt = [
+            vscode.LanguageModelChatMessage.System(
+                'Summarize this conversation concisely, preserving key decisions and context:'
+            ),
+            vscode.LanguageModelChatMessage.User(
+                this.convertToMessages(turns)
+                    .map((m) => m.content)
+                    .join('\n---\n')
+            ),
+        ];
+
+        const response = await model.sendRequest(summaryPrompt);
+        let summary = '';
+        for await (const chunk of response.text) {
+            summary += chunk;
+        }
+        return summary;
     }
-
-    // Include recent turns
-    const recentTurns = context.history.slice(-this.MAX_TURNS);
-    messages.push(...this.convertToMessages(recentTurns));
-
-    return messages;
-  }
-
-  private async summarizeTurns(
-    turns: ReadonlyArray<ChatRequestTurn | ChatResponseTurn>,
-    model: vscode.LanguageModelChat
-  ): Promise<string> {
-    const summaryPrompt = [
-      vscode.LanguageModelChatMessage.System(
-        "Summarize this conversation concisely, preserving key decisions and context:"
-      ),
-      vscode.LanguageModelChatMessage.User(
-        this.convertToMessages(turns)
-          .map((m) => m.content)
-          .join("\n---\n")
-      ),
-    ];
-
-    const response = await model.sendRequest(summaryPrompt);
-    let summary = "";
-    for await (const chunk of response.text) {
-      summary += chunk;
-    }
-    return summary;
-  }
 }
 ```
 
@@ -319,20 +319,20 @@ class SlidingWindowManager {
 
 ```typescript
 function truncateToolResult(result: string, maxTokens: number = 2000): string {
-  const TRUNCATION_MSG = "\n\n[... output truncated for context limits ...]";
+    const TRUNCATION_MSG = '\n\n[... output truncated for context limits ...]';
 
-  // Simple character-based approximation (4 chars ≈ 1 token)
-  const maxChars = maxTokens * 4;
+    // Simple character-based approximation (4 chars ≈ 1 token)
+    const maxChars = maxTokens * 4;
 
-  if (result.length <= maxChars) {
-    return result;
-  }
+    if (result.length <= maxChars) {
+        return result;
+    }
 
-  // Keep head and tail
-  const headSize = Math.floor(maxChars * 0.3);
-  const tailSize = Math.floor(maxChars * 0.6);
+    // Keep head and tail
+    const headSize = Math.floor(maxChars * 0.3);
+    const tailSize = Math.floor(maxChars * 0.6);
 
-  return result.slice(0, headSize) + TRUNCATION_MSG + result.slice(-tailSize);
+    return result.slice(0, headSize) + TRUNCATION_MSG + result.slice(-tailSize);
 }
 ```
 

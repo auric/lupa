@@ -9,7 +9,7 @@ const createMockTool = (name: string, description: string): ITool => ({
     description,
     schema: {} as any,
     getVSCodeTool: () => ({ name, description, inputSchema: {} }),
-    execute: async () => ({ success: true, data: '' })
+    execute: async () => ({ success: true, data: '' }),
 });
 
 describe('SubagentPromptGenerator', () => {
@@ -22,18 +22,20 @@ describe('SubagentPromptGenerator', () => {
     describe('generateSystemPrompt', () => {
         it('should include the task in the prompt', () => {
             const task: SubagentTask = {
-                task: 'Investigate the authentication flow in src/auth/'
+                task: 'Investigate the authentication flow in src/auth/',
             };
 
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
-            expect(prompt).toContain('Investigate the authentication flow in src/auth/');
+            expect(prompt).toContain(
+                'Investigate the authentication flow in src/auth/'
+            );
         });
 
         it('should include context when provided', () => {
             const task: SubagentTask = {
                 task: 'Check for security issues',
-                context: 'PR adds new JWT validation in auth.ts'
+                context: 'PR adds new JWT validation in auth.ts',
             };
 
             const prompt = generator.generateSystemPrompt(task, [], 10);
@@ -44,7 +46,7 @@ describe('SubagentPromptGenerator', () => {
 
         it('should not include context section when not provided', () => {
             const task: SubagentTask = {
-                task: 'Check for security issues'
+                task: 'Check for security issues',
             };
 
             const prompt = generator.generateSystemPrompt(task, [], 10);
@@ -55,7 +57,7 @@ describe('SubagentPromptGenerator', () => {
         it('should list available tools', () => {
             const tools = [
                 createMockTool('find_symbol', 'Finds symbols in code'),
-                createMockTool('read_file', 'Reads file contents')
+                createMockTool('read_file', 'Reads file contents'),
             ];
 
             const task: SubagentTask = { task: 'Test task' };

@@ -12,7 +12,6 @@ import { ITool } from '../tools/ITool';
  * - Markdown output format for proper rendering
  */
 export class ToolAwareSystemPromptGenerator {
-
     public generateSystemPrompt(availableTools: ITool[]): string {
         const roleDefinition = this.generateRoleDefinition();
         const toolSection = this.generateToolSection(availableTools);
@@ -251,7 +250,9 @@ ${this.generateSelfReflectionGuidance()}`;
         let description = `**${tool.name}**: ${tool.description}`;
 
         try {
-            const schemaDescription = this.extractSchemaDescription(tool.schema);
+            const schemaDescription = this.extractSchemaDescription(
+                tool.schema
+            );
             if (schemaDescription) {
                 description += `\n  Parameters: ${schemaDescription}`;
             }

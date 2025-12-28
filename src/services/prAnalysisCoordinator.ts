@@ -36,8 +36,14 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             this.services = await this.serviceManager.initialize();
 
             // Create specialized coordinators
-            this.analysisOrchestrator = new AnalysisOrchestrator(this.context, this.services);
-            this.copilotModelCoordinator = new CopilotModelCoordinator(this.context, this.services);
+            this.analysisOrchestrator = new AnalysisOrchestrator(
+                this.context,
+                this.services
+            );
+            this.copilotModelCoordinator = new CopilotModelCoordinator(
+                this.context,
+                this.services
+            );
 
             // Register all commands through CommandRegistry
             this.commandRegistry = new CommandRegistry(
@@ -48,11 +54,16 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
             );
 
             this.commandRegistry.registerAllCommands();
-
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(`Failed to initialize PR Analyzer: ${errorMessage}`);
-            console.error('PRAnalysisCoordinator initialization failed:', error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(
+                `Failed to initialize PR Analyzer: ${errorMessage}`
+            );
+            console.error(
+                'PRAnalysisCoordinator initialization failed:',
+                error
+            );
         }
     }
 

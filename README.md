@@ -85,11 +85,11 @@ Settings are stored in `.vscode/lupa.json`:
 
 ```json
 {
-  "preferredModelVersion": "gpt-4.1",
-  "maxIterations": 100,
-  "requestTimeoutSeconds": 300,
-  "maxSubagentsPerSession": 10,
-  "logLevel": "info"
+    "preferredModelVersion": "gpt-4.1",
+    "maxIterations": 100,
+    "requestTimeoutSeconds": 300,
+    "maxSubagentsPerSession": 10,
+    "logLevel": "info"
 }
 ```
 
@@ -100,6 +100,12 @@ For detailed documentation, see the [docs](./docs/index.md) folder:
 - [Architecture](./docs/architecture.md)
 - [Component Inventory](./docs/component-inventory.md)
 - [Development Guide](./docs/development-guide.md)
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and guidelines.
+
+Pre-commit hooks for linting and formatting are installed automatically when you run `npm install`.
 
 ## License
 

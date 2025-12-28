@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // External dependencies function for different entry points
-const isExternalDependency = (source: string, importer: string | undefined, isResolved: boolean): boolean => {
+const isExternalDependency = (source: string, importer: string | undefined, _isResolved: boolean): boolean => {
     // For webview entry, only externalize vscode
     if (importer && importer.includes('src/webview/')) {
         return source === 'vscode';

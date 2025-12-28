@@ -6,8 +6,8 @@ import type { ToolCallRequest, ToolCallResponse } from '../types/modelTypes';
 
 vi.mock('../models/modelRequestHandler', () => ({
     ModelRequestHandler: {
-        sendRequest: vi.fn()
-    }
+        sendRequest: vi.fn(),
+    },
 }));
 
 describe('ChatLLMClient', () => {
@@ -17,12 +17,12 @@ describe('ChatLLMClient', () => {
         vendor: 'test',
         family: 'test-family',
         version: '1.0',
-        maxInputTokens: 100000
+        maxInputTokens: 100000,
     } as unknown as vscode.LanguageModelChat;
 
     const mockToken: vscode.CancellationToken = {
         isCancellationRequested: false,
-        onCancellationRequested: vi.fn()
+        onCancellationRequested: vi.fn(),
     };
 
     const defaultTimeoutMs = 300000;
@@ -43,14 +43,16 @@ describe('ChatLLMClient', () => {
         it('should delegate to ModelRequestHandler.sendRequest with configured timeout', async () => {
             const mockResponse: ToolCallResponse = {
                 content: 'Analysis complete',
-                toolCalls: undefined
+                toolCalls: undefined,
             };
-            vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue(mockResponse);
+            vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue(
+                mockResponse
+            );
 
             const client = new ChatLLMClient(mockModel, defaultTimeoutMs);
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'Analyze code' }],
-                tools: []
+                tools: [],
             };
 
             const result = await client.sendRequest(request, mockToken);
@@ -68,10 +70,18 @@ describe('ChatLLMClient', () => {
             const mockResponse: ToolCallResponse = {
                 content: 'Calling tools',
                 toolCalls: [
-                    { id: 'call_1', function: { name: 'find_symbol', arguments: '{"name":"test"}' } }
-                ]
+                    {
+                        id: 'call_1',
+                        function: {
+                            name: 'find_symbol',
+                            arguments: '{"name":"test"}',
+                        },
+                    },
+                ],
             };
-            vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue(mockResponse);
+            vi.mocked(ModelRequestHandler.sendRequest).mockResolvedValue(
+                mockResponse
+            );
 
             const client = new ChatLLMClient(mockModel, defaultTimeoutMs);
             const request: ToolCallRequest = { messages: [], tools: [] };
@@ -87,7 +97,9 @@ describe('ChatLLMClient', () => {
             const client = new ChatLLMClient(mockModel, defaultTimeoutMs);
             const request: ToolCallRequest = { messages: [], tools: [] };
 
-            await expect(client.sendRequest(request, mockToken)).rejects.toThrow('Request timed out');
+            await expect(
+                client.sendRequest(request, mockToken)
+            ).rejects.toThrow('Request timed out');
         });
     });
 

@@ -9,7 +9,7 @@ export class CopilotModelCoordinator implements vscode.Disposable {
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly services: IServiceRegistry
-    ) { }
+    ) {}
 
     /**
      * Show options for selecting Copilot language model
@@ -17,10 +17,13 @@ export class CopilotModelCoordinator implements vscode.Disposable {
     public async showCopilotModelSelectionOptions(): Promise<void> {
         try {
             // Get available models
-            const models = await this.services.copilotModelManager.listAvailableModels();
+            const models =
+                await this.services.copilotModelManager.listAvailableModels();
 
             if (models.length === 0) {
-                vscode.window.showInformationMessage('No language models available. Please ensure GitHub Copilot is installed and authorized.');
+                vscode.window.showInformationMessage(
+                    'No language models available. Please ensure GitHub Copilot is installed and authorized.'
+                );
                 return;
             }
 
@@ -34,18 +37,21 @@ export class CopilotModelCoordinator implements vscode.Disposable {
                 return tokens.toString();
             };
 
-            const options = models.map(model => ({
+            const options = models.map((model) => ({
                 label: model.name,
                 description: `${formatTokens(model.maxInputTokens)} tokens`,
                 detail: model.id,
-                model
+                model,
             }));
 
-            const selectedModelOption = await vscode.window.showQuickPick(options, {
-                placeHolder: 'Select language model',
-                matchOnDescription: true,
-                matchOnDetail: true
-            });
+            const selectedModelOption = await vscode.window.showQuickPick(
+                options,
+                {
+                    placeHolder: 'Select language model',
+                    matchOnDescription: true,
+                    matchOnDetail: true,
+                }
+            );
 
             if (!selectedModelOption) {
                 return;
@@ -53,16 +59,22 @@ export class CopilotModelCoordinator implements vscode.Disposable {
 
             const selectedModel = selectedModelOption.model;
 
-            this.services.workspaceSettings.setPreferredModelVersion(selectedModel.version);
-            vscode.window.showInformationMessage(`Language model set to ${selectedModel.name} (version: ${selectedModel.version})`);
+            this.services.workspaceSettings.setPreferredModelVersion(
+                selectedModel.version
+            );
+            vscode.window.showInformationMessage(
+                `Language model set to ${selectedModel.name} (version: ${selectedModel.version})`
+            );
 
             await this.services.copilotModelManager.selectModel({
-                version: selectedModel.version
+                version: selectedModel.version,
             });
-
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(`Error selecting language model: ${errorMessage}`);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(
+                `Error selecting language model: ${errorMessage}`
+            );
         }
     }
 

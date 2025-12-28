@@ -9,7 +9,7 @@ export class SubagentSessionManager {
     private count = 0;
     private parentCancellationToken: vscode.CancellationToken | undefined;
 
-    constructor(private readonly workspaceSettings: WorkspaceSettingsService) { }
+    constructor(private readonly workspaceSettings: WorkspaceSettingsService) {}
 
     private get maxPerSession(): number {
         return this.workspaceSettings.getMaxSubagentsPerSession();
@@ -38,14 +38,18 @@ export class SubagentSessionManager {
     /**
      * Link a parent cancellation token (main analysis) so subagents cancel promptly.
      */
-    setParentCancellationToken(token: vscode.CancellationToken | undefined): void {
+    setParentCancellationToken(
+        token: vscode.CancellationToken | undefined
+    ): void {
         this.parentCancellationToken = token;
     }
 
     /**
      * Register a subagent cancellation source so it mirrors the parent cancellation token.
      */
-    registerSubagentCancellation(source: vscode.CancellationTokenSource): vscode.Disposable | undefined {
+    registerSubagentCancellation(
+        source: vscode.CancellationTokenSource
+    ): vscode.Disposable | undefined {
         if (!this.parentCancellationToken) {
             return undefined;
         }

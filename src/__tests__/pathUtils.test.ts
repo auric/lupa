@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { parseFilePaths, parseFilePathFromUrl, parseMarkdownFileLinks, ParsedPath, FILE_PATH_REGEX, MarkdownSegment } from '../lib/pathUtils';
+import {
+    parseFilePaths,
+    parseFilePathFromUrl,
+    parseMarkdownFileLinks,
+    FILE_PATH_REGEX,
+} from '../lib/pathUtils';
 
 describe('pathUtils', () => {
     describe('FILE_PATH_REGEX', () => {
@@ -36,7 +41,7 @@ describe('pathUtils', () => {
                 line: undefined,
                 column: undefined,
                 startIndex: 6,
-                endIndex: 31
+                endIndex: 31,
             });
         });
 
@@ -51,7 +56,7 @@ describe('pathUtils', () => {
                 line: 45,
                 column: undefined,
                 startIndex: 9,
-                endIndex: 28
+                endIndex: 28,
             });
         });
 
@@ -66,7 +71,7 @@ describe('pathUtils', () => {
                 line: 12,
                 column: 34,
                 startIndex: 9,
-                endIndex: 20
+                endIndex: 20,
             });
         });
 
@@ -112,7 +117,8 @@ describe('pathUtils', () => {
         });
 
         it('should ignore invalid paths', () => {
-            const text = 'Invalid: noextension, .hidden, toolong' + 'x'.repeat(500);
+            const text =
+                'Invalid: noextension, .hidden, toolong' + 'x'.repeat(500);
             const paths = parseFilePaths(text);
 
             expect(paths).toHaveLength(0);
@@ -130,7 +136,8 @@ describe('pathUtils', () => {
         });
 
         it('should handle relative path prefixes', () => {
-            const text = 'Files: ./src/file.ts, ../lib/util.js, ../../config.json';
+            const text =
+                'Files: ./src/file.ts, ../lib/util.js, ../../config.json';
             const paths = parseFilePaths(text);
 
             expect(paths).toHaveLength(3);
@@ -165,7 +172,7 @@ describe('pathUtils', () => {
                 filePath: 'src/components/Button.tsx',
                 line: undefined,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
@@ -175,7 +182,7 @@ describe('pathUtils', () => {
                 filePath: 'src/utils/helper.ts',
                 line: 45,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
@@ -185,7 +192,7 @@ describe('pathUtils', () => {
                 filePath: 'src/main.ts',
                 line: 12,
                 endLine: undefined,
-                column: 34
+                column: 34,
             });
         });
 
@@ -195,7 +202,7 @@ describe('pathUtils', () => {
                 filePath: 'src/file.cpp',
                 line: 104,
                 endLine: 115,
-                column: undefined
+                column: undefined,
             });
         });
 
@@ -205,7 +212,7 @@ describe('pathUtils', () => {
                 filePath: '.gitignore',
                 line: undefined,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
 
             const result2 = parseFilePathFromUrl('.env');
@@ -213,7 +220,7 @@ describe('pathUtils', () => {
                 filePath: '.env',
                 line: undefined,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
 
             const result3 = parseFilePathFromUrl('src/.env:10');
@@ -221,7 +228,7 @@ describe('pathUtils', () => {
                 filePath: 'src/.env',
                 line: 10,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
@@ -231,15 +238,21 @@ describe('pathUtils', () => {
                 filePath: '.eslintrc.js',
                 line: 25,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
         it('should return null for external URLs', () => {
-            expect(parseFilePathFromUrl('https://example.com/file.ts')).toBeNull();
-            expect(parseFilePathFromUrl('http://localhost:3000/test.js')).toBeNull();
+            expect(
+                parseFilePathFromUrl('https://example.com/file.ts')
+            ).toBeNull();
+            expect(
+                parseFilePathFromUrl('http://localhost:3000/test.js')
+            ).toBeNull();
             expect(parseFilePathFromUrl('mailto:test@example.com')).toBeNull();
-            expect(parseFilePathFromUrl('ftp://server.com/file.txt')).toBeNull();
+            expect(
+                parseFilePathFromUrl('ftp://server.com/file.txt')
+            ).toBeNull();
         });
 
         it('should return null for paths without extension or dot prefix', () => {
@@ -259,7 +272,7 @@ describe('pathUtils', () => {
                 filePath: './src/file.ts',
                 line: undefined,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
 
             const result2 = parseFilePathFromUrl('../lib/util.js:10');
@@ -267,17 +280,19 @@ describe('pathUtils', () => {
                 filePath: '../lib/util.js',
                 line: 10,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
         it('should handle absolute Unix paths', () => {
-            const result = parseFilePathFromUrl('/home/user/project/file.py:25');
+            const result = parseFilePathFromUrl(
+                '/home/user/project/file.py:25'
+            );
             expect(result).toEqual({
                 filePath: '/home/user/project/file.py',
                 line: 25,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
@@ -287,17 +302,19 @@ describe('pathUtils', () => {
                 filePath: 'C:\\src\\file.ts',
                 line: 42,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
         it('should handle Windows paths with line and column', () => {
-            const result = parseFilePathFromUrl('D:\\project\\src\\main.ts:10:5');
+            const result = parseFilePathFromUrl(
+                'D:\\project\\src\\main.ts:10:5'
+            );
             expect(result).toEqual({
                 filePath: 'D:\\project\\src\\main.ts',
                 line: 10,
                 endLine: undefined,
-                column: 5
+                column: 5,
             });
         });
 
@@ -307,17 +324,19 @@ describe('pathUtils', () => {
                 filePath: 'C:/Users/test/file.txt',
                 line: 100,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
         it('should handle Windows paths without line numbers', () => {
-            const result = parseFilePathFromUrl('E:\\dev\\copilot-review\\src\\extension.ts');
+            const result = parseFilePathFromUrl(
+                'E:\\dev\\copilot-review\\src\\extension.ts'
+            );
             expect(result).toEqual({
                 filePath: 'E:\\dev\\copilot-review\\src\\extension.ts',
                 line: undefined,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
@@ -336,7 +355,7 @@ describe('pathUtils', () => {
                 filePath: '.b',
                 line: undefined,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
         });
 
@@ -346,7 +365,7 @@ describe('pathUtils', () => {
                 filePath: 'src/file.spec.ts',
                 line: 10,
                 endLine: undefined,
-                column: 5
+                column: 5,
             });
         });
 
@@ -357,7 +376,7 @@ describe('pathUtils', () => {
                 filePath: 'README.md',
                 line: 10,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
 
             const result2 = parseFilePathFromUrl('package.json:25');
@@ -365,7 +384,7 @@ describe('pathUtils', () => {
                 filePath: 'package.json',
                 line: 25,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
 
             const result3 = parseFilePathFromUrl('tsconfig.json');
@@ -373,7 +392,7 @@ describe('pathUtils', () => {
                 filePath: 'tsconfig.json',
                 line: undefined,
                 endLine: undefined,
-                column: undefined
+                column: undefined,
             });
 
             const result4 = parseFilePathFromUrl('vite.config.mts:42:8');
@@ -381,7 +400,7 @@ describe('pathUtils', () => {
                 filePath: 'vite.config.mts',
                 line: 42,
                 endLine: undefined,
-                column: 8
+                column: 8,
             });
         });
 
@@ -391,7 +410,7 @@ describe('pathUtils', () => {
                 filePath: 'CHANGELOG.md',
                 line: 1,
                 endLine: 50,
-                column: undefined
+                column: undefined,
             });
         });
     });
@@ -399,13 +418,13 @@ describe('pathUtils', () => {
     describe('parseMarkdownFileLinks', () => {
         it('should parse simple markdown with no links', () => {
             const result = parseMarkdownFileLinks('Hello world');
-            expect(result).toEqual([
-                { type: 'text', content: 'Hello world' }
-            ]);
+            expect(result).toEqual([{ type: 'text', content: 'Hello world' }]);
         });
 
         it('should parse single file link', () => {
-            const result = parseMarkdownFileLinks('Check [file.ts:42](file.ts:42)');
+            const result = parseMarkdownFileLinks(
+                'Check [file.ts:42](file.ts:42)'
+            );
             expect(result).toHaveLength(2);
             expect(result[0]).toEqual({ type: 'text', content: 'Check ' });
             expect(result[1]).toEqual({
@@ -415,12 +434,14 @@ describe('pathUtils', () => {
                 line: 42,
                 endLine: undefined,
                 column: undefined,
-                title: 'file.ts:42'
+                title: 'file.ts:42',
             });
         });
 
         it('should parse file link with path', () => {
-            const result = parseMarkdownFileLinks('See [handler](src/auth/handler.ts:45)');
+            const result = parseMarkdownFileLinks(
+                'See [handler](src/auth/handler.ts:45)'
+            );
             expect(result).toHaveLength(2);
             expect(result[1]).toEqual({
                 type: 'fileLink',
@@ -429,7 +450,7 @@ describe('pathUtils', () => {
                 line: 45,
                 endLine: undefined,
                 column: undefined,
-                title: 'handler'
+                title: 'handler',
             });
         });
 
@@ -446,15 +467,19 @@ describe('pathUtils', () => {
         });
 
         it('should preserve external links as text', () => {
-            const result = parseMarkdownFileLinks('Visit [Google](https://google.com)');
+            const result = parseMarkdownFileLinks(
+                'Visit [Google](https://google.com)'
+            );
             expect(result).toEqual([
                 { type: 'text', content: 'Visit ' },
-                { type: 'text', content: '[Google](https://google.com)' }
+                { type: 'text', content: '[Google](https://google.com)' },
             ]);
         });
 
         it('should handle Windows paths in links', () => {
-            const result = parseMarkdownFileLinks('See [main.ts](C:\\project\\main.ts:100)');
+            const result = parseMarkdownFileLinks(
+                'See [main.ts](C:\\project\\main.ts:100)'
+            );
             expect(result).toHaveLength(2);
             expect(result[1]).toEqual({
                 type: 'fileLink',
@@ -463,12 +488,14 @@ describe('pathUtils', () => {
                 line: 100,
                 endLine: undefined,
                 column: undefined,
-                title: 'main.ts'
+                title: 'main.ts',
             });
         });
 
         it('should handle file links with line and column', () => {
-            const result = parseMarkdownFileLinks('Error at [file.ts:10:5](file.ts:10:5)');
+            const result = parseMarkdownFileLinks(
+                'Error at [file.ts:10:5](file.ts:10:5)'
+            );
             expect(result[1]).toEqual({
                 type: 'fileLink',
                 content: '[file.ts:10:5](file.ts:10:5)',
@@ -476,12 +503,14 @@ describe('pathUtils', () => {
                 line: 10,
                 endLine: undefined,
                 column: 5,
-                title: 'file.ts:10:5'
+                title: 'file.ts:10:5',
             });
         });
 
         it('should handle file links with line range', () => {
-            const result = parseMarkdownFileLinks('Check [file.cpp:104-115](src/file.cpp:104-115)');
+            const result = parseMarkdownFileLinks(
+                'Check [file.cpp:104-115](src/file.cpp:104-115)'
+            );
             expect(result).toHaveLength(2);
             expect(result[1]).toEqual({
                 type: 'fileLink',
@@ -490,17 +519,20 @@ describe('pathUtils', () => {
                 line: 104,
                 endLine: 115,
                 column: undefined,
-                title: 'file.cpp:104-115'
+                title: 'file.cpp:104-115',
             });
         });
 
         it('should handle long paths with line ranges', () => {
-            const markdown = 'at [`src/SampleApp/Plugins/Plugin/Source/File.cpp:104-115`](src/SampleApp/Plugins/Plugin/Source/File.cpp:104-115)';
+            const markdown =
+                'at [`src/SampleApp/Plugins/Plugin/Source/File.cpp:104-115`](src/SampleApp/Plugins/Plugin/Source/File.cpp:104-115)';
             const result = parseMarkdownFileLinks(markdown);
             expect(result).toHaveLength(2);
             expect(result[0]).toEqual({ type: 'text', content: 'at ' });
             expect(result[1].type).toBe('fileLink');
-            expect(result[1].filePath).toBe('src/SampleApp/Plugins/Plugin/Source/File.cpp');
+            expect(result[1].filePath).toBe(
+                'src/SampleApp/Plugins/Plugin/Source/File.cpp'
+            );
             expect(result[1].line).toBe(104);
             expect(result[1].endLine).toBe(115);
         });
@@ -511,14 +543,15 @@ describe('pathUtils', () => {
         });
 
         it('should handle mixed content with code blocks', () => {
-            const markdown = 'Issue in [utils.ts](utils.ts:42)\n\n```ts\nconst x = 1;\n```';
+            const markdown =
+                'Issue in [utils.ts](utils.ts:42)\n\n```ts\nconst x = 1;\n```';
             const result = parseMarkdownFileLinks(markdown);
             expect(result).toHaveLength(3);
             expect(result[0]).toEqual({ type: 'text', content: 'Issue in ' });
             expect(result[1].type).toBe('fileLink');
             expect(result[2]).toEqual({
                 type: 'text',
-                content: '\n\n```ts\nconst x = 1;\n```'
+                content: '\n\n```ts\nconst x = 1;\n```',
             });
         });
     });

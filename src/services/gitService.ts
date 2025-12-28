@@ -4,7 +4,7 @@ import * as child_process from 'child_process';
 import type {
     API,
     GitExtension,
-    Repository
+    Repository,
 } from '../types/vscodeGitExtension';
 import { Log } from './loggingService';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
@@ -39,7 +39,12 @@ interface RepositoryQuickPickItem extends vscode.QuickPickItem {
  */
 export class GitService {
     /** Common default branch names in priority order */
-    private static readonly DEFAULT_BRANCH_CANDIDATES = ['main', 'master', 'develop', 'dev'] as const;
+    private static readonly DEFAULT_BRANCH_CANDIDATES = [
+        'main',
+        'master',
+        'develop',
+        'dev',
+    ] as const;
 
     private gitApi: API | null = null;
     private repository: Repository | null = null;
@@ -60,20 +65,25 @@ export class GitService {
     /**
      * Private constructor (use getInstance)
      */
-    private constructor() { }
+    private constructor() {}
 
     /**
      * Initialize the Git service with smart repository selection
      * @param workspaceSettings Optional settings service for persistence
      * @returns True if Git API is available and repository is found
      */
-    public async initialize(workspaceSettings?: WorkspaceSettingsService): Promise<boolean> {
+    public async initialize(
+        workspaceSettings?: WorkspaceSettingsService
+    ): Promise<boolean> {
         try {
             if (workspaceSettings) {
                 this.workspaceSettings = workspaceSettings;
             }
 
-            const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
+            const gitExtension =
+                vscode.extensions.getExtension<GitExtension>(
+                    'vscode.git'
+                )?.exports;
             if (!gitExtension) {
                 Log.info('Git extension not available');
                 return false;
@@ -114,7 +124,9 @@ export class GitService {
             // Try to auto-select a main (non-submodule) repository
             const autoSelected = this.autoSelectMainRepository();
             if (autoSelected) {
-                Log.info(`Auto-selected main repository: ${autoSelected.rootUri.fsPath}`);
+                Log.info(
+                    `Auto-selected main repository: ${autoSelected.rootUri.fsPath}`
+                );
                 this.repository = autoSelected;
                 this.saveRepositorySelection(autoSelected);
                 return true;
@@ -146,10 +158,12 @@ export class GitService {
         }
 
         for (const repo of this.gitApi.repositories) {
-            const repoRoot = repo.rootUri.fsPath;
             for (const submodule of repo.state.submodules) {
                 // Submodule path is relative to the parent repo
-                const absolutePath = vscode.Uri.joinPath(repo.rootUri, submodule.path).fsPath;
+                const absolutePath = vscode.Uri.joinPath(
+                    repo.rootUri,
+                    submodule.path
+                ).fsPath;
                 submodulePaths.add(this.normalizePath(absolutePath));
             }
         }
@@ -161,7 +175,9 @@ export class GitService {
      */
     private normalizePath(p: string): string {
         const normalized = p.replace(/\\/g, '/');
-        return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+        return process.platform === 'win32'
+            ? normalized.toLowerCase()
+            : normalized;
     }
 
     /**
@@ -180,8 +196,9 @@ export class GitService {
             return [];
         }
         const submodulePaths = this.getSubmodulePaths();
-        return this.gitApi.repositories.filter(repo =>
-            !submodulePaths.has(this.normalizePath(repo.rootUri.fsPath))
+        return this.gitApi.repositories.filter(
+            (repo) =>
+                !submodulePaths.has(this.normalizePath(repo.rootUri.fsPath))
         );
     }
 
@@ -199,8 +216,9 @@ export class GitService {
         }
 
         const normalizedSaved = this.normalizePath(savedPath);
-        return this.gitApi.repositories.find(repo =>
-            this.normalizePath(repo.rootUri.fsPath) === normalizedSaved
+        return this.gitApi.repositories.find(
+            (repo) =>
+                this.normalizePath(repo.rootUri.fsPath) === normalizedSaved
         );
     }
 
@@ -217,7 +235,11 @@ export class GitService {
         }
 
         // If all repos are submodules and there's only one, use it
-        if (mainRepos.length === 0 && this.gitApi && this.gitApi.repositories.length === 1) {
+        if (
+            mainRepos.length === 0 &&
+            this.gitApi &&
+            this.gitApi.repositories.length === 1
+        ) {
             return this.gitApi.repositories[0];
         }
 
@@ -229,7 +251,9 @@ export class GitService {
      */
     private saveRepositorySelection(repo: Repository): void {
         if (this.workspaceSettings) {
-            this.workspaceSettings.setSelectedRepositoryPath(repo.rootUri.fsPath);
+            this.workspaceSettings.setSelectedRepositoryPath(
+                repo.rootUri.fsPath
+            );
         }
     }
 
@@ -250,14 +274,18 @@ export class GitService {
             .map((repo: Repository) => {
                 const rootPath = repo.rootUri.fsPath;
                 const name = rootPath.split(/[/\\]/).pop() || rootPath;
-                const isSubmodule = submodulePaths.has(this.normalizePath(rootPath));
+                const isSubmodule = submodulePaths.has(
+                    this.normalizePath(rootPath)
+                );
 
                 return {
-                    label: isSubmodule ? `$(git-submodule) ${name}` : `$(repo) ${name}`,
+                    label: isSubmodule
+                        ? `$(git-submodule) ${name}`
+                        : `$(repo) ${name}`,
                     description: rootPath,
                     detail: isSubmodule ? 'Submodule' : undefined,
                     repository: repo,
-                    isSubmodule
+                    isSubmodule,
                 };
             })
             .sort((a, b) => {
@@ -271,7 +299,7 @@ export class GitService {
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Select Git repository to use for PR analysis',
-            title: 'Select Repository'
+            title: 'Select Repository',
         });
 
         return selected?.repository;
@@ -283,23 +311,32 @@ export class GitService {
      * @param workspaceSettings Settings service for persistence
      * @returns True if a repository was selected, false if canceled
      */
-    public async selectRepositoryManually(workspaceSettings?: WorkspaceSettingsService): Promise<boolean> {
+    public async selectRepositoryManually(
+        workspaceSettings?: WorkspaceSettingsService
+    ): Promise<boolean> {
         if (workspaceSettings) {
             this.workspaceSettings = workspaceSettings;
         }
 
         // Ensure Git API is available
         if (!this.gitApi) {
-            const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
+            const gitExtension =
+                vscode.extensions.getExtension<GitExtension>(
+                    'vscode.git'
+                )?.exports;
             if (!gitExtension?.enabled) {
-                vscode.window.showErrorMessage('Git extension is not available');
+                vscode.window.showErrorMessage(
+                    'Git extension is not available'
+                );
                 return false;
             }
             this.gitApi = gitExtension.getAPI(1);
         }
 
         if (!this.gitApi || this.gitApi.repositories.length === 0) {
-            vscode.window.showErrorMessage('No Git repositories found in workspace');
+            vscode.window.showErrorMessage(
+                'No Git repositories found in workspace'
+            );
             return false;
         }
 
@@ -324,7 +361,10 @@ export class GitService {
      * of the current workspace
      */
     private async detectParentGitRepository(): Promise<void> {
-        if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+        if (
+            !vscode.workspace.workspaceFolders ||
+            vscode.workspace.workspaceFolders.length === 0
+        ) {
             return; // No workspace open
         }
 
@@ -336,16 +376,24 @@ export class GitService {
 
                 // Check if VS Code Git extension has any repositories in parent folders
                 // that it can detect but hasn't opened yet
-                await vscode.commands.executeCommand('git.openRepository', folderPath);
+                await vscode.commands.executeCommand(
+                    'git.openRepository',
+                    folderPath
+                );
 
                 // After execution of the command, check again if new repositories are available
                 if (this.gitApi && this.gitApi.repositories.length > 0) {
-                    Log.info(`Detected and opened Git repository for workspace folder: ${folderPath}`);
+                    Log.info(
+                        `Detected and opened Git repository for workspace folder: ${folderPath}`
+                    );
                     break; // Successfully found a repository
                 }
             }
         } catch (error) {
-            Log.error('Error detecting Git repository in parent directories:', error);
+            Log.error(
+                'Error detecting Git repository in parent directories:',
+                error
+            );
         }
     }
 
@@ -379,7 +427,9 @@ export class GitService {
 
             // Method 1: Try to get from git config (local, no network)
             const remotes = await this.repository.getConfigs();
-            const originHead = remotes.find(config => config.key === 'remote.origin.head');
+            const originHead = remotes.find(
+                (config) => config.key === 'remote.origin.head'
+            );
 
             if (originHead) {
                 // Extract branch name from value like 'refs/heads/main'
@@ -395,14 +445,20 @@ export class GitService {
             // This reference is set when cloning and persists locally
             try {
                 const symbolicRef = await this.executeGitCommand([
-                    'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'
+                    'symbolic-ref',
+                    '--short',
+                    'refs/remotes/origin/HEAD',
                 ]);
                 if (symbolicRef) {
                     // Result is like "origin/main", extract just the branch name
-                    const branchName = symbolicRef.replace(/^origin\//, '').trim();
+                    const branchName = symbolicRef
+                        .replace(/^origin\//, '')
+                        .trim();
                     if (branchName) {
                         this.defaultBranchCache = branchName;
-                        Log.info(`Default branch from symbolic-ref: ${branchName}`);
+                        Log.info(
+                            `Default branch from symbolic-ref: ${branchName}`
+                        );
                         return branchName;
                     }
                 }
@@ -415,11 +471,16 @@ export class GitService {
             for (const branch of GitService.DEFAULT_BRANCH_CANDIDATES) {
                 try {
                     await this.executeGitCommand([
-                        'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`
+                        'rev-parse',
+                        '--verify',
+                        '--quiet',
+                        `refs/remotes/origin/${branch}`,
                     ]);
                     // If we get here, the remote tracking branch exists
                     this.defaultBranchCache = branch;
-                    Log.info(`Default branch from remote tracking ref: ${branch}`);
+                    Log.info(
+                        `Default branch from remote tracking ref: ${branch}`
+                    );
                     return branch;
                 } catch {
                     // Branch doesn't exist, try next
@@ -431,7 +492,10 @@ export class GitService {
             for (const branch of GitService.DEFAULT_BRANCH_CANDIDATES) {
                 try {
                     await this.executeGitCommand([
-                        'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`
+                        'rev-parse',
+                        '--verify',
+                        '--quiet',
+                        `refs/heads/${branch}`,
                     ]);
                     // If we get here, the local branch exists
                     this.defaultBranchCache = branch;
@@ -444,10 +508,16 @@ export class GitService {
 
             // Method 5: Try network call as LAST RESORT
             // This may fail if user doesn't have remote access (SSH keys, permissions, etc.)
-            const remote = this.repository.state.remotes.find(r => r.name === 'origin');
+            const remote = this.repository.state.remotes.find(
+                (r) => r.name === 'origin'
+            );
             if (remote) {
                 try {
-                    const gitOutput = await this.executeGitCommand(['remote', 'show', remote.name]);
+                    const gitOutput = await this.executeGitCommand([
+                        'remote',
+                        'show',
+                        remote.name,
+                    ]);
                     const match = gitOutput.match(/HEAD branch: (.+)/);
                     if (match && match[1]) {
                         this.defaultBranchCache = match[1];
@@ -456,14 +526,19 @@ export class GitService {
                     }
                 } catch (networkError) {
                     // Network/permission error - expected in offline or restricted environments
-                    Log.info('Could not fetch default branch from remote (requires network/SSH access), falling back to current HEAD', networkError);
+                    Log.info(
+                        'Could not fetch default branch from remote (requires network/SSH access), falling back to current HEAD',
+                        networkError
+                    );
                 }
             }
 
             // Method 6: Final fallback - use current HEAD if it's a branch
             const headBranch = this.repository.state.HEAD?.name;
             if (headBranch) {
-                Log.info(`Using current HEAD as default branch fallback: ${headBranch}`);
+                Log.info(
+                    `Using current HEAD as default branch fallback: ${headBranch}`
+                );
             }
             return headBranch;
         } catch (error) {
@@ -476,20 +551,22 @@ export class GitService {
      * Compare two branches or refs and get the diff
      * @param options The compare options
      */
-    public async compareBranches(options: GitCompareOptions): Promise<GitDiffResult> {
+    public async compareBranches(
+        options: GitCompareOptions
+    ): Promise<GitDiffResult> {
         try {
             if (!this.isInitialized() || !this.repository) {
                 throw new Error('Git service not initialized');
             }
 
-            const base = options.base || await this.getDefaultBranch();
+            const base = options.base || (await this.getDefaultBranch());
             const compare = options.compare || this.repository.state.HEAD?.name;
 
             if (!base) {
                 return {
                     diffText: '',
                     refName: compare || 'unknown',
-                    error: 'Could not determine base branch for comparison'
+                    error: 'Could not determine base branch for comparison',
                 };
             }
 
@@ -497,23 +574,26 @@ export class GitService {
                 return {
                     diffText: '',
                     refName: 'unknown',
-                    error: 'Could not determine comparison branch'
+                    error: 'Could not determine comparison branch',
                 };
             }
 
             // Use Git command directly for three-dot diff format
-            const diffText = await this.executeGitCommand(['diff', `${base}...${compare}`]);
+            const diffText = await this.executeGitCommand([
+                'diff',
+                `${base}...${compare}`,
+            ]);
 
             return {
                 diffText,
-                refName: compare
+                refName: compare,
             };
         } catch (error) {
             Log.error('Error comparing branches:', error);
             return {
                 diffText: '',
                 refName: options.compare || 'unknown',
-                error: `Failed to compare branches: ${error instanceof Error ? error.message : String(error)}`
+                error: `Failed to compare branches: ${error instanceof Error ? error.message : String(error)}`,
             };
         }
     }
@@ -536,7 +616,7 @@ export class GitService {
                 return {
                     diffText: '',
                     refName: 'uncommitted changes',
-                    error: 'No uncommitted changes found'
+                    error: 'No uncommitted changes found',
                 };
             }
 
@@ -547,18 +627,19 @@ export class GitService {
             const unstagedDiff = await this.repository.diff(false);
 
             // Combine them
-            const diffText = `${stagedDiff ? `Staged changes:\n${stagedDiff}\n\n` : ''}${unstagedDiff ? `Unstaged changes:\n${unstagedDiff}` : ''}`.trim();
+            const diffText =
+                `${stagedDiff ? `Staged changes:\n${stagedDiff}\n\n` : ''}${unstagedDiff ? `Unstaged changes:\n${unstagedDiff}` : ''}`.trim();
 
             return {
                 diffText,
-                refName: 'uncommitted changes'
+                refName: 'uncommitted changes',
             };
         } catch (error) {
             Log.error('Error getting uncommitted changes:', error);
             return {
                 diffText: '',
                 refName: 'uncommitted changes',
-                error: `Failed to get uncommitted changes: ${error instanceof Error ? error.message : String(error)}`
+                error: `Failed to get uncommitted changes: ${error instanceof Error ? error.message : String(error)}`,
             };
         }
     }

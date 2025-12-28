@@ -8,13 +8,18 @@ export enum AnalysisMode {
     Critical = 'critical',
     Comprehensive = 'comprehensive',
     Security = 'security',
-    Performance = 'performance'
+    Performance = 'performance',
 }
 
 /**
  * Model provider types
  */
-export type ModelProvider = 'copilot' | 'openai' | 'ollama' | 'anthropic' | 'mistral';
+export type ModelProvider =
+    | 'copilot'
+    | 'openai'
+    | 'ollama'
+    | 'anthropic'
+    | 'mistral';
 
 /**
  * Severity levels for issues

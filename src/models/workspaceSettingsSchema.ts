@@ -13,15 +13,18 @@ export const SUBAGENT_LIMITS = {
 export const WorkspaceSettingsSchema = z.looseObject({
     selectedRepositoryPath: z.string().optional(),
     preferredModelVersion: z.string().optional(),
-    maxIterations: z.number()
+    maxIterations: z
+        .number()
         .min(ANALYSIS_LIMITS.maxIterations.min)
         .max(ANALYSIS_LIMITS.maxIterations.max)
         .default(ANALYSIS_LIMITS.maxIterations.default),
-    requestTimeoutSeconds: z.number()
+    requestTimeoutSeconds: z
+        .number()
         .min(ANALYSIS_LIMITS.requestTimeoutSeconds.min)
         .max(ANALYSIS_LIMITS.requestTimeoutSeconds.max)
         .default(ANALYSIS_LIMITS.requestTimeoutSeconds.default),
-    maxSubagentsPerSession: z.number()
+    maxSubagentsPerSession: z
+        .number()
         .min(SUBAGENT_LIMITS.maxPerSession.min)
         .max(SUBAGENT_LIMITS.maxPerSession.max)
         .default(SUBAGENT_LIMITS.maxPerSession.default),

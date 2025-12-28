@@ -13,8 +13,8 @@ The `ChatResponseStream` class (exposed as `vscode.ChatResponseStream`) enables 
 Sends markdown content to be displayed in the chat response.
 
 ```typescript
-stream.markdown("## Analysis Results\n\nFound **5 issues** in the codebase.");
-stream.markdown(new vscode.MarkdownString("Code: `const x = 1;`"));
+stream.markdown('## Analysis Results\n\nFound **5 issues** in the codebase.');
+stream.markdown(new vscode.MarkdownString('Code: `const x = 1;`'));
 ```
 
 **DTO Kind:** `markdownContent`
@@ -27,20 +27,20 @@ Displays a progress message with optional async task tracking. Shows a spinner i
 
 ```typescript
 // Simple progress message
-stream.progress("Reading file X...");
+stream.progress('Reading file X...');
 
 // Progress with task - message updates when task completes
-stream.progress("Searching for symbols...", async (progress) => {
-  const result = await searchSymbols();
-  // Return a completion message
-  return `Found ${result.length} symbols`;
+stream.progress('Searching for symbols...', async (progress) => {
+    const result = await searchSymbols();
+    // Return a completion message
+    return `Found ${result.length} symbols`;
 });
 
 // Progress with nested updates
-stream.progress("Analyzing codebase...", async (progress) => {
-  progress.report(new vscode.ChatResponseWarningPart("Large file detected"));
-  progress.report(new vscode.ChatResponseReferencePart(uri));
-  await doAnalysis();
+stream.progress('Analyzing codebase...', async (progress) => {
+    progress.report(new vscode.ChatResponseWarningPart('Large file detected'));
+    progress.report(new vscode.ChatResponseReferencePart(uri));
+    await doAnalysis();
 });
 ```
 
@@ -60,8 +60,8 @@ Specialized progress for displaying "thinking" or reasoning steps.
 
 ```typescript
 stream.thinkingProgress({
-  message: "Analyzing code structure...",
-  id: "analysis-step-1",
+    message: 'Analyzing code structure...',
+    id: 'analysis-step-1',
 });
 ```
 
@@ -77,15 +77,15 @@ Displays a clickable button that triggers a VS Code command.
 
 ```typescript
 stream.button({
-  command: "workbench.action.files.openFile",
-  title: "Open File",
-  arguments: [vscode.Uri.file("/path/to/file.ts")],
+    command: 'workbench.action.files.openFile',
+    title: 'Open File',
+    arguments: [vscode.Uri.file('/path/to/file.ts')],
 });
 
 stream.button({
-  command: "myExtension.applyFix",
-  title: "$(wrench) Apply Fix",
-  tooltip: "Apply the suggested fix to the file",
+    command: 'myExtension.applyFix',
+    title: '$(wrench) Apply Fix',
+    tooltip: 'Apply the suggested fix to the file',
 });
 ```
 
@@ -101,29 +101,29 @@ Displays a reference to a file, location, or variable as a distinct item (not in
 
 ```typescript
 // File reference
-stream.reference(vscode.Uri.file("/path/to/file.ts"));
+stream.reference(vscode.Uri.file('/path/to/file.ts'));
 
 // Location reference (specific line)
 stream.reference(
-  new vscode.Location(
-    vscode.Uri.file("/path/to/file.ts"),
-    new vscode.Position(10, 0)
-  )
+    new vscode.Location(
+        vscode.Uri.file('/path/to/file.ts'),
+        new vscode.Position(10, 0)
+    )
 );
 
 // Reference with icon
-stream.reference(uri, new vscode.ThemeIcon("file-code"));
+stream.reference(uri, new vscode.ThemeIcon('file-code'));
 
 // Reference with status (using reference2)
 stream.reference2(uri, undefined, {
-  status: {
-    description: "Modified",
-    kind: vscode.ChatResponseReferencePartStatusKind.Complete,
-  },
+    status: {
+        description: 'Modified',
+        kind: vscode.ChatResponseReferencePartStatusKind.Complete,
+    },
 });
 
 // Variable reference
-stream.reference({ variableName: "selection", value: uri });
+stream.reference({ variableName: 'selection', value: uri });
 ```
 
 **DTO Kind:** `reference`
@@ -138,16 +138,16 @@ Creates **inline** interactive links within markdown text (different from `refer
 
 ```typescript
 // Inline file link
-stream.anchor(vscode.Uri.file("/path/to/file.ts"), "file.ts");
+stream.anchor(vscode.Uri.file('/path/to/file.ts'), 'file.ts');
 
 // Inline location link (with line number)
 stream.anchor(
-  new vscode.Location(uri, new vscode.Position(42, 0)),
-  "handleRequest()"
+    new vscode.Location(uri, new vscode.Position(42, 0)),
+    'handleRequest()'
 );
 
 // Symbol link
-stream.anchor(symbolInfo, "MyClass.method()");
+stream.anchor(symbolInfo, 'MyClass.method()');
 ```
 
 **DTO Kind:** `inlineReference`
@@ -166,21 +166,21 @@ Renders a hierarchical file tree structure.
 
 ```typescript
 const fileTree: vscode.ChatResponseFileTree[] = [
-  {
-    name: "src",
-    children: [
-      { name: "index.ts" },
-      { name: "utils.ts" },
-      {
-        name: "components",
-        children: [{ name: "Button.tsx" }, { name: "Dialog.tsx" }],
-      },
-    ],
-  },
-  { name: "package.json" },
+    {
+        name: 'src',
+        children: [
+            { name: 'index.ts' },
+            { name: 'utils.ts' },
+            {
+                name: 'components',
+                children: [{ name: 'Button.tsx' }, { name: 'Dialog.tsx' }],
+            },
+        ],
+    },
+    { name: 'package.json' },
 ];
 
-stream.filetree(fileTree, vscode.Uri.file("/workspace"));
+stream.filetree(fileTree, vscode.Uri.file('/workspace'));
 ```
 
 **DTO Kind:** `treeData`
@@ -194,9 +194,9 @@ The UI allows navigation between file trees using "Next/Previous File Tree" acti
 Displays a warning message with warning icon and distinctive styling.
 
 ```typescript
-stream.warning("This file has been modified since the analysis started.");
+stream.warning('This file has been modified since the analysis started.');
 stream.warning(
-  new vscode.MarkdownString("**Warning:** Large file may impact performance.")
+    new vscode.MarkdownString('**Warning:** Large file may impact performance.')
 );
 ```
 
@@ -212,10 +212,10 @@ Shows an inline confirmation dialog with custom buttons. **Proposed API.**
 
 ```typescript
 stream.confirmation(
-  "Apply Changes?",
-  "This will modify 3 files. Are you sure?",
-  { files: ["a.ts", "b.ts", "c.ts"] },
-  ["Apply All", "Review First", "Cancel"]
+    'Apply Changes?',
+    'This will modify 3 files. Are you sure?',
+    { files: ['a.ts', 'b.ts', 'c.ts'] },
+    ['Apply All', 'Review First', 'Cancel']
 );
 ```
 
@@ -234,11 +234,11 @@ Streams proposed code changes with "Apply" functionality. **Proposed API.**
 
 ```typescript
 // Stream text edits
-stream.textEdit(vscode.Uri.file("/path/to/file.ts"), [
-  vscode.TextEdit.replace(
-    new vscode.Range(10, 0, 15, 0),
-    'const newCode = "replaced";'
-  ),
+stream.textEdit(vscode.Uri.file('/path/to/file.ts'), [
+    vscode.TextEdit.replace(
+        new vscode.Range(10, 0, 15, 0),
+        'const newCode = "replaced";'
+    ),
 ]);
 
 // Signal edits are complete
@@ -269,9 +269,9 @@ Displays a code citation with source, license, and code snippet.
 
 ```typescript
 stream.codeCitation(
-  vscode.Uri.parse("https://github.com/example/repo"),
-  "MIT",
-  "function example() { return 42; }"
+    vscode.Uri.parse('https://github.com/example/repo'),
+    'MIT',
+    'function example() { return 42; }'
 );
 ```
 
@@ -284,11 +284,11 @@ stream.codeCitation(
 Markdown with highlighted security vulnerabilities.
 
 ```typescript
-stream.markdownWithVulnerabilities("Here is the code:", [
-  {
-    title: "SQL Injection",
-    description: "Potential SQL injection vulnerability",
-  },
+stream.markdownWithVulnerabilities('Here is the code:', [
+    {
+        title: 'SQL Injection',
+        description: 'Potential SQL injection vulnerability',
+    },
 ]);
 ```
 
@@ -301,7 +301,7 @@ stream.markdownWithVulnerabilities("Here is the code:", [
 Indicates a tool invocation is being prepared.
 
 ```typescript
-stream.prepareToolInvocation("readFile");
+stream.prepareToolInvocation('readFile');
 ```
 
 **DTO Kind:** `prepareToolInvocation`
@@ -314,7 +314,7 @@ Clears chat response content up to the previous tool invocation.
 
 ```typescript
 stream.clearToPreviousToolInvocation(
-  ChatResponseClearToPreviousToolInvocationReason.Error
+    ChatResponseClearToPreviousToolInvocationReason.Error
 );
 ```
 
@@ -326,7 +326,7 @@ Tracks edits made by external tools within a callback.
 
 ```typescript
 stream.externalEdit([uri1, uri2], async () => {
-  await externalTool.modifyFiles();
+    await externalTool.modifyFiles();
 });
 ```
 
@@ -337,7 +337,7 @@ stream.externalEdit([uri1, uri2], async () => {
 Generic method to push any `ChatResponsePart` to the stream.
 
 ```typescript
-stream.push(new vscode.ChatResponseMarkdownPart("Custom content"));
+stream.push(new vscode.ChatResponseMarkdownPart('Custom content'));
 ```
 
 ---
@@ -348,42 +348,42 @@ stream.push(new vscode.ChatResponseMarkdownPart("Custom content"));
 
 ```typescript
 async function analyzeWithProgress(stream: vscode.ChatResponseStream) {
-  stream.progress("Reading workspace files...");
-  const files = await readFiles();
+    stream.progress('Reading workspace files...');
+    const files = await readFiles();
 
-  stream.progress("Analyzing code structure...");
-  const structure = await analyzeStructure(files);
+    stream.progress('Analyzing code structure...');
+    const structure = await analyzeStructure(files);
 
-  stream.progress("Finding issues...");
-  const issues = await findIssues(structure);
+    stream.progress('Finding issues...');
+    const issues = await findIssues(structure);
 
-  stream.markdown(`Found **${issues.length}** issues.`);
+    stream.markdown(`Found **${issues.length}** issues.`);
 }
 ```
 
 ### Pattern 2: Progress with Task Completion
 
 ```typescript
-stream.progress("Searching for symbol definitions...", async () => {
-  const symbols = await findSymbols("MyClass");
-  return `Found ${symbols.length} definitions`; // Updates progress message
+stream.progress('Searching for symbol definitions...', async () => {
+    const symbols = await findSymbols('MyClass');
+    return `Found ${symbols.length} definitions`; // Updates progress message
 });
 ```
 
 ### Pattern 3: Progress with Nested References
 
 ```typescript
-stream.progress("Analyzing dependencies...", async (progress) => {
-  for (const file of files) {
-    progress.report(
-      new vscode.ChatResponseReferencePart(
-        vscode.Uri.file(file.path),
-        new vscode.ThemeIcon("file")
-      )
-    );
-  }
-  await analyzeDependencies();
-  return "Analysis complete";
+stream.progress('Analyzing dependencies...', async (progress) => {
+    for (const file of files) {
+        progress.report(
+            new vscode.ChatResponseReferencePart(
+                vscode.Uri.file(file.path),
+                new vscode.ThemeIcon('file')
+            )
+        );
+    }
+    await analyzeDependencies();
+    return 'Analysis complete';
 });
 ```
 
@@ -396,8 +396,8 @@ stream.progress("Analyzing dependencies...", async (progress) => {
 ```typescript
 // In markdown with inline file references
 const loc = new vscode.Location(uri, new vscode.Position(42, 0));
-stream.anchor(loc, "processRequest()");
-stream.markdown(" handles the incoming request.");
+stream.anchor(loc, 'processRequest()');
+stream.markdown(' handles the incoming request.');
 
 // Creates: [processRequest()] handles the incoming request.
 // Where [processRequest()] is a clickable link to line 42
@@ -406,14 +406,14 @@ stream.markdown(" handles the incoming request.");
 ### Using reference() for source citations
 
 ```typescript
-stream.markdown("## Source Files\n");
+stream.markdown('## Source Files\n');
 stream.reference(
-  vscode.Uri.file("/src/handler.ts"),
-  new vscode.ThemeIcon("file-code")
+    vscode.Uri.file('/src/handler.ts'),
+    new vscode.ThemeIcon('file-code')
 );
 stream.reference(
-  vscode.Uri.file("/src/utils.ts"),
-  new vscode.ThemeIcon("file-code")
+    vscode.Uri.file('/src/utils.ts'),
+    new vscode.ThemeIcon('file-code')
 );
 ```
 
@@ -424,22 +424,22 @@ stream.reference(
 ```typescript
 // Action button
 stream.button({
-  command: "myExtension.applyFix",
-  title: "$(tools) Apply Fix",
-  arguments: [{ fixId: "fix-123" }],
+    command: 'myExtension.applyFix',
+    title: '$(tools) Apply Fix',
+    arguments: [{ fixId: 'fix-123' }],
 });
 
 // Navigation button
 stream.button({
-  command: "vscode.open",
-  title: "$(file) Open File",
-  arguments: [vscode.Uri.file("/path/to/file.ts")],
+    command: 'vscode.open',
+    title: '$(file) Open File',
+    arguments: [vscode.Uri.file('/path/to/file.ts')],
 });
 
 // Refresh button
 stream.button({
-  command: "myExtension.reanalyze",
-  title: "$(refresh) Re-analyze",
+    command: 'myExtension.reanalyze',
+    title: '$(refresh) Re-analyze',
 });
 ```
 
@@ -470,12 +470,12 @@ The `thinkingProgress()` method creates collapsible thinking sections automatica
 
 1. **Progress messages with tasks** - When the task completes, the message updates:
 
-   ```typescript
-   stream.progress("Working...", async () => {
-     await doWork();
-     return "Work complete!"; // Updates the original "Working..." message
-   });
-   ```
+    ```typescript
+    stream.progress('Working...', async () => {
+        await doWork();
+        return 'Work complete!'; // Updates the original "Working..." message
+    });
+    ```
 
 2. **Thinking progress** - Consecutive thinking parts are merged and updated in place.
 
@@ -495,67 +495,67 @@ The `thinkingProgress()` method creates collapsible thinking sections automatica
 
 ```typescript
 async function provideAnalysisResponse(
-  request: vscode.ChatRequest,
-  stream: vscode.ChatResponseStream,
-  token: vscode.CancellationToken
+    request: vscode.ChatRequest,
+    stream: vscode.ChatResponseStream,
+    token: vscode.CancellationToken
 ) {
-  // Show initial progress
-  stream.progress("Starting analysis...");
+    // Show initial progress
+    stream.progress('Starting analysis...');
 
-  // Header with markdown
-  stream.markdown("# Code Analysis Results\n\n");
+    // Header with markdown
+    stream.markdown('# Code Analysis Results\n\n');
 
-  // Progress with file references
-  stream.progress("Reading source files...", async (progress) => {
-    for (const file of sourceFiles) {
-      progress.report(
-        new vscode.ChatResponseReferencePart(
-          vscode.Uri.file(file),
-          new vscode.ThemeIcon("file-code")
-        )
-      );
-    }
-    return `Read ${sourceFiles.length} files`;
-  });
+    // Progress with file references
+    stream.progress('Reading source files...', async (progress) => {
+        for (const file of sourceFiles) {
+            progress.report(
+                new vscode.ChatResponseReferencePart(
+                    vscode.Uri.file(file),
+                    new vscode.ThemeIcon('file-code')
+                )
+            );
+        }
+        return `Read ${sourceFiles.length} files`;
+    });
 
-  // Show file tree of analyzed files
-  stream.markdown("## Analyzed Structure\n");
-  stream.filetree(buildFileTree(sourceFiles), workspaceRoot);
+    // Show file tree of analyzed files
+    stream.markdown('## Analyzed Structure\n');
+    stream.filetree(buildFileTree(sourceFiles), workspaceRoot);
 
-  // Analysis findings with inline anchors
-  stream.markdown("\n## Findings\n\n");
-  stream.markdown("Found an issue in ");
-  stream.anchor(
-    new vscode.Location(issueUri, new vscode.Position(42, 0)),
-    "processData()"
-  );
-  stream.markdown(":\n\n");
+    // Analysis findings with inline anchors
+    stream.markdown('\n## Findings\n\n');
+    stream.markdown('Found an issue in ');
+    stream.anchor(
+        new vscode.Location(issueUri, new vscode.Position(42, 0)),
+        'processData()'
+    );
+    stream.markdown(':\n\n');
 
-  // Warning for important issues
-  stream.warning("This function has potential memory leak.");
+    // Warning for important issues
+    stream.warning('This function has potential memory leak.');
 
-  // Proposed fix with text edit
-  stream.markdown("\n## Suggested Fix\n\n");
-  stream.textEdit(issueUri, [vscode.TextEdit.replace(issueRange, fixedCode)]);
+    // Proposed fix with text edit
+    stream.markdown('\n## Suggested Fix\n\n');
+    stream.textEdit(issueUri, [vscode.TextEdit.replace(issueRange, fixedCode)]);
 
-  // Action buttons
-  stream.button({
-    command: "myExtension.applyFix",
-    title: "$(check) Apply Fix",
-  });
+    // Action buttons
+    stream.button({
+        command: 'myExtension.applyFix',
+        title: '$(check) Apply Fix',
+    });
 
-  stream.button({
-    command: "myExtension.showDetails",
-    title: "$(info) More Details",
-  });
+    stream.button({
+        command: 'myExtension.showDetails',
+        title: '$(info) More Details',
+    });
 
-  // Confirmation for destructive actions
-  stream.confirmation(
-    "Apply changes?",
-    "This will modify the source file.",
-    { action: "apply", fileUri: issueUri.toString() },
-    ["Apply", "Cancel"]
-  );
+    // Confirmation for destructive actions
+    stream.confirmation(
+        'Apply changes?',
+        'This will modify the source file.',
+        { action: 'apply', fileUri: issueUri.toString() },
+        ['Apply', 'Cancel']
+    );
 }
 ```
 
@@ -602,9 +602,9 @@ To use proposed APIs, extensions must:
 2. **Batching**: Uses `queueMicrotask` to batch multiple updates efficiently
 
 3. **Rendering**: `ChatListRenderer` handles all content types, creating appropriate content parts:
-   - `ChatMarkdownContentPart`
-   - `ChatProgressContentPart`
-   - `ChatTreeContentPart`
-   - `ChatConfirmationContentPart`
-   - `ChatTextEditContentPart`
-   - etc.
+    - `ChatMarkdownContentPart`
+    - `ChatProgressContentPart`
+    - `ChatTreeContentPart`
+    - `ChatConfirmationContentPart`
+    - `ChatTextEditContentPart`
+    - etc.

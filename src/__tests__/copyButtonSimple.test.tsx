@@ -6,11 +6,11 @@ import { useCopyToClipboard } from '../webview/hooks/useCopyToClipboard';
 
 // Mock the path utilities and VS Code API
 vi.mock('../lib/pathUtils', () => ({
-    parseFilePaths: vi.fn(() => [])
+    parseFilePaths: vi.fn(() => []),
 }));
 
 vi.mock('../webview/hooks/useVSCodeApi', () => ({
-    useVSCodeApi: () => null
+    useVSCodeApi: () => null,
 }));
 
 // Test component with multiple markdown renderers
@@ -43,7 +43,7 @@ def test${index}():
 
     const handleCopy = (text: string) => {
         copyToClipboard(text);
-        setCopyCount(prev => prev + 1);
+        setCopyCount((prev) => prev + 1);
     };
 
     return (
@@ -122,13 +122,15 @@ describe('Copy Button Performance Fix', () => {
         render(<TestMultipleRenderers />);
 
         // Get first 3 copy buttons
-        const copyButtons = Array.from(document.querySelectorAll('button[title*="Copy"]')).slice(0, 3);
+        const copyButtons = Array.from(
+            document.querySelectorAll('button[title*="Copy"]')
+        ).slice(0, 3);
 
         const startTime = performance.now();
 
         // Click them rapidly
         await act(async () => {
-            copyButtons.forEach(button => {
+            copyButtons.forEach((button) => {
                 fireEvent.click(button);
             });
         });

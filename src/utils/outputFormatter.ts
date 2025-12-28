@@ -58,16 +58,35 @@ export class OutputFormatter {
      * [Truncated: use start_line=51 to continue reading]
      */
     static formatFileContent(options: FileContentOptions): string {
-        const { filePath, lines, startLine = 1, endLine, totalLines, wasTruncated } = options;
+        const {
+            filePath,
+            lines,
+            startLine = 1,
+            endLine,
+            totalLines,
+            wasTruncated,
+        } = options;
 
-        const header = this.formatFileHeaderWithMetadata(filePath, startLine, endLine, totalLines);
+        const header = this.formatFileHeaderWithMetadata(
+            filePath,
+            startLine,
+            endLine,
+            totalLines
+        );
         const numberedLines = this.formatLinesWithNumbers(lines, startLine);
 
         const parts = [header, numberedLines];
 
-        if (wasTruncated && endLine !== undefined && totalLines !== undefined && endLine < totalLines) {
+        if (
+            wasTruncated &&
+            endLine !== undefined &&
+            totalLines !== undefined &&
+            endLine < totalLines
+        ) {
             const nextStartLine = endLine + 1;
-            parts.push(`\n[Truncated: ${totalLines - endLine} more lines. Use start_line=${nextStartLine} to continue]`);
+            parts.push(
+                `\n[Truncated: ${totalLines - endLine} more lines. Use start_line=${nextStartLine} to continue]`
+            );
         }
 
         return parts.join('\n');
@@ -83,9 +102,20 @@ export class OutputFormatter {
      * 1: function code...
      */
     static formatSymbolContent(options: SymbolContentOptions): string {
-        const { filePath, symbolName, symbolKind, namePath, bodyLines, startLine = 1 } = options;
+        const {
+            filePath,
+            symbolName,
+            symbolKind,
+            namePath,
+            bodyLines,
+            startLine = 1,
+        } = options;
 
-        const header = this.formatSymbolHeader(filePath, symbolName, symbolKind);
+        const header = this.formatSymbolHeader(
+            filePath,
+            symbolName,
+            symbolKind
+        );
         const parts = [header];
 
         if (namePath) {
@@ -117,9 +147,11 @@ export class OutputFormatter {
      * Format multiple symbol overviews for directory listing.
      * Used by: get_symbols_overview tool (directory mode)
      */
-    static formatMultipleSymbolOverviews(overviews: SymbolOverviewOptions[]): string {
+    static formatMultipleSymbolOverviews(
+        overviews: SymbolOverviewOptions[]
+    ): string {
         return overviews
-            .map(overview => this.formatSymbolOverview(overview))
+            .map((overview) => this.formatSymbolOverview(overview))
             .join('\n\n');
     }
 
@@ -131,7 +163,11 @@ export class OutputFormatter {
      * === path/to/file.ts ===
      * 10: usage context line
      */
-    static formatUsageLocation(filePath: string, lines: string[], startLine: number): string {
+    static formatUsageLocation(
+        filePath: string,
+        lines: string[],
+        startLine: number
+    ): string {
         const header = this.formatFileHeader(filePath);
         const numberedLines = this.formatLinesWithNumbers(lines, startLine);
         return `${header}\n${numberedLines}`;
@@ -150,7 +186,10 @@ export class OutputFormatter {
      * Format pre-formatted content (lines already have line numbers).
      * Used by: find_usages tool where context lines are already numbered
      */
-    static formatPreformattedContent(filePath: string, preformattedLines: string[]): string {
+    static formatPreformattedContent(
+        filePath: string,
+        preformattedLines: string[]
+    ): string {
         const header = this.formatFileHeader(filePath);
         return `${header}\n${preformattedLines.join('\n')}`;
     }
@@ -182,14 +221,21 @@ export class OutputFormatter {
     /**
      * Format symbol header: === {filePath} [{name} - {kind}] ===
      */
-    private static formatSymbolHeader(filePath: string, symbolName: string, symbolKind: string): string {
+    private static formatSymbolHeader(
+        filePath: string,
+        symbolName: string,
+        symbolKind: string
+    ): string {
         return `=== ${filePath} [${symbolName} - ${symbolKind}] ===`;
     }
 
     /**
      * Format lines with line numbers: {lineNumber}: {content}
      */
-    private static formatLinesWithNumbers(lines: string[], startLine: number): string {
+    private static formatLinesWithNumbers(
+        lines: string[],
+        startLine: number
+    ): string {
         return lines
             .map((line, index) => `${startLine + index}: ${line}`)
             .join('\n');

@@ -43,8 +43,8 @@ invokeTool<T>(
 
 ```typescript
 interface LanguageModelToolInvocationOptions<T> {
-  input: T; // Matches the inputSchema defined for the tool
-  toolInvocationToken?: unknown; // Token from ChatRequest for tool invocation context
+    input: T; // Matches the inputSchema defined for the tool
+    toolInvocationToken?: unknown; // Token from ChatRequest for tool invocation context
 }
 ```
 
@@ -53,27 +53,27 @@ interface LanguageModelToolInvocationOptions<T> {
 ```typescript
 // Invoke a tool from within a chat participant
 const participant = vscode.chat.createChatParticipant(
-  "my-extension.participant",
-  async (request, context, progress, token) => {
-    // Invoke a registered tool
-    const result = await vscode.lm.invokeTool(
-      "my_tool_name",
-      {
-        input: { filePath: "/path/to/file.ts", query: "search term" },
-        toolInvocationToken: request.toolInvocationToken,
-      },
-      token
-    );
+    'my-extension.participant',
+    async (request, context, progress, token) => {
+        // Invoke a registered tool
+        const result = await vscode.lm.invokeTool(
+            'my_tool_name',
+            {
+                input: { filePath: '/path/to/file.ts', query: 'search term' },
+                toolInvocationToken: request.toolInvocationToken,
+            },
+            token
+        );
 
-    // Process result
-    for (const part of result.content) {
-      if (part instanceof vscode.LanguageModelTextPart) {
-        progress.report({ content: part.value });
-      }
+        // Process result
+        for (const part of result.content) {
+            if (part instanceof vscode.LanguageModelTextPart) {
+                progress.report({ content: part.value });
+            }
+        }
+
+        return { metadata: { complete: true } };
     }
-
-    return { metadata: { complete: true } };
-  }
 );
 ```
 
@@ -119,9 +119,9 @@ SearchExtensionsToolId;
 const tools = vscode.lm.tools;
 
 for (const tool of tools) {
-  console.log(`Tool: ${tool.name}`);
-  console.log(`Description: ${tool.description}`);
-  console.log(`Input Schema: ${JSON.stringify(tool.inputSchema)}`);
+    console.log(`Tool: ${tool.name}`);
+    console.log(`Description: ${tool.description}`);
+    console.log(`Input Schema: ${JSON.stringify(tool.inputSchema)}`);
 }
 ```
 
@@ -175,51 +175,51 @@ VS Code defines internal tool sets:
 ### Using vscode.lm.registerTool()
 
 ```typescript
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
-  // Define input type matching the schema
-  interface MyToolInput {
-    filePath: string;
-    options?: {
-      includeContent: boolean;
-    };
-  }
-
-  const toolRegistration = vscode.lm.registerTool<MyToolInput>(
-    "my_extension_tool",
-    {
-      // Called when the tool is invoked
-      invoke: async (options, token) => {
-        const { filePath, options: opts } = options.input;
-
-        // Perform tool logic
-        const content = await processFile(
-          filePath,
-          opts?.includeContent ?? false
-        );
-
-        // Return result with content parts
-        return new vscode.LanguageModelToolResult([
-          new vscode.LanguageModelTextPart(content),
-        ]);
-      },
-
-      // Optional: Called before invocation for confirmation
-      prepareInvocation: async (options, token) => {
-        return {
-          invocationMessage: "Reading file...",
-          pastTenseMessage: "Read file",
-          confirmationMessages: {
-            title: "Confirm File Read",
-            message: `Are you sure you want to read ${options.input.filePath}?`,
-          },
+    // Define input type matching the schema
+    interface MyToolInput {
+        filePath: string;
+        options?: {
+            includeContent: boolean;
         };
-      },
     }
-  );
 
-  context.subscriptions.push(toolRegistration);
+    const toolRegistration = vscode.lm.registerTool<MyToolInput>(
+        'my_extension_tool',
+        {
+            // Called when the tool is invoked
+            invoke: async (options, token) => {
+                const { filePath, options: opts } = options.input;
+
+                // Perform tool logic
+                const content = await processFile(
+                    filePath,
+                    opts?.includeContent ?? false
+                );
+
+                // Return result with content parts
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(content),
+                ]);
+            },
+
+            // Optional: Called before invocation for confirmation
+            prepareInvocation: async (options, token) => {
+                return {
+                    invocationMessage: 'Reading file...',
+                    pastTenseMessage: 'Read file',
+                    confirmationMessages: {
+                        title: 'Confirm File Read',
+                        message: `Are you sure you want to read ${options.input.filePath}?`,
+                    },
+                };
+            },
+        }
+    );
+
+    context.subscriptions.push(toolRegistration);
 }
 ```
 
@@ -227,15 +227,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 ```typescript
 interface LanguageModelTool<T> {
-  invoke(
-    options: LanguageModelToolInvocationOptions<T>,
-    token: CancellationToken
-  ): ProviderResult<LanguageModelToolResult>;
+    invoke(
+        options: LanguageModelToolInvocationOptions<T>,
+        token: CancellationToken
+    ): ProviderResult<LanguageModelToolResult>;
 
-  prepareInvocation?(
-    options: LanguageModelToolInvocationPrepareOptions<T>,
-    token: CancellationToken
-  ): ProviderResult<PreparedToolInvocation>;
+    prepareInvocation?(
+        options: LanguageModelToolInvocationPrepareOptions<T>,
+        token: CancellationToken
+    ): ProviderResult<PreparedToolInvocation>;
 }
 ```
 
@@ -243,12 +243,12 @@ interface LanguageModelTool<T> {
 
 ```typescript
 interface PreparedToolInvocation {
-  invocationMessage?: string; // Message shown during invocation
-  pastTenseMessage?: string; // Message after completion
-  confirmationMessages?: {
-    title: string;
-    message: string;
-  };
+    invocationMessage?: string; // Message shown during invocation
+    pastTenseMessage?: string; // Message after completion
+    confirmationMessages?: {
+        title: string;
+        message: string;
+    };
 }
 ```
 
@@ -260,37 +260,37 @@ interface PreparedToolInvocation {
 
 ```json
 {
-  "contributes": {
-    "languageModelTools": [
-      {
-        "name": "my_tool_name",
-        "displayName": "My Tool",
-        "modelDescription": "Description used by AI to select this tool",
-        "userDescription": "Description shown to users",
-        "toolReferenceName": "myTool",
-        "canBeReferencedInPrompt": true,
-        "icon": "$(symbol-method)",
-        "when": "editorLangId == typescript",
-        "tags": ["filesystem", "read"],
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "filePath": {
-              "type": "string",
-              "description": "The path to the file"
-            },
-            "lineNumber": {
-              "type": "integer",
-              "description": "Optional line number",
-              "minimum": 1
+    "contributes": {
+        "languageModelTools": [
+            {
+                "name": "my_tool_name",
+                "displayName": "My Tool",
+                "modelDescription": "Description used by AI to select this tool",
+                "userDescription": "Description shown to users",
+                "toolReferenceName": "myTool",
+                "canBeReferencedInPrompt": true,
+                "icon": "$(symbol-method)",
+                "when": "editorLangId == typescript",
+                "tags": ["filesystem", "read"],
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "filePath": {
+                            "type": "string",
+                            "description": "The path to the file"
+                        },
+                        "lineNumber": {
+                            "type": "integer",
+                            "description": "Optional line number",
+                            "minimum": 1
+                        }
+                    },
+                    "required": ["filePath"],
+                    "additionalProperties": false
+                }
             }
-          },
-          "required": ["filePath"],
-          "additionalProperties": false
-        }
-      }
-    ]
-  }
+        ]
+    }
 }
 ```
 
@@ -321,13 +321,13 @@ The schema supports JSON Schema Draft-07 subset:
 ```typescript
 // Allowed simple types
 type SimpleTypes =
-  | "array"
-  | "boolean"
-  | "integer"
-  | "null"
-  | "number"
-  | "object"
-  | "string";
+    | 'array'
+    | 'boolean'
+    | 'integer'
+    | 'null'
+    | 'number'
+    | 'object'
+    | 'string';
 ```
 
 Supported schema keywords:
@@ -344,36 +344,36 @@ Supported schema keywords:
 
 ```json
 {
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "title": {
-        "type": "string",
-        "description": "Title for the confirmation dialog"
-      },
-      "message": {
-        "type": "string",
-        "description": "Message to show"
-      },
-      "confirmationType": {
-        "type": "string",
-        "enum": ["basic", "terminal"],
-        "description": "Type of confirmation"
-      },
-      "options": {
+    "inputSchema": {
         "type": "object",
         "properties": {
-          "timeout": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Timeout in milliseconds"
-          }
-        }
-      }
-    },
-    "required": ["title", "message", "confirmationType"],
-    "additionalProperties": false
-  }
+            "title": {
+                "type": "string",
+                "description": "Title for the confirmation dialog"
+            },
+            "message": {
+                "type": "string",
+                "description": "Message to show"
+            },
+            "confirmationType": {
+                "type": "string",
+                "enum": ["basic", "terminal"],
+                "description": "Type of confirmation"
+            },
+            "options": {
+                "type": "object",
+                "properties": {
+                    "timeout": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Timeout in milliseconds"
+                    }
+                }
+            }
+        },
+        "required": ["title", "message", "confirmationType"],
+        "additionalProperties": false
+    }
 }
 ```
 
@@ -389,93 +389,93 @@ When a language model decides to call a tool, it emits `LanguageModelToolCallPar
 
 ```typescript
 class LanguageModelToolCallPart {
-  readonly callId: string; // Unique ID for this tool call
-  readonly name: string; // Tool name to invoke
-  readonly input: object; // Parameters for the tool
+    readonly callId: string; // Unique ID for this tool call
+    readonly name: string; // Tool name to invoke
+    readonly input: object; // Parameters for the tool
 }
 ```
 
 ### Agentic Tool-Calling Loop Implementation
 
 ```typescript
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
 
 async function agenticToolLoop(
-  model: vscode.LanguageModelChat,
-  messages: vscode.LanguageModelChatMessage[],
-  tools: vscode.LanguageModelChatTool[],
-  token: vscode.CancellationToken
+    model: vscode.LanguageModelChat,
+    messages: vscode.LanguageModelChatMessage[],
+    tools: vscode.LanguageModelChatTool[],
+    token: vscode.CancellationToken
 ): Promise<string> {
-  let finalResponse = "";
+    let finalResponse = '';
 
-  while (true) {
-    // Send request with tools
-    const response = await model.sendRequest(messages, { tools }, token);
+    while (true) {
+        // Send request with tools
+        const response = await model.sendRequest(messages, { tools }, token);
 
-    const toolCalls: vscode.LanguageModelToolCallPart[] = [];
-    let textContent = "";
+        const toolCalls: vscode.LanguageModelToolCallPart[] = [];
+        let textContent = '';
 
-    // Process the response stream
-    for await (const part of response.stream) {
-      if (part instanceof vscode.LanguageModelTextPart) {
-        textContent += part.value;
-      } else if (part instanceof vscode.LanguageModelToolCallPart) {
-        // Collect tool calls
-        toolCalls.push(part);
-      }
+        // Process the response stream
+        for await (const part of response.stream) {
+            if (part instanceof vscode.LanguageModelTextPart) {
+                textContent += part.value;
+            } else if (part instanceof vscode.LanguageModelToolCallPart) {
+                // Collect tool calls
+                toolCalls.push(part);
+            }
+        }
+
+        // If no tool calls, we're done
+        if (toolCalls.length === 0) {
+            finalResponse = textContent;
+            break;
+        }
+
+        // Add assistant message with tool calls
+        const assistantMessage = vscode.LanguageModelChatMessage.Assistant('');
+        assistantMessage.content2 = toolCalls;
+        messages.push(assistantMessage);
+
+        // Process each tool call and collect results
+        const toolResults: vscode.LanguageModelToolResultPart[] = [];
+
+        for (const toolCall of toolCalls) {
+            try {
+                // Invoke the tool
+                const result = await vscode.lm.invokeTool(
+                    toolCall.name,
+                    {
+                        input: toolCall.input,
+                    },
+                    token
+                );
+
+                // Create result part
+                toolResults.push(
+                    new vscode.LanguageModelToolResultPart(
+                        toolCall.callId,
+                        result.content
+                    )
+                );
+            } catch (error) {
+                // Handle tool error
+                toolResults.push(
+                    new vscode.LanguageModelToolResultPart(
+                        toolCall.callId,
+                        [new vscode.LanguageModelTextPart(`Error: ${error}`)],
+                        true // isError
+                    )
+                );
+            }
+        }
+
+        // Add tool results as user message
+        const userMessage = vscode.LanguageModelChatMessage.User('');
+        userMessage.content2 = toolResults;
+        messages.push(userMessage);
     }
 
-    // If no tool calls, we're done
-    if (toolCalls.length === 0) {
-      finalResponse = textContent;
-      break;
-    }
-
-    // Add assistant message with tool calls
-    const assistantMessage = vscode.LanguageModelChatMessage.Assistant("");
-    assistantMessage.content2 = toolCalls;
-    messages.push(assistantMessage);
-
-    // Process each tool call and collect results
-    const toolResults: vscode.LanguageModelToolResultPart[] = [];
-
-    for (const toolCall of toolCalls) {
-      try {
-        // Invoke the tool
-        const result = await vscode.lm.invokeTool(
-          toolCall.name,
-          {
-            input: toolCall.input,
-          },
-          token
-        );
-
-        // Create result part
-        toolResults.push(
-          new vscode.LanguageModelToolResultPart(
-            toolCall.callId,
-            result.content
-          )
-        );
-      } catch (error) {
-        // Handle tool error
-        toolResults.push(
-          new vscode.LanguageModelToolResultPart(
-            toolCall.callId,
-            [new vscode.LanguageModelTextPart(`Error: ${error}`)],
-            true // isError
-          )
-        );
-      }
-    }
-
-    // Add tool results as user message
-    const userMessage = vscode.LanguageModelChatMessage.User("");
-    userMessage.content2 = toolResults;
-    messages.push(userMessage);
-  }
-
-  return finalResponse;
+    return finalResponse;
 }
 ```
 
@@ -483,15 +483,15 @@ async function agenticToolLoop(
 
 ```typescript
 class LanguageModelToolResultPart {
-  constructor(
-    callId: string, // Matches the toolCall.callId
-    content: (
-      | LanguageModelTextPart
-      | LanguageModelDataPart
-      | LanguageModelPromptTsxPart
-    )[],
-    isError?: boolean // Indicates if this is an error result
-  );
+    constructor(
+        callId: string, // Matches the toolCall.callId
+        content: (
+            | LanguageModelTextPart
+            | LanguageModelDataPart
+            | LanguageModelPromptTsxPart
+        )[],
+        isError?: boolean // Indicates if this is an error result
+    );
 }
 ```
 
@@ -521,16 +521,16 @@ class LanguageModelToolResultPart {
 
 ```json
 {
-  "contributes": {
-    "languageModelTools": [
-      {
-        "name": "my_static_tool",
-        "displayName": "My Static Tool",
-        "modelDescription": "Does something useful",
-        "inputSchema": { "type": "object" }
-      }
-    ]
-  }
+    "contributes": {
+        "languageModelTools": [
+            {
+                "name": "my_static_tool",
+                "displayName": "My Static Tool",
+                "modelDescription": "Does something useful",
+                "inputSchema": { "type": "object" }
+            }
+        ]
+    }
 }
 ```
 
@@ -538,13 +538,13 @@ class LanguageModelToolResultPart {
 
 ```typescript
 // Must also register the implementation
-vscode.lm.registerTool("my_static_tool", {
-  invoke: async (options, token) => {
-    // Implementation
-    return new vscode.LanguageModelToolResult([
-      new vscode.LanguageModelTextPart("Result"),
-    ]);
-  },
+vscode.lm.registerTool('my_static_tool', {
+    invoke: async (options, token) => {
+        // Implementation
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Result'),
+        ]);
+    },
 });
 ```
 
@@ -552,12 +552,12 @@ vscode.lm.registerTool("my_static_tool", {
 
 ```typescript
 // Single call provides both metadata and implementation
-vscode.lm.registerTool("my_dynamic_tool", {
-  invoke: async (options, token) => {
-    return new vscode.LanguageModelToolResult([
-      new vscode.LanguageModelTextPart("Result"),
-    ]);
-  },
+vscode.lm.registerTool('my_dynamic_tool', {
+    invoke: async (options, token) => {
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Result'),
+        ]);
+    },
 });
 ```
 
@@ -579,40 +579,40 @@ vscode.lm.registerTool("my_dynamic_tool", {
 
 ```json
 {
-  "contributes": {
-    "languageModelTools": [
-      {
-        "name": "my_tool",
-        "displayName": "My Tool",
-        "modelDescription": "Comprehensive description for model",
-        "userDescription": "User-friendly description",
-        "canBeReferencedInPrompt": true,
-        "toolReferenceName": "myTool",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "query": { "type": "string" }
-          },
-          "required": ["query"]
-        }
-      }
-    ]
-  }
+    "contributes": {
+        "languageModelTools": [
+            {
+                "name": "my_tool",
+                "displayName": "My Tool",
+                "modelDescription": "Comprehensive description for model",
+                "userDescription": "User-friendly description",
+                "canBeReferencedInPrompt": true,
+                "toolReferenceName": "myTool",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" }
+                    },
+                    "required": ["query"]
+                }
+            }
+        ]
+    }
 }
 ```
 
 ```typescript
 // Register implementation
 context.subscriptions.push(
-  vscode.lm.registerTool("my_tool", {
-    invoke: async (options, token) => {
-      const { query } = options.input as { query: string };
-      const result = await performSearch(query);
-      return new vscode.LanguageModelToolResult([
-        new vscode.LanguageModelTextPart(result),
-      ]);
-    },
-  })
+    vscode.lm.registerTool('my_tool', {
+        invoke: async (options, token) => {
+            const { query } = options.input as { query: string };
+            const result = await performSearch(query);
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(result),
+            ]);
+        },
+    })
 );
 ```
 
@@ -648,12 +648,12 @@ Features:
 - `onDidChangeChatRequestTools` event
 - `participantVariableProvider`
 - New response parts:
-  - `ChatResponseMarkdownWithVulnerabilitiesPart`
-  - `ChatResponseCodeblockUriPart`
-  - `ChatResponseConfirmationPart`
-  - `ChatResponseCodeCitationPart`
-  - `ChatPrepareToolInvocationPart`
-  - `ChatToolInvocationPart`
+    - `ChatResponseMarkdownWithVulnerabilitiesPart`
+    - `ChatResponseCodeblockUriPart`
+    - `ChatResponseConfirmationPart`
+    - `ChatResponseCodeCitationPart`
+    - `ChatPrepareToolInvocationPart`
+    - `ChatToolInvocationPart`
 
 ### chatParticipantPrivate Proposed API
 
@@ -664,9 +664,9 @@ Features:
 - `ChatParticipantDetectionProvider`
 - `LanguageModelProxyProvider`
 - Extended ChatRequest properties:
-  - `id`, `attempt`, `enableCommandDetection`
-  - `isParticipantDetected`, `location`, `location2`
-  - `editedFileEvents`, `sessionId`, `isSubagent`
+    - `id`, `attempt`, `enableCommandDetection`
+    - `isParticipantDetected`, `location`, `location2`
+    - `editedFileEvents`, `sessionId`, `isSubagent`
 
 ### Enabling Proposed APIs
 
@@ -674,7 +674,7 @@ In `package.json`:
 
 ```json
 {
-  "enabledApiProposals": ["lmTools", "chatParticipantAdditions"]
+    "enabledApiProposals": ["lmTools", "chatParticipantAdditions"]
 }
 ```
 
@@ -688,15 +688,15 @@ In `package.json`:
 
 ```json
 {
-  "contributes": {
-    "languageModelToolSets": [
-      {
-        "name": "my_tool_set",
-        "description": "A collection of related tools",
-        "tools": ["my_tool_1", "my_tool_2", "another_tool_set"]
-      }
-    ]
-  }
+    "contributes": {
+        "languageModelToolSets": [
+            {
+                "name": "my_tool_set",
+                "description": "A collection of related tools",
+                "tools": ["my_tool_1", "my_tool_2", "another_tool_set"]
+            }
+        ]
+    }
 }
 ```
 

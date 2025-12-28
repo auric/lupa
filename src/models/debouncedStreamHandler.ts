@@ -1,5 +1,5 @@
-import * as vscode from "vscode";
-import { ChatToolCallHandler } from "../types/chatTypes";
+import * as vscode from 'vscode';
+import { ChatToolCallHandler } from '../types/chatTypes';
 
 /**
  * Decorator that rate-limits progress updates to prevent UI flicker.
@@ -13,7 +13,7 @@ export class DebouncedStreamHandler implements ChatToolCallHandler {
     private pendingProgress: string | undefined;
     private readonly minIntervalMs = 100; // 10 updates/sec max
 
-    constructor(private readonly innerHandler: ChatToolCallHandler) { }
+    constructor(private readonly innerHandler: ChatToolCallHandler) {}
 
     onProgress(message: string): void {
         const now = Date.now();

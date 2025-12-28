@@ -21,7 +21,7 @@
 git clone https://github.com/auric/lupa.git
 cd lupa
 
-# Install dependencies
+# Install dependencies (also installs Git hooks)
 npm install
 
 # Build extension
@@ -31,6 +31,32 @@ npm run build
 code .
 
 # Press F5 to launch Extension Development Host
+```
+
+---
+
+## Git Hooks
+
+Pre-commit hooks are installed automatically via Husky when you run `npm install`.
+
+### What Runs on Commit
+
+| Step | Check    | Scope          | Purpose                       |
+| ---- | -------- | -------------- | ----------------------------- |
+| 1    | tsc      | Entire project | TypeScript type checking      |
+| 2    | oxlint   | Entire project | Linting (blocks on errors)    |
+| 3    | prettier | Staged files   | Auto-format (writes to files) |
+
+### Fixing Issues Before Commit
+
+```bash
+npm run lint:fix    # Auto-fix lint issues and format code
+```
+
+### Hook Not Working?
+
+```bash
+npm run prepare     # Reinstall hooks
 ```
 
 ---
@@ -72,18 +98,17 @@ code .
 Vite builds two separate bundles:
 
 1. **Node.js Extension** (`npm run build:node`)
-
-   - Entry: `src/extension.ts`
-   - Output: `dist/extension.js` (CommonJS)
-   - Target: ES2024
-   - SSR mode with bundled dependencies
+    - Entry: `src/extension.ts`
+    - Output: `dist/extension.js` (CommonJS)
+    - Target: ES2024
+    - SSR mode with bundled dependencies
 
 2. **Browser Webview** (`npm run build:webview`)
-   - Entry: `src/webview/main.tsx`
-   - Output: `dist/webview/main.js` (ESM)
-   - Target: ES2024
-   - React with Compiler plugin
-   - Tailwind CSS processing
+    - Entry: `src/webview/main.tsx`
+    - Output: `dist/webview/main.js` (ESM)
+    - Target: ES2024
+    - React with Compiler plugin
+    - Tailwind CSS processing
 
 ### Build Configuration
 
@@ -130,11 +155,11 @@ VS Code API is mocked via `__mocks__/vscode.js`:
 
 ```typescript
 // In tests, vscode is automatically mocked
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
 
 // Mock specific behavior
 vi.mocked(vscode.workspace.fs.readFile).mockResolvedValue(
-  Buffer.from("file content")
+    Buffer.from('file content')
 );
 ```
 
@@ -144,10 +169,10 @@ Use shared factories from `testUtils/mockFactories.ts`:
 
 ```typescript
 import {
-  createMockCancellationTokenSource,
-  createMockWorkspaceSettings,
-  createMockGitRepository,
-} from "./testUtils/mockFactories";
+    createMockCancellationTokenSource,
+    createMockWorkspaceSettings,
+    createMockGitRepository,
+} from './testUtils/mockFactories';
 
 const tokenSource = createMockCancellationTokenSource();
 const settings = createMockWorkspaceSettings();
@@ -195,12 +220,12 @@ open coverage/lcov-report/index.html
 ### Logging
 
 ```typescript
-import { Log } from "./services/loggingService";
+import { Log } from './services/loggingService';
 
-Log.info("Analysis started");
-Log.debug("Tool arguments:", args);
-Log.warn("Rate limit approaching");
-Log.error("Tool execution failed:", error);
+Log.info('Analysis started');
+Log.debug('Tool arguments:', args);
+Log.warn('Rate limit approaching');
+Log.error('Tool execution failed:', error);
 ```
 
 View logs: `Output` panel → `Lupa`
@@ -217,13 +242,13 @@ View logs: `Output` panel → `Lupa`
 ### Tool Results
 
 ```typescript
-import { toolSuccess, toolError } from "../types/toolResultTypes";
+import { toolSuccess, toolError } from '../types/toolResultTypes';
 
 // Success
 return toolSuccess(formattedData);
 
 // Error
-return toolError("File not found");
+return toolError('File not found');
 ```
 
 ### Type Safety
@@ -244,26 +269,26 @@ function process(param?: string): void; // Avoid
 4. Register in `ServiceManager.initializeTools()`
 
 ```typescript
-import * as z from "zod";
-import { BaseTool } from "./baseTool";
-import { ToolResult, toolSuccess, toolError } from "../types/toolResultTypes";
+import * as z from 'zod';
+import { BaseTool } from './baseTool';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 
 export class MyTool extends BaseTool {
-  name = "my_tool";
-  description = "Does something useful";
+    name = 'my_tool';
+    description = 'Does something useful';
 
-  schema = z.object({
-    param: z.string().describe("Parameter description"),
-  });
+    schema = z.object({
+        param: z.string().describe('Parameter description'),
+    });
 
-  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
-    try {
-      // Implementation
-      return toolSuccess(result);
-    } catch (error) {
-      return toolError(error.message);
+    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+        try {
+            // Implementation
+            return toolSuccess(result);
+        } catch (error) {
+            return toolError(error.message);
+        }
     }
-  }
 }
 ```
 

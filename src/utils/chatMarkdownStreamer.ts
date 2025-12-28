@@ -31,16 +31,21 @@ export function streamMarkdownWithAnchors(
             if (segment.line !== undefined) {
                 // Create a Location with line or range (convert 1-based to 0-based)
                 const startLine = segment.line - 1;
-                const endLine = segment.endLine !== undefined ? segment.endLine - 1 : startLine;
+                const endLine =
+                    segment.endLine !== undefined
+                        ? segment.endLine - 1
+                        : startLine;
 
                 // Determine column positions based on format:
                 // - line:column (e.g., file.ts:42:10) → cursor at specific position (zero-width)
                 // - line-endLine (e.g., file.ts:10-20) → select entire line range
                 // - line only (e.g., file.ts:42) → cursor at start of line (zero-width)
-                const startColumn = segment.column !== undefined ? segment.column - 1 : 0;
-                const endColumn = segment.endLine !== undefined
-                    ? Number.MAX_SAFE_INTEGER  // Line range: select to end of last line
-                    : startColumn;             // Single position: zero-width selection
+                const startColumn =
+                    segment.column !== undefined ? segment.column - 1 : 0;
+                const endColumn =
+                    segment.endLine !== undefined
+                        ? Number.MAX_SAFE_INTEGER // Line range: select to end of last line
+                        : startColumn; // Single position: zero-width selection
 
                 const range = new vscode.Range(
                     new vscode.Position(startLine, startColumn),
@@ -60,7 +65,10 @@ export function streamMarkdownWithAnchors(
  * Resolve a file path to a VS Code URI.
  * Handles both absolute and relative paths.
  */
-function resolveFileUri(filePath: string, workspaceRoot: vscode.Uri | undefined): vscode.Uri {
+function resolveFileUri(
+    filePath: string,
+    workspaceRoot: vscode.Uri | undefined
+): vscode.Uri {
     // Check if it's an absolute path
     if (path.isAbsolute(filePath)) {
         return vscode.Uri.file(filePath);

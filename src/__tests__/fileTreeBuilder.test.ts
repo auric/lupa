@@ -16,18 +16,28 @@ describe('buildFileTree', () => {
 
         it('should handle single file at root level', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'README.md', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'README.md',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 
-            expect(result).toEqual([
-                { name: 'README.md' }
-            ]);
+            expect(result).toEqual([{ name: 'README.md' }]);
         });
 
         it('should handle single file in nested path', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'src/utils/helper.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'src/utils/helper.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 
@@ -37,12 +47,10 @@ describe('buildFileTree', () => {
                     children: [
                         {
                             name: 'utils',
-                            children: [
-                                { name: 'helper.ts' }
-                            ]
-                        }
-                    ]
-                }
+                            children: [{ name: 'helper.ts' }],
+                        },
+                    ],
+                },
             ]);
         });
     });
@@ -50,9 +58,27 @@ describe('buildFileTree', () => {
     describe('hierarchical structure', () => {
         it('should create proper folder hierarchy for multiple files', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'src/index.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' },
-                { filePath: 'src/utils/helper.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' },
-                { filePath: 'src/utils/format.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'src/index.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/utils/helper.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/utils/format.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 
@@ -70,8 +96,20 @@ describe('buildFileTree', () => {
 
         it('should handle files in different root folders', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'src/app.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' },
-                { filePath: 'tests/app.test.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'src/app.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'tests/app.test.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 
@@ -84,9 +122,27 @@ describe('buildFileTree', () => {
     describe('sorting', () => {
         it('should sort folders before files alphabetically', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'src/zebra.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' },
-                { filePath: 'src/alpha/file.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' },
-                { filePath: 'src/apple.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'src/zebra.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/alpha/file.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/apple.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 
@@ -100,8 +156,20 @@ describe('buildFileTree', () => {
     describe('deduplication', () => {
         it('should handle duplicate file paths from multiple hunks', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'src/index.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' },
-                { filePath: 'src/index.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'src/index.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/index.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 
@@ -114,7 +182,13 @@ describe('buildFileTree', () => {
     describe('edge cases', () => {
         it('should handle deeply nested paths', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'a/b/c/d/e/f.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'a/b/c/d/e/f.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 
@@ -135,8 +209,20 @@ describe('buildFileTree', () => {
 
         it('should handle files with similar prefixes', () => {
             const diff: DiffHunk[] = [
-                { filePath: 'src/component.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' },
-                { filePath: 'src/components/Button.ts', hunks: [], isNewFile: false, isDeletedFile: false, originalHeader: '' }
+                {
+                    filePath: 'src/component.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/components/Button.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
             ];
             const result = buildFileTree(diff);
 

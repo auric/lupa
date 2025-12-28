@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
 
-
 describe('streamMarkdownWithAnchors', () => {
     let mockStream: any;
     let workspaceRoot: vscode.Uri;
@@ -20,15 +19,21 @@ describe('streamMarkdownWithAnchors', () => {
         workspaceRoot = { fsPath: '/workspace' } as vscode.Uri;
 
         // Spy on Uri methods
-        vi.spyOn(vscode.Uri, 'file').mockImplementation((path: string) => ({
-            fsPath: path,
-            toString: () => `file://${path}`,
-        } as any));
+        vi.spyOn(vscode.Uri, 'file').mockImplementation(
+            (path: string) =>
+                ({
+                    fsPath: path,
+                    toString: () => `file://${path}`,
+                }) as any
+        );
 
-        vi.spyOn(vscode.Uri, 'joinPath').mockImplementation((base: vscode.Uri, ...parts: string[]) => ({
-            fsPath: `${base.fsPath}/${parts.join('/')}`,
-            toString: () => `file://${base.fsPath}/${parts.join('/')}`,
-        } as any));
+        vi.spyOn(vscode.Uri, 'joinPath').mockImplementation(
+            (base: vscode.Uri, ...parts: string[]) =>
+                ({
+                    fsPath: `${base.fsPath}/${parts.join('/')}`,
+                    toString: () => `file://${base.fsPath}/${parts.join('/')}`,
+                }) as any
+        );
     });
 
     it('should stream plain text without file links', () => {
@@ -36,7 +41,9 @@ describe('streamMarkdownWithAnchors', () => {
 
         streamMarkdownWithAnchors(mockStream, markdown, workspaceRoot);
 
-        expect(mockStream.markdown).toHaveBeenCalledWith('This is plain text without any links.');
+        expect(mockStream.markdown).toHaveBeenCalledWith(
+            'This is plain text without any links.'
+        );
         expect(mockStream.anchor).not.toHaveBeenCalled();
     });
 
@@ -73,7 +80,8 @@ describe('streamMarkdownWithAnchors', () => {
     });
 
     it('should handle file paths with line ranges', () => {
-        const markdown = 'The issue spans [src/file.ts:104-115](src/file.ts:104-115).';
+        const markdown =
+            'The issue spans [src/file.ts:104-115](src/file.ts:104-115).';
 
         streamMarkdownWithAnchors(mockStream, markdown, workspaceRoot);
 
@@ -86,7 +94,10 @@ describe('streamMarkdownWithAnchors', () => {
 
         // Verify line range is correctly converted to 0-based
         expect(vscode.Position).toHaveBeenCalledWith(103, 0); // 104-1 = 103
-        expect(vscode.Position).toHaveBeenCalledWith(114, Number.MAX_SAFE_INTEGER); // 115-1 = 114, end of line
+        expect(vscode.Position).toHaveBeenCalledWith(
+            114,
+            Number.MAX_SAFE_INTEGER
+        ); // 115-1 = 114, end of line
         expect(vscode.Range).toHaveBeenCalled();
         expect(vscode.Location).toHaveBeenCalled();
     });
@@ -112,7 +123,8 @@ describe('streamMarkdownWithAnchors', () => {
     });
 
     it('should handle multiple file links in mixed content', () => {
-        const markdown = 'Check [file1.ts:10](file1.ts:10) and [file2.ts:20-25](file2.ts:20-25) for details.';
+        const markdown =
+            'Check [file1.ts:10](file1.ts:10) and [file2.ts:20-25](file2.ts:20-25) for details.';
 
         streamMarkdownWithAnchors(mockStream, markdown, workspaceRoot);
 
@@ -135,13 +147,16 @@ describe('streamMarkdownWithAnchors', () => {
     });
 
     it('should preserve external links as text', () => {
-        const markdown = 'See [external link](https://example.com) and [file.ts:42](file.ts:42).';
+        const markdown =
+            'See [external link](https://example.com) and [file.ts:42](file.ts:42).';
 
         streamMarkdownWithAnchors(mockStream, markdown, workspaceRoot);
 
         // External links are streamed as markdown text (link preserved)
         expect(mockStream.markdown).toHaveBeenCalledWith('See ');
-        expect(mockStream.markdown).toHaveBeenCalledWith('[external link](https://example.com)');
+        expect(mockStream.markdown).toHaveBeenCalledWith(
+            '[external link](https://example.com)'
+        );
         expect(mockStream.markdown).toHaveBeenCalledWith(' and ');
         // File link becomes an anchor
         expect(mockStream.anchor).toHaveBeenCalledWith(
@@ -152,7 +167,8 @@ describe('streamMarkdownWithAnchors', () => {
     });
 
     it('should handle absolute file paths', () => {
-        const markdown = 'Check [/absolute/path/file.ts:15](/absolute/path/file.ts:15).';
+        const markdown =
+            'Check [/absolute/path/file.ts:15](/absolute/path/file.ts:15).';
 
         streamMarkdownWithAnchors(mockStream, markdown, workspaceRoot);
 
@@ -160,7 +176,9 @@ describe('streamMarkdownWithAnchors', () => {
         // anchor receives a Location object with uri.fsPath
         expect(mockStream.anchor).toHaveBeenCalledWith(
             expect.objectContaining({
-                uri: expect.objectContaining({ fsPath: '/absolute/path/file.ts' })
+                uri: expect.objectContaining({
+                    fsPath: '/absolute/path/file.ts',
+                }),
             }),
             '/absolute/path/file.ts:15'
         );
@@ -183,7 +201,7 @@ describe('streamMarkdownWithAnchors', () => {
         // anchor receives a Location object with uri.fsPath
         expect(mockStream.anchor).toHaveBeenCalledWith(
             expect.objectContaining({
-                uri: expect.objectContaining({ fsPath: 'file.ts' })
+                uri: expect.objectContaining({ fsPath: 'file.ts' }),
             }),
             'file.ts:10'
         );

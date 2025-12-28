@@ -6,11 +6,11 @@ import { useCopyToClipboard } from '../webview/hooks/useCopyToClipboard';
 
 // Mock the path utilities and VS Code API
 vi.mock('../lib/pathUtils', () => ({
-    parseFilePaths: vi.fn(() => [])
+    parseFilePaths: vi.fn(() => []),
 }));
 
 vi.mock('../webview/hooks/useVSCodeApi', () => ({
-    useVSCodeApi: () => null
+    useVSCodeApi: () => null,
 }));
 
 // Test component that creates MANY copy buttons to verify performance
@@ -35,7 +35,10 @@ function test${i}() {
         <div data-testid="many-buttons-container">
             {/* Create multiple MarkdownRenderers each with many code blocks */}
             {Array.from({ length: 5 }, (_, rendererIndex) => (
-                <div key={rendererIndex} data-testid={`renderer-${rendererIndex}`}>
+                <div
+                    key={rendererIndex}
+                    data-testid={`renderer-${rendererIndex}`}
+                >
                     <h2>Renderer {rendererIndex}</h2>
                     <MarkdownRenderer
                         content={createContentWithManyCodeBlocks()}
@@ -81,13 +84,15 @@ describe('Copy Button Performance Verification', () => {
         render(<ManyButtonsTest />);
 
         // Get first 10 copy buttons for testing
-        const copyButtons = Array.from(document.querySelectorAll('button[title*="Copy"]')).slice(0, 10);
+        const copyButtons = Array.from(
+            document.querySelectorAll('button[title*="Copy"]')
+        ).slice(0, 10);
 
         const startTime = performance.now();
 
         // Click all buttons rapidly
         await act(async () => {
-            copyButtons.forEach(button => {
+            copyButtons.forEach((button) => {
                 fireEvent.click(button);
             });
         });
@@ -105,7 +110,9 @@ describe('Copy Button Performance Verification', () => {
         let renderCount = 0;
 
         // Create a component that tracks renders
-        const RenderTracker: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+        const RenderTracker: React.FC<{ children: React.ReactNode }> = ({
+            children,
+        }) => {
             renderCount++;
             return <div data-testid="render-tracker">{children}</div>;
         };
@@ -150,7 +157,9 @@ describe('Copy Button Performance Verification', () => {
         render(<ManyButtonsTest />);
 
         // Get first 3 copy buttons
-        const buttons = Array.from(document.querySelectorAll('button[title*="Copy"]')).slice(0, 3);
+        const buttons = Array.from(
+            document.querySelectorAll('button[title*="Copy"]')
+        ).slice(0, 3);
 
         // Click first button
         fireEvent.click(buttons[0]!);

@@ -30,10 +30,10 @@ npm install --save-dev license-report license-checker
 
 ```json
 {
-  "scripts": {
-    "licenses:generate": "license-report --output=markdown > THIRD_PARTY_LICENSES.md",
-    "licenses:check": "license-checker --summary"
-  }
+    "scripts": {
+        "licenses:generate": "license-report --output=markdown > THIRD_PARTY_LICENSES.md",
+        "licenses:check": "license-checker --summary"
+    }
 }
 ```
 
@@ -44,17 +44,16 @@ npm install --save-dev license-report license-checker
 ## Why Two Tools?
 
 1. **license-report** (documentation)
-
-   - Actively maintained
-   - Native Markdown output
-   - Multiple formats for different needs
-   - Configurable field selection
+    - Actively maintained
+    - Native Markdown output
+    - Multiple formats for different needs
+    - Configurable field selection
 
 2. **license-checker** (validation)
-   - `--summary` for quick license overview
-   - `--json` for detailed license data
-   - Wide ecosystem adoption (438K weekly downloads)
-   - Note: `--onlyAllow` flag has cross-platform issues
+    - `--summary` for quick license overview
+    - `--json` for detailed license data
+    - Wide ecosystem adoption (438K weekly downloads)
+    - Note: `--onlyAllow` flag has cross-platform issues
 
 ## CI Integration
 

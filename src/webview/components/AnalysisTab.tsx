@@ -10,7 +10,7 @@ interface AnalysisTabProps {
 export const AnalysisTab = ({
     content,
     isDarkTheme,
-    onCopy
+    onCopy,
 }: AnalysisTabProps) => {
     console.time('Analysis tab render');
     const result = (

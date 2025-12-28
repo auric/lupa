@@ -19,7 +19,7 @@ describe('LanguageModelToolProvider', () => {
         // Create a mock tool
         mockTool = {
             name: 'get_symbols_overview',
-            execute: vi.fn()
+            execute: vi.fn(),
         } as unknown as GetSymbolsOverviewTool;
     });
 
@@ -36,7 +36,7 @@ describe('LanguageModelToolProvider', () => {
             expect(vscode.lm.registerTool).toHaveBeenCalledWith(
                 'lupa_getSymbolsOverview',
                 expect.objectContaining({
-                    invoke: expect.any(Function)
+                    invoke: expect.any(Function),
                 })
             );
         });
@@ -49,7 +49,9 @@ describe('LanguageModelToolProvider', () => {
             provider.register();
 
             expect(Log.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Language Model API may not be available')
+                expect.stringContaining(
+                    'Language Model API may not be available'
+                )
             );
         });
 
@@ -69,7 +71,8 @@ describe('LanguageModelToolProvider', () => {
             provider.register();
 
             // Get the registered handler
-            const registrationCall = vi.mocked(vscode.lm.registerTool).mock.calls[0];
+            const registrationCall = vi.mocked(vscode.lm.registerTool).mock
+                .calls[0];
             const handler = registrationCall[1];
 
             const input = {
@@ -79,12 +82,12 @@ describe('LanguageModelToolProvider', () => {
                 include_kinds: ['class', 'function'],
                 exclude_kinds: ['variable'],
                 max_symbols: 50,
-                show_hierarchy: false
+                show_hierarchy: false,
             };
 
             vi.mocked(mockTool.execute).mockResolvedValue({
                 success: true,
-                data: 'symbol data'
+                data: 'symbol data',
             });
 
             const result = await handler.invoke({ input } as any, {} as any);
@@ -99,15 +102,19 @@ describe('LanguageModelToolProvider', () => {
             const provider = new LanguageModelToolProvider(mockTool);
             provider.register();
 
-            const registrationCall = vi.mocked(vscode.lm.registerTool).mock.calls[0];
+            const registrationCall = vi.mocked(vscode.lm.registerTool).mock
+                .calls[0];
             const handler = registrationCall[1];
 
             vi.mocked(mockTool.execute).mockResolvedValue({
                 success: false,
-                error: 'Tool failed'
+                error: 'Tool failed',
             });
 
-            const result = await handler.invoke({ input: { path: 'test' } } as any, {} as any);
+            const result = await handler.invoke(
+                { input: { path: 'test' } } as any,
+                {} as any
+            );
 
             expect((result as any).content[0].value).toBe('Error: Tool failed');
         });
@@ -116,14 +123,22 @@ describe('LanguageModelToolProvider', () => {
             const provider = new LanguageModelToolProvider(mockTool);
             provider.register();
 
-            const registrationCall = vi.mocked(vscode.lm.registerTool).mock.calls[0];
+            const registrationCall = vi.mocked(vscode.lm.registerTool).mock
+                .calls[0];
             const handler = registrationCall[1];
 
-            vi.mocked(mockTool.execute).mockRejectedValue(new Error('Unexpected error'));
+            vi.mocked(mockTool.execute).mockRejectedValue(
+                new Error('Unexpected error')
+            );
 
-            const result = await handler.invoke({ input: { path: 'test' } } as any, {} as any);
+            const result = await handler.invoke(
+                { input: { path: 'test' } } as any,
+                {} as any
+            );
 
-            expect((result as any).content[0].value).toBe('Error: Unexpected error');
+            expect((result as any).content[0].value).toBe(
+                'Error: Unexpected error'
+            );
             expect(Log.error).toHaveBeenCalled();
         });
     });

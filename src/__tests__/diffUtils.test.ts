@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DiffUtils } from '../utils/diffUtils';
-import type { DiffHunk, DiffHunkLine, ParsedDiffLine } from '../types/contextTypes';
+import type { DiffHunk, DiffHunkLine } from '../types/contextTypes';
 
 describe('DiffUtils', () => {
     describe('parseDiff', () => {
@@ -22,7 +22,9 @@ index 1234567..abcdefg 100644
             expect(result[0].filePath).toBe('src/test.js');
             expect(result[0].isNewFile).toBe(false);
             expect(result[0].isDeletedFile).toBe(false);
-            expect(result[0].originalHeader).toBe('diff --git a/src/test.js b/src/test.js');
+            expect(result[0].originalHeader).toBe(
+                'diff --git a/src/test.js b/src/test.js'
+            );
 
             const hunk = result[0].hunks[0];
             expect(hunk.oldStart).toBe(1);
@@ -36,27 +38,27 @@ index 1234567..abcdefg 100644
             expect(hunk.parsedLines[0]).toEqual({
                 type: 'context',
                 content: 'function hello() {',
-                lineNumber: 1
+                lineNumber: 1,
             });
             expect(hunk.parsedLines[1]).toEqual({
                 type: 'added',
                 content: "    console.log('Hello');",
-                lineNumber: 2
+                lineNumber: 2,
             });
             expect(hunk.parsedLines[2]).toEqual({
                 type: 'added',
                 content: "    console.log('World');",
-                lineNumber: 3
+                lineNumber: 3,
             });
             expect(hunk.parsedLines[3]).toEqual({
                 type: 'context',
                 content: "    return 'hello';",
-                lineNumber: 4
+                lineNumber: 4,
             });
             expect(hunk.parsedLines[4]).toEqual({
                 type: 'context',
                 content: '}',
-                lineNumber: 5
+                lineNumber: 5,
             });
         });
 
@@ -81,27 +83,27 @@ index 1234567..abcdefg 100644
             expect(hunk.parsedLines[0]).toEqual({
                 type: 'context',
                 content: 'function hello() {',
-                lineNumber: 1
+                lineNumber: 1,
             });
             expect(hunk.parsedLines[1]).toEqual({
                 type: 'removed',
                 content: "    console.log('Debug');",
-                lineNumber: undefined
+                lineNumber: undefined,
             });
             expect(hunk.parsedLines[2]).toEqual({
                 type: 'removed',
                 content: "    console.log('More debug');",
-                lineNumber: undefined
+                lineNumber: undefined,
             });
             expect(hunk.parsedLines[3]).toEqual({
                 type: 'context',
                 content: "    return 'hello';",
-                lineNumber: 2
+                lineNumber: 2,
             });
             expect(hunk.parsedLines[4]).toEqual({
                 type: 'context',
                 content: '}',
-                lineNumber: 3
+                lineNumber: 3,
             });
         });
 
@@ -129,7 +131,9 @@ index 0000000..1234567
             expect(hunk.newStart).toBe(1);
             expect(hunk.newLines).toBe(3);
 
-            expect(hunk.parsedLines.every(line => line.type === 'added')).toBe(true);
+            expect(
+                hunk.parsedLines.every((line) => line.type === 'added')
+            ).toBe(true);
         });
 
         it('should detect deleted file correctly', () => {
@@ -156,7 +160,9 @@ index 1234567..0000000
             expect(hunk.newStart).toBe(0);
             expect(hunk.newLines).toBe(0);
 
-            expect(hunk.parsedLines.every(line => line.type === 'removed')).toBe(true);
+            expect(
+                hunk.parsedLines.every((line) => line.type === 'removed')
+            ).toBe(true);
         });
 
         it('should handle multiple files in one diff', () => {
@@ -205,7 +211,9 @@ index 1234567..abcdefg 100644
             const result = DiffUtils.parseDiff(diff);
 
             const hunk = result[0].hunks[0];
-            expect(hunk.hunkHeader).toBe('@@ -10,4 +10,5 @@ function testContext() {');
+            expect(hunk.hunkHeader).toBe(
+                '@@ -10,4 +10,5 @@ function testContext() {'
+            );
             expect(hunk.oldStart).toBe(10);
             expect(hunk.newStart).toBe(10);
         });
@@ -242,10 +250,14 @@ index 1234567..abcdefg 100644
                 { type: 'added', content: 'new line 1', lineNumber: 2 },
                 { type: 'added', content: 'new line 2', lineNumber: 3 },
                 { type: 'removed', content: 'old line', lineNumber: undefined },
-                { type: 'context', content: 'another unchanged', lineNumber: 4 }
+                {
+                    type: 'context',
+                    content: 'another unchanged',
+                    lineNumber: 4,
+                },
             ],
             hunkId: 'test:1',
-            hunkHeader: '@@ -1,3 +1,4 @@'
+            hunkHeader: '@@ -1,3 +1,4 @@',
         };
 
         describe('getAddedLines', () => {
@@ -276,7 +288,7 @@ index 1234567..abcdefg 100644
                     hunks: [{ ...sampleHunk, oldStart: 0, oldLines: 0 }],
                     isNewFile: true,
                     isDeletedFile: false,
-                    originalHeader: 'diff --git a/dev/null b/new.js'
+                    originalHeader: 'diff --git a/dev/null b/new.js',
                 };
                 expect(DiffUtils.isNewFile(newFileDiff)).toBe(true);
             });
@@ -287,7 +299,7 @@ index 1234567..abcdefg 100644
                     hunks: [sampleHunk],
                     isNewFile: false,
                     isDeletedFile: false,
-                    originalHeader: 'diff --git a/existing.js b/existing.js'
+                    originalHeader: 'diff --git a/existing.js b/existing.js',
                 };
                 expect(DiffUtils.isNewFile(existingFileDiff)).toBe(false);
             });
@@ -300,7 +312,7 @@ index 1234567..abcdefg 100644
                     hunks: [{ ...sampleHunk, newStart: 0, newLines: 0 }],
                     isNewFile: false,
                     isDeletedFile: true,
-                    originalHeader: 'diff --git a/deleted.js b/dev/null'
+                    originalHeader: 'diff --git a/deleted.js b/dev/null',
                 };
                 expect(DiffUtils.isDeletedFile(deletedFileDiff)).toBe(true);
             });
@@ -311,7 +323,7 @@ index 1234567..abcdefg 100644
                     hunks: [sampleHunk],
                     isNewFile: false,
                     isDeletedFile: false,
-                    originalHeader: 'diff --git a/existing.js b/existing.js'
+                    originalHeader: 'diff --git a/existing.js b/existing.js',
                 };
                 expect(DiffUtils.isDeletedFile(existingFileDiff)).toBe(false);
             });
@@ -319,8 +331,12 @@ index 1234567..abcdefg 100644
 
         describe('getHunkIdentifier', () => {
             it('should generate consistent identifiers', () => {
-                const id1 = DiffUtils.getHunkIdentifier('test.js', { newStart: 10 });
-                const id2 = DiffUtils.getHunkIdentifier('test.js', { newStart: 10 });
+                const id1 = DiffUtils.getHunkIdentifier('test.js', {
+                    newStart: 10,
+                });
+                const id2 = DiffUtils.getHunkIdentifier('test.js', {
+                    newStart: 10,
+                });
                 expect(id1).toBe(id2);
                 expect(id1).toBe('test.js:10');
             });

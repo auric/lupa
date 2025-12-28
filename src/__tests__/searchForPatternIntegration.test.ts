@@ -1,30 +1,18 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
-import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { RipgrepSearchService, RipgrepFileResult } from '../services/ripgrepSearchService';
+import {
+    RipgrepSearchService,
+    RipgrepFileResult,
+} from '../services/ripgrepSearchService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
-// Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');
 
-const mockCopilotModelManager = {
-    sendRequest: vi.fn()
-};
-
-const mockPromptGenerator = {
-    getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: search_for_pattern')
-};
-
 describe('SearchForPatternTool Integration Tests', () => {
-    let toolCallingAnalyzer: ToolCallingAnalysisProvider;
-    let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
@@ -35,7 +23,6 @@ describe('SearchForPatternTool Integration Tests', () => {
         search: Mock;
         formatResults: Mock;
     };
-    let subagentSessionManager: SubagentSessionManager;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -44,45 +31,36 @@ describe('SearchForPatternTool Integration Tests', () => {
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
         toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
-        conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
-                fsPath: '/test/git-repo'
-            }
+                fsPath: '/test/git-repo',
+            },
         });
 
         mockGitOperationsManager = {
-            getRepository: mockGetRepository
+            getRepository: mockGetRepository,
         } as unknown as GitOperationsManager;
 
         // Setup RipgrepSearchService mock
         mockRipgrepService = {
             search: vi.fn(),
-            formatResults: vi.fn()
+            formatResults: vi.fn(),
         };
 
         // Vitest 4 requires function syntax for constructor mocks
-        vi.mocked(RipgrepSearchService).mockImplementation(function (this: any) {
+        vi.mocked(RipgrepSearchService).mockImplementation(function (
+            this: any
+        ) {
             this.search = mockRipgrepService.search;
             this.formatResults = mockRipgrepService.formatResults;
         });
 
         // Initialize tools
-        searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);
-        toolRegistry.registerTool(searchForPatternTool);
-
-        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
-
-        // Initialize orchestrator
-        toolCallingAnalyzer = new ToolCallingAnalysisProvider(
-            conversationManager,
-            toolExecutor,
-            mockCopilotModelManager as never,
-            mockPromptGenerator as never,
-            mockWorkspaceSettings,
-            subagentSessionManager
+        searchForPatternTool = new SearchForPatternTool(
+            mockGitOperationsManager
         );
+        toolRegistry.registerTool(searchForPatternTool);
     });
 
     describe('End-to-End Tool-Calling Workflow', () => {
@@ -91,15 +69,25 @@ describe('SearchForPatternTool Integration Tests', () => {
                 {
                     filePath: 'src/index.ts',
                     matches: [
-                        { filePath: 'src/index.ts', lineNumber: 1, content: 'export class MainClass {', isContext: false }
-                    ]
+                        {
+                            filePath: 'src/index.ts',
+                            lineNumber: 1,
+                            content: 'export class MainClass {',
+                            isContext: false,
+                        },
+                    ],
                 },
                 {
                     filePath: 'src/utils.ts',
                     matches: [
-                        { filePath: 'src/utils.ts', lineNumber: 1, content: 'export class UtilClass {', isContext: false }
-                    ]
-                }
+                        {
+                            filePath: 'src/utils.ts',
+                            lineNumber: 1,
+                            content: 'export class UtilClass {',
+                            isContext: false,
+                        },
+                    ],
+                },
             ];
 
             mockRipgrepService.search.mockResolvedValue(mockResults);
@@ -112,8 +100,8 @@ describe('SearchForPatternTool Integration Tests', () => {
                 name: 'search_for_pattern',
                 args: {
                     pattern: 'class.*{',
-                    include_files: '*.ts'
-                }
+                    include_files: '*.ts',
+                },
             };
 
             const results = await toolExecutor.executeTools([toolCall]);
@@ -130,13 +118,15 @@ describe('SearchForPatternTool Integration Tests', () => {
 
         it('should handle error cases gracefully', async () => {
             // Test RipgrepSearchService error
-            mockRipgrepService.search.mockRejectedValue(new Error('ripgrep error'));
+            mockRipgrepService.search.mockRejectedValue(
+                new Error('ripgrep error')
+            );
 
             const toolCall = {
                 name: 'search_for_pattern',
                 args: {
-                    pattern: 'test'
-                }
+                    pattern: 'test',
+                },
             };
 
             const results = await toolExecutor.executeTools([toolCall]);
@@ -162,11 +152,15 @@ describe('SearchForPatternTool Integration Tests', () => {
             const vscodeTools = tool!.getVSCodeTool();
 
             expect(vscodeTools.name).toBe('search_for_pattern');
-            expect(vscodeTools.description).toContain('Search for text patterns');
+            expect(vscodeTools.description).toContain(
+                'Search for text patterns'
+            );
             expect(vscodeTools.inputSchema).toBeDefined();
 
             // Verify schema has correct LLM-optimized parameter names
-            const properties = (vscodeTools.inputSchema as Record<string, unknown>).properties as Record<string, unknown>;
+            const properties = (
+                vscodeTools.inputSchema as Record<string, unknown>
+            ).properties as Record<string, unknown>;
             expect(properties.pattern).toBeDefined();
             expect(properties.include_files).toBeDefined();
             expect(properties.exclude_files).toBeDefined();
@@ -177,5 +171,4 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(properties.case_sensitive).toBeDefined();
         });
     });
-
 });

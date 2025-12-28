@@ -93,30 +93,30 @@ Key interface methods:
 
 2. **ToolRegistry:** Singleton collecting all tools via static registration:
 
-   ```typescript
-   ToolRegistry.registerTool(ManageTodoListTool);
-   ```
+    ```typescript
+    ToolRegistry.registerTool(ManageTodoListTool);
+    ```
 
 3. **allTools.ts:** Imports all tool files, triggering registration on load
 
 4. **ToolsService:** Manages tool instances from registry:
 
-   ```typescript
-   constructor(@IInstantiationService instantiationService) {
-       this._copilotTools = new Lazy(() =>
-           new Map(ToolRegistry.getTools().map(t =>
-               [t.toolName, instantiationService.createInstance(t)]
-           ))
-       );
-   }
-   ```
+    ```typescript
+    constructor(@IInstantiationService instantiationService) {
+        this._copilotTools = new Lazy(() =>
+            new Map(ToolRegistry.getTools().map(t =>
+                [t.toolName, instantiationService.createInstance(t)]
+            ))
+        );
+    }
+    ```
 
 5. **ToolsContribution:** Registers with VS Code API:
-   ```typescript
-   for (const tool of copilotTools) {
-     vscode.lm.registerTool(tool.contributedName, tool);
-   }
-   ```
+    ```typescript
+    for (const tool of copilotTools) {
+        vscode.lm.registerTool(tool.contributedName, tool);
+    }
+    ```
 
 ### Tool Naming
 
@@ -135,13 +135,13 @@ Key interface methods:
 1. Tools are declared in `package.json` under `contributes.languageModelTools`
 2. At runtime, registered with `vscode.lm.registerTool()`
 3. Any extension can call:
-   ```typescript
-   const result = await vscode.lm.invokeTool(
-     "copilot_searchCodebase",
-     { input: { query: "find auth functions" } },
-     cancellationToken
-   );
-   ```
+    ```typescript
+    const result = await vscode.lm.invokeTool(
+        'copilot_searchCodebase',
+        { input: { query: 'find auth functions' } },
+        cancellationToken
+    );
+    ```
 
 ### Fully Qualified Tool Names
 
@@ -163,14 +163,14 @@ const contributedName = getContributedToolName(ToolName.Codebase);
 
 // 2. Create options
 const options: vscode.LanguageModelToolInvocationOptions = {
-  input: { query: "find authentication" },
+    input: { query: 'find authentication' },
 };
 
 // 3. Invoke
 const result = await vscode.lm.invokeTool(
-  contributedName,
-  options,
-  cancellationToken
+    contributedName,
+    options,
+    cancellationToken
 );
 ```
 
@@ -194,32 +194,32 @@ async invokeTool(name: string, options, token) {
 ```typescript
 // Codebase search
 await toolsService.invokeTool(
-  ToolName.Codebase,
-  {
-    input: { query: "find usages of MyClass" },
-  },
-  token
+    ToolName.Codebase,
+    {
+        input: { query: 'find usages of MyClass' },
+    },
+    token
 );
 
 // Read file
 await toolsService.invokeTool(
-  ToolName.ReadFile,
-  {
-    input: { filePath: "/path/to/file.ts" },
-  },
-  token
+    ToolName.ReadFile,
+    {
+        input: { filePath: '/path/to/file.ts' },
+    },
+    token
 );
 
 // Find usages
 await toolsService.invokeTool(
-  ToolName.Usages,
-  {
-    input: {
-      symbolName: "MyFunction",
-      filePaths: ["src/utils.ts"], // optional
+    ToolName.Usages,
+    {
+        input: {
+            symbolName: 'MyFunction',
+            filePaths: ['src/utils.ts'], // optional
+        },
     },
-  },
-  token
+    token
 );
 ```
 
@@ -233,14 +233,14 @@ The `CopilotToken` class contains quota information:
 
 ```typescript
 interface CopilotToken {
-  copilotPlan: string;
-  isFreeUser: boolean;
-  isChatQuotaExceeded: boolean;
-  isCompletionsQuotaExceeded: boolean;
-  limited_user_quotas: {
-    chat: QuotaInfo;
-    completions: QuotaInfo;
-  };
+    copilotPlan: string;
+    isFreeUser: boolean;
+    isChatQuotaExceeded: boolean;
+    isCompletionsQuotaExceeded: boolean;
+    limited_user_quotas: {
+        chat: QuotaInfo;
+        completions: QuotaInfo;
+    };
 }
 ```
 
@@ -255,18 +255,18 @@ interface CopilotToken {
 
 1. **Context Keys:** Read `github.copilot.chat.quotaExceeded`:
 
-   ```typescript
-   const quotaExceeded = vscode.commands.executeCommand(
-     "getContext",
-     "github.copilot.chat.quotaExceeded"
-   );
-   ```
+    ```typescript
+    const quotaExceeded = vscode.commands.executeCommand(
+        'getContext',
+        'github.copilot.chat.quotaExceeded'
+    );
+    ```
 
 2. **Model Metadata:** Via `vscode.lm.selectChatModels()`:
-   ```typescript
-   const models = await vscode.lm.selectChatModels();
-   // models[0].billing?.multiplier for quota tracking
-   ```
+    ```typescript
+    const models = await vscode.lm.selectChatModels();
+    // models[0].billing?.multiplier for quota tracking
+    ```
 
 ### Automatic Model Switching
 
@@ -284,14 +284,14 @@ When premium quota exhausted, system attempts switch to `copilot-base` model.
 
 ```typescript
 interface ChatRequest {
-  id: string;
-  attempt: number;
-  sessionId: string;
-  enableCommandDetection: boolean;
-  isParticipantDetected: boolean;
-  location2: ChatLocation; // Panel, Terminal, Notebook, Editor
-  editedFileEvents: EditedFileEvent[];
-  isSubagent: boolean;
+    id: string;
+    attempt: number;
+    sessionId: string;
+    enableCommandDetection: boolean;
+    isParticipantDetected: boolean;
+    location2: ChatLocation; // Panel, Terminal, Notebook, Editor
+    editedFileEvents: EditedFileEvent[];
+    isSubagent: boolean;
 }
 ```
 
@@ -299,13 +299,13 @@ interface ChatRequest {
 
 ```typescript
 class ChatRequestTurn2 {
-  id: string;
-  prompt: string;
-  participant: string;
-  command: string;
-  references: ChatReference[];
-  toolReferences: ToolReference[];
-  editedFileEvents: EditedFileEvent[];
+    id: string;
+    prompt: string;
+    participant: string;
+    command: string;
+    references: ChatReference[];
+    toolReferences: ToolReference[];
+    editedFileEvents: EditedFileEvent[];
 }
 ```
 
@@ -326,11 +326,11 @@ interface DynamicChatParticipantProps {
 
 ```typescript
 interface LanguageModelToolInvocationOptions {
-  chatRequestId?: string;
-  chatSessionId?: string;
-  chatInteractionId?: string;
-  terminalCommand?: string;
-  fromSubAgent?: boolean;
+    chatRequestId?: string;
+    chatSessionId?: string;
+    chatInteractionId?: string;
+    terminalCommand?: string;
+    fromSubAgent?: boolean;
 }
 ```
 
@@ -386,37 +386,37 @@ The `getAgentTools()` function applies multiple filters:
 
 ```typescript
 function getAgentTools(model, context) {
-  const tools: ToolFilter = {};
+    const tools: ToolFilter = {};
 
-  // 1. BYOK learned preferences
-  if (isBYOK(model)) {
-    const preferred =
-      editToolLearningService.getPreferredEndpointEditTool(model);
-    // Enable preferred tools
-  }
+    // 1. BYOK learned preferences
+    if (isBYOK(model)) {
+        const preferred =
+            editToolLearningService.getPreferredEndpointEditTool(model);
+        // Enable preferred tools
+    }
 
-  // 2. Model capabilities
-  if (modelSupportsReplaceString(model)) {
-    tools[ToolName.ReplaceString] = true;
-  }
-  if (modelSupportsApplyPatch(model)) {
-    tools[ToolName.ApplyPatch] = true;
-  }
+    // 2. Model capabilities
+    if (modelSupportsReplaceString(model)) {
+        tools[ToolName.ReplaceString] = true;
+    }
+    if (modelSupportsApplyPatch(model)) {
+        tools[ToolName.ApplyPatch] = true;
+    }
 
-  // 3. Context-based
-  if (testService.hasAnyTests()) {
-    tools[ToolName.CoreRunTest] = true;
-  }
-  if (hasWorkspaceTasks()) {
-    tools[ToolName.CoreRunTask] = true;
-  }
+    // 3. Context-based
+    if (testService.hasAnyTests()) {
+        tools[ToolName.CoreRunTest] = true;
+    }
+    if (hasWorkspaceTasks()) {
+        tools[ToolName.CoreRunTask] = true;
+    }
 
-  // 4. Experimental flags
-  if (config.gemini3MultiReplaceString) {
-    tools[ToolName.MultiReplaceString] = true;
-  }
+    // 4. Experimental flags
+    if (config.gemini3MultiReplaceString) {
+        tools[ToolName.MultiReplaceString] = true;
+    }
 
-  return tools;
+    return tools;
 }
 ```
 
@@ -437,45 +437,45 @@ Different prompts for different model families:
 
 ```json
 {
-  "contributes": {
-    "languageModelTools": [
-      {
-        "name": "myext_myTool",
-        "displayName": "My Tool",
-        "toolReferenceName": "myTool",
-        "modelDescription": "Description for the LLM",
-        "inputSchema": {
-          "type": "object",
-          "properties": {
-            "param1": {
-              "type": "string",
-              "description": "Parameter description"
+    "contributes": {
+        "languageModelTools": [
+            {
+                "name": "myext_myTool",
+                "displayName": "My Tool",
+                "toolReferenceName": "myTool",
+                "modelDescription": "Description for the LLM",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "param1": {
+                            "type": "string",
+                            "description": "Parameter description"
+                        }
+                    },
+                    "required": ["param1"]
+                }
             }
-          },
-          "required": ["param1"]
-        }
-      }
-    ]
-  }
+        ]
+    }
 }
 ```
 
 ### Method 2: Programmatic Registration
 
 ```typescript
-vscode.lm.registerTool("myext_myTool", {
-  async invoke(options, token) {
-    const { param1 } = options.input;
-    // Tool logic
-    return new vscode.LanguageModelToolResult([
-      new vscode.LanguageModelTextPart("Result text"),
-    ]);
-  },
-  async prepareInvocation(options, token) {
-    return {
-      invocationMessage: "Running my tool...",
-    };
-  },
+vscode.lm.registerTool('myext_myTool', {
+    async invoke(options, token) {
+        const { param1 } = options.input;
+        // Tool logic
+        return new vscode.LanguageModelToolResult([
+            new vscode.LanguageModelTextPart('Result text'),
+        ]);
+    },
+    async prepareInvocation(options, token) {
+        return {
+            invocationMessage: 'Running my tool...',
+        };
+    },
 });
 ```
 
@@ -554,8 +554,8 @@ async searchFileChunks(query: WorkspaceChunkQuery, options) {
 MCP tools are prefixed with `mcp_`:
 
 ```typescript
-if (toolName.startsWith("mcp_")) {
-  // Handle as MCP tool
+if (toolName.startsWith('mcp_')) {
+    // Handle as MCP tool
 }
 ```
 
@@ -564,12 +564,12 @@ if (toolName.startsWith("mcp_")) {
 ```json
 // .vscode/mcp.json
 {
-  "servers": {
-    "myServer": {
-      "command": "node",
-      "args": ["./mcp-server.js"]
+    "servers": {
+        "myServer": {
+            "command": "node",
+            "args": ["./mcp-server.js"]
+        }
     }
-  }
 }
 ```
 
@@ -592,7 +592,7 @@ Each intent has its own `getAvailableTools()`:
 
 ```typescript
 interface IToolsService {
-  getEnabledTools(filter: ToolFilter): Tool[];
+    getEnabledTools(filter: ToolFilter): Tool[];
 }
 
 // Filter function can:
@@ -608,8 +608,8 @@ Users can disable tools via UI:
 
 ```typescript
 if (request.tools.get(tool.name) === false) {
-  // Tool was disabled by user in tool picker
-  return false;
+    // Tool was disabled by user in tool picker
+    return false;
 }
 ```
 
@@ -632,20 +632,20 @@ When too many tools are available (>64 or >20 built-in), group them to reduce LL
 
 ```typescript
 class VirtualToolGrouper {
-  group(tools: Tool[]) {
-    // 1. Separate by source
-    const { extension, mcp, builtin } = separateBySource(tools);
+    group(tools: Tool[]) {
+        // 1. Separate by source
+        const { extension, mcp, builtin } = separateBySource(tools);
 
-    // 2. Allocate slots per source
-    const slots = allocateSlots(extension, mcp, builtin);
+        // 2. Allocate slots per source
+        const slots = allocateSlots(extension, mcp, builtin);
 
-    // 3. Embedding-based clustering
-    const embeddings = computeToolEmbeddings(tools);
-    const clusters = clusterByEmbedding(embeddings, slots);
+        // 3. Embedding-based clustering
+        const embeddings = computeToolEmbeddings(tools);
+        const clusters = clusterByEmbedding(embeddings, slots);
 
-    // 4. Create VirtualTool for each cluster
-    return clusters.map((c) => new VirtualTool(c));
-  }
+        // 4. Create VirtualTool for each cluster
+        return clusters.map((c) => new VirtualTool(c));
+    }
 }
 ```
 
@@ -680,16 +680,14 @@ When LLM "calls" a virtual tool, it expands to show contained tools for next ite
 ### What We CAN Do
 
 1. **Invoke Copilot's built-in tools** via `vscode.lm.invokeTool()`:
-
-   - `copilot_searchCodebase` for semantic search
-   - `copilot_listCodeUsages` for usages
-   - `copilot_readFile` for file contents
-   - Any tool registered with `vscode.lm.registerTool()`
+    - `copilot_searchCodebase` for semantic search
+    - `copilot_listCodeUsages` for usages
+    - `copilot_readFile` for file contents
+    - Any tool registered with `vscode.lm.registerTool()`
 
 2. **Register our own tools** that Copilot can use:
-
-   - Via `package.json` contribution
-   - Via `vscode.lm.registerTool()` API
+    - Via `package.json` contribution
+    - Via `vscode.lm.registerTool()` API
 
 3. **Access MCP tools** if configured
 

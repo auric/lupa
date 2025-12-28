@@ -7,9 +7,8 @@ export enum StatusBarMessageType {
     Info = 'info',
     Warning = 'warning',
     Error = 'error',
-    Working = 'working'
+    Working = 'working',
 }
-
 
 /**
  * Service to manage multiple, independent status bar items.
@@ -25,8 +24,7 @@ export class StatusBarService {
     /**
      * Private constructor to enforce singleton pattern
      */
-    private constructor() {
-    }
+    private constructor() {}
 
     /**
      * Get the singleton instance
@@ -55,11 +53,19 @@ export class StatusBarService {
      * @param tooltip Tooltip text
      * @param command Optional command to execute when clicked
      */
-    public showProgress(id: string, text: string, tooltip: string, command?: string | vscode.Command): void {
+    public showProgress(
+        id: string,
+        text: string,
+        tooltip: string,
+        command?: string | vscode.Command
+    ): void {
         // Get existing item or create new one
         let statusItem = this.activeStatusItems.get(id);
         if (!statusItem) {
-            statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+            statusItem = vscode.window.createStatusBarItem(
+                vscode.StatusBarAlignment.Right,
+                100
+            );
             this.activeStatusItems.set(id, statusItem);
         }
 
@@ -104,9 +110,16 @@ export class StatusBarService {
      * @param timeout Duration in milliseconds
      * @param icon Icon type to display
      */
-    public showTemporaryMessage(text: string, timeout: number, icon: 'check' | 'warning' | 'error' = 'check'): void {
+    public showTemporaryMessage(
+        text: string,
+        timeout: number,
+        icon: 'check' | 'warning' | 'error' = 'check'
+    ): void {
         // Create a separate temporary status item (not stored in the map)
-        const tempStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+        const tempStatusItem = vscode.window.createStatusBarItem(
+            vscode.StatusBarAlignment.Right,
+            100
+        );
 
         // Set appropriate icon
         let iconString = '$(check)';
@@ -138,7 +151,7 @@ export class StatusBarService {
      */
     public dispose(): void {
         // Dispose all active status items
-        for (const [id, statusItem] of this.activeStatusItems) {
+        for (const [_id, statusItem] of this.activeStatusItems) {
             statusItem.dispose();
         }
         this.activeStatusItems.clear();

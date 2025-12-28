@@ -1,4 +1,7 @@
-import type { WebviewMessageType, ToolTestingMessageType } from '../../types/webviewMessages';
+import type {
+    WebviewMessageType,
+    ToolTestingMessageType,
+} from '../../types/webviewMessages';
 
 /**
  * VSCode API interface for type safety

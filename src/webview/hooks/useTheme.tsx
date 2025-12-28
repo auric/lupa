@@ -17,7 +17,10 @@ export const useTheme = () => {
         const handleMessage = (event: MessageEvent) => {
             if (event.data.command === 'themeUpdate') {
                 const themeData = event.data.payload;
-                console.log('Theme changed via vscode.window.activeColorTheme:', themeData);
+                console.log(
+                    'Theme changed via vscode.window.activeColorTheme:',
+                    themeData
+                );
                 setIsDarkTheme(themeData.isDarkTheme);
             }
         };

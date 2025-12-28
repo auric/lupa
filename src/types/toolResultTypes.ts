@@ -31,14 +31,21 @@ export function isToolResult(value: unknown): value is ToolResult {
     if (typeof value !== 'object' || value === null) {
         return false;
     }
-    return 'success' in value && typeof (value as ToolResult).success === 'boolean';
+    return (
+        'success' in value && typeof (value as ToolResult).success === 'boolean'
+    );
 }
 
 /**
  * Helper to create a successful ToolResult
  */
-export function toolSuccess(data: string, metadata?: ToolResultMetadata): ToolResult {
-    return metadata ? { success: true, data, metadata } : { success: true, data };
+export function toolSuccess(
+    data: string,
+    metadata?: ToolResultMetadata
+): ToolResult {
+    return metadata
+        ? { success: true, data, metadata }
+        : { success: true, data };
 }
 
 /**

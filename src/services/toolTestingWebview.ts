@@ -4,7 +4,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import type {
     OpenFilePayload,
-    ThemeUpdatePayload
+    ThemeUpdatePayload,
 } from '../types/webviewMessages';
 import type { ToolInfo } from '../webview/types/toolTestingTypes';
 
@@ -17,31 +17,40 @@ export class ToolTestingWebviewService {
         private readonly gitRepositoryRoot: string,
         private readonly toolRegistry: ToolRegistry,
         private readonly toolExecutor: ToolExecutor
-    ) { }
+    ) {}
 
     /**
      * Open tool testing interface in a webview
      */
-    public openToolTestingInterface(initialTool?: string, initialParameters?: Record<string, any>): vscode.WebviewPanel {
+    public openToolTestingInterface(
+        initialTool?: string,
+        initialParameters?: Record<string, any>
+    ): vscode.WebviewPanel {
         const panel = vscode.window.createWebviewPanel(
             'toolTesting',
             'Tool Testing Interface',
             vscode.ViewColumn.Beside,
             {
                 enableScripts: true,
-                retainContextWhenHidden: true
+                retainContextWhenHidden: true,
             }
         );
 
-        panel.webview.html = this.generateToolTestingHtml(panel, initialTool, initialParameters);
+        panel.webview.html = this.generateToolTestingHtml(
+            panel,
+            initialTool,
+            initialParameters
+        );
 
         // Set up message listeners for tool testing webview
         this.setupToolTestingMessageHandlers(panel.webview);
 
         // Listen for theme changes and update webview
-        const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
-            this.sendThemeToWebview(panel.webview);
-        });
+        const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(
+            () => {
+                this.sendThemeToWebview(panel.webview);
+            }
+        );
 
         // Clean up theme listener when panel is disposed
         panel.onDidDispose(() => {
@@ -54,15 +63,29 @@ export class ToolTestingWebviewService {
     /**
      * Generate HTML for tool testing webview
      */
-    private generateToolTestingHtml(panel: vscode.WebviewPanel, initialTool?: string, initialParameters?: Record<string, any>): string {
+    private generateToolTestingHtml(
+        panel: vscode.WebviewPanel,
+        initialTool?: string,
+        initialParameters?: Record<string, any>
+    ): string {
         // Generate URIs for the assets using extension context
-        const mainScriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
-            this.extensionContext.extensionUri, 'dist', 'webview', 'toolTesting.js'
-        ));
+        const mainScriptUri = panel.webview.asWebviewUri(
+            vscode.Uri.joinPath(
+                this.extensionContext.extensionUri,
+                'dist',
+                'webview',
+                'toolTesting.js'
+            )
+        );
 
-        const stylesUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
-            this.extensionContext.extensionUri, 'dist', 'webview', 'toolTesting.css'
-        ));
+        const stylesUri = panel.webview.asWebviewUri(
+            vscode.Uri.joinPath(
+                this.extensionContext.extensionUri,
+                'dist',
+                'webview',
+                'toolTesting.css'
+            )
+        );
 
         return `
         <!DOCTYPE html>
@@ -135,8 +158,12 @@ export class ToolTestingWebviewService {
                 // Inject initial theme data
                 window.initialTheme = {
                     kind: ${vscode.window.activeColorTheme.kind},
-                    isDarkTheme: ${vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-            vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast}
+                    isDarkTheme: ${
+                        vscode.window.activeColorTheme.kind ===
+                            vscode.ColorThemeKind.Dark ||
+                        vscode.window.activeColorTheme.kind ===
+                            vscode.ColorThemeKind.HighContrast
+                    }
                 };
             </script>
             <script type="module" src="${mainScriptUri}"></script>
@@ -157,22 +184,33 @@ export class ToolTestingWebviewService {
                             await this.handleGetTools(webview);
                             break;
                         case 'executeTool':
-                            await this.handleExecuteTool(message.payload, webview);
+                            await this.handleExecuteTool(
+                                message.payload,
+                                webview
+                            );
                             break;
                         case 'openFile':
                             await this.handleOpenFileMessage(message.payload);
                             break;
                         default:
-                            Log.warn(`Unknown tool testing message command: ${message.command}`);
+                            Log.warn(
+                                `Unknown tool testing message command: ${message.command}`
+                            );
                     }
                 } catch (error) {
                     Log.error('Error handling tool testing message:', error);
                     webview.postMessage({
                         type: 'error',
                         payload: {
-                            message: error instanceof Error ? error.message : 'Unknown error occurred',
-                            suggestions: ['Check VS Code developer console for more details', 'Try refreshing the interface']
-                        }
+                            message:
+                                error instanceof Error
+                                    ? error.message
+                                    : 'Unknown error occurred',
+                            suggestions: [
+                                'Check VS Code developer console for more details',
+                                'Try refreshing the interface',
+                            ],
+                        },
                     });
                 }
             },
@@ -189,17 +227,17 @@ export class ToolTestingWebviewService {
             // Get real tools from ToolRegistry
             const tools = this.toolRegistry.getAllTools();
 
-            const toolInfos: ToolInfo[] = tools.map(tool => ({
+            const toolInfos: ToolInfo[] = tools.map((tool) => ({
                 name: tool.name,
                 description: tool.description,
                 schema: tool.schema,
                 usageCount: 0, // Could be persisted later if needed
-                isFavorite: false // Could be persisted later if needed
+                isFavorite: false, // Could be persisted later if needed
             }));
 
             webview.postMessage({
                 type: 'tools',
-                payload: { tools: toolInfos }
+                payload: { tools: toolInfos },
             });
         } catch (error) {
             Log.error('Error getting tools:', error);
@@ -210,29 +248,37 @@ export class ToolTestingWebviewService {
     /**
      * Handle tool execution request
      */
-    private async handleExecuteTool(payload: any, webview: vscode.Webview): Promise<void> {
+    private async handleExecuteTool(
+        payload: any,
+        webview: vscode.Webview
+    ): Promise<void> {
         try {
             const { sessionId, toolName, parameters } = payload;
 
-            Log.info(`Executing tool: ${toolName} with parameters:`, parameters);
+            Log.info(
+                `Executing tool: ${toolName} with parameters:`,
+                parameters
+            );
 
             // Execute the actual tool
-            const results = await this.toolExecutor.executeTools([{
-                name: toolName,
-                args: parameters
-            }]);
+            const results = await this.toolExecutor.executeTools([
+                {
+                    name: toolName,
+                    args: parameters,
+                },
+            ]);
 
             // Send results back to webview
             webview.postMessage({
                 type: 'toolExecutionResult',
                 payload: {
                     sessionId,
-                    results: results.map(result => ({
+                    results: results.map((result) => ({
                         id: `result-${Date.now()}-${Math.random()}`,
-                        data: result
+                        data: result,
                     })),
-                    executionTime: Date.now() // This could be more accurate with timing
-                }
+                    executionTime: Date.now(), // This could be more accurate with timing
+                },
             });
         } catch (error) {
             Log.error('Error executing tool:', error);
@@ -240,8 +286,11 @@ export class ToolTestingWebviewService {
                 type: 'toolExecutionError',
                 payload: {
                     sessionId: payload.sessionId,
-                    error: error instanceof Error ? error.message : 'Tool execution failed'
-                }
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : 'Tool execution failed',
+                },
             });
         }
     }
@@ -249,9 +298,14 @@ export class ToolTestingWebviewService {
     /**
      * Handle openFile message from webview
      */
-    private async handleOpenFileMessage(payload: OpenFilePayload): Promise<void> {
+    private async handleOpenFileMessage(
+        payload: OpenFilePayload
+    ): Promise<void> {
         try {
-            Log.debug(`Opening file from webview: ${payload.filePath}`, payload);
+            Log.debug(
+                `Opening file from webview: ${payload.filePath}`,
+                payload
+            );
 
             // Use vscode.Uri for secure file path handling
             const fileUri = vscode.Uri.file(payload.filePath);
@@ -261,7 +315,7 @@ export class ToolTestingWebviewService {
 
             // Prepare show options with line/column positioning
             const showOptions: vscode.TextDocumentShowOptions = {
-                viewColumn: vscode.ViewColumn.One
+                viewColumn: vscode.ViewColumn.One,
             };
 
             // Set selection if line/column are provided
@@ -276,7 +330,9 @@ export class ToolTestingWebviewService {
             // Show the document in the editor
             await vscode.window.showTextDocument(document, showOptions);
 
-            Log.debug(`Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`);
+            Log.debug(
+                `Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`
+            );
         } catch (error) {
             Log.error(`Failed to open file: ${payload.filePath}`, error);
 
@@ -294,13 +350,14 @@ export class ToolTestingWebviewService {
         const activeTheme = vscode.window.activeColorTheme;
         const themeData: ThemeUpdatePayload = {
             kind: activeTheme.kind,
-            isDarkTheme: activeTheme.kind === vscode.ColorThemeKind.Dark ||
-                activeTheme.kind === vscode.ColorThemeKind.HighContrast
+            isDarkTheme:
+                activeTheme.kind === vscode.ColorThemeKind.Dark ||
+                activeTheme.kind === vscode.ColorThemeKind.HighContrast,
         };
 
         webview.postMessage({
             command: 'themeUpdate',
-            payload: themeData
+            payload: themeData,
         });
     }
 }

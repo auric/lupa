@@ -12,7 +12,7 @@ interface CopyButtonProps {
 export const CopyButton: React.FC<CopyButtonProps> = ({
     text,
     className,
-    onCopy
+    onCopy,
 }) => {
     const [isCopied, setIsCopied] = useState(false);
     const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -41,8 +41,11 @@ export const CopyButton: React.FC<CopyButtonProps> = ({
             variant="outline"
             size="sm"
             onClick={handleClick}
-            className={cn("h-8 w-8 p-0 opacity-70 hover:opacity-100 transition-opacity", className)}
-            title={isCopied ? "Copied!" : "Copy to clipboard"}
+            className={cn(
+                'h-8 w-8 p-0 opacity-70 hover:opacity-100 transition-opacity',
+                className
+            )}
+            title={isCopied ? 'Copied!' : 'Copy to clipboard'}
         >
             {isCopied ? (
                 <Check className="h-4 w-4 text-green-500" />
