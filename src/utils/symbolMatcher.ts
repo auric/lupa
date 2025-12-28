@@ -237,12 +237,8 @@ export class SymbolMatcher {
       let matches = true;
 
       for (let i = 0; i < needle.length; i++) {
-        const haystackItem = haystack[start + i];
-        const needleItem = needle[i];
-        if (!haystackItem || !needleItem) {
-          matches = false;
-          break;
-        }
+        const haystackItem = haystack[start + i]!;
+        const needleItem = needle[i]!;
 
         // For the last item (symbol name), use smart symbol matching
         if (i === needle.length - 1) {
