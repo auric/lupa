@@ -36,7 +36,8 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         context: z.ZodOptional<z.ZodString>;
     }>;
 
-    private cancellationTokenSource: vscode.CancellationTokenSource | null = null;
+    private cancellationTokenSource: vscode.CancellationTokenSource | null =
+        null;
 
     constructor(
         private readonly executor: SubagentExecutor,
@@ -46,41 +47,58 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         super();
 
         this.schema = z.object({
-            task: z.string()
-                .min(SubagentLimits.MIN_TASK_LENGTH, SubagentErrors.taskTooShort(SubagentLimits.MIN_TASK_LENGTH))
+            task: z
+                .string()
+                .min(
+                    SubagentLimits.MIN_TASK_LENGTH,
+                    SubagentErrors.taskTooShort(SubagentLimits.MIN_TASK_LENGTH)
+                )
                 .describe(
                     'Detailed investigation task. Include: ' +
-                    '1) WHAT to investigate (specific question or concern), ' +
-                    '2) WHERE to look (relevant files, directories, symbols), ' +
-                    '3) WHAT to return (expected deliverables).'
+                        '1) WHAT to investigate (specific question or concern), ' +
+                        '2) WHERE to look (relevant files, directories, symbols), ' +
+                        '3) WHAT to return (expected deliverables).'
                 ),
-            context: z.string().optional().describe(
-                'Relevant context from your current analysis: code snippets, file paths, findings, or symbol names.'
-            )
+            context: z
+                .string()
+                .optional()
+                .describe(
+                    'Relevant context from your current analysis: code snippets, file paths, findings, or symbol names.'
+                ),
         });
     }
 
     async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
-            return toolError(validationResult.error.issues.map(e => e.message).join(', '));
+            return toolError(
+                validationResult.error.issues.map((e) => e.message).join(', ')
+            );
         }
 
         const { task, context } = validationResult.data;
         const maxSubagents = this.workspaceSettings.getMaxSubagentsPerSession();
-        const timeoutMs = this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+        const timeoutMs =
+            this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
         if (!this.sessionManager.canSpawn()) {
-            Log.warn(`Subagent spawn rejected: session limit reached (${maxSubagents})`);
+            Log.warn(
+                `Subagent spawn rejected: session limit reached (${maxSubagents})`
+            );
             return toolError(SubagentErrors.maxExceeded(maxSubagents));
         }
 
         const subagentId = this.sessionManager.recordSpawn();
         const remaining = this.sessionManager.getRemainingBudget();
-        Log.info(`Subagent #${subagentId} spawned (${this.sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`);
+        Log.info(
+            `Subagent #${subagentId} spawned (${this.sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
+        );
 
         this.cancellationTokenSource = new vscode.CancellationTokenSource();
-        const parentCancellationDisposable = this.sessionManager.registerSubagentCancellation(this.cancellationTokenSource);
+        const parentCancellationDisposable =
+            this.sessionManager.registerSubagentCancellation(
+                this.cancellationTokenSource
+            );
         let cancelledByTimeout = false;
         const timeoutHandle = setTimeout(() => {
             cancelledByTimeout = true;
@@ -91,7 +109,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             const result = await this.executor.execute(
                 {
                     task,
-                    context
+                    context,
                 },
                 this.cancellationTokenSource.token,
                 subagentId
@@ -107,11 +125,9 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 return toolError('Subagent was cancelled');
             }
 
-            return toolSuccess(
-                this.formatResult(result, subagentId),
-                { nestedToolCalls: result.toolCalls }
-            );
-
+            return toolSuccess(this.formatResult(result, subagentId), {
+                nestedToolCalls: result.toolCalls,
+            });
         } catch (error) {
             clearTimeout(timeoutHandle);
 
@@ -119,9 +135,9 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 return toolError(SubagentErrors.timeout(timeoutMs));
             }
 
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
             return toolError(SubagentErrors.failed(errorMessage));
-
         } finally {
             parentCancellationDisposable?.dispose();
             this.cancellationTokenSource?.dispose();
@@ -138,8 +154,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             return `## Subagent #${subagentId} Failed\n\nError: ${result.error}\n\nTool calls made: ${result.toolCallsMade}`;
         }
 
-        return `## Subagent #${subagentId} Investigation Complete\n\n` +
+        return (
+            `## Subagent #${subagentId} Investigation Complete\n\n` +
             `**Tool calls made:** ${result.toolCallsMade}\n\n` +
-            `---\n\n${result.response}`;
+            `---\n\n${result.response}`
+        );
     }
 }

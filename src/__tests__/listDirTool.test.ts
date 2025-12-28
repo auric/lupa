@@ -12,22 +12,25 @@ vi.mock('vscode', async () => {
             workspaceFolders: [
                 {
                     uri: {
-                        fsPath: '/test/workspace'
-                    }
-                }
+                        fsPath: '/test/workspace',
+                    },
+                },
             ],
             fs: {
                 readDirectory: vi.fn(),
-                readFile: vi.fn()
-            }
+                readFile: vi.fn(),
+            },
         },
         Uri: {
-            file: vi.fn((filePath) => ({ fsPath: filePath, toString: () => filePath }))
+            file: vi.fn((filePath) => ({
+                fsPath: filePath,
+                toString: () => filePath,
+            })),
         },
         FileType: {
             File: 1,
-            Directory: 2
-        }
+            Directory: 2,
+        },
     };
 });
 
@@ -44,17 +47,19 @@ describe('ListDirTool', () => {
         // Create mock for getRepository
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
-                fsPath: '/test/git-repo'
-            }
+                fsPath: '/test/git-repo',
+            },
         });
 
         // Create mock GitOperationsManager instance
         mockGitOperationsManager = {
-            getRepository: mockGetRepository
+            getRepository: mockGetRepository,
         } as any;
 
         listDirTool = new ListDirTool(mockGitOperationsManager);
-        mockReadDirectory = vscode.workspace.fs.readDirectory as ReturnType<typeof vi.fn>;
+        mockReadDirectory = vscode.workspace.fs.readDirectory as ReturnType<
+            typeof vi.fn
+        >;
 
         // Clear mocks after setting up our specific mocks
         vi.clearAllMocks();
@@ -62,8 +67,8 @@ describe('ListDirTool', () => {
         // Re-setup the essential mocks after clearing
         mockGetRepository.mockReturnValue({
             rootUri: {
-                fsPath: '/test/git-repo'
-            }
+                fsPath: '/test/git-repo',
+            },
         });
     });
 
@@ -74,7 +79,9 @@ describe('ListDirTool', () => {
     describe('Tool Configuration', () => {
         it('should have correct name and description', () => {
             expect(listDirTool.name).toBe('list_directory');
-            expect(listDirTool.description).toContain('List files and directories');
+            expect(listDirTool.description).toContain(
+                'List files and directories'
+            );
         });
 
         it('should have valid schema with required fields', () => {
@@ -97,7 +104,9 @@ describe('ListDirTool', () => {
             const vscodeToolDef = listDirTool.getVSCodeTool();
 
             expect(vscodeToolDef.name).toBe('list_directory');
-            expect(vscodeToolDef.description).toContain('List files and directories');
+            expect(vscodeToolDef.description).toContain(
+                'List files and directories'
+            );
             expect(vscodeToolDef.inputSchema).toHaveProperty('type', 'object');
             expect(vscodeToolDef.inputSchema).toHaveProperty('properties');
         });
@@ -110,17 +119,19 @@ describe('ListDirTool', () => {
                 '../../../etc/passwd',
                 '..\\..\\..\\system32',
                 'src/../../../secret',
-                'normal/../../../hack'
+                'normal/../../../hack',
             ];
 
             for (const maliciousPath of traversalPaths) {
                 const result = await listDirTool.execute({
                     relative_path: maliciousPath,
-                    recursive: false
+                    recursive: false,
                 });
 
                 expect(result.success).toBe(false);
-                expect(result.error).toContain('Invalid path: Directory traversal detected');
+                expect(result.error).toContain(
+                    'Invalid path: Directory traversal detected'
+                );
             }
         });
 
@@ -129,17 +140,19 @@ describe('ListDirTool', () => {
             const absolutePaths = [
                 '/etc/passwd',
                 '/usr/bin/',
-                '/home/user/file.txt'
+                '/home/user/file.txt',
             ];
 
             for (const absolutePath of absolutePaths) {
                 const result = await listDirTool.execute({
                     relative_path: absolutePath,
-                    recursive: false
+                    recursive: false,
                 });
 
                 expect(result.success).toBe(false);
-                expect(result.error).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
+                expect(result.error).toContain(
+                    'Invalid path: Absolute paths are not allowed, only relative paths'
+                );
             }
         });
 
@@ -150,17 +163,19 @@ describe('ListDirTool', () => {
                 'C:\\',
                 'C:\\Windows\\System32\\',
                 'D:/Program Files/',
-                'E:\\temp\\file.txt'
+                'E:\\temp\\file.txt',
             ];
 
             for (const absolutePath of absolutePaths) {
                 const result = await listDirTool.execute({
                     relative_path: absolutePath,
-                    recursive: false
+                    recursive: false,
                 });
 
                 expect(result.success).toBe(false);
-                expect(result.error).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
+                expect(result.error).toContain(
+                    'Invalid path: Absolute paths are not allowed, only relative paths'
+                );
             }
         });
 
@@ -172,17 +187,19 @@ describe('ListDirTool', () => {
                 '\\\\?\\UNC\\Server\\Share\\Test\\Foo.txt',
                 '\\\\?\\C:\\',
                 '\\\\?\\C:\\Windows\\',
-                '\\\\.\\UNC\\Server\\Share\\Test\\Foo.txt'
+                '\\\\.\\UNC\\Server\\Share\\Test\\Foo.txt',
             ];
 
             for (const uncPath of uncPaths) {
                 const result = await listDirTool.execute({
                     relative_path: uncPath,
-                    recursive: false
+                    recursive: false,
                 });
 
                 expect(result.success).toBe(false);
-                expect(result.error).toContain('Invalid path: Absolute paths are not allowed, only relative paths');
+                expect(result.error).toContain(
+                    'Invalid path: Absolute paths are not allowed, only relative paths'
+                );
             }
         });
 
@@ -192,7 +209,7 @@ describe('ListDirTool', () => {
                 'src/components',
                 'docs/architecture',
                 '.',
-                'build'
+                'build',
             ];
 
             // Mock empty directory for each test
@@ -201,7 +218,7 @@ describe('ListDirTool', () => {
             for (const validPath of validPaths) {
                 const result = await listDirTool.execute({
                     relative_path: validPath,
-                    recursive: false
+                    recursive: false,
                 });
 
                 // Should return success with empty directory message
@@ -216,7 +233,7 @@ describe('ListDirTool', () => {
             // Test path normalization that doesn't involve directory traversal
             const result = await listDirTool.execute({
                 relative_path: 'src/./utils',
-                recursive: false
+                recursive: false,
             });
 
             // Should return success (path gets normalized to src/utils)
@@ -231,19 +248,21 @@ describe('ListDirTool', () => {
                 ['file1.ts', vscode.FileType.File],
                 ['file2.js', vscode.FileType.File],
                 ['subdir', vscode.FileType.Directory],
-                ['README.md', vscode.FileType.File]
+                ['README.md', vscode.FileType.File],
             ];
 
             mockReadDirectory.mockResolvedValue(mockEntries);
 
             const result = await listDirTool.execute({
                 relative_path: 'src',
-                recursive: false
+                recursive: false,
             });
 
             // Should return directories first (with /), then files, all sorted
             expect(result.success).toBe(true);
-            expect(result.data).toBe('src/subdir/\nsrc/README.md\nsrc/file1.ts\nsrc/file2.js');
+            expect(result.data).toBe(
+                'src/subdir/\nsrc/README.md\nsrc/file1.ts\nsrc/file2.js'
+            );
         });
 
         it('should handle recursive listing', async () => {
@@ -251,21 +270,19 @@ describe('ListDirTool', () => {
             mockReadDirectory
                 .mockResolvedValueOnce([
                     ['file1.ts', vscode.FileType.File],
-                    ['subdir', vscode.FileType.Directory]
+                    ['subdir', vscode.FileType.Directory],
                 ])
                 // Mock subdirectory
                 .mockResolvedValueOnce([
                     ['subfile.js', vscode.FileType.File],
-                    ['nested', vscode.FileType.Directory]
+                    ['nested', vscode.FileType.Directory],
                 ])
                 // Mock nested directory
-                .mockResolvedValueOnce([
-                    ['deep.json', vscode.FileType.File]
-                ]);
+                .mockResolvedValueOnce([['deep.json', vscode.FileType.File]]);
 
             const result = await listDirTool.execute({
                 relative_path: 'src',
-                recursive: true
+                recursive: true,
             });
 
             expect(result.success).toBe(true);
@@ -279,14 +296,14 @@ describe('ListDirTool', () => {
         it('should handle root directory listing', async () => {
             const mockEntries: [string, vscode.FileType][] = [
                 ['src', vscode.FileType.Directory],
-                ['package.json', vscode.FileType.File]
+                ['package.json', vscode.FileType.File],
             ];
 
             mockReadDirectory.mockResolvedValue(mockEntries);
 
             const result = await listDirTool.execute({
                 relative_path: '.',
-                recursive: false
+                recursive: false,
             });
 
             expect(result.success).toBe(true);
@@ -300,7 +317,7 @@ describe('ListDirTool', () => {
 
             const result = await listDirTool.execute({
                 relative_path: 'src',
-                recursive: false
+                recursive: false,
             });
 
             expect(result.success).toBe(false);
@@ -314,7 +331,7 @@ describe('ListDirTool', () => {
 
             const result = await listDirTool.execute({
                 relative_path: 'src',
-                recursive: false
+                recursive: false,
             });
 
             expect(result.success).toBe(false);
@@ -327,16 +344,14 @@ describe('ListDirTool', () => {
                 .mockResolvedValueOnce([
                     ['file1.ts', vscode.FileType.File],
                     ['baddir', vscode.FileType.Directory],
-                    ['gooddir', vscode.FileType.Directory]
+                    ['gooddir', vscode.FileType.Directory],
                 ])
                 .mockRejectedValueOnce(new Error('Access denied')) // baddir fails
-                .mockResolvedValueOnce([
-                    ['subfile.js', vscode.FileType.File]
-                ]); // gooddir succeeds
+                .mockResolvedValueOnce([['subfile.js', vscode.FileType.File]]); // gooddir succeeds
 
             const result = await listDirTool.execute({
                 relative_path: '.',
-                recursive: true
+                recursive: true,
             });
 
             // Should continue processing and include accessible directories

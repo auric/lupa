@@ -20,7 +20,10 @@ export interface ILLMClient {
      * @param token - Cancellation token for request cancellation
      * @returns Promise resolving to the model's response with optional tool calls
      */
-    sendRequest(request: ToolCallRequest, token: CancellationToken): Promise<ToolCallResponse>;
+    sendRequest(
+        request: ToolCallRequest,
+        token: CancellationToken
+    ): Promise<ToolCallResponse>;
 
     /**
      * Get the currently selected language model.

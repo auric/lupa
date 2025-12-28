@@ -21,20 +21,24 @@ function getVSCodeInstallPaths(): string[] {
         // Common Windows VS Code installation paths
         const localAppData = process.env.LOCALAPPDATA || '';
         const programFiles = process.env['ProgramFiles'] || 'C:\\Program Files';
-        const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+        const programFilesX86 =
+            process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
         paths.push(
             path.join(localAppData, 'Programs', 'Microsoft VS Code'),
             path.join(localAppData, 'Programs', 'Microsoft VS Code Insiders'),
             path.join(programFiles, 'Microsoft VS Code'),
-            path.join(programFilesX86, 'Microsoft VS Code'),
+            path.join(programFilesX86, 'Microsoft VS Code')
         );
     } else if (process.platform === 'darwin') {
         // macOS paths
         paths.push(
             '/Applications/Visual Studio Code.app/Contents/Resources/app',
             '/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app',
-            path.join(process.env.HOME || '', 'Applications/Visual Studio Code.app/Contents/Resources/app'),
+            path.join(
+                process.env.HOME || '',
+                'Applications/Visual Studio Code.app/Contents/Resources/app'
+            )
         );
     } else {
         // Linux paths
@@ -42,7 +46,7 @@ function getVSCodeInstallPaths(): string[] {
             '/usr/share/code',
             '/usr/share/code-insiders',
             '/opt/visual-studio-code',
-            '/snap/code/current/usr/share/code',
+            '/snap/code/current/usr/share/code'
         );
     }
 
@@ -52,9 +56,10 @@ function getVSCodeInstallPaths(): string[] {
 function findVSCodeInstallation(): string | undefined {
     for (const vscodePath of getVSCodeInstallPaths()) {
         // Check if this looks like a valid VS Code installation
-        const resourcesPath = process.platform === 'darwin'
-            ? vscodePath
-            : path.join(vscodePath, 'resources', 'app');
+        const resourcesPath =
+            process.platform === 'darwin'
+                ? vscodePath
+                : path.join(vscodePath, 'resources', 'app');
 
         if (fs.existsSync(resourcesPath)) {
             return resourcesPath;
@@ -76,8 +81,22 @@ function getRipgrepPath(appRoot: string): string | undefined {
 
     // Check both possible locations (same logic as ripgrepSearchService.ts)
     const candidatePaths = [
-        path.join(appRoot, 'node_modules', '@vscode', 'ripgrep', 'bin', rgBinary),
-        path.join(appRoot, 'node_modules.asar.unpacked', '@vscode', 'ripgrep', 'bin', rgBinary),
+        path.join(
+            appRoot,
+            'node_modules',
+            '@vscode',
+            'ripgrep',
+            'bin',
+            rgBinary
+        ),
+        path.join(
+            appRoot,
+            'node_modules.asar.unpacked',
+            '@vscode',
+            'ripgrep',
+            'bin',
+            rgBinary
+        ),
     ];
 
     for (const candidatePath of candidatePaths) {
@@ -96,8 +115,9 @@ describe('VS Code Ripgrep Binary Verification', () => {
         if (!vscodeAppRoot) {
             console.warn(
                 'VS Code installation not found in standard locations. ' +
-                'This test verifies ripgrep exists in VS Code. ' +
-                'Paths checked: ' + getVSCodeInstallPaths().join(', ')
+                    'This test verifies ripgrep exists in VS Code. ' +
+                    'Paths checked: ' +
+                    getVSCodeInstallPaths().join(', ')
             );
         }
         // Don't fail - VS Code might be installed elsewhere or this is CI
@@ -114,19 +134,35 @@ describe('VS Code Ripgrep Binary Verification', () => {
 
         if (!rgPath) {
             // List what's actually in the directory to help debug
-            const nodeModulesPath = path.join(vscodeAppRoot, 'node_modules', '@vscode');
-            const asarPath = path.join(vscodeAppRoot, 'node_modules.asar.unpacked', '@vscode');
+            const nodeModulesPath = path.join(
+                vscodeAppRoot,
+                'node_modules',
+                '@vscode'
+            );
+            const asarPath = path.join(
+                vscodeAppRoot,
+                'node_modules.asar.unpacked',
+                '@vscode'
+            );
 
             console.error('Ripgrep not found in either location:');
-            console.error(`  - ${path.join(nodeModulesPath, 'ripgrep', 'bin')}`);
+            console.error(
+                `  - ${path.join(nodeModulesPath, 'ripgrep', 'bin')}`
+            );
             console.error(`  - ${path.join(asarPath, 'ripgrep', 'bin')}`);
 
             if (fs.existsSync(nodeModulesPath)) {
-                console.error(`Contents of ${nodeModulesPath}:`, fs.readdirSync(nodeModulesPath));
+                console.error(
+                    `Contents of ${nodeModulesPath}:`,
+                    fs.readdirSync(nodeModulesPath)
+                );
             }
         }
 
-        expect(rgPath, 'Ripgrep binary should exist in VS Code installation').toBeDefined();
+        expect(
+            rgPath,
+            'Ripgrep binary should exist in VS Code installation'
+        ).toBeDefined();
     });
 
     it('should have executable ripgrep binary', () => {

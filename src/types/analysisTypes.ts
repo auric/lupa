@@ -29,11 +29,11 @@ export const ANALYSIS_TARGET_OPTIONS: readonly AnalysisTargetOption[] = [
     {
         label: 'Current Branch vs Default Branch',
         description: 'Compare the current branch with the default branch',
-        target: 'current-branch-vs-default'
+        target: 'current-branch-vs-default',
     },
     {
         label: 'Current Changes',
         description: 'Analyze uncommitted changes',
-        target: 'uncommitted-changes'
-    }
+        target: 'uncommitted-changes',
+    },
 ] as const;

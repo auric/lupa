@@ -13,7 +13,7 @@ describe('DefinitionFormatter', () => {
         it('should format definition with full body', () => {
             const range = {
                 start: { line: 5, character: 0 },
-                end: { line: 10, character: 1 }
+                end: { line: 10, character: 1 },
             } as vscode.Range;
 
             const result = formatter.formatDefinition(
@@ -37,7 +37,7 @@ describe('DefinitionFormatter', () => {
         it('should format definition without full body', () => {
             const range = {
                 start: { line: 0, character: 0 },
-                end: { line: 0, character: 15 }
+                end: { line: 0, character: 15 },
             } as vscode.Range;
 
             const result = formatter.formatDefinition(
@@ -55,7 +55,7 @@ describe('DefinitionFormatter', () => {
         it('should escape XML special characters', () => {
             const range = {
                 start: { line: 0, character: 0 },
-                end: { line: 0, character: 10 }
+                end: { line: 0, character: 10 },
             } as vscode.Range;
 
             const result = formatter.formatDefinition(
@@ -65,7 +65,9 @@ describe('DefinitionFormatter', () => {
                 true
             );
 
-            expect(result).toContain('"file": "src/file<with>special&chars\\"test\'.ts"'); // JSON preserves original characters
+            expect(result).toContain(
+                '"file": "src/file<with>special&chars\\"test\'.ts"'
+            ); // JSON preserves original characters
             expect(result).toContain('"body"'); // Should include body content
             expect(result).toContain('const test = \\"value & other\\";'); // JSON escapes quotes
         });
@@ -75,7 +77,7 @@ describe('DefinitionFormatter', () => {
         it('should format error definition with Error object', () => {
             const range = {
                 start: { line: 3, character: 5 },
-                end: { line: 3, character: 15 }
+                end: { line: 3, character: 15 },
             } as vscode.Range;
 
             const error = new Error('File not found');
@@ -89,13 +91,15 @@ describe('DefinitionFormatter', () => {
             expect(result).toContain('"file": "src/missing.ts"');
             expect(result).toContain('"location"');
             expect(result).toContain('"line": 4'); // 1-based line number
-            expect(result).toContain('"error": "Could not read file content: File not found"');
+            expect(result).toContain(
+                '"error": "Could not read file content: File not found"'
+            );
         });
 
         it('should format error definition with string error', () => {
             const range = {
                 start: { line: 0, character: 0 },
-                end: { line: 0, character: 10 }
+                end: { line: 0, character: 10 },
             } as vscode.Range;
 
             const result = formatter.formatErrorDefinition(
@@ -105,13 +109,15 @@ describe('DefinitionFormatter', () => {
                 'Custom error message'
             );
 
-            expect(result).toContain('"error": "Could not read file content: Custom error message"');
+            expect(result).toContain(
+                '"error": "Could not read file content: Custom error message"'
+            );
         });
 
         it('should escape XML characters in error messages', () => {
             const range = {
                 start: { line: 0, character: 0 },
-                end: { line: 0, character: 5 }
+                end: { line: 0, character: 5 },
             } as vscode.Range;
 
             const result = formatter.formatErrorDefinition(
@@ -121,7 +127,9 @@ describe('DefinitionFormatter', () => {
                 'Error with <XML> & "quotes"'
             );
 
-            expect(result).toContain('"error": "Could not read file content: Error with <XML> & \\"quotes\\""'); // JSON preserves chars, escapes quotes
+            expect(result).toContain(
+                '"error": "Could not read file content: Error with <XML> & \\"quotes\\""'
+            ); // JSON preserves chars, escapes quotes
         });
     });
 
@@ -132,8 +140,12 @@ describe('DefinitionFormatter', () => {
         });
 
         it('should escape XML characters in symbol name', () => {
-            const result = formatter.formatNotFoundMessage('Symbol<with>&special"chars\'');
-            expect(result).toBe("Symbol 'Symbol<with>&special\"chars'' not found"); // No XML escaping needed for plain strings
+            const result = formatter.formatNotFoundMessage(
+                'Symbol<with>&special"chars\''
+            );
+            expect(result).toBe(
+                "Symbol 'Symbol<with>&special\"chars'' not found"
+            ); // No XML escaping needed for plain strings
         });
     });
 });

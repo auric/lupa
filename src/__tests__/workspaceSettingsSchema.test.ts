@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import * as z from 'zod';
-import { WorkspaceSettingsSchema, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
+import {
+    WorkspaceSettingsSchema,
+    ANALYSIS_LIMITS,
+    SUBAGENT_LIMITS,
+} from '../models/workspaceSettingsSchema';
 
 describe('WorkspaceSettingsSchema', () => {
     describe('valid settings', () => {
@@ -8,9 +12,15 @@ describe('WorkspaceSettingsSchema', () => {
             const result = WorkspaceSettingsSchema.safeParse({});
             expect(result.success).toBe(true);
             if (result.success) {
-                expect(result.data.maxIterations).toBe(ANALYSIS_LIMITS.maxIterations.default);
-                expect(result.data.requestTimeoutSeconds).toBe(ANALYSIS_LIMITS.requestTimeoutSeconds.default);
-                expect(result.data.maxSubagentsPerSession).toBe(SUBAGENT_LIMITS.maxPerSession.default);
+                expect(result.data.maxIterations).toBe(
+                    ANALYSIS_LIMITS.maxIterations.default
+                );
+                expect(result.data.requestTimeoutSeconds).toBe(
+                    ANALYSIS_LIMITS.requestTimeoutSeconds.default
+                );
+                expect(result.data.maxSubagentsPerSession).toBe(
+                    SUBAGENT_LIMITS.maxPerSession.default
+                );
                 expect(result.data.logLevel).toBe('info');
             }
         });
@@ -34,20 +44,26 @@ describe('WorkspaceSettingsSchema', () => {
         it('should accept boundary values for numeric limits', () => {
             const lowerBoundarySettings = {
                 maxIterations: ANALYSIS_LIMITS.maxIterations.min,
-                requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.min,
+                requestTimeoutSeconds:
+                    ANALYSIS_LIMITS.requestTimeoutSeconds.min,
                 maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.min,
             };
 
-            const result = WorkspaceSettingsSchema.safeParse(lowerBoundarySettings);
+            const result = WorkspaceSettingsSchema.safeParse(
+                lowerBoundarySettings
+            );
             expect(result.success).toBe(true);
 
             const upperBoundarySettings = {
                 maxIterations: ANALYSIS_LIMITS.maxIterations.max,
-                requestTimeoutSeconds: ANALYSIS_LIMITS.requestTimeoutSeconds.max,
+                requestTimeoutSeconds:
+                    ANALYSIS_LIMITS.requestTimeoutSeconds.max,
                 maxSubagentsPerSession: SUBAGENT_LIMITS.maxPerSession.max,
             };
 
-            const upperResult = WorkspaceSettingsSchema.safeParse(upperBoundarySettings);
+            const upperResult = WorkspaceSettingsSchema.safeParse(
+                upperBoundarySettings
+            );
             expect(upperResult.success).toBe(true);
         });
 

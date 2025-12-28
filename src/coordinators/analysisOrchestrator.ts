@@ -1,6 +1,9 @@
 import * as vscode from 'vscode';
 import { AnalysisMode } from '../types/modelTypes';
-import type { ToolCallsData, AnalysisProgressCallback } from '../types/toolCallTypes';
+import type {
+    ToolCallsData,
+    AnalysisProgressCallback,
+} from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 
 /**
@@ -14,7 +17,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
     constructor(
         private readonly context: vscode.ExtensionContext,
         private readonly services: IServiceRegistry
-    ) { }
+    ) {}
 
     /**
      * Check if an analysis is currently running
@@ -38,15 +41,20 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
         try {
             // Initialize Git service
-            const isGitAvailable = await this.services.gitOperations.initialize();
+            const isGitAvailable =
+                await this.services.gitOperations.initialize();
             if (!isGitAvailable) {
-                vscode.window.showErrorMessage('Git extension not available or no Git repository found in workspace.');
+                vscode.window.showErrorMessage(
+                    'Git extension not available or no Git repository found in workspace.'
+                );
                 return;
             }
 
             const repository = this.services.gitOperations.getRepository();
             if (!repository) {
-                vscode.window.showErrorMessage('No active Git repository could be determined.');
+                vscode.window.showErrorMessage(
+                    'No active Git repository could be determined.'
+                );
                 return;
             }
 
@@ -65,21 +73,33 @@ export class AnalysisOrchestrator implements vscode.Disposable {
             }
 
             if (!diffText || diffText.trim() === '') {
-                vscode.window.showInformationMessage('No changes found to analyze.');
+                vscode.window.showInformationMessage(
+                    'No changes found to analyze.'
+                );
                 return;
             }
 
             // Run the analysis with a progress notification
             await this.runAnalysisWithProgress(diffText, refName);
-
         } catch (error) {
             if (error instanceof Error && error.message.includes('cancelled')) {
-                this.services.statusBar.showTemporaryMessage('Analysis cancelled', 3000, 'warning');
+                this.services.statusBar.showTemporaryMessage(
+                    'Analysis cancelled',
+                    3000,
+                    'warning'
+                );
                 vscode.window.showInformationMessage('Analysis cancelled');
             } else {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                this.services.statusBar.showTemporaryMessage('Analysis failed', 3000, 'error');
-                vscode.window.showErrorMessage(`Failed to analyze PR: ${errorMessage}`);
+                const errorMessage =
+                    error instanceof Error ? error.message : String(error);
+                this.services.statusBar.showTemporaryMessage(
+                    'Analysis failed',
+                    3000,
+                    'error'
+                );
+                vscode.window.showErrorMessage(
+                    `Failed to analyze PR: ${errorMessage}`
+                );
             }
         } finally {
             this.isAnalysisRunning = false;
@@ -98,10 +118,11 @@ export class AnalysisOrchestrator implements vscode.Disposable {
             {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Analyzing PR (Esc to hide)',
-                cancellable: true
+                cancellable: true,
             },
             async (progress, token) => {
-                const cancellationTokenSource = new vscode.CancellationTokenSource();
+                const cancellationTokenSource =
+                    new vscode.CancellationTokenSource();
 
                 // Link the VS Code cancellation token to our source
                 token.onCancellationRequested(() => {
@@ -115,22 +136,34 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
                     updateProgress('Starting analysis...');
 
-                    const progressCallback: AnalysisProgressCallback = updateProgress;
+                    const progressCallback: AnalysisProgressCallback =
+                        updateProgress;
 
-                    const result = await this.services.toolCallingAnalysisProvider.analyze(
-                        diffText,
-                        cancellationTokenSource.token,
-                        progressCallback
-                    );
+                    const result =
+                        await this.services.toolCallingAnalysisProvider.analyze(
+                            diffText,
+                            cancellationTokenSource.token,
+                            progressCallback
+                        );
 
                     const analysis = result.analysis;
-                    const toolCallsData: ToolCallsData | undefined = result.toolCalls;
+                    const toolCallsData: ToolCallsData | undefined =
+                        result.toolCalls;
 
                     // Display results in webview
                     const title = `PR Analysis: ${refName}`;
-                    this.services.uiManager.displayAnalysisResults(title, diffText, analysis, toolCallsData);
+                    this.services.uiManager.displayAnalysisResults(
+                        title,
+                        diffText,
+                        analysis,
+                        toolCallsData
+                    );
 
-                    this.services.statusBar.showTemporaryMessage('Analysis complete', 3000, 'check');
+                    this.services.statusBar.showTemporaryMessage(
+                        'Analysis complete',
+                        3000,
+                        'check'
+                    );
                 } finally {
                     cancellationTokenSource.dispose();
                 }
@@ -143,13 +176,17 @@ export class AnalysisOrchestrator implements vscode.Disposable {
      */
     private async getUserAnalysisOptions() {
         // Offer options for analysis type
-        const selectedOption = await this.services.uiManager.showAnalysisTypeOptions();
+        const selectedOption =
+            await this.services.uiManager.showAnalysisTypeOptions();
         if (!selectedOption) {
             return null;
         }
 
         // Get diff based on selected option
-        const diffResult = await this.services.gitOperations.getDiffFromSelection(selectedOption);
+        const diffResult =
+            await this.services.gitOperations.getDiffFromSelection(
+                selectedOption
+            );
         if (!diffResult) {
             return null;
         }
@@ -159,7 +196,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
 
         return {
             diffResult,
-            analysisMode
+            analysisMode,
         };
     }
 

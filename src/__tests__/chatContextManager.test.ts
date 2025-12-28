@@ -19,7 +19,7 @@ function createMockRequestTurn(prompt: string): vscode.ChatRequestTurn {
         participant: 'lupa.chat-participant',
         command: undefined,
         references: [],
-        toolReferences: []
+        toolReferences: [],
     } as unknown as vscode.ChatRequestTurn;
 }
 
@@ -28,13 +28,18 @@ function createMockResponseTurn(textContent: string): vscode.ChatResponseTurn {
         participant: 'lupa.chat-participant',
         command: undefined,
         response: [
-            new vscode.ChatResponseMarkdownPart(new vscode.MarkdownString(textContent))
+            new vscode.ChatResponseMarkdownPart(
+                new vscode.MarkdownString(textContent)
+            ),
         ],
-        result: {}
+        result: {},
     } as unknown as vscode.ChatResponseTurn;
 }
 
-function createMockModel(maxInputTokens: number, tokenCounter?: (text: string) => number): vscode.LanguageModelChat {
+function createMockModel(
+    maxInputTokens: number,
+    tokenCounter?: (text: string) => number
+): vscode.LanguageModelChat {
     const counter = tokenCounter ?? DEFAULT_TOKEN_COUNTER;
 
     return {
@@ -45,14 +50,14 @@ function createMockModel(maxInputTokens: number, tokenCounter?: (text: string) =
         version: '1.0',
         maxInputTokens,
         countTokens: vi.fn((text: string) => Promise.resolve(counter(text))),
-        sendRequest: vi.fn()
+        sendRequest: vi.fn(),
     } as unknown as vscode.LanguageModelChat;
 }
 
 function createMockToken(isCancelled = false): vscode.CancellationToken {
     return {
         isCancellationRequested: isCancelled,
-        onCancellationRequested: vi.fn()
+        onCancellationRequested: vi.fn(),
     } as unknown as vscode.CancellationToken;
 }
 
@@ -80,9 +85,9 @@ describe('ChatContextManager', () => {
         });
 
         it('should convert request turn to user message', async () => {
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
-                createMockRequestTurn('What does this function do?')
-            ];
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [createMockRequestTurn('What does this function do?')];
             const model = createMockModel(8000);
             const token = createMockToken();
 
@@ -96,13 +101,15 @@ describe('ChatContextManager', () => {
             expect(result).toHaveLength(1);
             expect(result[0]).toEqual({
                 role: 'user',
-                content: 'What does this function do?'
+                content: 'What does this function do?',
             });
         });
 
         it('should convert response turn to assistant message', async () => {
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
-                createMockResponseTurn('This function handles authentication.')
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [
+                createMockResponseTurn('This function handles authentication.'),
             ];
             const model = createMockModel(8000);
             const token = createMockToken();
@@ -117,16 +124,18 @@ describe('ChatContextManager', () => {
             expect(result).toHaveLength(1);
             expect(result[0]).toEqual({
                 role: 'assistant',
-                content: 'This function handles authentication.'
+                content: 'This function handles authentication.',
             });
         });
 
         it('should preserve chronological order for full history', async () => {
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [
                 createMockRequestTurn('First question'),
                 createMockResponseTurn('First answer'),
                 createMockRequestTurn('Second question'),
-                createMockResponseTurn('Second answer')
+                createMockResponseTurn('Second answer'),
             ];
             const model = createMockModel(50000);
             const token = createMockToken();
@@ -150,11 +159,13 @@ describe('ChatContextManager', () => {
         });
 
         it('should truncate older history when budget exceeded', async () => {
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [
                 createMockRequestTurn('Old question that should be dropped'),
                 createMockResponseTurn('Old answer that should be dropped'),
                 createMockRequestTurn('Recent question'),
-                createMockResponseTurn('Recent answer')
+                createMockResponseTurn('Recent answer'),
             ];
             // Budget: (6000 - 4000) * 0.8 = 1600 tokens
             // System prompt ~15 tokens, leaves ~1585
@@ -174,16 +185,16 @@ describe('ChatContextManager', () => {
             expect(result.length).toBeLessThanOrEqual(4);
             // Recent turns should be kept (newest-first processing)
             if (result.length > 0) {
-                const contents = result.map(m => m.content);
+                const contents = result.map((m) => m.content);
                 // Last item should be from recent history
                 expect(contents[contents.length - 1]).toBe('Recent answer');
             }
         });
 
         it('should respect OUTPUT_RESERVE of 4000 tokens', async () => {
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
-                createMockRequestTurn('Question')
-            ];
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [createMockRequestTurn('Question')];
             // Model with just 4100 tokens - 4000 reserved = 100 available * 0.8 = 80 effective
             const model = createMockModel(4100, () => 50);
             const token = createMockToken();
@@ -201,10 +212,12 @@ describe('ChatContextManager', () => {
 
         it('should respect BUDGET_THRESHOLD of 80%', async () => {
             const tokenCounts: number[] = [];
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [
                 createMockRequestTurn('Message 1'),
                 createMockRequestTurn('Message 2'),
-                createMockRequestTurn('Message 3')
+                createMockRequestTurn('Message 3'),
             ];
             const model = createMockModel(10000, (_text) => {
                 const count = 100;
@@ -226,9 +239,9 @@ describe('ChatContextManager', () => {
 
         it('should return empty when no budget after system prompt', async () => {
             const { Log } = await import('../services/loggingService');
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
-                createMockRequestTurn('Question')
-            ];
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [createMockRequestTurn('Question')];
             // Model with minimal space - system prompt consumes all budget
             const model = createMockModel(5000, () => 1000);
             const token = createMockToken();
@@ -247,15 +260,17 @@ describe('ChatContextManager', () => {
         });
 
         it('should handle cancellation during processing', async () => {
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [
                 createMockRequestTurn('Question 1'),
                 createMockRequestTurn('Question 2'),
-                createMockRequestTurn('Question 3')
+                createMockRequestTurn('Question 3'),
             ];
             const model = createMockModel(50000);
             const token = {
                 isCancellationRequested: false,
-                onCancellationRequested: vi.fn()
+                onCancellationRequested: vi.fn(),
             };
 
             // Cancel after first iteration
@@ -284,13 +299,12 @@ describe('ChatContextManager', () => {
                 participant: 'lupa.chat-participant',
                 command: undefined,
                 response: [], // Empty response
-                result: {}
+                result: {},
             } as unknown as vscode.ChatResponseTurn;
 
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
-                createMockRequestTurn('Question'),
-                emptyResponseTurn
-            ];
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [createMockRequestTurn('Question'), emptyResponseTurn];
             const model = createMockModel(50000);
             const token = createMockToken();
 
@@ -311,14 +325,22 @@ describe('ChatContextManager', () => {
                 participant: 'lupa.chat-participant',
                 command: undefined,
                 response: [
-                    new vscode.ChatResponseMarkdownPart(new vscode.MarkdownString('Part 1')),
-                    new vscode.ChatResponseMarkdownPart(new vscode.MarkdownString('Part 2')),
-                    new vscode.ChatResponseMarkdownPart(new vscode.MarkdownString('Part 3'))
+                    new vscode.ChatResponseMarkdownPart(
+                        new vscode.MarkdownString('Part 1')
+                    ),
+                    new vscode.ChatResponseMarkdownPart(
+                        new vscode.MarkdownString('Part 2')
+                    ),
+                    new vscode.ChatResponseMarkdownPart(
+                        new vscode.MarkdownString('Part 3')
+                    ),
                 ],
-                result: {}
+                result: {},
             } as unknown as vscode.ChatResponseTurn;
 
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [multiPartResponse];
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [multiPartResponse];
             const model = createMockModel(50000);
             const token = createMockToken();
 
@@ -338,14 +360,18 @@ describe('ChatContextManager', () => {
                 participant: 'lupa.chat-participant',
                 command: undefined,
                 response: [
-                    new vscode.ChatResponseMarkdownPart(new vscode.MarkdownString('Text content')),
+                    new vscode.ChatResponseMarkdownPart(
+                        new vscode.MarkdownString('Text content')
+                    ),
                     { someOtherProperty: 'not text' }, // Non-markdown part
-                    { value: 'plain value not markdown' } // Wrong structure
+                    { value: 'plain value not markdown' }, // Wrong structure
                 ],
-                result: {}
+                result: {},
             } as unknown as vscode.ChatResponseTurn;
 
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [mixedResponse];
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [mixedResponse];
             const model = createMockModel(50000);
             const token = createMockToken();
 
@@ -362,11 +388,13 @@ describe('ChatContextManager', () => {
 
         it('should return empty array on error and log warning', async () => {
             const { Log } = await import('../services/loggingService');
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
-                createMockRequestTurn('Question')
-            ];
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [createMockRequestTurn('Question')];
             const model = createMockModel(50000);
-            vi.mocked(model.countTokens).mockRejectedValue(new Error('Token counting failed'));
+            vi.mocked(model.countTokens).mockRejectedValue(
+                new Error('Token counting failed')
+            );
             const token = createMockToken();
 
             const result = await manager.prepareConversationHistory(
@@ -385,9 +413,11 @@ describe('ChatContextManager', () => {
 
         it('should log when truncation occurs', async () => {
             const { Log } = await import('../services/loggingService');
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [
                 createMockRequestTurn('Old message'),
-                createMockRequestTurn('Recent message')
+                createMockRequestTurn('Recent message'),
             ];
             // Tight budget - system takes most, only room for 1 message
             const model = createMockModel(5000, () => 500);
@@ -401,16 +431,20 @@ describe('ChatContextManager', () => {
             );
 
             expect(Log.info).toHaveBeenCalledWith(
-                expect.stringContaining('[ChatContextManager]: Truncating history at turn')
+                expect.stringContaining(
+                    '[ChatContextManager]: Truncating history at turn'
+                )
             );
         });
 
         it('should log when partial history is included', async () => {
             const { Log } = await import('../services/loggingService');
-            const history: Array<vscode.ChatRequestTurn | vscode.ChatResponseTurn> = [
+            const history: Array<
+                vscode.ChatRequestTurn | vscode.ChatResponseTurn
+            > = [
                 createMockRequestTurn('Message 1'),
                 createMockRequestTurn('Message 2'),
-                createMockRequestTurn('Message 3')
+                createMockRequestTurn('Message 3'),
             ];
             // Budget allows only some messages
             const model = createMockModel(5500, () => 400);
@@ -425,7 +459,9 @@ describe('ChatContextManager', () => {
 
             if (result.length < history.length) {
                 expect(Log.info).toHaveBeenCalledWith(
-                    expect.stringContaining(`Included ${result.length} of ${history.length} history turns`)
+                    expect.stringContaining(
+                        `Included ${result.length} of ${history.length} history turns`
+                    )
                 );
             }
         });
@@ -466,7 +502,7 @@ describe('ChatContextManager', () => {
             const emptyResponse = {
                 participant: 'lupa.chat-participant',
                 response: [],
-                result: {}
+                result: {},
             } as unknown as vscode.ChatResponseTurn;
 
             const history = [emptyResponse];

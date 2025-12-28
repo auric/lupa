@@ -24,8 +24,8 @@ vi.mock('../services/loggingService', () => ({
 
 vi.mock('../services/gitService', () => ({
     GitService: {
-        getInstance: vi.fn()
-    }
+        getInstance: vi.fn(),
+    },
 }));
 
 // Vitest 4 requires function syntax for constructor mocks
@@ -33,7 +33,7 @@ vi.mock('../models/conversationRunner', () => ({
     ConversationRunner: vi.fn().mockImplementation(function (this: any) {
         this.run = vi.fn().mockResolvedValue('Analysis complete');
         this.reset = vi.fn();
-    })
+    }),
 }));
 
 describe('ChatParticipantService', () => {
@@ -55,7 +55,9 @@ describe('ChatParticipantService', () => {
 
         it('should register chat participant on initialization', () => {
             const mockParticipant = { dispose: vi.fn() };
-            (vscode.chat.createChatParticipant as any).mockReturnValue(mockParticipant);
+            (vscode.chat.createChatParticipant as any).mockReturnValue(
+                mockParticipant
+            );
 
             ChatParticipantService.getInstance();
 
@@ -68,18 +70,22 @@ describe('ChatParticipantService', () => {
 
     describe('graceful degradation', () => {
         it('should handle missing vscode.chat gracefully', () => {
-            (vscode.chat.createChatParticipant as any).mockImplementation(() => {
-                throw new Error('Chat API not available');
-            });
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                () => {
+                    throw new Error('Chat API not available');
+                }
+            );
 
             expect(() => ChatParticipantService.getInstance()).not.toThrow();
         });
 
         it('should log warning when registration fails', async () => {
             const { Log } = await import('../services/loggingService');
-            (vscode.chat.createChatParticipant as any).mockImplementation(() => {
-                throw new Error('Copilot not installed');
-            });
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                () => {
+                    throw new Error('Copilot not installed');
+                }
+            );
 
             ChatParticipantService.getInstance();
 
@@ -95,7 +101,7 @@ describe('ChatParticipantService', () => {
             const mockParticipant = { dispose: vi.fn() };
             const mockStream = {
                 markdown: vi.fn(),
-                progress: vi.fn()
+                progress: vi.fn(),
             };
             const mockToken = {
                 isCancellationRequested: false,
@@ -113,7 +119,11 @@ describe('ChatParticipantService', () => {
             ChatParticipantService.getInstance();
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'test question', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'test question',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
@@ -141,31 +151,35 @@ describe('ChatParticipantService', () => {
             mockStream = {
                 markdown: vi.fn(),
                 progress: vi.fn(),
-                filetree: vi.fn()
+                filetree: vi.fn(),
             };
             mockToken = {
                 isCancellationRequested: false,
-                onCancellationRequested: vi.fn()
+                onCancellationRequested: vi.fn(),
             };
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn()
+                resetToolCallCount: vi.fn(),
             };
             mockToolRegistry = {
-                getToolNames: vi.fn().mockReturnValue([])
+                getToolNames: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
-                getMaxIterations: vi.fn().mockReturnValue(100)
+                getMaxIterations: vi.fn().mockReturnValue(100),
             };
             mockPromptGenerator = {
-                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
-                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+                generateToolAwareSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('User prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
-                    rootUri: { fsPath: '/test/git-root' }
-                })
+                    rootUri: { fsPath: '/test/git-root' },
+                }),
             };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
@@ -182,10 +196,12 @@ describe('ChatParticipantService', () => {
                 compareBranches: vi.fn().mockResolvedValue({
                     diffText: 'mock diff content',
                     refName: 'feature/test',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -193,7 +209,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -207,7 +223,7 @@ describe('ChatParticipantService', () => {
             expect(mockStream.progress).toHaveBeenCalled();
             expect(result.metadata).toMatchObject({
                 command: 'branch',
-                cancelled: false
+                cancelled: false,
             });
         });
 
@@ -217,10 +233,12 @@ describe('ChatParticipantService', () => {
                 compareBranches: vi.fn().mockResolvedValue({
                     diffText: '',
                     refName: 'main',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -228,7 +246,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -250,10 +268,12 @@ describe('ChatParticipantService', () => {
                 compareBranches: vi.fn().mockResolvedValue({
                     diffText: '',
                     refName: 'unknown',
-                    error: 'Could not determine base branch'
-                })
+                    error: 'Could not determine base branch',
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -261,7 +281,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -295,9 +315,11 @@ describe('ChatParticipantService', () => {
 
         it('should return error when git not initialized', async () => {
             const mockGitService = {
-                isInitialized: vi.fn().mockReturnValue(false)
+                isInitialized: vi.fn().mockReturnValue(false),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -305,7 +327,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -324,9 +346,13 @@ describe('ChatParticipantService', () => {
         it('should handle analysis errors gracefully', async () => {
             const mockGitService = {
                 isInitialized: vi.fn().mockReturnValue(true),
-                compareBranches: vi.fn().mockRejectedValue(new Error('Network error'))
+                compareBranches: vi
+                    .fn()
+                    .mockRejectedValue(new Error('Network error')),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -334,7 +360,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -348,7 +374,10 @@ describe('ChatParticipantService', () => {
                 expect.stringContaining('Analysis Error')
             );
             expect(result).toHaveProperty('errorDetails');
-            expect(result.metadata).toHaveProperty('responseIsIncomplete', true);
+            expect(result.metadata).toHaveProperty(
+                'responseIsIncomplete',
+                true
+            );
         });
     });
 
@@ -367,31 +396,35 @@ describe('ChatParticipantService', () => {
             mockStream = {
                 markdown: vi.fn(),
                 progress: vi.fn(),
-                filetree: vi.fn()
+                filetree: vi.fn(),
             };
             mockToken = {
                 isCancellationRequested: false,
-                onCancellationRequested: vi.fn()
+                onCancellationRequested: vi.fn(),
             };
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn()
+                resetToolCallCount: vi.fn(),
             };
             mockToolRegistry = {
-                getToolNames: vi.fn().mockReturnValue([])
+                getToolNames: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
-                getMaxIterations: vi.fn().mockReturnValue(100)
+                getMaxIterations: vi.fn().mockReturnValue(100),
             };
             mockPromptGenerator = {
-                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
-                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+                generateToolAwareSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('User prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
-                    rootUri: { fsPath: '/test/git-root' }
-                })
+                    rootUri: { fsPath: '/test/git-root' },
+                }),
             };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
@@ -408,10 +441,12 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: 'mock diff content',
                     refName: 'uncommitted changes',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -419,7 +454,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -433,7 +468,7 @@ describe('ChatParticipantService', () => {
             expect(mockStream.progress).toHaveBeenCalled();
             expect(result.metadata).toMatchObject({
                 command: 'changes',
-                cancelled: false
+                cancelled: false,
             });
         });
 
@@ -443,10 +478,12 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: '',
                     refName: 'uncommitted changes',
-                    error: 'No uncommitted changes found'
-                })
+                    error: 'No uncommitted changes found',
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -454,7 +491,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -475,9 +512,11 @@ describe('ChatParticipantService', () => {
 
         it('should return error when git not initialized for /changes', async () => {
             const mockGitService = {
-                isInitialized: vi.fn().mockReturnValue(false)
+                isInitialized: vi.fn().mockReturnValue(false),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -485,7 +524,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -504,9 +543,13 @@ describe('ChatParticipantService', () => {
         it('should handle /changes analysis errors gracefully', async () => {
             const mockGitService = {
                 isInitialized: vi.fn().mockReturnValue(true),
-                getUncommittedChanges: vi.fn().mockRejectedValue(new Error('Git error'))
+                getUncommittedChanges: vi
+                    .fn()
+                    .mockRejectedValue(new Error('Git error')),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -514,7 +557,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -528,7 +571,10 @@ describe('ChatParticipantService', () => {
                 expect.stringContaining('Analysis Error')
             );
             expect(result).toHaveProperty('errorDetails');
-            expect(result.metadata).toHaveProperty('responseIsIncomplete', true);
+            expect(result.metadata).toHaveProperty(
+                'responseIsIncomplete',
+                true
+            );
         });
 
         it('should call getUncommittedChanges not compareBranches', async () => {
@@ -537,11 +583,13 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: 'mock diff',
                     refName: 'uncommitted changes',
-                    error: undefined
+                    error: undefined,
                 }),
-                compareBranches: vi.fn()
+                compareBranches: vi.fn(),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -549,7 +597,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             await capturedHandler(
@@ -569,10 +617,12 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: 'diff --git a/test.ts b/test.ts\n+new line',
                     refName: 'uncommitted changes',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -580,7 +630,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             await capturedHandler(
@@ -590,9 +640,11 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            expect(mockPromptGenerator.generateToolCallingUserPrompt).toHaveBeenCalledWith(
+            expect(
+                mockPromptGenerator.generateToolCallingUserPrompt
+            ).toHaveBeenCalledWith(
                 expect.any(Array),
-                undefined  // User prompt is undefined when empty
+                undefined // User prompt is undefined when empty
             );
         });
 
@@ -602,10 +654,12 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: 'diff --git a/test.ts b/test.ts\n+new line',
                     refName: 'uncommitted changes',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -613,20 +667,23 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             await capturedHandler(
-                { command: 'changes', model: { id: 'test-model' }, prompt: 'focus on security' },
+                {
+                    command: 'changes',
+                    model: { id: 'test-model' },
+                    prompt: 'focus on security',
+                },
                 {},
                 mockStream,
                 mockToken
             );
 
-            expect(mockPromptGenerator.generateToolCallingUserPrompt).toHaveBeenCalledWith(
-                expect.any(Array),
-                'focus on security'
-            );
+            expect(
+                mockPromptGenerator.generateToolCallingUserPrompt
+            ).toHaveBeenCalledWith(expect.any(Array), 'focus on security');
         });
 
         it('should stream progress with uncommitted changes scope', async () => {
@@ -635,10 +692,12 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: 'mock diff',
                     refName: 'uncommitted changes',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -646,7 +705,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             await capturedHandler(
@@ -667,13 +726,21 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: 'diff --git a/test.ts b/test.ts\n+new line',
                     refName: 'uncommitted changes',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
-                this.run = vi.fn().mockResolvedValue('Analysis with 🔴 critical issue and 🔒 security risk');
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi
+                    .fn()
+                    .mockResolvedValue(
+                        'Analysis with 🔴 critical issue and 🔒 security risk'
+                    );
                 this.reset = vi.fn();
             });
 
@@ -683,7 +750,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
@@ -699,7 +766,7 @@ describe('ChatParticipantService', () => {
                 issuesFound: true,
                 hasCriticalIssues: true,
                 hasSecurityIssues: true,
-                hasTestingSuggestions: false
+                hasTestingSuggestions: false,
             });
             expect(result.metadata.analysisTimestamp).toBeDefined();
         });
@@ -708,18 +775,21 @@ describe('ChatParticipantService', () => {
             // Set up workspace folders mock
             const originalWorkspaceFolders = vscode.workspace.workspaceFolders;
             (vscode.workspace as any).workspaceFolders = [
-                { uri: vscode.Uri.file('/workspace'), name: 'test', index: 0 }
+                { uri: vscode.Uri.file('/workspace'), name: 'test', index: 0 },
             ];
 
             const mockGitService = {
                 isInitialized: vi.fn().mockReturnValue(true),
                 getUncommittedChanges: vi.fn().mockResolvedValue({
-                    diffText: 'diff --git a/src/app.ts b/src/app.ts\n@@ -1,1 +1,2 @@\n+new line',
+                    diffText:
+                        'diff --git a/src/app.ts b/src/app.ts\n@@ -1,1 +1,2 @@\n+new line',
                     refName: 'uncommitted changes',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
@@ -727,7 +797,7 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             await capturedHandler(
@@ -739,20 +809,23 @@ describe('ChatParticipantService', () => {
 
             expect(mockStream.filetree).toHaveBeenCalledWith(
                 expect.arrayContaining([
-                    expect.objectContaining({ name: 'src' })
+                    expect.objectContaining({ name: 'src' }),
                 ]),
                 expect.any(Object)
             );
 
             // Restore workspace folders
-            (vscode.workspace as any).workspaceFolders = originalWorkspaceFolders;
+            (vscode.workspace as any).workspaceFolders =
+                originalWorkspaceFolders;
         });
     });
 
     describe('dispose', () => {
         it('should dispose participant and clear instance', () => {
             const mockParticipant = { dispose: vi.fn() };
-            (vscode.chat.createChatParticipant as any).mockReturnValue(mockParticipant);
+            (vscode.chat.createChatParticipant as any).mockReturnValue(
+                mockParticipant
+            );
 
             const instance = ChatParticipantService.getInstance();
             instance.dispose();
@@ -764,9 +837,11 @@ describe('ChatParticipantService', () => {
         });
 
         it('should handle dispose when registration failed', () => {
-            (vscode.chat.createChatParticipant as any).mockImplementation(() => {
-                throw new Error('Failed');
-            });
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                () => {
+                    throw new Error('Failed');
+                }
+            );
 
             const instance = ChatParticipantService.getInstance();
             expect(() => instance.dispose()).not.toThrow();
@@ -787,27 +862,31 @@ describe('ChatParticipantService', () => {
             mockStream = {
                 markdown: vi.fn(),
                 progress: vi.fn(),
-                filetree: vi.fn()
+                filetree: vi.fn(),
             };
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn()
+                resetToolCallCount: vi.fn(),
             };
             mockToolRegistry = {
-                getToolNames: vi.fn().mockReturnValue([])
+                getToolNames: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
-                getMaxIterations: vi.fn().mockReturnValue(100)
+                getMaxIterations: vi.fn().mockReturnValue(100),
             };
             mockPromptGenerator = {
-                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('System prompt'),
-                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+                generateToolAwareSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('User prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
-                    rootUri: { fsPath: '/test/git-root' }
-                })
+                    rootUri: { fsPath: '/test/git-root' },
+                }),
             };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
@@ -822,7 +901,7 @@ describe('ChatParticipantService', () => {
             it('should return immediately with cancellation message for /branch', async () => {
                 const cancelledToken = {
                     isCancellationRequested: true,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
                 const mockGitService = {
@@ -830,10 +909,12 @@ describe('ChatParticipantService', () => {
                     compareBranches: vi.fn().mockResolvedValue({
                         diffText: 'mock diff',
                         refName: 'feature/test',
-                        error: undefined
-                    })
+                        error: undefined,
+                    }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -841,7 +922,7 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
                 const result = await capturedHandler(
@@ -856,14 +937,14 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
-                    responseIsIncomplete: true
+                    responseIsIncomplete: true,
                 });
             });
 
             it('should return immediately with cancellation message for /changes', async () => {
                 const cancelledToken = {
                     isCancellationRequested: true,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
                 const mockGitService = {
@@ -871,10 +952,12 @@ describe('ChatParticipantService', () => {
                     getUncommittedChanges: vi.fn().mockResolvedValue({
                         diffText: 'mock diff',
                         refName: 'uncommitted changes',
-                        error: undefined
-                    })
+                        error: undefined,
+                    }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -882,7 +965,7 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
                 const result = await capturedHandler(
@@ -897,7 +980,7 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
-                    responseIsIncomplete: true
+                    responseIsIncomplete: true,
                 });
             });
         });
@@ -906,11 +989,15 @@ describe('ChatParticipantService', () => {
             it('should return supportive message when runner returns cancellation string', async () => {
                 const mockToken = {
                     isCancellationRequested: false,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
-                vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
-                    this.run = vi.fn().mockResolvedValue('Conversation cancelled by user');
+                vi.mocked(ConversationRunner).mockImplementation(function (
+                    this: any
+                ) {
+                    this.run = vi
+                        .fn()
+                        .mockResolvedValue('Conversation cancelled by user');
                     this.reset = vi.fn();
                 });
 
@@ -919,10 +1006,12 @@ describe('ChatParticipantService', () => {
                     compareBranches: vi.fn().mockResolvedValue({
                         diffText: 'mock diff',
                         refName: 'feature/test',
-                        error: undefined
-                    })
+                        error: undefined,
+                    }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -930,7 +1019,7 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
                 const result = await capturedHandler(
@@ -943,21 +1032,27 @@ describe('ChatParticipantService', () => {
                 expect(mockStream.markdown).toHaveBeenCalledWith(
                     expect.stringContaining('Analysis Cancelled')
                 );
-                expect(mockStream.markdown).not.toHaveBeenCalledWith('Conversation cancelled by user');
+                expect(mockStream.markdown).not.toHaveBeenCalledWith(
+                    'Conversation cancelled by user'
+                );
                 expect(result.metadata).toEqual({
                     cancelled: true,
-                    responseIsIncomplete: true
+                    responseIsIncomplete: true,
                 });
             });
 
             it('should NOT claim partial results exist', async () => {
                 const mockToken = {
                     isCancellationRequested: false,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
-                vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
-                    this.run = vi.fn().mockResolvedValue('Conversation cancelled by user');
+                vi.mocked(ConversationRunner).mockImplementation(function (
+                    this: any
+                ) {
+                    this.run = vi
+                        .fn()
+                        .mockResolvedValue('Conversation cancelled by user');
                     this.reset = vi.fn();
                 });
 
@@ -966,10 +1061,12 @@ describe('ChatParticipantService', () => {
                     compareBranches: vi.fn().mockResolvedValue({
                         diffText: 'mock diff',
                         refName: 'feature/test',
-                        error: undefined
-                    })
+                        error: undefined,
+                    }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -977,7 +1074,7 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
                 await capturedHandler(
@@ -987,7 +1084,9 @@ describe('ChatParticipantService', () => {
                     mockToken
                 );
 
-                const markdownCalls = mockStream.markdown.mock.calls.flat().join(' ');
+                const markdownCalls = mockStream.markdown.mock.calls
+                    .flat()
+                    .join(' ');
                 expect(markdownCalls).not.toContain('found so far');
                 expect(markdownCalls).not.toContain('partial');
             });
@@ -997,7 +1096,7 @@ describe('ChatParticipantService', () => {
             it('should treat error as cancellation if token is cancelled for /branch', async () => {
                 const mockToken = {
                     isCancellationRequested: false,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
                 const mockGitService = {
@@ -1005,9 +1104,11 @@ describe('ChatParticipantService', () => {
                     compareBranches: vi.fn().mockImplementation(async () => {
                         mockToken.isCancellationRequested = true;
                         throw new Error('Operation cancelled');
-                    })
+                    }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -1015,7 +1116,7 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
                 const result = await capturedHandler(
@@ -1030,24 +1131,28 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
-                    responseIsIncomplete: true
+                    responseIsIncomplete: true,
                 });
             });
 
             it('should treat error as cancellation if token is cancelled for /changes', async () => {
                 const mockToken = {
                     isCancellationRequested: false,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
                 const mockGitService = {
                     isInitialized: vi.fn().mockReturnValue(true),
-                    getUncommittedChanges: vi.fn().mockImplementation(async () => {
-                        mockToken.isCancellationRequested = true;
-                        throw new Error('Operation cancelled');
-                    })
+                    getUncommittedChanges: vi
+                        .fn()
+                        .mockImplementation(async () => {
+                            mockToken.isCancellationRequested = true;
+                            throw new Error('Operation cancelled');
+                        }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -1055,7 +1160,7 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
                 const result = await capturedHandler(
@@ -1070,7 +1175,7 @@ describe('ChatParticipantService', () => {
                 );
                 expect(result.metadata).toEqual({
                     cancelled: true,
-                    responseIsIncomplete: true
+                    responseIsIncomplete: true,
                 });
             });
         });
@@ -1079,7 +1184,7 @@ describe('ChatParticipantService', () => {
             it('should include cancelled and responseIsIncomplete in metadata', async () => {
                 const cancelledToken = {
                     isCancellationRequested: true,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
                 const mockGitService = {
@@ -1087,10 +1192,12 @@ describe('ChatParticipantService', () => {
                     compareBranches: vi.fn().mockResolvedValue({
                         diffText: 'mock diff',
                         refName: 'feature/test',
-                        error: undefined
-                    })
+                        error: undefined,
+                    }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -1098,7 +1205,7 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
                 const result = await capturedHandler(
@@ -1118,7 +1225,7 @@ describe('ChatParticipantService', () => {
             it('should produce identical cancellation message for /branch and /changes', async () => {
                 const cancelledToken = {
                     isCancellationRequested: true,
-                    onCancellationRequested: vi.fn()
+                    onCancellationRequested: vi.fn(),
                 };
 
                 const mockGitService = {
@@ -1126,15 +1233,17 @@ describe('ChatParticipantService', () => {
                     compareBranches: vi.fn().mockResolvedValue({
                         diffText: 'mock diff',
                         refName: 'feature/test',
-                        error: undefined
+                        error: undefined,
                     }),
                     getUncommittedChanges: vi.fn().mockResolvedValue({
                         diffText: 'mock diff',
                         refName: 'uncommitted changes',
-                        error: undefined
-                    })
+                        error: undefined,
+                    }),
                 };
-                vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+                vi.mocked(GitService.getInstance).mockReturnValue(
+                    mockGitService as unknown as GitService
+                );
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
@@ -1142,11 +1251,17 @@ describe('ChatParticipantService', () => {
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
-                    gitOperations: mockGitOperations
+                    gitOperations: mockGitOperations,
                 });
 
-                const branchMockStream = { markdown: vi.fn(), progress: vi.fn() };
-                const changesMockStream = { markdown: vi.fn(), progress: vi.fn() };
+                const branchMockStream = {
+                    markdown: vi.fn(),
+                    progress: vi.fn(),
+                };
+                const changesMockStream = {
+                    markdown: vi.fn(),
+                    progress: vi.fn(),
+                };
 
                 const branchResult = await capturedHandler(
                     { command: 'branch', model: { id: 'test-model' } },
@@ -1162,7 +1277,9 @@ describe('ChatParticipantService', () => {
                     cancelledToken
                 );
 
-                expect(branchMockStream.markdown.mock.calls).toEqual(changesMockStream.markdown.mock.calls);
+                expect(branchMockStream.markdown.mock.calls).toEqual(
+                    changesMockStream.markdown.mock.calls
+                );
                 expect(branchResult.metadata).toEqual(changesResult.metadata);
             });
         });
@@ -1183,32 +1300,38 @@ describe('ChatParticipantService', () => {
             mockStream = {
                 markdown: vi.fn(),
                 progress: vi.fn(),
-                filetree: vi.fn()
+                filetree: vi.fn(),
             };
             mockToken = {
                 isCancellationRequested: false,
-                onCancellationRequested: vi.fn()
+                onCancellationRequested: vi.fn(),
             };
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn()
+                resetToolCallCount: vi.fn(),
             };
             mockToolRegistry = {
-                getToolNames: vi.fn().mockReturnValue([])
+                getToolNames: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
-                getMaxIterations: vi.fn().mockReturnValue(100)
+                getMaxIterations: vi.fn().mockReturnValue(100),
             };
             mockPromptGenerator = {
-                generateToolAwareSystemPrompt: vi.fn().mockReturnValue('Analysis system prompt'),
-                generateExplorationSystemPrompt: vi.fn().mockReturnValue('Exploration system prompt'),
-                generateToolCallingUserPrompt: vi.fn().mockReturnValue('User prompt')
+                generateToolAwareSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('Analysis system prompt'),
+                generateExplorationSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('Exploration system prompt'),
+                generateToolCallingUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('User prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
-                    rootUri: { fsPath: '/test/git-root' }
-                })
+                    rootUri: { fsPath: '/test/git-root' },
+                }),
             };
 
             (vscode.chat.createChatParticipant as any).mockImplementation(
@@ -1220,8 +1343,12 @@ describe('ChatParticipantService', () => {
         });
 
         it('should route no-command requests to exploration mode', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
-                this.run = vi.fn().mockResolvedValue('Here is my explanation of the code...');
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi
+                    .fn()
+                    .mockResolvedValue('Here is my explanation of the code...');
                 this.reset = vi.fn();
             });
 
@@ -1231,26 +1358,36 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'What does ConversationRunner do?', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'What does ConversationRunner do?',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
             );
 
-            expect(mockPromptGenerator.generateExplorationSystemPrompt).toHaveBeenCalled();
-            expect(mockPromptGenerator.generateToolAwareSystemPrompt).not.toHaveBeenCalled();
+            expect(
+                mockPromptGenerator.generateExplorationSystemPrompt
+            ).toHaveBeenCalled();
+            expect(
+                mockPromptGenerator.generateToolAwareSystemPrompt
+            ).not.toHaveBeenCalled();
             expect(result.metadata).toMatchObject({
                 command: 'exploration',
-                cancelled: false
+                cancelled: false,
             });
         });
 
         it('should handle follow-up chips (no command) as exploration mode', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockResolvedValue('Follow-up response...');
                 this.reset = vi.fn();
             });
@@ -1261,22 +1398,30 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'Tell me more about the security concerns', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'Tell me more about the security concerns',
+                    model: { id: 'test-model' },
+                },
                 { history: [] },
                 mockStream,
                 mockToken
             );
 
-            expect(mockStream.markdown).toHaveBeenCalledWith('Follow-up response...');
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                'Follow-up response...'
+            );
             expect(result.metadata.command).toBe('exploration');
         });
 
         it('should work without diff context', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockResolvedValue('Exploration response');
                 this.reset = vi.fn();
             });
@@ -1287,25 +1432,35 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             await capturedHandler(
-                { command: undefined, prompt: 'Explain the auth flow', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'Explain the auth flow',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
             );
 
             expect(mockStream.filetree).not.toHaveBeenCalled();
-            expect(mockPromptGenerator.generateToolCallingUserPrompt).not.toHaveBeenCalled();
+            expect(
+                mockPromptGenerator.generateToolCallingUserPrompt
+            ).not.toHaveBeenCalled();
         });
 
         it('should return error when dependencies not injected', async () => {
             ChatParticipantService.getInstance();
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'What does this do?', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'What does this do?',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
@@ -1318,7 +1473,9 @@ describe('ChatParticipantService', () => {
         });
 
         it('should handle errors with ChatResponseBuilder', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockRejectedValue(new Error('LLM error'));
                 this.reset = vi.fn();
             });
@@ -1329,11 +1486,15 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'Explain this', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'Explain this',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
@@ -1343,14 +1504,17 @@ describe('ChatParticipantService', () => {
                 expect.stringContaining('Exploration Error')
             );
             expect(result).toHaveProperty('errorDetails');
-            expect(result.metadata).toHaveProperty('responseIsIncomplete', true);
+            expect(result.metadata).toHaveProperty(
+                'responseIsIncomplete',
+                true
+            );
             expect(result.metadata.command).toBe('exploration');
         });
 
         it('should handle pre-cancelled token', async () => {
             const cancelledToken = {
                 isCancellationRequested: true,
-                onCancellationRequested: vi.fn()
+                onCancellationRequested: vi.fn(),
             };
 
             const instance = ChatParticipantService.getInstance();
@@ -1359,11 +1523,15 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'What does this do?', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'What does this do?',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 cancelledToken
@@ -1374,13 +1542,17 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata).toEqual({
                 cancelled: true,
-                responseIsIncomplete: true
+                responseIsIncomplete: true,
             });
         });
 
         it('should handle cancellation during exploration', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
-                this.run = vi.fn().mockResolvedValue('Conversation cancelled by user');
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi
+                    .fn()
+                    .mockResolvedValue('Conversation cancelled by user');
                 this.reset = vi.fn();
             });
 
@@ -1390,11 +1562,15 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'Explain the architecture', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'Explain the architecture',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
@@ -1405,12 +1581,14 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata).toEqual({
                 cancelled: true,
-                responseIsIncomplete: true
+                responseIsIncomplete: true,
             });
         });
 
         it('should treat error as cancellation if token is cancelled', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockImplementation(async () => {
                     mockToken.isCancellationRequested = true;
                     throw new Error('Operation cancelled');
@@ -1424,11 +1602,15 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'What is this?', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'What is this?',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
@@ -1439,12 +1621,14 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata).toEqual({
                 cancelled: true,
-                responseIsIncomplete: true
+                responseIsIncomplete: true,
             });
         });
 
         it('should include analysisTimestamp in metadata', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockResolvedValue('Response');
                 this.reset = vi.fn();
             });
@@ -1455,11 +1639,15 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const result = await capturedHandler(
-                { command: undefined, prompt: 'Explain this', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'Explain this',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
@@ -1470,7 +1658,9 @@ describe('ChatParticipantService', () => {
         });
 
         it('should show progress while thinking', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockResolvedValue('Response');
                 this.reset = vi.fn();
             });
@@ -1481,11 +1671,15 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             await capturedHandler(
-                { command: undefined, prompt: 'Explain this', model: { id: 'test-model' } },
+                {
+                    command: undefined,
+                    prompt: 'Explain this',
+                    model: { id: 'test-model' },
+                },
                 {},
                 mockStream,
                 mockToken
@@ -1497,7 +1691,9 @@ describe('ChatParticipantService', () => {
         });
 
         it('should show "Continuing conversation" progress when history exists', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockResolvedValue('Follow-up response');
                 this.reset = vi.fn();
             });
@@ -1508,16 +1704,19 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             // Create mock history with proper structure
             const mockHistory = [
-                { prompt: 'Previous question', participant: 'lupa.chat-participant' },
+                {
+                    prompt: 'Previous question',
+                    participant: 'lupa.chat-participant',
+                },
                 {
                     response: [{ value: { value: 'Previous answer' } }],
-                    participant: 'lupa.chat-participant'
-                }
+                    participant: 'lupa.chat-participant',
+                },
             ];
 
             await capturedHandler(
@@ -1527,8 +1726,8 @@ describe('ChatParticipantService', () => {
                     model: {
                         id: 'test-model',
                         maxInputTokens: 50000,
-                        countTokens: vi.fn().mockResolvedValue(10)
-                    }
+                        countTokens: vi.fn().mockResolvedValue(10),
+                    },
                 },
                 { history: mockHistory },
                 mockStream,
@@ -1546,12 +1745,16 @@ describe('ChatParticipantService', () => {
                 compareBranches: vi.fn().mockResolvedValue({
                     diffText: 'mock diff',
                     refName: 'feature/test',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockResolvedValue('Analysis result');
                 this.reset = vi.fn();
             });
@@ -1562,11 +1765,14 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const mockHistory = [
-                { prompt: 'Previous question', participant: 'lupa.chat-participant' }
+                {
+                    prompt: 'Previous question',
+                    participant: 'lupa.chat-participant',
+                },
             ];
 
             await capturedHandler(
@@ -1588,12 +1794,16 @@ describe('ChatParticipantService', () => {
                 getUncommittedChanges: vi.fn().mockResolvedValue({
                     diffText: 'mock diff',
                     refName: 'uncommitted changes',
-                    error: undefined
-                })
+                    error: undefined,
+                }),
             };
-            vi.mocked(GitService.getInstance).mockReturnValue(mockGitService as unknown as GitService);
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
 
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
                 this.run = vi.fn().mockResolvedValue('Analysis result');
                 this.reset = vi.fn();
             });
@@ -1604,11 +1814,14 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             const mockHistory = [
-                { prompt: 'Previous question', participant: 'lupa.chat-participant' }
+                {
+                    prompt: 'Previous question',
+                    participant: 'lupa.chat-participant',
+                },
             ];
 
             await capturedHandler(
@@ -1625,8 +1838,12 @@ describe('ChatParticipantService', () => {
         });
 
         it('should gracefully handle history processing errors', async () => {
-            vi.mocked(ConversationRunner).mockImplementation(function (this: any) {
-                this.run = vi.fn().mockResolvedValue('Response despite history error');
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi
+                    .fn()
+                    .mockResolvedValue('Response despite history error');
                 this.reset = vi.fn();
             });
 
@@ -1636,12 +1853,15 @@ describe('ChatParticipantService', () => {
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
-                gitOperations: mockGitOperations
+                gitOperations: mockGitOperations,
             });
 
             // Create a model that throws on countTokens
             const mockHistory = [
-                { prompt: 'Previous question', participant: 'lupa.chat-participant' }
+                {
+                    prompt: 'Previous question',
+                    participant: 'lupa.chat-participant',
+                },
             ];
 
             const result = await capturedHandler(
@@ -1651,8 +1871,12 @@ describe('ChatParticipantService', () => {
                     model: {
                         id: 'test-model',
                         maxInputTokens: 50000,
-                        countTokens: vi.fn().mockRejectedValue(new Error('Token counting failed'))
-                    }
+                        countTokens: vi
+                            .fn()
+                            .mockRejectedValue(
+                                new Error('Token counting failed')
+                            ),
+                    },
                 },
                 { history: mockHistory },
                 mockStream,
@@ -1660,7 +1884,9 @@ describe('ChatParticipantService', () => {
             );
 
             // Should still succeed and return a response
-            expect(mockStream.markdown).toHaveBeenCalledWith('Response despite history error');
+            expect(mockStream.markdown).toHaveBeenCalledWith(
+                'Response despite history error'
+            );
             expect(result.metadata.command).toBe('exploration');
             expect(result.metadata.cancelled).toBe(false);
         });

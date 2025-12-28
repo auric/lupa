@@ -12,22 +12,27 @@ export interface SupportedLanguage {
  * Map of supported file extensions to language details
  */
 export const SUPPORTED_LANGUAGES: Record<string, SupportedLanguage> = {
-    'js': { extension: 'js', language: 'javascript', lineCommentMarker: '//' },
-    'jsx': { extension: 'jsx', language: 'javascript', lineCommentMarker: '//' },
-    'ts': { extension: 'ts', language: 'typescript', lineCommentMarker: '//' },
-    'tsx': { extension: 'tsx', language: 'typescript', variant: 'tsx', lineCommentMarker: '//' },
-    'py': { extension: 'py', language: 'python', lineCommentMarker: '#' },
-    'pyw': { extension: 'pyw', language: 'python', lineCommentMarker: '#' },
-    'java': { extension: 'java', language: 'java', lineCommentMarker: '//' },
-    'c': { extension: 'c', language: 'c', lineCommentMarker: '//' },
-    'cpp': { extension: 'cpp', language: 'cpp', lineCommentMarker: '//' },
-    'h': { extension: 'h', language: 'cpp', lineCommentMarker: '//' },
-    'hpp': { extension: 'hpp', language: 'cpp', lineCommentMarker: '//' },
-    'cs': { extension: 'cs', language: 'csharp', lineCommentMarker: '//' },
-    'go': { extension: 'go', language: 'go', lineCommentMarker: '//' },
-    'rb': { extension: 'rb', language: 'ruby', lineCommentMarker: '#' },
-    'rs': { extension: 'rs', language: 'rust', lineCommentMarker: '//' },
-    'css': { extension: 'css', language: 'css', lineCommentMarker: undefined },
+    js: { extension: 'js', language: 'javascript', lineCommentMarker: '//' },
+    jsx: { extension: 'jsx', language: 'javascript', lineCommentMarker: '//' },
+    ts: { extension: 'ts', language: 'typescript', lineCommentMarker: '//' },
+    tsx: {
+        extension: 'tsx',
+        language: 'typescript',
+        variant: 'tsx',
+        lineCommentMarker: '//',
+    },
+    py: { extension: 'py', language: 'python', lineCommentMarker: '#' },
+    pyw: { extension: 'pyw', language: 'python', lineCommentMarker: '#' },
+    java: { extension: 'java', language: 'java', lineCommentMarker: '//' },
+    c: { extension: 'c', language: 'c', lineCommentMarker: '//' },
+    cpp: { extension: 'cpp', language: 'cpp', lineCommentMarker: '//' },
+    h: { extension: 'h', language: 'cpp', lineCommentMarker: '//' },
+    hpp: { extension: 'hpp', language: 'cpp', lineCommentMarker: '//' },
+    cs: { extension: 'cs', language: 'csharp', lineCommentMarker: '//' },
+    go: { extension: 'go', language: 'go', lineCommentMarker: '//' },
+    rb: { extension: 'rb', language: 'ruby', lineCommentMarker: '#' },
+    rs: { extension: 'rs', language: 'rust', lineCommentMarker: '//' },
+    css: { extension: 'css', language: 'css', lineCommentMarker: undefined },
 };
 
 /**
@@ -52,6 +57,8 @@ export function getExcludePattern(): string {
  * @param extension The file extension (without dot)
  * @returns The language data or undefined if not supported
  */
-export function getLanguageForExtension(extension: string): SupportedLanguage | undefined {
+export function getLanguageForExtension(
+    extension: string
+): SupportedLanguage | undefined {
     return SUPPORTED_LANGUAGES[extension];
 }

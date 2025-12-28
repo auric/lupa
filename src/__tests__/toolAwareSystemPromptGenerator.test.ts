@@ -70,7 +70,9 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
         it('should advise against confidence levels on every finding', () => {
             const prompt = generator.generateSystemPrompt([]);
-            expect(prompt).toContain('do NOT add confidence levels to every finding');
+            expect(prompt).toContain(
+                'do NOT add confidence levels to every finding'
+            );
         });
 
         it('should recommend verifying with tools before claiming', () => {
@@ -83,12 +85,16 @@ describe('ToolAwareSystemPromptGenerator', () => {
     describe("What's Good section (AC-2.1.9)", () => {
         it('should make positive observations section mandatory', () => {
             const prompt = generator.generateSystemPrompt([]);
-            expect(prompt).toContain("What's Good (REQUIRED - never skip this section)");
+            expect(prompt).toContain(
+                "What's Good (REQUIRED - never skip this section)"
+            );
         });
 
         it('should instruct to always find at least one positive', () => {
             const prompt = generator.generateSystemPrompt([]);
-            expect(prompt).toContain('Always find at least one positive observation');
+            expect(prompt).toContain(
+                'Always find at least one positive observation'
+            );
         });
     });
 
@@ -96,17 +102,23 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should use markdown link format for file paths', () => {
             const prompt = generator.generateSystemPrompt([]);
             // Check for markdown link format pattern like [file.ts:15](file.ts:15)
-            expect(prompt).toMatch(/\[[a-zA-Z/]+\.ts:\d+\]\([a-zA-Z/]+\.ts:\d+\)/);
+            expect(prompt).toMatch(
+                /\[[a-zA-Z/]+\.ts:\d+\]\([a-zA-Z/]+\.ts:\d+\)/
+            );
         });
 
         it('should include Location field with markdown link format', () => {
             const prompt = generator.generateSystemPrompt([]);
-            expect(prompt).toContain('[src/path/file.ts:42](src/path/file.ts:42)');
+            expect(prompt).toContain(
+                '[src/path/file.ts:42](src/path/file.ts:42)'
+            );
         });
 
         it('should include formatting rule about markdown link format', () => {
             const prompt = generator.generateSystemPrompt([]);
-            expect(prompt).toContain('markdown link format for file references');
+            expect(prompt).toContain(
+                'markdown link format for file references'
+            );
         });
     });
 
@@ -126,7 +138,9 @@ describe('ToolAwareSystemPromptGenerator', () => {
             const suggestionsIndex = prompt.indexOf('### 3. Suggestions');
             const testIndex = prompt.indexOf('### 4. Test Considerations');
             const positiveIndex = prompt.indexOf("### 5. What's Good");
-            const questionsIndex = prompt.indexOf('### 6. Questions for Author');
+            const questionsIndex = prompt.indexOf(
+                '### 6. Questions for Author'
+            );
 
             expect(summaryIndex).toBeLessThan(criticalIndex);
             expect(criticalIndex).toBeLessThan(suggestionsIndex);

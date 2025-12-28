@@ -8,7 +8,10 @@ import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import type { DiffHunk } from '../types/contextTypes';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';
+import {
+    createMockWorkspaceSettings,
+    createMockCancellationTokenSource,
+} from './testUtils/mockFactories';
 
 vi.mock('vscode');
 
@@ -18,19 +21,25 @@ class MockAnalysisTool implements ITool {
     description = 'Find the definition of a code symbol';
     schema = z.object({
         symbolName: z.string().describe('Symbol name to find'),
-        includeFullBody: z.boolean().default(true).describe('Include full body')
+        includeFullBody: z
+            .boolean()
+            .default(true)
+            .describe('Include full body'),
     });
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
         return {
             name: this.name,
             description: this.description,
-            inputSchema: this.schema as any
+            inputSchema: this.schema as any,
         };
     }
 
     async execute(args: any): Promise<ToolResult> {
-        return { success: true, data: `Symbol definition for ${args.symbolName}` };
+        return {
+            success: true,
+            data: `Symbol definition for ${args.symbolName}`,
+        };
     }
 }
 
@@ -66,36 +75,42 @@ index 1234567..abcdefg 100644
             addUserMessage: vi.fn(),
             addAssistantMessage: vi.fn(),
             addToolMessage: vi.fn(),
-            getHistory: vi.fn().mockReturnValue([])
+            getHistory: vi.fn().mockReturnValue([]),
         };
 
         mockToolExecutor = {
-            getAvailableTools: vi.fn().mockReturnValue([new MockAnalysisTool()]),
-            executeTools: vi.fn().mockResolvedValue([{
-                success: true,
-                result: ['Tool execution result'],
-                name: 'find_symbol'
-            }]),
-            resetToolCallCount: vi.fn()
+            getAvailableTools: vi
+                .fn()
+                .mockReturnValue([new MockAnalysisTool()]),
+            executeTools: vi.fn().mockResolvedValue([
+                {
+                    success: true,
+                    result: ['Tool execution result'],
+                    name: 'find_symbol',
+                },
+            ]),
+            resetToolCallCount: vi.fn(),
         };
 
         const mockModel = {
             countTokens: vi.fn(() => Promise.resolve(100)),
-            maxInputTokens: 8000
+            maxInputTokens: 8000,
         };
 
         mockCopilotModelManager = {
             getCurrentModel: vi.fn(() => Promise.resolve(mockModel)),
             sendRequest: vi.fn().mockResolvedValue({
                 content: 'Mock analysis result',
-                toolCalls: null // No tool calls for simple test
-            })
+                toolCalls: null, // No tool calls for simple test
+            }),
         };
 
         mockPromptGenerator = new PromptGenerator();
 
         const mockWorkspaceSettings = createMockWorkspaceSettings();
-        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
+        subagentSessionManager = new SubagentSessionManager(
+            mockWorkspaceSettings
+        );
 
         provider = new ToolCallingAnalysisProvider(
             mockConversationManager,
@@ -106,7 +121,9 @@ index 1234567..abcdefg 100644
             subagentSessionManager
         );
         // Use shared CancellationTokenSource mock from mockFactories
-        vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (this: any) {
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (
+            this: any
+        ) {
             const mock = createMockCancellationTokenSource();
             this.token = mock.token;
             this.cancel = mock.cancel;
@@ -118,13 +135,21 @@ index 1234567..abcdefg 100644
     describe('analyze method integration', () => {
         it('should use tool-aware system prompt generation', async () => {
             // Spy on the prompt generator methods
-            const generateToolAwareSystemPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolAwareSystemPrompt');
-            const generateToolCallingUserPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolCallingUserPrompt');
+            const generateToolAwareSystemPromptSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolAwareSystemPrompt'
+            );
+            const generateToolCallingUserPromptSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolCallingUserPrompt'
+            );
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
             // Verify tool-aware system prompt was generated
-            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalledWith([expect.any(MockAnalysisTool)]);
+            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalledWith([
+                expect.any(MockAnalysisTool),
+            ]);
 
             // Verify tool-calling user prompt was generated
             expect(generateToolCallingUserPromptSpy).toHaveBeenCalledWith(
@@ -165,37 +190,52 @@ index 1234567..abcdefg 100644
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: 'I need to investigate this function',
-                    toolCalls: [{
-                        id: 'call_1',
-                        function: {
-                            name: 'find_symbol',
-                            arguments: JSON.stringify({ symbolName: 'validateToken' })
-                        }
-                    }]
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: JSON.stringify({
+                                    symbolName: 'validateToken',
+                                }),
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
                     content: 'Final analysis based on tool results',
-                    toolCalls: null
+                    toolCalls: null,
                 });
 
-            const result = await provider.analyze(sampleDiff, tokenSource.token);
+            const result = await provider.analyze(
+                sampleDiff,
+                tokenSource.token
+            );
 
             // Verify tool execution was called
-            expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([{
-                name: 'find_symbol',
-                args: { symbolName: 'validateToken' }
-            }]);
+            expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([
+                {
+                    name: 'find_symbol',
+                    args: { symbolName: 'validateToken' },
+                },
+            ]);
 
             // Verify final result
-            expect(result.analysis).toBe('Final analysis based on tool results');
+            expect(result.analysis).toBe(
+                'Final analysis based on tool results'
+            );
         });
 
         it('should generate comprehensive system prompt with available tools', async () => {
-            const generateToolAwareSystemPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolAwareSystemPrompt');
+            const generateToolAwareSystemPromptSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolAwareSystemPrompt'
+            );
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            const systemPromptCall = generateToolAwareSystemPromptSpy.mock.calls[0];
+            const systemPromptCall =
+                generateToolAwareSystemPromptSpy.mock.calls[0];
             const tools = systemPromptCall[0] as ITool[];
 
             expect(tools).toHaveLength(1);
@@ -204,44 +244,60 @@ index 1234567..abcdefg 100644
         });
 
         it('should structure user prompt for optimal tool usage', async () => {
-            const generateToolCallingUserPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolCallingUserPrompt');
+            const generateToolCallingUserPromptSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolCallingUserPrompt'
+            );
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            const userPromptCall = generateToolCallingUserPromptSpy.mock.calls[0];
+            const userPromptCall =
+                generateToolCallingUserPromptSpy.mock.calls[0];
             const [parsedDiffParam] = userPromptCall;
 
             expect(parsedDiffParam).toBeInstanceOf(Array);
-            expect(parsedDiffParam[0]).toHaveProperty('filePath', 'src/auth.ts');
+            expect(parsedDiffParam[0]).toHaveProperty(
+                'filePath',
+                'src/auth.ts'
+            );
             expect(parsedDiffParam[0]).toHaveProperty('hunks');
         });
     });
 
     describe('error handling', () => {
         it('should handle tool execution errors gracefully', async () => {
-            mockToolExecutor.executeTools.mockResolvedValue([{
-                success: false,
-                error: 'Tool execution failed',
-                name: 'find_symbol'
-            }]);
+            mockToolExecutor.executeTools.mockResolvedValue([
+                {
+                    success: false,
+                    error: 'Tool execution failed',
+                    name: 'find_symbol',
+                },
+            ]);
 
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: 'Using tools to analyze',
-                    toolCalls: [{
-                        id: 'call_1',
-                        function: {
-                            name: 'find_symbol',
-                            arguments: JSON.stringify({ symbolName: 'test' })
-                        }
-                    }]
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: JSON.stringify({
+                                    symbolName: 'test',
+                                }),
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
                     content: 'Analysis despite tool error',
-                    toolCalls: null
+                    toolCalls: null,
                 });
 
-            const result = await provider.analyze(sampleDiff, tokenSource.token);
+            const result = await provider.analyze(
+                sampleDiff,
+                tokenSource.token
+            );
 
             expect(result.analysis).toBe('Analysis despite tool error');
             expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
@@ -254,33 +310,45 @@ index 1234567..abcdefg 100644
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: 'Calling tool with bad args',
-                    toolCalls: [{
-                        id: 'call_1',
-                        function: {
-                            name: 'find_symbol',
-                            arguments: 'invalid json'
-                        }
-                    }]
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: 'invalid json',
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
                     content: 'Final result',
-                    toolCalls: null
+                    toolCalls: null,
                 });
 
-            const result = await provider.analyze(sampleDiff, tokenSource.token);
+            const result = await provider.analyze(
+                sampleDiff,
+                tokenSource.token
+            );
 
             // Should still complete despite malformed arguments
             expect(result.analysis).toBe('Final result');
-            expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([{
-                name: 'find_symbol',
-                args: {} // Empty object for malformed JSON
-            }]);
+            expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([
+                {
+                    name: 'find_symbol',
+                    args: {}, // Empty object for malformed JSON
+                },
+            ]);
         });
 
         it('should handle analysis errors and return error message', async () => {
-            mockCopilotModelManager.sendRequest.mockRejectedValue(new Error('LLM service unavailable'));
+            mockCopilotModelManager.sendRequest.mockRejectedValue(
+                new Error('LLM service unavailable')
+            );
 
-            const result = await provider.analyze(sampleDiff, tokenSource.token);
+            const result = await provider.analyze(
+                sampleDiff,
+                tokenSource.token
+            );
 
             expect(result.analysis).toContain('Error during analysis');
             expect(result.analysis).toContain('LLM service unavailable');
@@ -309,11 +377,15 @@ index 0000000..3333333
 +    return 'new';
 +}`;
 
-            const generateToolCallingUserPromptSpy = vi.spyOn(mockPromptGenerator, 'generateToolCallingUserPrompt');
+            const generateToolCallingUserPromptSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolCallingUserPrompt'
+            );
 
             await provider.analyze(complexDiff, tokenSource.token);
 
-            const parsedDiff = generateToolCallingUserPromptSpy.mock.calls[0][0] as DiffHunk[];
+            const parsedDiff = generateToolCallingUserPromptSpy.mock
+                .calls[0][0] as DiffHunk[];
 
             expect(parsedDiff).toHaveLength(2);
             expect(parsedDiff[0].filePath).toBe('src/file1.ts');

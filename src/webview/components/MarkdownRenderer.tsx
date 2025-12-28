@@ -2,7 +2,10 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { PrismAsyncLight as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import {
+    vscDarkPlus,
+    vs,
+} from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { CopyButton } from './CopyButton';
 import { FileLink } from './FileLink';
 import { parseFilePathFromUrl } from '../../lib/pathUtils';
@@ -19,9 +22,8 @@ export const MarkdownRenderer = ({
     content,
     isDarkTheme,
     showCopy = true,
-    onCopy
+    onCopy,
 }: MarkdownRendererProps) => {
-
     const customComponents = {
         a: ({ href, children, ...props }: any) => {
             const parsedPath = href ? parseFilePathFromUrl(href) : null;
@@ -39,7 +41,11 @@ export const MarkdownRenderer = ({
                 );
             }
 
-            return <a href={href} {...props}>{children}</a>;
+            return (
+                <a href={href} {...props}>
+                    {children}
+                </a>
+            );
         },
         pre: ({ children }: any) => {
             return <>{children}</>;
@@ -68,14 +74,17 @@ export const MarkdownRenderer = ({
                 return (
                     <div style={{ position: 'relative' }}>
                         <SyntaxHighlighter
-                            style={isDarkTheme ? (vscDarkPlus as any) : (vs as any)}
+                            style={
+                                isDarkTheme ? (vscDarkPlus as any) : (vs as any)
+                            }
                             language={language || 'text'}
                             PreTag="div"
                             showLineNumbers={false}
                             customStyle={{
                                 margin: 0,
                                 borderRadius: '0.5rem',
-                                background: 'var(--vscode-textCodeBlock-background)',
+                                background:
+                                    'var(--vscode-textCodeBlock-background)',
                                 fontSize: 'var(--vscode-editor-font-size)',
                                 fontFamily: 'var(--vscode-editor-font-family)',
                                 fontWeight: 'var(--vscode-editor-font-weight)',
@@ -86,10 +95,12 @@ export const MarkdownRenderer = ({
                                 style: {
                                     background: 'transparent',
                                     color: 'inherit',
-                                    fontFamily: 'var(--vscode-editor-font-family)',
-                                    fontWeight: 'var(--vscode-editor-font-weight)',
+                                    fontFamily:
+                                        'var(--vscode-editor-font-family)',
+                                    fontWeight:
+                                        'var(--vscode-editor-font-weight)',
                                     fontSize: 'var(--vscode-editor-font-size)',
-                                }
+                                },
                             }}
                             {...props}
                         >
@@ -117,17 +128,14 @@ export const MarkdownRenderer = ({
                     </code>
                 );
             }
-        }
+        },
     };
 
     return (
         <div className="relative">
             {showCopy && (
                 <div className="absolute top-2 right-2 z-10">
-                    <CopyButton
-                        text={content}
-                        onCopy={onCopy}
-                    />
+                    <CopyButton text={content} onCopy={onCopy} />
                 </div>
             )}
             <div className="prose prose-sm max-w-none dark:prose-invert">

@@ -3,9 +3,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as z from 'zod';
 import { Log } from './loggingService';
-import { WorkspaceSettingsSchema, WorkspaceSettings, ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
+import {
+    WorkspaceSettingsSchema,
+    WorkspaceSettings,
+    ANALYSIS_LIMITS,
+    SUBAGENT_LIMITS,
+} from '../models/workspaceSettingsSchema';
 
-const getDefaultSettings = (): WorkspaceSettings => WorkspaceSettingsSchema.parse({});
+const getDefaultSettings = (): WorkspaceSettings =>
+    WorkspaceSettingsSchema.parse({});
 
 /**
  * Marker used to indicate the repository path matches the workspace root.
@@ -70,7 +76,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             try {
                 fs.mkdirSync(vscodeDir, { recursive: true });
             } catch (error) {
-                Log.error(`Failed to create .vscode directory: ${error instanceof Error ? error.message : String(error)}`);
+                Log.error(
+                    `Failed to create .vscode directory: ${error instanceof Error ? error.message : String(error)}`
+                );
                 return null;
             }
         }
@@ -107,7 +115,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                     this.settings = result.data;
                 } else {
                     const errorMessages = z.prettifyError(result.error);
-                    Log.error(`Invalid settings in ${this.settingsPath}: ${errorMessages}. Resetting to defaults.`);
+                    Log.error(
+                        `Invalid settings in ${this.settingsPath}: ${errorMessages}. Resetting to defaults.`
+                    );
                     this.settings = getDefaultSettings();
                     this.saveSettings();
                 }
@@ -116,7 +126,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 this.saveSettings();
             }
         } catch (error) {
-            Log.error(`Failed to load settings: ${error instanceof Error ? error.message : String(error)}`);
+            Log.error(
+                `Failed to load settings: ${error instanceof Error ? error.message : String(error)}`
+            );
             this.settings = getDefaultSettings();
         }
     }
@@ -143,7 +155,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 'utf-8'
             );
         } catch (error) {
-            Log.error(`Failed to save settings: ${error instanceof Error ? error.message : String(error)}`);
+            Log.error(
+                `Failed to save settings: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -166,9 +180,14 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * @param key Setting key
      * @param defaultValue Default value if setting is not found
      */
-    public getSetting<K extends keyof WorkspaceSettings>(key: K, defaultValue: NonNullable<WorkspaceSettings[K]>): NonNullable<WorkspaceSettings[K]> {
+    public getSetting<K extends keyof WorkspaceSettings>(
+        key: K,
+        defaultValue: NonNullable<WorkspaceSettings[K]>
+    ): NonNullable<WorkspaceSettings[K]> {
         const value = this.settings[key];
-        return value !== undefined ? value as NonNullable<WorkspaceSettings[K]> : defaultValue;
+        return value !== undefined
+            ? (value as NonNullable<WorkspaceSettings[K]>)
+            : defaultValue;
     }
 
     /**
@@ -176,7 +195,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * @param key Setting key
      * @param value Setting value
      */
-    public setSetting<K extends keyof WorkspaceSettings>(key: K, value: WorkspaceSettings[K]): void {
+    public setSetting<K extends keyof WorkspaceSettings>(
+        key: K,
+        value: WorkspaceSettings[K]
+    ): void {
         this.settings[key] = value;
         this.debouncedSaveSettings();
     }
@@ -198,10 +220,12 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      */
     private normalizePath(p: string): string {
         let normalized = p
-            .replace(/\\/g, '/')           // Convert backslashes to forward slashes
-            .replace(/\/+/g, '/')          // Collapse multiple slashes to single
-            .replace(/\/$/, '');           // Remove trailing slash
-        return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+            .replace(/\\/g, '/') // Convert backslashes to forward slashes
+            .replace(/\/+/g, '/') // Collapse multiple slashes to single
+            .replace(/\/$/, ''); // Remove trailing slash
+        return process.platform === 'win32'
+            ? normalized.toLowerCase()
+            : normalized;
     }
 
     /**
@@ -229,7 +253,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         }
 
         const workspaceRoot = this.getWorkspaceRootPath();
-        if (workspaceRoot && this.normalizePath(repoPath) === this.normalizePath(workspaceRoot)) {
+        if (
+            workspaceRoot &&
+            this.normalizePath(repoPath) === this.normalizePath(workspaceRoot)
+        ) {
             this.settings.selectedRepositoryPath = WORKSPACE_ROOT_MARKER;
         } else {
             this.settings.selectedRepositoryPath = repoPath;
@@ -279,8 +306,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      */
     public resetAnalysisLimitsToDefaults(): void {
         this.settings.maxIterations = ANALYSIS_LIMITS.maxIterations.default;
-        this.settings.requestTimeoutSeconds = ANALYSIS_LIMITS.requestTimeoutSeconds.default;
-        this.settings.maxSubagentsPerSession = SUBAGENT_LIMITS.maxPerSession.default;
+        this.settings.requestTimeoutSeconds =
+            ANALYSIS_LIMITS.requestTimeoutSeconds.default;
+        this.settings.maxSubagentsPerSession =
+            SUBAGENT_LIMITS.maxPerSession.default;
         this.debouncedSaveSettings();
     }
 

@@ -19,8 +19,8 @@ import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
  * - Full gitignore compliance (ripgrep respects .gitignore by default)
  */
 export class SearchForPatternTool extends BaseTool {
-  name = 'search_for_pattern';
-  description = `Search for text patterns across the codebase using regex.
+    name = 'search_for_pattern';
+    description = `Search for text patterns across the codebase using regex.
 
 USE THIS for finding patterns like error handling, logging, similar code structures.
 USE THIS when you don't know exact symbol names—pattern matching across files.
@@ -30,87 +30,127 @@ Supports context lines, glob patterns for file filtering, and code-file-only mod
 Multiline matching is enabled—use \\n to match across lines.
 Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? instead of .*).`;
 
-  schema = z.object({
-    pattern: z.string().min(1, 'Pattern cannot be empty').describe(
-      'Regular expression pattern to search for in file contents'
-    ),
-    lines_before: z.number().int().min(0).max(20).default(0).optional().describe(
-      'Number of lines of context to include before each match (default: 0, max: 20)'
-    ),
-    lines_after: z.number().int().min(0).max(20).default(0).optional().describe(
-      'Number of lines of context to include after each match (default: 0, max: 20)'
-    ),
-    include_files: z.string().default('').optional().describe(
-      'Optional glob pattern specifying files to include (e.g., "*.py", "src/**/*.ts"). If empty, all non-ignored files are included.'
-    ),
-    exclude_files: z.string().default('').optional().describe(
-      'Optional glob pattern specifying files to exclude (e.g., "*test*", "**/*_generated.py"). Takes precedence over include_files.'
-    ),
-    search_path: z.string().default('.').optional().describe(
-      'Only search within this path relative to repo root. Use "." for entire project, "src" for src folder, or path to single file.'
-    ),
-    only_code_files: z.boolean().default(false).optional().describe(
-      'Whether to restrict search to only code files (files with programming language extensions). Set to true for finding code symbols, false to search all files including configs, docs, etc.'
-    ),
-    case_sensitive: z.boolean().default(false).optional().describe(
-      'Whether the pattern matching should be case sensitive (default: false for case-insensitive matching)'
-    )
-  });
+    schema = z.object({
+        pattern: z
+            .string()
+            .min(1, 'Pattern cannot be empty')
+            .describe(
+                'Regular expression pattern to search for in file contents'
+            ),
+        lines_before: z
+            .number()
+            .int()
+            .min(0)
+            .max(20)
+            .default(0)
+            .optional()
+            .describe(
+                'Number of lines of context to include before each match (default: 0, max: 20)'
+            ),
+        lines_after: z
+            .number()
+            .int()
+            .min(0)
+            .max(20)
+            .default(0)
+            .optional()
+            .describe(
+                'Number of lines of context to include after each match (default: 0, max: 20)'
+            ),
+        include_files: z
+            .string()
+            .default('')
+            .optional()
+            .describe(
+                'Optional glob pattern specifying files to include (e.g., "*.py", "src/**/*.ts"). If empty, all non-ignored files are included.'
+            ),
+        exclude_files: z
+            .string()
+            .default('')
+            .optional()
+            .describe(
+                'Optional glob pattern specifying files to exclude (e.g., "*test*", "**/*_generated.py"). Takes precedence over include_files.'
+            ),
+        search_path: z
+            .string()
+            .default('.')
+            .optional()
+            .describe(
+                'Only search within this path relative to repo root. Use "." for entire project, "src" for src folder, or path to single file.'
+            ),
+        only_code_files: z
+            .boolean()
+            .default(false)
+            .optional()
+            .describe(
+                'Whether to restrict search to only code files (files with programming language extensions). Set to true for finding code symbols, false to search all files including configs, docs, etc.'
+            ),
+        case_sensitive: z
+            .boolean()
+            .default(false)
+            .optional()
+            .describe(
+                'Whether the pattern matching should be case sensitive (default: false for case-insensitive matching)'
+            ),
+    });
 
-  private readonly ripgrepService: RipgrepSearchService;
+    private readonly ripgrepService: RipgrepSearchService;
 
-  constructor(private readonly gitOperationsManager: GitOperationsManager) {
-    super();
-    this.ripgrepService = new RipgrepSearchService();
-  }
-
-  async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
-    const validationResult = this.schema.safeParse(args);
-    if (!validationResult.success) {
-      return toolError(`Invalid parameters: ${validationResult.error.issues.map(e => e.message).join(', ')}`);
+    constructor(private readonly gitOperationsManager: GitOperationsManager) {
+        super();
+        this.ripgrepService = new RipgrepSearchService();
     }
 
-    try {
-      const {
-        pattern,
-        lines_before = 0,
-        lines_after = 0,
-        include_files = '',
-        exclude_files = '',
-        search_path = '.',
-        only_code_files = false,
-        case_sensitive = false
-      } = validationResult.data;
+    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+        const validationResult = this.schema.safeParse(args);
+        if (!validationResult.success) {
+            return toolError(
+                `Invalid parameters: ${validationResult.error.issues.map((e) => e.message).join(', ')}`
+            );
+        }
 
-      const gitRepo = this.gitOperationsManager.getRepository();
-      if (!gitRepo) {
-        return toolError('Git repository not found');
-      }
+        try {
+            const {
+                pattern,
+                lines_before = 0,
+                lines_after = 0,
+                include_files = '',
+                exclude_files = '',
+                search_path = '.',
+                only_code_files = false,
+                case_sensitive = false,
+            } = validationResult.data;
 
-      const gitRootDirectory = gitRepo.rootUri.fsPath;
+            const gitRepo = this.gitOperationsManager.getRepository();
+            if (!gitRepo) {
+                return toolError('Git repository not found');
+            }
 
-      const results = await this.ripgrepService.search({
-        pattern,
-        cwd: gitRootDirectory,
-        searchPath: search_path !== '.' ? search_path : undefined,
-        linesBefore: lines_before,
-        linesAfter: lines_after,
-        caseSensitive: case_sensitive,
-        includeGlob: include_files || undefined,
-        excludeGlob: exclude_files || undefined,
-        codeFilesOnly: only_code_files,
-        multiline: true
-      });
+            const gitRootDirectory = gitRepo.rootUri.fsPath;
 
-      if (results.length === 0) {
-        return toolError(`No matches found for pattern '${pattern}'`);
-      }
+            const results = await this.ripgrepService.search({
+                pattern,
+                cwd: gitRootDirectory,
+                searchPath: search_path !== '.' ? search_path : undefined,
+                linesBefore: lines_before,
+                linesAfter: lines_after,
+                caseSensitive: case_sensitive,
+                includeGlob: include_files || undefined,
+                excludeGlob: exclude_files || undefined,
+                codeFilesOnly: only_code_files,
+                multiline: true,
+            });
 
-      const formattedResult = this.ripgrepService.formatResults(results);
-      return toolSuccess(formattedResult);
+            if (results.length === 0) {
+                return toolError(`No matches found for pattern '${pattern}'`);
+            }
 
-    } catch (error) {
-      return toolError(`Pattern search failed: ${error instanceof Error ? error.message : String(error)}`);
+            const formattedResult = this.ripgrepService.formatResults(results);
+            return toolSuccess(formattedResult);
+        } catch (error) {
+            return toolError(
+                `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
+            );
+        }
     }
-  }
 }

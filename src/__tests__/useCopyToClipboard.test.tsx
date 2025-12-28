@@ -37,7 +37,9 @@ describe('useCopyToClipboard immediate feedback', () => {
     });
 
     it('should handle clipboard failures gracefully', async () => {
-        const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
+        const consoleErrorSpy = vi
+            .spyOn(console, 'error')
+            .mockImplementation(() => {});
         mockWriteText.mockRejectedValue(new Error('Clipboard access denied'));
 
         try {

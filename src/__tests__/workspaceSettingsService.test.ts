@@ -54,7 +54,7 @@ describe('WorkspaceSettingsService', () => {
         describe('setSelectedRepositoryPath', () => {
             it('should store "." when repo path matches workspace root exactly', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace' } }
+                    { uri: { fsPath: '/test/workspace' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -71,7 +71,7 @@ describe('WorkspaceSettingsService', () => {
 
             it('should store "." when paths differ only in trailing slash', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace' } }
+                    { uri: { fsPath: '/test/workspace' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -88,7 +88,7 @@ describe('WorkspaceSettingsService', () => {
 
             it('should store "." when paths differ only in backslash vs forward slash', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: 'C:\\test\\workspace' } }
+                    { uri: { fsPath: 'C:\\test\\workspace' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -105,7 +105,7 @@ describe('WorkspaceSettingsService', () => {
 
             it('should store "." when paths differ in double slashes', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace' } }
+                    { uri: { fsPath: '/test/workspace' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -122,7 +122,7 @@ describe('WorkspaceSettingsService', () => {
 
             it('should store absolute path when repo path differs from workspace root', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace' } }
+                    { uri: { fsPath: '/test/workspace' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -132,7 +132,9 @@ describe('WorkspaceSettingsService', () => {
 
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "/other/repo"'),
+                    expect.stringContaining(
+                        '"selectedRepositoryPath": "/other/repo"'
+                    ),
                     'utf-8'
                 );
             });
@@ -160,7 +162,9 @@ describe('WorkspaceSettingsService', () => {
 
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "/some/repo"'),
+                    expect.stringContaining(
+                        '"selectedRepositoryPath": "/some/repo"'
+                    ),
                     'utf-8'
                 );
             });
@@ -169,22 +173,28 @@ describe('WorkspaceSettingsService', () => {
         describe('getSelectedRepositoryPath', () => {
             it('should resolve "." back to workspace root path', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace' } }
+                    { uri: { fsPath: '/test/workspace' } },
                 ];
-                vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-                    selectedRepositoryPath: '.'
-                }));
+                vi.mocked(fs.readFileSync).mockReturnValue(
+                    JSON.stringify({
+                        selectedRepositoryPath: '.',
+                    })
+                );
 
                 service = new WorkspaceSettingsService(mockContext);
 
-                expect(service.getSelectedRepositoryPath()).toBe('/test/workspace');
+                expect(service.getSelectedRepositoryPath()).toBe(
+                    '/test/workspace'
+                );
             });
 
             it('should return undefined when "." stored but no workspace folders', () => {
                 (vscode.workspace as any).workspaceFolders = undefined;
-                vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-                    selectedRepositoryPath: '.'
-                }));
+                vi.mocked(fs.readFileSync).mockReturnValue(
+                    JSON.stringify({
+                        selectedRepositoryPath: '.',
+                    })
+                );
 
                 service = new WorkspaceSettingsService(mockContext);
 
@@ -192,13 +202,17 @@ describe('WorkspaceSettingsService', () => {
             });
 
             it('should return absolute path as-is when not "."', () => {
-                vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
-                    selectedRepositoryPath: '/custom/repo/path'
-                }));
+                vi.mocked(fs.readFileSync).mockReturnValue(
+                    JSON.stringify({
+                        selectedRepositoryPath: '/custom/repo/path',
+                    })
+                );
 
                 service = new WorkspaceSettingsService(mockContext);
 
-                expect(service.getSelectedRepositoryPath()).toBe('/custom/repo/path');
+                expect(service.getSelectedRepositoryPath()).toBe(
+                    '/custom/repo/path'
+                );
             });
 
             it('should return undefined when no path is stored', () => {
@@ -218,7 +232,7 @@ describe('WorkspaceSettingsService', () => {
 
                 try {
                     (vscode.workspace as any).workspaceFolders = [
-                        { uri: { fsPath: 'C:\\Test\\Workspace' } }
+                        { uri: { fsPath: 'C:\\Test\\Workspace' } },
                     ];
 
                     service = new WorkspaceSettingsService(mockContext);
@@ -228,18 +242,22 @@ describe('WorkspaceSettingsService', () => {
 
                     expect(fs.writeFileSync).toHaveBeenCalledWith(
                         expect.any(String),
-                        expect.stringContaining('"selectedRepositoryPath": "."'),
+                        expect.stringContaining(
+                            '"selectedRepositoryPath": "."'
+                        ),
                         'utf-8'
                     );
                 } finally {
                     // Always restore platform, even if test fails
-                    Object.defineProperty(process, 'platform', { value: originalPlatform });
+                    Object.defineProperty(process, 'platform', {
+                        value: originalPlatform,
+                    });
                 }
             });
 
             it('should handle paths with multiple consecutive slashes', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace' } }
+                    { uri: { fsPath: '/test/workspace' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -256,7 +274,7 @@ describe('WorkspaceSettingsService', () => {
 
             it('should not match different paths that look similar', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace' } }
+                    { uri: { fsPath: '/test/workspace' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -266,14 +284,16 @@ describe('WorkspaceSettingsService', () => {
 
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "/test/workspace-other"'),
+                    expect.stringContaining(
+                        '"selectedRepositoryPath": "/test/workspace-other"'
+                    ),
                     'utf-8'
                 );
             });
 
             it('should not match parent directory as workspace root', () => {
                 (vscode.workspace as any).workspaceFolders = [
-                    { uri: { fsPath: '/test/workspace/subdir' } }
+                    { uri: { fsPath: '/test/workspace/subdir' } },
                 ];
 
                 service = new WorkspaceSettingsService(mockContext);
@@ -283,7 +303,9 @@ describe('WorkspaceSettingsService', () => {
 
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "/test/workspace"'),
+                    expect.stringContaining(
+                        '"selectedRepositoryPath": "/test/workspace"'
+                    ),
                     'utf-8'
                 );
             });

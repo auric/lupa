@@ -1,4 +1,8 @@
-import type { DiffHunk, DiffHunkLine, ParsedDiffLine } from '../types/contextTypes';
+import type {
+    DiffHunk,
+    DiffHunkLine,
+    ParsedDiffLine,
+} from '../types/contextTypes';
 
 /**
  * Utilities for parsing and working with diff content
@@ -21,7 +25,9 @@ export class DiffUtils {
             if (fileMatch) {
                 const oldPath = fileMatch[1];
                 const newPath = fileMatch[2];
-                if (!oldPath || !newPath) { continue; }
+                if (!oldPath || !newPath) {
+                    continue;
+                }
 
                 // Determine file operation type
                 const isNewFile = oldPath === 'dev/null';
@@ -33,7 +39,7 @@ export class DiffUtils {
                     hunks: [],
                     isNewFile: isNewFile,
                     isDeletedFile: isDeletedFile,
-                    originalHeader: line
+                    originalHeader: line,
                 };
                 files.push(currentFile);
                 currentHunk = null;
@@ -41,25 +47,40 @@ export class DiffUtils {
             }
 
             // Skip file metadata lines (---, +++, index, etc.)
-            if (line.startsWith('---') || line.startsWith('+++') ||
-                line.startsWith('index ') || line.startsWith('new file mode') ||
-                line.startsWith('deleted file mode') || line.startsWith('similarity index') ||
-                line.startsWith('rename from') || line.startsWith('rename to')) {
+            if (
+                line.startsWith('---') ||
+                line.startsWith('+++') ||
+                line.startsWith('index ') ||
+                line.startsWith('new file mode') ||
+                line.startsWith('deleted file mode') ||
+                line.startsWith('similarity index') ||
+                line.startsWith('rename from') ||
+                line.startsWith('rename to')
+            ) {
                 continue;
             }
 
             if (currentFile) {
                 // Check for hunk header (@@ -oldStart,oldLines +newStart,newLines @@)
-                const hunkHeaderMatch = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(line);
+                const hunkHeaderMatch =
+                    /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/.exec(
+                        line
+                    );
                 if (hunkHeaderMatch) {
                     const oldStartStr = hunkHeaderMatch[1];
                     const newStartStr = hunkHeaderMatch[3];
-                    if (!oldStartStr || !newStartStr) { continue; }
+                    if (!oldStartStr || !newStartStr) {
+                        continue;
+                    }
 
                     const oldStart = parseInt(oldStartStr, 10);
-                    const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1;
+                    const oldLines = hunkHeaderMatch[2]
+                        ? parseInt(hunkHeaderMatch[2], 10)
+                        : 1;
                     const newStart = parseInt(newStartStr, 10);
-                    const newLines = hunkHeaderMatch[4] ? parseInt(hunkHeaderMatch[4], 10) : 1;
+                    const newLines = hunkHeaderMatch[4]
+                        ? parseInt(hunkHeaderMatch[4], 10)
+                        : 1;
 
                     currentHunk = {
                         oldStart: oldStart,
@@ -67,13 +88,24 @@ export class DiffUtils {
                         newStart: newStart,
                         newLines: newLines,
                         parsedLines: [],
-                        hunkId: DiffUtils.getHunkIdentifier(currentFile.filePath, { newStart: newStart }),
-                        hunkHeader: line
+                        hunkId: DiffUtils.getHunkIdentifier(
+                            currentFile.filePath,
+                            { newStart: newStart }
+                        ),
+                        hunkHeader: line,
                     };
                     currentFile.hunks.push(currentHunk);
-                } else if (currentHunk && (line.startsWith('+') || line.startsWith('-') || line.startsWith(' '))) {
+                } else if (
+                    currentHunk &&
+                    (line.startsWith('+') ||
+                        line.startsWith('-') ||
+                        line.startsWith(' '))
+                ) {
                     // Parse diff line into structured format
-                    const parsedLine = DiffUtils.parseDiffLine(line, currentHunk);
+                    const parsedLine = DiffUtils.parseDiffLine(
+                        line,
+                        currentHunk
+                    );
                     currentHunk.parsedLines.push(parsedLine);
                 }
             }
@@ -87,7 +119,10 @@ export class DiffUtils {
      * @param hunk The current hunk being parsed
      * @returns Parsed diff line information
      */
-    private static parseDiffLine(line: string, hunk: DiffHunkLine): ParsedDiffLine {
+    private static parseDiffLine(
+        line: string,
+        hunk: DiffHunkLine
+    ): ParsedDiffLine {
         const prefix = line.charAt(0);
         const content = line.substring(1);
 
@@ -95,9 +130,14 @@ export class DiffUtils {
         let lineNumber: number | undefined;
 
         // Calculate the current line number in the new file by counting lines processed so far
-        const addedCount = hunk.parsedLines.filter(l => l.type === 'added').length;
-        const contextCount = hunk.parsedLines.filter(l => l.type === 'context').length;
-        const currentNewFileLineNumber = hunk.newStart + addedCount + contextCount;
+        const addedCount = hunk.parsedLines.filter(
+            (l) => l.type === 'added'
+        ).length;
+        const contextCount = hunk.parsedLines.filter(
+            (l) => l.type === 'context'
+        ).length;
+        const currentNewFileLineNumber =
+            hunk.newStart + addedCount + contextCount;
 
         switch (prefix) {
             case '+':
@@ -123,7 +163,7 @@ export class DiffUtils {
         return {
             type: type,
             content: content,
-            lineNumber: lineNumber
+            lineNumber: lineNumber,
         };
     }
 
@@ -133,7 +173,10 @@ export class DiffUtils {
      * @param hunkInfo Hunk information containing newStart
      * @returns Unique hunk identifier
      */
-    static getHunkIdentifier(filePath: string, hunkInfo: { newStart: number }): string {
+    static getHunkIdentifier(
+        filePath: string,
+        hunkInfo: { newStart: number }
+    ): string {
         return `${filePath}:${hunkInfo.newStart}`;
     }
 
@@ -162,8 +205,8 @@ export class DiffUtils {
      * @returns True if the diff only contains additions
      */
     static isNewFile(fileDiff: DiffHunk): boolean {
-        return fileDiff.hunks.every(hunk =>
-            hunk.oldStart === 0 && hunk.oldLines === 0
+        return fileDiff.hunks.every(
+            (hunk) => hunk.oldStart === 0 && hunk.oldLines === 0
         );
     }
 
@@ -173,8 +216,8 @@ export class DiffUtils {
      * @returns True if the diff only contains deletions
      */
     static isDeletedFile(fileDiff: DiffHunk): boolean {
-        return fileDiff.hunks.every(hunk =>
-            hunk.newStart === 0 && hunk.newLines === 0
+        return fileDiff.hunks.every(
+            (hunk) => hunk.newStart === 0 && hunk.newLines === 0
         );
     }
 
@@ -185,8 +228,8 @@ export class DiffUtils {
      */
     static getAddedLines(hunk: DiffHunkLine): string[] {
         return hunk.parsedLines
-            .filter(line => line.type === 'added')
-            .map(line => line.content);
+            .filter((line) => line.type === 'added')
+            .map((line) => line.content);
     }
 
     /**
@@ -196,8 +239,8 @@ export class DiffUtils {
      */
     static getRemovedLines(hunk: DiffHunkLine): string[] {
         return hunk.parsedLines
-            .filter(line => line.type === 'removed')
-            .map(line => line.content);
+            .filter((line) => line.type === 'removed')
+            .map((line) => line.content);
     }
 
     /**
@@ -207,7 +250,7 @@ export class DiffUtils {
      */
     static getContextLines(hunk: DiffHunkLine): string[] {
         return hunk.parsedLines
-            .filter(line => line.type === 'context')
-            .map(line => line.content);
+            .filter((line) => line.type === 'context')
+            .map((line) => line.content);
     }
 }

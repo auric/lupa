@@ -29,12 +29,19 @@ const formatToolCallsAsMarkdown = (toolCalls: ToolCallsData): string => {
 
     lines.push('', '## Tool Calls', '');
 
-    const formatCall = (call: ToolCallRecord, prefix: string, isNested: boolean = false) => {
+    const formatCall = (
+        call: ToolCallRecord,
+        prefix: string,
+        isNested: boolean = false
+    ) => {
         const status = call.success ? '✅' : '❌';
-        const duration = call.durationMs !== undefined ? ` (${call.durationMs}ms)` : '';
+        const duration =
+            call.durationMs !== undefined ? ` (${call.durationMs}ms)` : '';
         const headingLevel = isNested ? '####' : '###';
 
-        lines.push(`${headingLevel} ${prefix} ${status} ${call.toolName}${duration}`);
+        lines.push(
+            `${headingLevel} ${prefix} ${status} ${call.toolName}${duration}`
+        );
         lines.push('');
 
         lines.push('**Arguments:**');
@@ -93,21 +100,30 @@ const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     </svg>
 );
 
-const ToolCallItem = ({ call, index, prefix = '', isNested = false }: ToolCallItemProps) => {
+const ToolCallItem = ({
+    call,
+    index,
+    prefix = '',
+    isNested = false,
+}: ToolCallItemProps) => {
     const [expanded, setExpanded] = useState(false);
     const [nestedExpanded, setNestedExpanded] = useState(false);
 
     const handleToggle = () => {
-        setExpanded(prev => !prev);
+        setExpanded((prev) => !prev);
     };
 
     const handleNestedToggle = () => {
-        setNestedExpanded(prev => !prev);
+        setNestedExpanded((prev) => !prev);
     };
 
     const formatDuration = (ms: number | undefined): string => {
-        if (ms === undefined) {return '';}
-        if (ms < 1000) {return `${ms}ms`;}
+        if (ms === undefined) {
+            return '';
+        }
+        if (ms < 1000) {
+            return `${ms}ms`;
+        }
         return `${(ms / 1000).toFixed(2)}s`;
     };
 
@@ -115,7 +131,9 @@ const ToolCallItem = ({ call, index, prefix = '', isNested = false }: ToolCallIt
     const hasNestedCalls = call.nestedCalls && call.nestedCalls.length > 0;
 
     return (
-        <div className={`tool-call-item ${isNested ? 'tool-call-item--nested' : ''}`}>
+        <div
+            className={`tool-call-item ${isNested ? 'tool-call-item--nested' : ''}`}
+        >
             <div
                 className="tool-call-header"
                 onClick={handleToggle}
@@ -141,7 +159,9 @@ const ToolCallItem = ({ call, index, prefix = '', isNested = false }: ToolCallIt
                     </span>
                 )}
             </div>
-            <div className={`tool-call-body ${expanded ? 'tool-call-body--expanded' : ''}`}>
+            <div
+                className={`tool-call-body ${expanded ? 'tool-call-body--expanded' : ''}`}
+            >
                 <div className="tool-call-section">
                     <div className="tool-call-section-title">Arguments</div>
                     <div className="tool-call-json-wrapper">
@@ -157,24 +177,29 @@ const ToolCallItem = ({ call, index, prefix = '', isNested = false }: ToolCallIt
                 {call.error ? (
                     <div className="tool-call-section">
                         <div className="tool-call-section-title">Error</div>
-                        <div className="tool-call-error-message">{call.error}</div>
+                        <div className="tool-call-error-message">
+                            {call.error}
+                        </div>
                     </div>
                 ) : (
                     <div className="tool-call-section">
                         <div className="tool-call-section-title">Result</div>
                         <div className="tool-call-json-wrapper">
                             {typeof call.result === 'string' ? (
-                                <pre style={{
-                                    margin: 0,
-                                    padding: '0.5rem',
-                                    fontSize: '0.75rem',
-                                    whiteSpace: 'pre-wrap',
-                                    wordBreak: 'break-word',
-                                    fontFamily: 'var(--vscode-editor-font-family, monospace)',
-                                    color: 'var(--vscode-editor-foreground)',
-                                    maxHeight: '200px',
-                                    overflow: 'auto'
-                                }}>
+                                <pre
+                                    style={{
+                                        margin: 0,
+                                        padding: '0.5rem',
+                                        fontSize: '0.75rem',
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word',
+                                        fontFamily:
+                                            'var(--vscode-editor-font-family, monospace)',
+                                        color: 'var(--vscode-editor-foreground)',
+                                        maxHeight: '200px',
+                                        overflow: 'auto',
+                                    }}
+                                >
                                     {call.result}
                                 </pre>
                             ) : (
@@ -197,21 +222,27 @@ const ToolCallItem = ({ call, index, prefix = '', isNested = false }: ToolCallIt
                             onClick={handleNestedToggle}
                             role="button"
                             tabIndex={0}
-                            onKeyDown={(e) => e.key === 'Enter' && handleNestedToggle()}
+                            onKeyDown={(e) =>
+                                e.key === 'Enter' && handleNestedToggle()
+                            }
                         >
                             <ChevronIcon expanded={nestedExpanded} />
                             Subagent Tool Calls ({call.nestedCalls!.length})
                         </div>
-                        <div className={`tool-call-nested-list ${nestedExpanded ? 'tool-call-nested-list--expanded' : ''}`}>
-                            {call.nestedCalls!.map((nestedCall, nestedIndex) => (
-                                <ToolCallItem
-                                    key={nestedCall.id}
-                                    call={nestedCall}
-                                    index={nestedIndex}
-                                    prefix={displayIndex}
-                                    isNested={true}
-                                />
-                            ))}
+                        <div
+                            className={`tool-call-nested-list ${nestedExpanded ? 'tool-call-nested-list--expanded' : ''}`}
+                        >
+                            {call.nestedCalls!.map(
+                                (nestedCall, nestedIndex) => (
+                                    <ToolCallItem
+                                        key={nestedCall.id}
+                                        call={nestedCall}
+                                        index={nestedIndex}
+                                        prefix={displayIndex}
+                                        isNested={true}
+                                    />
+                                )
+                            )}
                         </div>
                     </div>
                 )}
@@ -243,7 +274,14 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
         return <EmptyState />;
     }
 
-    const { calls, totalCalls, successfulCalls, failedCalls, analysisCompleted, analysisError } = toolCalls;
+    const {
+        calls,
+        totalCalls,
+        successfulCalls,
+        failedCalls,
+        analysisCompleted,
+        analysisError,
+    } = toolCalls;
 
     const markdownText = formatToolCallsAsMarkdown(toolCalls);
 
@@ -257,25 +295,28 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                 {successfulCalls > 0 && (
                     <div className="tool-calls-stat tool-calls-stat--success">
                         <span className="tool-calls-stat-label">Success:</span>
-                        <span className="tool-calls-stat-value">{successfulCalls}</span>
+                        <span className="tool-calls-stat-value">
+                            {successfulCalls}
+                        </span>
                     </div>
                 )}
                 {failedCalls > 0 && (
                     <div className="tool-calls-stat tool-calls-stat--failed">
                         <span className="tool-calls-stat-label">Failed:</span>
-                        <span className="tool-calls-stat-value">{failedCalls}</span>
+                        <span className="tool-calls-stat-value">
+                            {failedCalls}
+                        </span>
                     </div>
                 )}
                 {!analysisCompleted && (
                     <div className="tool-calls-stat tool-calls-stat--error">
-                        <span className="tool-calls-stat-label">Analysis incomplete</span>
+                        <span className="tool-calls-stat-label">
+                            Analysis incomplete
+                        </span>
                     </div>
                 )}
                 <div className="tool-calls-copy-button">
-                    <CopyButton
-                        text={markdownText}
-                        onCopy={onCopy}
-                    />
+                    <CopyButton text={markdownText} onCopy={onCopy} />
                 </div>
             </div>
 

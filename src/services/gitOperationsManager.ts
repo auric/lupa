@@ -40,35 +40,48 @@ export class GitOperationsManager implements vscode.Disposable {
      * @returns True if a repository was selected, false if canceled
      */
     public async selectRepositoryManually(): Promise<boolean> {
-        return await this.gitService.selectRepositoryManually(this.workspaceSettings);
+        return await this.gitService.selectRepositoryManually(
+            this.workspaceSettings
+        );
     }
 
     /**
      * Get diff based on user-selected analysis target.
      * @param target The analysis target type (strongly typed)
      */
-    public async getDiffFromSelection(target: AnalysisTargetType): Promise<DiffResult | undefined> {
+    public async getDiffFromSelection(
+        target: AnalysisTargetType
+    ): Promise<DiffResult | undefined> {
         switch (target) {
             case 'current-branch-vs-default': {
                 const repository = this.gitService.getRepository();
                 if (!repository) {
-                    vscode.window.showErrorMessage('No Git repository found in workspace.');
+                    vscode.window.showErrorMessage(
+                        'No Git repository found in workspace.'
+                    );
                     return undefined;
                 }
 
                 const currentBranch = repository.state.HEAD?.name;
                 if (!currentBranch) {
-                    vscode.window.showErrorMessage('Not currently on a branch.');
+                    vscode.window.showErrorMessage(
+                        'Not currently on a branch.'
+                    );
                     return undefined;
                 }
 
                 const defaultBranch = await this.gitService.getDefaultBranch();
                 if (!defaultBranch) {
-                    vscode.window.showErrorMessage('Could not determine default branch.');
+                    vscode.window.showErrorMessage(
+                        'Could not determine default branch.'
+                    );
                     return undefined;
                 }
 
-                return await this.gitService.compareBranches({ base: defaultBranch, compare: currentBranch });
+                return await this.gitService.compareBranches({
+                    base: defaultBranch,
+                    compare: currentBranch,
+                });
             }
 
             case 'uncommitted-changes': {

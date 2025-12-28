@@ -4,7 +4,10 @@
  */
 import { vi } from 'vitest';
 import type * as vscode from 'vscode';
-import { ANALYSIS_LIMITS, SUBAGENT_LIMITS } from '../../models/workspaceSettingsSchema';
+import {
+    ANALYSIS_LIMITS,
+    SUBAGENT_LIMITS,
+} from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
 
 /**
@@ -17,7 +20,9 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
     let isCancelled = false;
 
     const token: vscode.CancellationToken = {
-        get isCancellationRequested() { return isCancelled; },
+        get isCancellationRequested() {
+            return isCancelled;
+        },
         onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
             listeners.push(listener);
             return {
@@ -26,18 +31,20 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
                     if (index !== -1) {
                         listeners.splice(index, 1);
                     }
-                })
+                }),
             };
-        }) as any
+        }) as any,
     };
 
     return {
         token,
         cancel: vi.fn(function () {
             isCancelled = true;
-            [...listeners].forEach(function (listener) { listener(undefined); });
+            [...listeners].forEach(function (listener) {
+                listener(undefined);
+            });
         }),
-        dispose: vi.fn()
+        dispose: vi.fn(),
     } as vscode.CancellationTokenSource;
 }
 
@@ -56,7 +63,7 @@ export function createMockFdirInstance(syncReturnValue: string[] = []) {
         filter: vi.fn().mockReturnThis(),
         crawl: vi.fn().mockReturnThis(),
         withPromise: vi.fn().mockResolvedValue(syncReturnValue),
-        sync: vi.fn().mockReturnValue(syncReturnValue)
+        sync: vi.fn().mockReturnValue(syncReturnValue),
     };
     // Make chainable methods return the instance
     instance.withGlobFunction.mockReturnValue(instance);
@@ -73,51 +80,71 @@ export function createMockFdirInstance(syncReturnValue: string[] = []) {
 /**
  * Creates a mock Git repository object.
  */
-export function createMockGitRepository(gitRootPath: string = '/test/git-repo') {
+export function createMockGitRepository(
+    gitRootPath: string = '/test/git-repo'
+) {
     return {
         rootUri: {
-            fsPath: gitRootPath
-        }
+            fsPath: gitRootPath,
+        },
     };
 }
 
 /**
  * Creates a mock text document with configurable content.
  */
-export function createMockDocument(options: {
-    content?: string;
-    uri?: string;
-    lineCount?: number;
-} = {}) {
+export function createMockDocument(
+    options: {
+        content?: string;
+        uri?: string;
+        lineCount?: number;
+    } = {}
+) {
     const {
         content = 'mocked document text',
         uri = 'file:///test.ts',
-        lineCount = 100
+        lineCount = 100,
     } = options;
 
     const lines = content.split('\n');
 
     return {
         getText: vi.fn().mockImplementation((range?: any) => {
-            if (!range) {return content;}
+            if (!range) {
+                return content;
+            }
             // Simplified range extraction
             const startLine = range.start?.line ?? 0;
             const endLine = range.end?.line ?? lines.length - 1;
             return lines.slice(startLine, endLine + 1).join('\n');
         }),
         lineAt: vi.fn().mockImplementation((lineOrPosition: number | any) => {
-            const lineNum = typeof lineOrPosition === 'number' ? lineOrPosition : lineOrPosition.line;
+            const lineNum =
+                typeof lineOrPosition === 'number'
+                    ? lineOrPosition
+                    : lineOrPosition.line;
             return {
                 text: lines[lineNum] ?? '',
                 lineNumber: lineNum,
-                range: { start: { line: lineNum, character: 0 }, end: { line: lineNum, character: (lines[lineNum] ?? '').length } },
-                rangeIncludingLineBreak: { start: { line: lineNum, character: 0 }, end: { line: lineNum + 1, character: 0 } },
-                firstNonWhitespaceCharacterIndex: (lines[lineNum] ?? '').search(/\S/),
-                isEmptyOrWhitespace: !(lines[lineNum] ?? '').trim()
+                range: {
+                    start: { line: lineNum, character: 0 },
+                    end: {
+                        line: lineNum,
+                        character: (lines[lineNum] ?? '').length,
+                    },
+                },
+                rangeIncludingLineBreak: {
+                    start: { line: lineNum, character: 0 },
+                    end: { line: lineNum + 1, character: 0 },
+                },
+                firstNonWhitespaceCharacterIndex: (lines[lineNum] ?? '').search(
+                    /\S/
+                ),
+                isEmptyOrWhitespace: !(lines[lineNum] ?? '').trim(),
             };
         }),
         uri: { toString: () => uri, fsPath: uri.replace('file://', '') },
-        lineCount: lineCount || lines.length
+        lineCount: lineCount || lines.length,
     };
 }
 
@@ -127,33 +154,44 @@ export function createMockDocument(options: {
 export function createMockRipgrepService() {
     return {
         search: vi.fn(),
-        formatResults: vi.fn()
+        formatResults: vi.fn(),
     };
 }
 
 /**
  * Standard mock for GitOperationsManager.
  */
-export function createMockGitOperationsManager(gitRootPath: string = '/test/git-repo') {
-    const mockGetRepository = vi.fn().mockReturnValue(createMockGitRepository(gitRootPath));
+export function createMockGitOperationsManager(
+    gitRootPath: string = '/test/git-repo'
+) {
+    const mockGetRepository = vi
+        .fn()
+        .mockReturnValue(createMockGitRepository(gitRootPath));
     return {
         getRepository: mockGetRepository,
-        _mockGetRepository: mockGetRepository // Expose for test manipulation
+        _mockGetRepository: mockGetRepository, // Expose for test manipulation
     };
 }
 
 /**
  * Standard mock for WorkspaceSettingsService.
  */
-export function createMockWorkspaceSettings(overrides: Partial<{
-    maxIterations: number;
-    requestTimeoutSeconds: number;
-    maxSubagentsPerSession: number;
-}> = {}): WorkspaceSettingsService {
+export function createMockWorkspaceSettings(
+    overrides: Partial<{
+        maxIterations: number;
+        requestTimeoutSeconds: number;
+        maxSubagentsPerSession: number;
+    }> = {}
+): WorkspaceSettingsService {
     return {
-        getMaxIterations: () => overrides.maxIterations ?? ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () => overrides.requestTimeoutSeconds ?? ANALYSIS_LIMITS.requestTimeoutSeconds.default,
-        getMaxSubagentsPerSession: () => overrides.maxSubagentsPerSession ?? SUBAGENT_LIMITS.maxPerSession.default
+        getMaxIterations: () =>
+            overrides.maxIterations ?? ANALYSIS_LIMITS.maxIterations.default,
+        getRequestTimeoutSeconds: () =>
+            overrides.requestTimeoutSeconds ??
+            ANALYSIS_LIMITS.requestTimeoutSeconds.default,
+        getMaxSubagentsPerSession: () =>
+            overrides.maxSubagentsPerSession ??
+            SUBAGENT_LIMITS.maxPerSession.default,
     } as WorkspaceSettingsService;
 }
 
@@ -165,22 +203,41 @@ export function createMockCopilotModelManager() {
         sendRequest: vi.fn(),
         getCurrentModel: vi.fn().mockResolvedValue({
             countTokens: vi.fn().mockResolvedValue(100),
-            maxInputTokens: 8000
-        })
+            maxInputTokens: 8000,
+        }),
     };
 }
 
 /**
  * Standard mock for PromptGenerator.
  */
-export function createMockPromptGenerator(overrides: Partial<{
-    systemPrompt: string;
-    toolInformation: string;
-}> = {}) {
+export function createMockPromptGenerator(
+    overrides: Partial<{
+        systemPrompt: string;
+        toolInformation: string;
+    }> = {}
+) {
     return {
-        getSystemPrompt: vi.fn().mockReturnValue(overrides.systemPrompt ?? 'You are an expert code reviewer.'),
-        getToolInformation: vi.fn().mockReturnValue(overrides.toolInformation ?? '\n\nYou have access to tools.'),
-        generateToolAwareSystemPrompt: vi.fn().mockReturnValue(overrides.systemPrompt ?? 'You are an expert code reviewer with access to tools.'),
-        generateToolCallingUserPrompt: vi.fn().mockReturnValue('<files_to_review>Sample diff content</files_to_review>')
+        getSystemPrompt: vi
+            .fn()
+            .mockReturnValue(
+                overrides.systemPrompt ?? 'You are an expert code reviewer.'
+            ),
+        getToolInformation: vi
+            .fn()
+            .mockReturnValue(
+                overrides.toolInformation ?? '\n\nYou have access to tools.'
+            ),
+        generateToolAwareSystemPrompt: vi
+            .fn()
+            .mockReturnValue(
+                overrides.systemPrompt ??
+                    'You are an expert code reviewer with access to tools.'
+            ),
+        generateToolCallingUserPrompt: vi
+            .fn()
+            .mockReturnValue(
+                '<files_to_review>Sample diff content</files_to_review>'
+            ),
     };
 }

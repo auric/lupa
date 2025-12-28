@@ -28,35 +28,41 @@ describe('ModelRequestHandler', () => {
     describe('convertMessages', () => {
         it('should convert system messages to Assistant messages (VS Code API quirk)', () => {
             const messages: ToolCallMessage[] = [
-                { role: 'system', content: 'You are a helpful assistant.' }
+                { role: 'system', content: 'You are a helpful assistant.' },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
 
             expect(result).toHaveLength(1);
-            expect(vscode.LanguageModelChatMessage.Assistant).toHaveBeenCalledWith('You are a helpful assistant.');
+            expect(
+                vscode.LanguageModelChatMessage.Assistant
+            ).toHaveBeenCalledWith('You are a helpful assistant.');
         });
 
         it('should convert user messages to User messages', () => {
             const messages: ToolCallMessage[] = [
-                { role: 'user', content: 'Hello, world!' }
+                { role: 'user', content: 'Hello, world!' },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
 
             expect(result).toHaveLength(1);
-            expect(vscode.LanguageModelChatMessage.User).toHaveBeenCalledWith('Hello, world!');
+            expect(vscode.LanguageModelChatMessage.User).toHaveBeenCalledWith(
+                'Hello, world!'
+            );
         });
 
         it('should convert assistant messages with text content', () => {
             const messages: ToolCallMessage[] = [
-                { role: 'assistant', content: 'I can help with that.' }
+                { role: 'assistant', content: 'I can help with that.' },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
 
             expect(result).toHaveLength(1);
-            expect(vscode.LanguageModelChatMessage.Assistant).toHaveBeenCalled();
+            expect(
+                vscode.LanguageModelChatMessage.Assistant
+            ).toHaveBeenCalled();
         });
 
         it('should convert assistant messages with tool calls', () => {
@@ -69,17 +75,19 @@ describe('ModelRequestHandler', () => {
                             id: 'call-123',
                             function: {
                                 name: 'readFile',
-                                arguments: JSON.stringify({ path: '/test.ts' })
-                            }
-                        }
-                    ]
-                }
+                                arguments: JSON.stringify({ path: '/test.ts' }),
+                            },
+                        },
+                    ],
+                },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
 
             expect(result).toHaveLength(1);
-            expect(vscode.LanguageModelChatMessage.Assistant).toHaveBeenCalled();
+            expect(
+                vscode.LanguageModelChatMessage.Assistant
+            ).toHaveBeenCalled();
         });
 
         it('should convert tool response messages to User with ToolResultPart', () => {
@@ -87,8 +95,8 @@ describe('ModelRequestHandler', () => {
                 {
                     role: 'tool',
                     content: 'File contents here',
-                    toolCallId: 'call-123'
-                }
+                    toolCallId: 'call-123',
+                },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
@@ -102,7 +110,7 @@ describe('ModelRequestHandler', () => {
                 { role: 'system', content: 'System prompt' },
                 { role: 'user', content: 'User question' },
                 { role: 'assistant', content: 'Assistant response' },
-                { role: 'user', content: 'Follow up' }
+                { role: 'user', content: 'Follow up' },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
@@ -112,7 +120,7 @@ describe('ModelRequestHandler', () => {
 
         it('should skip messages with null content for user role', () => {
             const messages: ToolCallMessage[] = [
-                { role: 'user', content: null }
+                { role: 'user', content: null },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
@@ -131,30 +139,38 @@ describe('ModelRequestHandler', () => {
                             id: 'call-123',
                             function: {
                                 name: 'readFile',
-                                arguments: '{ invalid json }'
-                            }
-                        }
-                    ]
-                }
+                                arguments: '{ invalid json }',
+                            },
+                        },
+                    ],
+                },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
             expect(result).toHaveLength(1);
-            expect(result[0].role).toBe(vscode.LanguageModelChatMessageRole.Assistant);
-            expect(result[0].content).toEqual([new vscode.LanguageModelTextPart('')]);
+            expect(result[0].role).toBe(
+                vscode.LanguageModelChatMessageRole.Assistant
+            );
+            expect(result[0].content).toEqual([
+                new vscode.LanguageModelTextPart(''),
+            ]);
         });
 
         it('should ensure assistant message has at least empty text part if content is empty', () => {
             const messages: ToolCallMessage[] = [
-                { role: 'assistant', content: null }
+                { role: 'assistant', content: null },
             ];
 
             const result = ModelRequestHandler.convertMessages(messages);
 
             expect(result).toHaveLength(1);
-            expect(vscode.LanguageModelChatMessage.Assistant).toHaveBeenCalledWith(expect.arrayContaining([
-                expect.any(vscode.LanguageModelTextPart)
-            ]));
+            expect(
+                vscode.LanguageModelChatMessage.Assistant
+            ).toHaveBeenCalledWith(
+                expect.arrayContaining([
+                    expect.any(vscode.LanguageModelTextPart),
+                ])
+            );
         });
     });
 
@@ -173,7 +189,7 @@ describe('ModelRequestHandler', () => {
 
         it('should reject with timeout error if thenable takes too long', async () => {
             // Create a promise that never resolves
-            const thenable = new Promise(() => { });
+            const thenable = new Promise(() => {});
 
             await expect(
                 ModelRequestHandler.withTimeout(
@@ -185,7 +201,7 @@ describe('ModelRequestHandler', () => {
         }, 1000);
 
         it('should include helpful message in timeout error', async () => {
-            const thenable = new Promise(() => { });
+            const thenable = new Promise(() => {});
 
             await expect(
                 ModelRequestHandler.withTimeout(
@@ -197,7 +213,7 @@ describe('ModelRequestHandler', () => {
         }, 1000);
 
         it('should reject immediately if token is cancelled', async () => {
-            const thenable = new Promise(() => { }); // Never resolves
+            const thenable = new Promise(() => {}); // Never resolves
 
             // Cancel immediately
             cancellationTokenSource.cancel();
@@ -212,7 +228,7 @@ describe('ModelRequestHandler', () => {
         });
 
         it('should reject if token is cancelled during execution', async () => {
-            const thenable = new Promise(() => { }); // Never resolves
+            const thenable = new Promise(() => {}); // Never resolves
 
             const promise = ModelRequestHandler.withTimeout(
                 thenable,
@@ -274,14 +290,14 @@ describe('ModelRequestHandler', () => {
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
                     yield new vscode.LanguageModelTextPart('Hello, world!');
-                }
+                },
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             const response = await ModelRequestHandler.sendRequest(
@@ -303,14 +319,14 @@ describe('ModelRequestHandler', () => {
                         'readFile',
                         { path: '/test.ts' }
                     );
-                }
+                },
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             const response = await ModelRequestHandler.sendRequest(
@@ -324,26 +340,30 @@ describe('ModelRequestHandler', () => {
             expect(response.toolCalls).toHaveLength(1);
             expect(response.toolCalls![0].id).toBe('call-456');
             expect(response.toolCalls![0].function.name).toBe('readFile');
-            expect(response.toolCalls![0].function.arguments).toBe(JSON.stringify({ path: '/test.ts' }));
+            expect(response.toolCalls![0].function.arguments).toBe(
+                JSON.stringify({ path: '/test.ts' })
+            );
         });
 
         it('should handle mixed text and tool call response', async () => {
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
-                    yield new vscode.LanguageModelTextPart('Let me read that file.');
+                    yield new vscode.LanguageModelTextPart(
+                        'Let me read that file.'
+                    );
                     yield new vscode.LanguageModelToolCallPart(
                         'call-789',
                         'readFile',
                         { path: '/example.ts' }
                     );
-                }
+                },
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             const response = await ModelRequestHandler.sendRequest(
@@ -371,14 +391,14 @@ describe('ModelRequestHandler', () => {
                         'findSymbol',
                         { name: 'MyClass' }
                     );
-                }
+                },
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             const response = await ModelRequestHandler.sendRequest(
@@ -395,11 +415,13 @@ describe('ModelRequestHandler', () => {
 
         it('should timeout after specified duration', async () => {
             // Mock a request that never resolves
-            mockModel.sendRequest.mockImplementation(() => new Promise(() => { }));
+            mockModel.sendRequest.mockImplementation(
+                () => new Promise(() => {})
+            );
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             await expect(
@@ -413,11 +435,13 @@ describe('ModelRequestHandler', () => {
         }, 1000);
 
         it('should propagate errors from model', async () => {
-            mockModel.sendRequest.mockRejectedValue(new Error('Model unavailable'));
+            mockModel.sendRequest.mockRejectedValue(
+                new Error('Model unavailable')
+            );
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             await expect(
@@ -434,14 +458,14 @@ describe('ModelRequestHandler', () => {
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
                     // Empty stream
-                }
+                },
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             const response = await ModelRequestHandler.sendRequest(
@@ -459,7 +483,7 @@ describe('ModelRequestHandler', () => {
             const mockStream = {
                 async *[Symbol.asyncIterator]() {
                     yield new vscode.LanguageModelTextPart('Response');
-                }
+                },
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
@@ -467,12 +491,12 @@ describe('ModelRequestHandler', () => {
             const mockTool = {
                 name: 'testTool',
                 description: 'A test tool',
-                inputSchema: { type: 'object' }
+                inputSchema: { type: 'object' },
             };
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: [mockTool as any]
+                tools: [mockTool as any],
             };
 
             await ModelRequestHandler.sendRequest(
@@ -495,14 +519,14 @@ describe('ModelRequestHandler', () => {
                     yield new vscode.LanguageModelTextPart('Hello, ');
                     yield new vscode.LanguageModelTextPart('world');
                     yield new vscode.LanguageModelTextPart('!');
-                }
+                },
             };
 
             mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
 
             const request: ToolCallRequest = {
                 messages: [{ role: 'user', content: 'test' }],
-                tools: []
+                tools: [],
             };
 
             const response = await ModelRequestHandler.sendRequest(

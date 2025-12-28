@@ -7,27 +7,31 @@ vi.mock('vscode', async () => {
     return {
         ...actualVscode,
         extensions: {
-            getExtension: vi.fn()
+            getExtension: vi.fn(),
         },
         window: {
             showQuickPick: vi.fn(),
             showErrorMessage: vi.fn(),
             showInformationMessage: vi.fn(),
-            withProgress: vi.fn()
+            withProgress: vi.fn(),
         },
         workspace: {
-            workspaceFolders: []
+            workspaceFolders: [],
         },
         commands: {
-            executeCommand: vi.fn()
+            executeCommand: vi.fn(),
         },
         Uri: {
-            file: vi.fn().mockImplementation((path) => ({ fsPath: path, path })),
-            joinPath: vi.fn().mockImplementation((...args) => ({ fsPath: args.join('/') }))
+            file: vi
+                .fn()
+                .mockImplementation((path) => ({ fsPath: path, path })),
+            joinPath: vi
+                .fn()
+                .mockImplementation((...args) => ({ fsPath: args.join('/') })),
         },
         ProgressLocation: {
-            Notification: 15
-        }
+            Notification: 15,
+        },
     };
 });
 
@@ -37,13 +41,13 @@ vi.mock('../services/loggingService', () => ({
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
-        debug: vi.fn()
-    }
+        debug: vi.fn(),
+    },
 }));
 
 // Mock child_process
 vi.mock('child_process', () => ({
-    spawn: vi.fn()
+    spawn: vi.fn(),
 }));
 
 import { GitService } from '../services/gitService';
@@ -54,7 +58,11 @@ import { EventEmitter } from 'events';
 /**
  * Creates a mock spawn result for git commands
  */
-function createMockSpawn(stdout: string, exitCode = 0, stderr = ''): child_process.ChildProcess {
+function createMockSpawn(
+    stdout: string,
+    exitCode = 0,
+    stderr = ''
+): child_process.ChildProcess {
     const mockProcess = new EventEmitter() as child_process.ChildProcess;
     const stdoutEmitter = new EventEmitter();
     const stderrEmitter = new EventEmitter();
@@ -79,7 +87,9 @@ function createMockSpawn(stdout: string, exitCode = 0, stderr = ''): child_proce
 /**
  * Creates a mock spawn that fails with an error
  */
-function createMockSpawnError(errorMessage: string): child_process.ChildProcess {
+function createMockSpawnError(
+    errorMessage: string
+): child_process.ChildProcess {
     const mockProcess = new EventEmitter() as child_process.ChildProcess;
     const stdoutEmitter = new EventEmitter();
     const stderrEmitter = new EventEmitter();
@@ -112,11 +122,16 @@ describe('GitService.getDefaultBranch', () => {
             getRefs: vi.fn().mockResolvedValue([]),
             state: {
                 HEAD: { name: 'feature-branch' },
-                remotes: [{ name: 'origin', fetchUrl: 'git@github.com:test/repo.git' }],
+                remotes: [
+                    {
+                        name: 'origin',
+                        fetchUrl: 'git@github.com:test/repo.git',
+                    },
+                ],
                 submodules: [],
                 workingTreeChanges: [],
-                indexChanges: []
-            } as any
+                indexChanges: [],
+            } as any,
         };
 
         // Inject mock repository
@@ -136,20 +151,26 @@ describe('GitService.getDefaultBranch', () => {
 
     describe('Method 1: Git config', () => {
         it('should return branch from remote.origin.head config', async () => {
-            mockRepository.getConfigs = vi.fn().mockResolvedValue([
-                { key: 'remote.origin.head', value: 'refs/heads/main' }
-            ]);
+            mockRepository.getConfigs = vi
+                .fn()
+                .mockResolvedValue([
+                    { key: 'remote.origin.head', value: 'refs/heads/main' },
+                ]);
 
             const result = await gitService.getDefaultBranch();
 
             expect(result).toBe('main');
-            expect(Log.info).toHaveBeenCalledWith('Default branch from config: main');
+            expect(Log.info).toHaveBeenCalledWith(
+                'Default branch from config: main'
+            );
         });
 
         it('should handle config with develop branch', async () => {
-            mockRepository.getConfigs = vi.fn().mockResolvedValue([
-                { key: 'remote.origin.head', value: 'refs/heads/develop' }
-            ]);
+            mockRepository.getConfigs = vi
+                .fn()
+                .mockResolvedValue([
+                    { key: 'remote.origin.head', value: 'refs/heads/develop' },
+                ]);
 
             const result = await gitService.getDefaultBranch();
 
@@ -170,7 +191,9 @@ describe('GitService.getDefaultBranch', () => {
             const result = await gitService.getDefaultBranch();
 
             expect(result).toBe('main');
-            expect(Log.info).toHaveBeenCalledWith('Default branch from symbolic-ref: main');
+            expect(Log.info).toHaveBeenCalledWith(
+                'Default branch from symbolic-ref: main'
+            );
         });
 
         it('should strip origin/ prefix from symbolic-ref result', async () => {
@@ -197,9 +220,19 @@ describe('GitService.getDefaultBranch', () => {
                 if (args?.includes('symbolic-ref')) {
                     return createMockSpawnError('not a symbolic ref');
                 }
-                if (args?.includes('rev-parse') && args?.some((a: string) => a.includes('refs/remotes/origin/'))) {
-                    const branchArg = args.find((a: string) => a.includes('refs/remotes/origin/'));
-                    const branch = branchArg?.replace('refs/remotes/origin/', '');
+                if (
+                    args?.includes('rev-parse') &&
+                    args?.some((a: string) =>
+                        a.includes('refs/remotes/origin/')
+                    )
+                ) {
+                    const branchArg = args.find((a: string) =>
+                        a.includes('refs/remotes/origin/')
+                    );
+                    const branch = branchArg?.replace(
+                        'refs/remotes/origin/',
+                        ''
+                    );
                     checkedBranches.push(branch!);
 
                     // Only master exists
@@ -217,7 +250,9 @@ describe('GitService.getDefaultBranch', () => {
             expect(checkedBranches[0]).toBe('main');
             expect(checkedBranches[1]).toBe('master');
             expect(result).toBe('master');
-            expect(Log.info).toHaveBeenCalledWith('Default branch from remote tracking ref: master');
+            expect(Log.info).toHaveBeenCalledWith(
+                'Default branch from remote tracking ref: master'
+            );
         });
 
         it('should return main over master when both exist', async () => {
@@ -227,7 +262,12 @@ describe('GitService.getDefaultBranch', () => {
                 if (args?.includes('symbolic-ref')) {
                     return createMockSpawnError('not a symbolic ref');
                 }
-                if (args?.includes('rev-parse') && args?.some((a: string) => a.includes('refs/remotes/origin/'))) {
+                if (
+                    args?.includes('rev-parse') &&
+                    args?.some((a: string) =>
+                        a.includes('refs/remotes/origin/')
+                    )
+                ) {
                     // Both main and master exist
                     return createMockSpawn('abc123');
                 }
@@ -250,7 +290,9 @@ describe('GitService.getDefaultBranch', () => {
                     return createMockSpawnError('not a symbolic ref');
                 }
                 if (args?.includes('rev-parse')) {
-                    const refArg = args.find((a: string) => a.startsWith('refs/'));
+                    const refArg = args.find((a: string) =>
+                        a.startsWith('refs/')
+                    );
                     // Remote tracking branches don't exist
                     if (refArg?.includes('refs/remotes/')) {
                         return createMockSpawnError('not found');
@@ -267,7 +309,9 @@ describe('GitService.getDefaultBranch', () => {
             const result = await gitService.getDefaultBranch();
 
             expect(result).toBe('develop');
-            expect(Log.info).toHaveBeenCalledWith('Default branch from local branch: develop');
+            expect(Log.info).toHaveBeenCalledWith(
+                'Default branch from local branch: develop'
+            );
         });
 
         it('should maintain priority order for local branches', async () => {
@@ -279,12 +323,16 @@ describe('GitService.getDefaultBranch', () => {
                     return createMockSpawnError('not a symbolic ref');
                 }
                 if (args?.includes('rev-parse')) {
-                    const refArg = args.find((a: string) => a.startsWith('refs/'));
+                    const refArg = args.find((a: string) =>
+                        a.startsWith('refs/')
+                    );
                     if (refArg?.includes('refs/remotes/')) {
                         return createMockSpawnError('not found');
                     }
                     if (refArg?.includes('refs/heads/')) {
-                        localBranchesChecked.push(refArg.replace('refs/heads/', ''));
+                        localBranchesChecked.push(
+                            refArg.replace('refs/heads/', '')
+                        );
                         // dev exists
                         if (refArg === 'refs/heads/dev') {
                             return createMockSpawn('abc123');
@@ -298,7 +346,12 @@ describe('GitService.getDefaultBranch', () => {
             const result = await gitService.getDefaultBranch();
 
             // Should check in order: main, master, develop, dev
-            expect(localBranchesChecked).toEqual(['main', 'master', 'develop', 'dev']);
+            expect(localBranchesChecked).toEqual([
+                'main',
+                'master',
+                'develop',
+                'dev',
+            ]);
             expect(result).toBe('dev');
         });
     });
@@ -315,7 +368,9 @@ describe('GitService.getDefaultBranch', () => {
                     return createMockSpawnError('not found');
                 }
                 if (args?.includes('remote') && args?.includes('show')) {
-                    return createMockSpawn('* remote origin\n  HEAD branch: main\n');
+                    return createMockSpawn(
+                        '* remote origin\n  HEAD branch: main\n'
+                    );
                 }
                 return createMockSpawnError('not found');
             });
@@ -323,7 +378,9 @@ describe('GitService.getDefaultBranch', () => {
             const result = await gitService.getDefaultBranch();
 
             expect(result).toBe('main');
-            expect(Log.info).toHaveBeenCalledWith('Default branch from remote: main');
+            expect(Log.info).toHaveBeenCalledWith(
+                'Default branch from remote: main'
+            );
         });
 
         it('should handle network error gracefully and fall back to HEAD', async () => {
@@ -331,7 +388,9 @@ describe('GitService.getDefaultBranch', () => {
 
             spawnMock.mockImplementation((cmd, args) => {
                 if (args?.includes('remote') && args?.includes('show')) {
-                    return createMockSpawnError('Permission denied (publickey)');
+                    return createMockSpawnError(
+                        'Permission denied (publickey)'
+                    );
                 }
                 return createMockSpawnError('not found');
             });
@@ -355,7 +414,9 @@ describe('GitService.getDefaultBranch', () => {
             mockRepository.getConfigs = vi.fn().mockResolvedValue([]);
             (mockRepository.state as any).remotes = []; // No remotes
 
-            spawnMock.mockImplementation(() => createMockSpawnError('not found'));
+            spawnMock.mockImplementation(() =>
+                createMockSpawnError('not found')
+            );
 
             const result = await gitService.getDefaultBranch();
 
@@ -370,7 +431,9 @@ describe('GitService.getDefaultBranch', () => {
             (mockRepository.state as any).HEAD = {}; // No name
             (mockRepository.state as any).remotes = [];
 
-            spawnMock.mockImplementation(() => createMockSpawnError('not found'));
+            spawnMock.mockImplementation(() =>
+                createMockSpawnError('not found')
+            );
 
             const result = await gitService.getDefaultBranch();
 
@@ -380,9 +443,11 @@ describe('GitService.getDefaultBranch', () => {
 
     describe('Caching', () => {
         it('should cache the result and return it on subsequent calls', async () => {
-            mockRepository.getConfigs = vi.fn().mockResolvedValue([
-                { key: 'remote.origin.head', value: 'refs/heads/main' }
-            ]);
+            mockRepository.getConfigs = vi
+                .fn()
+                .mockResolvedValue([
+                    { key: 'remote.origin.head', value: 'refs/heads/main' },
+                ]);
 
             const result1 = await gitService.getDefaultBranch();
             const result2 = await gitService.getDefaultBranch();

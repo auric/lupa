@@ -7,7 +7,7 @@ import { ITool } from '../tools/ITool';
  */
 const FEW_SHOT_EXAMPLES = [
     {
-        scenario: "Security vulnerability in authentication",
+        scenario: 'Security vulnerability in authentication',
         code: `// Added user authentication check
 if (user.password === inputPassword) {
     return { success: true, token: generateToken(user.id) };
@@ -37,10 +37,10 @@ function secureCompare(a, b) {
 
 <explanation>
 Direct string comparison for passwords creates timing vulnerabilities where attackers can measure response times to guess passwords. Using bcrypt.compare() provides constant-time comparison and proper password hashing.
-</explanation>`
+</explanation>`,
     },
     {
-        scenario: "Performance issue in data processing",
+        scenario: 'Performance issue in data processing',
         code: `// Process user data
 const results = [];
 for (let i = 0; i < users.length; i++) {
@@ -62,10 +62,10 @@ const results = profiles.map(profile => processProfile(profile));
 
 <explanation>
 Sequential await in loops creates O(n) latency where n is the number of async operations. Concurrent processing reduces total time to the longest single operation plus overhead.
-</explanation>`
+</explanation>`,
     },
     {
-        scenario: "Code maintainability improvement",
+        scenario: 'Code maintainability improvement',
         code: `// Updated validation logic
 if (data.email && data.email.includes('@') && data.email.length > 5 && data.password && data.password.length >= 8 && /[A-Z]/.test(data.password) && /[0-9]/.test(data.password)) {
     return true;
@@ -95,10 +95,10 @@ if (isValidEmail(data.email) && isValidPassword(data.password)) {
 
 <explanation>
 Breaking complex conditions into named functions improves readability, testability, and reusability. Each function has a single responsibility and clear intent.
-</explanation>`
+</explanation>`,
     },
     {
-        scenario: "Error handling improvement",
+        scenario: 'Error handling improvement',
         code: `// API call with basic error handling
 try {
     const response = await api.getData();
@@ -133,10 +133,10 @@ try {
 
 <explanation>
 Specific error handling provides better debugging information, enables appropriate recovery strategies, and maintains system observability through proper logging.
-</explanation>`
+</explanation>`,
     },
     {
-        scenario: "Type safety enhancement",
+        scenario: 'Type safety enhancement',
         code: `// Function to process user data
 function processUserData(userData) {
     return {
@@ -187,8 +187,8 @@ function processUserData(userData) {
 
 <explanation>
 Explicit type definitions prevent runtime errors, improve IDE autocomplete, and make code self-documenting. Proper validation and null checks ensure robustness across different languages.
-</explanation>`
-    }
+</explanation>`,
+    },
 ];
 
 /**
@@ -223,7 +223,9 @@ Your expertise spans all major programming languages and frameworks. You provide
      * @returns Complete system prompt with comprehensive tool guidance
      */
     public generateToolAwareSystemPrompt(availableTools: ITool[]): string {
-        return this.toolAwarePromptGenerator.generateSystemPrompt(availableTools);
+        return this.toolAwarePromptGenerator.generateSystemPrompt(
+            availableTools
+        );
     }
 
     /**
@@ -233,7 +235,9 @@ Your expertise spans all major programming languages and frameworks. You provide
      * @returns Complete system prompt for exploration mode
      */
     public generateExplorationSystemPrompt(availableTools: ITool[]): string {
-        return this.toolAwarePromptGenerator.generateExplorationPrompt(availableTools);
+        return this.toolAwarePromptGenerator.generateExplorationPrompt(
+            availableTools
+        );
     }
 
     /**
@@ -341,7 +345,7 @@ Use these tools proactively to understand the context of any functions, classes,
      * Generate file content section with proper structure
      */
     private generateFileContentSection(parsedDiff: DiffHunk[]): string {
-        let fileContentXml = "<files_to_review>\n";
+        let fileContentXml = '<files_to_review>\n';
 
         for (const fileDiff of parsedDiff) {
             fileContentXml += `<file>\n<path>${fileDiff.filePath}</path>\n<changes>\n`;
@@ -351,9 +355,13 @@ Use these tools proactively to understand the context of any functions, classes,
                 fileContentXml += `${hunk.hunkHeader}\n`;
 
                 // Reconstruct diff lines from parsed data
-                const diffLines = hunk.parsedLines.map(parsedLine => {
-                    const prefix = parsedLine.type === 'added' ? '+' :
-                        parsedLine.type === 'removed' ? '-' : ' ';
+                const diffLines = hunk.parsedLines.map((parsedLine) => {
+                    const prefix =
+                        parsedLine.type === 'added'
+                            ? '+'
+                            : parsedLine.type === 'removed'
+                              ? '-'
+                              : ' ';
                     return prefix + parsedLine.content;
                 });
 
@@ -363,7 +371,7 @@ Use these tools proactively to understand the context of any functions, classes,
             fileContentXml += '</changes>\n</file>\n\n';
         }
 
-        fileContentXml += "</files_to_review>\n\n";
+        fileContentXml += '</files_to_review>\n\n';
         return fileContentXml;
     }
 
@@ -441,7 +449,7 @@ For each identified issue:
      */
     public calculatePromptStructureTokens(
         parsedDiff: DiffHunk[],
-        contextPlaceholder: string = "[CONTEXT_PLACEHOLDER]"
+        contextPlaceholder: string = '[CONTEXT_PLACEHOLDER]'
     ): {
         examplesTokens: number;
         fileContentTokens: number;
@@ -460,14 +468,18 @@ For each identified issue:
         const instructionsTokens = Math.ceil(instructionsSection.length / 4);
         const contextPlaceholderTokens = Math.ceil(contextSection.length / 4);
 
-        const totalPrompt = contextSection + examplesSection + fileContentSection + instructionsSection;
+        const totalPrompt =
+            contextSection +
+            examplesSection +
+            fileContentSection +
+            instructionsSection;
 
         return {
             examplesTokens,
             fileContentTokens,
             instructionsTokens,
             contextPlaceholderTokens,
-            estimatedPromptLength: totalPrompt.length
+            estimatedPromptLength: totalPrompt.length,
         };
     }
 

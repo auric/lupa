@@ -11,14 +11,14 @@ class MockTool implements ITool {
     description = 'A mock tool for testing';
     schema = z.object({
         param1: z.string().describe('First parameter'),
-        param2: z.number().optional().describe('Second parameter')
+        param2: z.number().optional().describe('Second parameter'),
     });
 
     getVSCodeTool(): vscode.LanguageModelChatTool {
         return {
             name: this.name,
             description: this.description,
-            inputSchema: this.schema as any
+            inputSchema: this.schema as any,
         };
     }
 
@@ -36,51 +36,83 @@ describe('PromptGenerator - Tool Calling Features', () => {
         promptGenerator = new PromptGenerator();
         mockTools = [new MockTool()];
 
-        sampleParsedDiff = [{
-            filePath: 'src/example.ts',
-            isNewFile: false,
-            isDeletedFile: false,
-            originalHeader: 'diff --git a/src/example.ts b/src/example.ts',
-            hunks: [{
-                oldStart: 1,
-                oldLines: 5,
-                newStart: 1,
-                newLines: 7,
-                parsedLines: [
-                    { type: 'context', content: ' function example() {', lineNumber: 1 },
-                    { type: 'added', content: '    // New comment', lineNumber: 2 },
-                    { type: 'context', content: '     const value = 42;', lineNumber: 3 },
-                    { type: 'added', content: '    console.log(\'Debug:\', value);', lineNumber: 4 },
-                    { type: 'context', content: '     return value;', lineNumber: 5 },
-                    { type: 'context', content: ' }', lineNumber: 6 }
+        sampleParsedDiff = [
+            {
+                filePath: 'src/example.ts',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/src/example.ts b/src/example.ts',
+                hunks: [
+                    {
+                        oldStart: 1,
+                        oldLines: 5,
+                        newStart: 1,
+                        newLines: 7,
+                        parsedLines: [
+                            {
+                                type: 'context',
+                                content: ' function example() {',
+                                lineNumber: 1,
+                            },
+                            {
+                                type: 'added',
+                                content: '    // New comment',
+                                lineNumber: 2,
+                            },
+                            {
+                                type: 'context',
+                                content: '     const value = 42;',
+                                lineNumber: 3,
+                            },
+                            {
+                                type: 'added',
+                                content: "    console.log('Debug:', value);",
+                                lineNumber: 4,
+                            },
+                            {
+                                type: 'context',
+                                content: '     return value;',
+                                lineNumber: 5,
+                            },
+                            { type: 'context', content: ' }', lineNumber: 6 },
+                        ],
+                        hunkId: 'src/example.ts:1',
+                        hunkHeader: '@@ -1,5 +1,7 @@',
+                    },
                 ],
-                hunkId: 'src/example.ts:1',
-                hunkHeader: '@@ -1,5 +1,7 @@'
-            }]
-        }];
+            },
+        ];
     });
 
     describe('generateToolAwareSystemPrompt', () => {
         it('should generate a comprehensive tool-aware system prompt', () => {
-            const systemPrompt = promptGenerator.generateToolAwareSystemPrompt(mockTools);
+            const systemPrompt =
+                promptGenerator.generateToolAwareSystemPrompt(mockTools);
 
             expect(systemPrompt).toContain('Staff Engineer');
             expect(systemPrompt).toContain('## Available Code Analysis Tools');
-            expect(systemPrompt).toContain('**mock_tool**: A mock tool for testing');
+            expect(systemPrompt).toContain(
+                '**mock_tool**: A mock tool for testing'
+            );
             expect(systemPrompt).toContain('## Tool Selection Guide');
             expect(systemPrompt).toContain('## Analysis Methodology');
             expect(systemPrompt).toContain('## Output Format');
         });
 
         it('should handle empty tools array', () => {
-            const systemPrompt = promptGenerator.generateToolAwareSystemPrompt([]);
+            const systemPrompt = promptGenerator.generateToolAwareSystemPrompt(
+                []
+            );
 
             expect(systemPrompt).toContain('Staff Engineer');
-            expect(systemPrompt).not.toContain('## Available Code Analysis Tools');
+            expect(systemPrompt).not.toContain(
+                '## Available Code Analysis Tools'
+            );
         });
 
         it('should include parameter information from tool schemas', () => {
-            const systemPrompt = promptGenerator.generateToolAwareSystemPrompt(mockTools);
+            const systemPrompt =
+                promptGenerator.generateToolAwareSystemPrompt(mockTools);
 
             expect(systemPrompt).toContain('param1');
             expect(systemPrompt).toContain('param2');
@@ -89,7 +121,8 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
     describe('generateToolCallingUserPrompt', () => {
         it('should generate a structured tool-calling user prompt', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<files_to_review>');
             expect(userPrompt).toContain('<file>');
@@ -100,7 +133,8 @@ describe('PromptGenerator - Tool Calling Features', () => {
         });
 
         it('should include file content section', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('function example()');
             expect(userPrompt).toContain('// New comment');
@@ -108,22 +142,32 @@ describe('PromptGenerator - Tool Calling Features', () => {
         });
 
         it('should include tool usage examples', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<tool_usage_examples>');
-            expect(userPrompt).toContain('<scenario>Encountering unknown function in diff</scenario>');
-            expect(userPrompt).toContain('<scenario>New file in diff with unclear context</scenario>');
-            expect(userPrompt).toContain('<scenario>Refactoring with potential breaking changes</scenario>');
+            expect(userPrompt).toContain(
+                '<scenario>Encountering unknown function in diff</scenario>'
+            );
+            expect(userPrompt).toContain(
+                '<scenario>New file in diff with unclear context</scenario>'
+            );
+            expect(userPrompt).toContain(
+                '<scenario>Refactoring with potential breaking changes</scenario>'
+            );
             expect(userPrompt).toContain('find_symbol');
             expect(userPrompt).toContain('find_usages');
             expect(userPrompt).toContain('search_for_pattern');
         });
 
         it('should include comprehensive tool-calling instructions', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('## Tool-Powered Analysis Approach');
-            expect(userPrompt).toContain('**Step 1: Initial Context Gathering**');
+            expect(userPrompt).toContain(
+                '**Step 1: Initial Context Gathering**'
+            );
             expect(userPrompt).toContain('**Step 2: Deep Dive Investigation**');
             expect(userPrompt).toContain('**Step 3: Comprehensive Analysis**');
             expect(userPrompt).toContain('**Tool Usage Strategy:**');
@@ -131,7 +175,8 @@ describe('PromptGenerator - Tool Calling Features', () => {
         });
 
         it('should structure content according to long context optimization', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             // File content should come first for long context optimization
             const fileContentIndex = userPrompt.indexOf('<files_to_review>');
@@ -143,14 +188,18 @@ describe('PromptGenerator - Tool Calling Features', () => {
         });
 
         it('should include thinking tag in response structure', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<thinking>');
-            expect(userPrompt).toContain('Document your tool usage and reasoning process');
+            expect(userPrompt).toContain(
+                'Document your tool usage and reasoning process'
+            );
         });
 
         it('should include all required analysis categories', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).toContain('<suggestion_security>');
             expect(userPrompt).toContain('<suggestion_performance>');
@@ -171,23 +220,32 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
             expect(userPrompt).toContain('<user_focus>');
             expect(userPrompt).toContain('focus on security vulnerabilities');
-            expect(userPrompt).toContain('prioritize findings related to this request');
+            expect(userPrompt).toContain(
+                'prioritize findings related to this request'
+            );
         });
 
         it('should not include user focus section when no instructions', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+            const userPrompt =
+                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
             expect(userPrompt).not.toContain('<user_focus>');
         });
 
         it('should not include user focus section when instructions are empty', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff, '');
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                ''
+            );
 
             expect(userPrompt).not.toContain('<user_focus>');
         });
 
         it('should not include user focus section when instructions are whitespace', () => {
-            const userPrompt = promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff, '   ');
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                '   '
+            );
 
             expect(userPrompt).not.toContain('<user_focus>');
         });
@@ -240,13 +298,17 @@ describe('PromptGenerator - Tool Calling Features', () => {
             const systemPrompt = promptGenerator.getSystemPrompt();
 
             expect(systemPrompt).toContain('Expert Senior Software Engineer');
-            expect(systemPrompt).toContain('Security vulnerability identification');
+            expect(systemPrompt).toContain(
+                'Security vulnerability identification'
+            );
         });
 
         it('should maintain compatibility with getResponsePrefill', () => {
             const prefill = promptGenerator.getResponsePrefill();
 
-            expect(prefill).toContain('analyze this pull request comprehensively');
+            expect(prefill).toContain(
+                'analyze this pull request comprehensively'
+            );
             expect(prefill).toContain('## Comprehensive Code Review Analysis');
         });
     });
@@ -259,13 +321,15 @@ describe('PromptGenerator - Tool Calling Features', () => {
         });
 
         it('should handle malformed parsed diff gracefully', () => {
-            const malformedDiff: DiffHunk[] = [{
-                filePath: 'test.ts',
-                isNewFile: false,
-                isDeletedFile: false,
-                originalHeader: 'diff --git a/test.ts b/test.ts',
-                hunks: []
-            }];
+            const malformedDiff: DiffHunk[] = [
+                {
+                    filePath: 'test.ts',
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: 'diff --git a/test.ts b/test.ts',
+                    hunks: [],
+                },
+            ];
 
             expect(() => {
                 promptGenerator.generateToolCallingUserPrompt(malformedDiff);

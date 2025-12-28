@@ -59,7 +59,10 @@ export interface ToolCallingAnalysisResult {
  * @param message - Human-readable status message
  * @param incrementPercent - Optional percentage increment (small values like 0.1-1 work best for smooth progress)
  */
-export type AnalysisProgressCallback = (message: string, incrementPercent?: number) => void;
+export type AnalysisProgressCallback = (
+    message: string,
+    incrementPercent?: number
+) => void;
 
 /**
  * Context provider for subagent progress reporting.

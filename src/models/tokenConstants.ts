@@ -14,8 +14,9 @@ export class TokenConstants {
 
     // Truncation constants
     static readonly TRUNCATION_MESSAGES = {
-        CONTEXT: '\n\n[Context truncated to fit token limit. Some information might be missing.]',
-        PARTIAL: '\n\n[File content partially truncated to fit token limit]'
+        CONTEXT:
+            '\n\n[Context truncated to fit token limit. Some information might be missing.]',
+        PARTIAL: '\n\n[File content partially truncated to fit token limit]',
     } as const;
 
     // Context optimization constants
@@ -30,8 +31,11 @@ export class TokenConstants {
 
     // Tool context management messages
     static readonly TOOL_CONTEXT_MESSAGES = {
-        RESPONSE_TOO_LARGE: 'Response too large. Please refine parameters for more specific results.',
-        CONTEXT_FULL: 'Previous tool results removed due to context limits. Provide final analysis with available information.',
-        TOOLS_DISABLED: 'Tools disabled due to large diff. Analysis based on truncated diff content.'
+        RESPONSE_TOO_LARGE:
+            'Response too large. Please refine parameters for more specific results.',
+        CONTEXT_FULL:
+            'Previous tool results removed due to context limits. Provide final analysis with available information.',
+        TOOLS_DISABLED:
+            'Tools disabled due to large diff. Analysis based on truncated diff content.',
     } as const;
 }

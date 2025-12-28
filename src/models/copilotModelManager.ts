@@ -7,7 +7,10 @@ import type { ILLMClient } from './ILLMClient';
 import { ModelRequestHandler } from './modelRequestHandler';
 
 export class CopilotApiError extends Error {
-    constructor(message: string, public readonly code: string) {
+    constructor(
+        message: string,
+        public readonly code: string
+    ) {
         super(message);
         this.name = 'CopilotApiError';
     }
@@ -41,9 +44,7 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     private lastModelRefresh: number = 0;
     private readonly cacheLifetimeMs = TokenConstants.DEFAULT_CACHE_LIFETIME_MS;
 
-    constructor(
-        private readonly settings: WorkspaceSettingsService
-    ) {
+    constructor(private readonly settings: WorkspaceSettingsService) {
         // Watch for model changes
         vscode.lm.onDidChangeChatModels(() => {
             // Clear cache when available models change
@@ -62,21 +63,24 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
         try {
             // Try to use cached models if they're recent enough
             const now = Date.now();
-            if (this.modelCache && (now - this.lastModelRefresh) < this.cacheLifetimeMs) {
+            if (
+                this.modelCache &&
+                now - this.lastModelRefresh < this.cacheLifetimeMs
+            ) {
                 return this.modelCache;
             }
 
             // Get all Copilot models
             const allModels = await vscode.lm.selectChatModels({
-                vendor: 'copilot'
+                vendor: 'copilot',
             });
 
-            const modelDetails = allModels.map(model => ({
+            const modelDetails = allModels.map((model) => ({
                 id: model.id,
                 name: model.name,
                 family: model.family,
                 version: model.version || 'default',
-                maxInputTokens: model.maxInputTokens
+                maxInputTokens: model.maxInputTokens,
             }));
 
             // Update the cache
@@ -93,7 +97,9 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     /**
      * Select a specific model by family and version
      */
-    async selectModel(options?: ModelSelectionOptions): Promise<vscode.LanguageModelChat> {
+    async selectModel(
+        options?: ModelSelectionOptions
+    ): Promise<vscode.LanguageModelChat> {
         try {
             // Check if we should load model preferences from settings
             if (!options) {
@@ -101,14 +107,14 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
 
                 if (savedVersion) {
                     options = {
-                        version: savedVersion
+                        version: savedVersion,
                     };
                 }
             }
 
             const selector: vscode.LanguageModelChatSelector = {
                 vendor: 'copilot',
-                ...options
+                ...options,
             };
 
             if (!options) {
@@ -118,7 +124,9 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             const models = await vscode.lm.selectChatModels(selector);
 
             if (models.length === 0) {
-                Log.info(`Model ${options?.version || 'any'} not available, using fallback`);
+                Log.info(
+                    `Model ${options?.version || 'any'} not available, using fallback`
+                );
                 return this.selectFallbackModel();
             }
 
@@ -176,7 +184,10 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
      * Delegates to ModelRequestHandler for message conversion and request execution.
      * Preserves error handling for CopilotApiError (model_not_supported) detection.
      */
-    async sendRequest(request: ToolCallRequest, token: vscode.CancellationToken): Promise<ToolCallResponse> {
+    async sendRequest(
+        request: ToolCallRequest,
+        token: vscode.CancellationToken
+    ): Promise<ToolCallResponse> {
         try {
             const model = await this.getCurrentModel();
             return await ModelRequestHandler.sendRequest(
@@ -191,9 +202,14 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             if (codeMatch) {
                 const code = codeMatch[1];
                 if (code === 'model_not_supported') {
-                    const modelName = this.currentModel?.name || this.currentModel?.id || 'selected model';
+                    const modelName =
+                        this.currentModel?.name ||
+                        this.currentModel?.id ||
+                        'selected model';
                     const friendlyMessage = `The selected Copilot model ${modelName} is not supported. Please choose another Copilot model in Lupa settings.`;
-                    Log.error(`Copilot model not supported: ${modelName}. API response: ${msg.replace(/\\"/g, '"').replace(/\n/g, '')}`);
+                    Log.error(
+                        `Copilot model not supported: ${modelName}. API response: ${msg.replace(/\\"/g, '"').replace(/\n/g, '')}`
+                    );
                     throw new CopilotApiError(friendlyMessage, code);
                 }
             }

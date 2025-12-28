@@ -2,14 +2,17 @@ import * as vscode from 'vscode';
 import { StatusBarService } from './statusBarService';
 import { AnalysisMode } from '../types/modelTypes';
 import type { ToolCallsData } from '../types/toolCallTypes';
-import { type AnalysisTargetType, ANALYSIS_TARGET_OPTIONS } from '../types/analysisTypes';
+import {
+    type AnalysisTargetType,
+    ANALYSIS_TARGET_OPTIONS,
+} from '../types/analysisTypes';
 import { Log } from './loggingService';
 import type {
     WebviewMessageType,
     OpenFilePayload,
     ValidatePathPayload,
     PathValidationResultPayload,
-    ThemeUpdatePayload
+    ThemeUpdatePayload,
 } from '../types/webviewMessages';
 
 /**
@@ -30,16 +33,18 @@ export class UIManager {
      * Show quick pick for analysis type selection.
      * Only offers targets that maintain consistency between diff and tool-accessible state.
      */
-    public async showAnalysisTypeOptions(): Promise<AnalysisTargetType | undefined> {
+    public async showAnalysisTypeOptions(): Promise<
+        AnalysisTargetType | undefined
+    > {
         const selectedOption = await vscode.window.showQuickPick(
-            ANALYSIS_TARGET_OPTIONS.map(opt => ({
+            ANALYSIS_TARGET_OPTIONS.map((opt) => ({
                 label: opt.label,
                 description: opt.description,
-                target: opt.target
+                target: opt.target,
             })),
             {
                 placeHolder: 'Select what to analyze',
-                matchOnDescription: true
+                matchOnDescription: true,
             }
         );
 
@@ -55,32 +60,32 @@ export class UIManager {
                 label: 'Critical Issues',
                 description: 'Focus only on high-impact problems',
                 detail: 'Identifies bugs, errors, security vulnerabilities, and performance issues that could cause failures.',
-                mode: AnalysisMode.Critical
+                mode: AnalysisMode.Critical,
             },
             {
                 label: 'Comprehensive Review',
                 description: 'Full analysis of all aspects of code',
                 detail: 'Examines logic errors, security, performance, style, architecture, and testing coverage.',
-                mode: AnalysisMode.Comprehensive
+                mode: AnalysisMode.Comprehensive,
             },
             {
                 label: 'Security Focus',
                 description: 'Analyze for security vulnerabilities',
                 detail: 'Identifies injection risks, auth issues, data exposure, insecure dependencies, and more.',
-                mode: AnalysisMode.Security
+                mode: AnalysisMode.Security,
             },
             {
                 label: 'Performance Focus',
                 description: 'Optimize code performance',
                 detail: 'Finds algorithmic issues, resource leaks, I/O bottlenecks, and other performance concerns.',
-                mode: AnalysisMode.Performance
-            }
+                mode: AnalysisMode.Performance,
+            },
         ];
 
         const selected = await vscode.window.showQuickPick(options, {
             placeHolder: 'Select analysis focus mode',
             matchOnDetail: true,
-            matchOnDescription: true
+            matchOnDescription: true,
         });
 
         return selected?.mode;
@@ -93,7 +98,10 @@ export class UIManager {
      */
     private stripOutputTags(analysis: string): string {
         // Strip XML-style tags like <suggestion_security>, <example_fix>, etc.
-        return analysis.replace(/<\/?(suggestion_\w+|example_fix|explanation)(\s[^>]*)?>/g, '');
+        return analysis.replace(
+            /<\/?(suggestion_\w+|example_fix|explanation)(\s[^>]*)?>/g,
+            ''
+        );
     }
 
     /**
@@ -115,13 +123,23 @@ export class UIManager {
         }
 
         // Generate URIs for the assets using extension context
-        const mainScriptUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
-            this.extensionContext.extensionUri, 'dist', 'webview', 'main.js'
-        ));
+        const mainScriptUri = panel.webview.asWebviewUri(
+            vscode.Uri.joinPath(
+                this.extensionContext.extensionUri,
+                'dist',
+                'webview',
+                'main.js'
+            )
+        );
 
-        const mainStylesUri = panel.webview.asWebviewUri(vscode.Uri.joinPath(
-            this.extensionContext.extensionUri, 'dist', 'webview', 'main.css'
-        ));
+        const mainStylesUri = panel.webview.asWebviewUri(
+            vscode.Uri.joinPath(
+                this.extensionContext.extensionUri,
+                'dist',
+                'webview',
+                'main.css'
+            )
+        );
 
         return `
         <!DOCTYPE html>
@@ -179,8 +197,12 @@ export class UIManager {
                 // Inject initial theme data
                 window.initialTheme = {
                     kind: ${vscode.window.activeColorTheme.kind},
-                    isDarkTheme: ${vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-            vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast}
+                    isDarkTheme: ${
+                        vscode.window.activeColorTheme.kind ===
+                            vscode.ColorThemeKind.Dark ||
+                        vscode.window.activeColorTheme.kind ===
+                            vscode.ColorThemeKind.HighContrast
+                    }
                 };
             </script>
             <script type="module" src="${mainScriptUri}"></script>
@@ -215,15 +237,23 @@ export class UIManager {
             this.activeAnalysisPanel = panel;
         }
 
-        panel.webview.html = this.generatePRAnalysisHtml(title, diffText, analysis, panel, toolCalls);
+        panel.webview.html = this.generatePRAnalysisHtml(
+            title,
+            diffText,
+            analysis,
+            panel,
+            toolCalls
+        );
 
         // Set up message listeners for webview communication
         this.setupWebviewMessageHandlers(panel.webview);
 
         // Listen for theme changes and update webview
-        const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
-            this.sendThemeToWebview(panel.webview);
-        });
+        const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(
+            () => {
+                this.sendThemeToWebview(panel.webview);
+            }
+        );
 
         // Clean up when panel is disposed
         panel.onDidDispose(() => {
@@ -240,28 +270,33 @@ export class UIManager {
      * Set up message handlers for webview communication
      */
     private setupWebviewMessageHandlers(webview: vscode.Webview): void {
-        webview.onDidReceiveMessage(
-            (message: WebviewMessageType) => {
-                switch (message.command) {
-                    case 'openFile':
-                        this.handleOpenFileMessage(message.payload);
-                        break;
-                    case 'validatePath':
-                        this.handleValidatePathMessage(message.payload, webview);
-                        break;
-                    default:
-                        Log.warn(`Unknown webview message command: ${(message as any).command}`);
-                }
+        webview.onDidReceiveMessage((message: WebviewMessageType) => {
+            switch (message.command) {
+                case 'openFile':
+                    this.handleOpenFileMessage(message.payload);
+                    break;
+                case 'validatePath':
+                    this.handleValidatePathMessage(message.payload, webview);
+                    break;
+                default:
+                    Log.warn(
+                        `Unknown webview message command: ${(message as any).command}`
+                    );
             }
-        );
+        });
     }
 
     /**
      * Handle openFile message from webview
      */
-    private async handleOpenFileMessage(payload: OpenFilePayload): Promise<void> {
+    private async handleOpenFileMessage(
+        payload: OpenFilePayload
+    ): Promise<void> {
         try {
-            Log.debug(`Opening file from webview: ${payload.filePath}`, payload);
+            Log.debug(
+                `Opening file from webview: ${payload.filePath}`,
+                payload
+            );
 
             // Use vscode.Uri for secure file path handling
             // Note: payload.filePath is now the resolved absolute path from validation
@@ -272,7 +307,7 @@ export class UIManager {
 
             // Prepare show options with line/column positioning
             const showOptions: vscode.TextDocumentShowOptions = {
-                viewColumn: vscode.ViewColumn.One
+                viewColumn: vscode.ViewColumn.One,
             };
 
             // Set selection if line/column are provided
@@ -284,19 +319,30 @@ export class UIManager {
                     // Create range for line range selection
                     const endLine = Math.max(0, payload.endLine - 1); // Convert to 0-based indexing
                     const startPosition = new vscode.Position(line, column);
-                    const endPosition = new vscode.Position(endLine, Number.MAX_SAFE_INTEGER); // End of endLine
-                    showOptions.selection = new vscode.Range(startPosition, endPosition);
+                    const endPosition = new vscode.Position(
+                        endLine,
+                        Number.MAX_SAFE_INTEGER
+                    ); // End of endLine
+                    showOptions.selection = new vscode.Range(
+                        startPosition,
+                        endPosition
+                    );
                 } else {
                     // Single line selection
                     const position = new vscode.Position(line, column);
-                    showOptions.selection = new vscode.Range(position, position);
+                    showOptions.selection = new vscode.Range(
+                        position,
+                        position
+                    );
                 }
             }
 
             // Show the document in the editor
             await vscode.window.showTextDocument(document, showOptions);
 
-            Log.debug(`Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`);
+            Log.debug(
+                `Successfully opened file: ${payload.filePath}${payload.line ? ` at line ${payload.line}` : ''}`
+            );
         } catch (error) {
             Log.error(`Failed to open file: ${payload.filePath}`, error);
 
@@ -310,7 +356,10 @@ export class UIManager {
     /**
      * Handle validatePath message from webview
      */
-    private async handleValidatePathMessage(payload: ValidatePathPayload, webview: vscode.Webview): Promise<void> {
+    private async handleValidatePathMessage(
+        payload: ValidatePathPayload,
+        webview: vscode.Webview
+    ): Promise<void> {
         try {
             Log.debug(`Validating file path from webview: ${payload.filePath}`);
 
@@ -318,7 +367,10 @@ export class UIManager {
             let resolvedPath: string | undefined;
 
             // Strategy 1: Absolute path
-            if (payload.filePath.includes(':') || payload.filePath.startsWith('/')) {
+            if (
+                payload.filePath.includes(':') ||
+                payload.filePath.startsWith('/')
+            ) {
                 const fileUri = vscode.Uri.file(payload.filePath);
                 try {
                     const fileStat = await vscode.workspace.fs.stat(fileUri);
@@ -326,35 +378,48 @@ export class UIManager {
                     if (isValid) {
                         resolvedPath = fileUri.fsPath;
                     }
-                } catch {
-                }
+                } catch {}
             }
 
             // Strategy 2: Relative to Git repository root (primary strategy for PR paths)
-            if (!isValid && this.gitRepositoryRoot && this.gitRepositoryRoot.trim() !== '') {
-                const gitRelativeUri = vscode.Uri.joinPath(vscode.Uri.file(this.gitRepositoryRoot), payload.filePath);
+            if (
+                !isValid &&
+                this.gitRepositoryRoot &&
+                this.gitRepositoryRoot.trim() !== ''
+            ) {
+                const gitRelativeUri = vscode.Uri.joinPath(
+                    vscode.Uri.file(this.gitRepositoryRoot),
+                    payload.filePath
+                );
                 try {
-                    const fileStat = await vscode.workspace.fs.stat(gitRelativeUri);
+                    const fileStat =
+                        await vscode.workspace.fs.stat(gitRelativeUri);
                     isValid = fileStat.type === vscode.FileType.File;
                     if (isValid) {
                         resolvedPath = gitRelativeUri.fsPath;
                     }
-                } catch {
-                }
+                } catch {}
             }
 
             // Strategy 3: Relative to workspace root (fallback)
-            if (!isValid && vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            if (
+                !isValid &&
+                vscode.workspace.workspaceFolders &&
+                vscode.workspace.workspaceFolders.length > 0
+            ) {
                 const workspaceRoot = vscode.workspace.workspaceFolders[0]!.uri;
-                const workspaceRelativeUri = vscode.Uri.joinPath(workspaceRoot, payload.filePath);
+                const workspaceRelativeUri = vscode.Uri.joinPath(
+                    workspaceRoot,
+                    payload.filePath
+                );
                 try {
-                    const fileStat = await vscode.workspace.fs.stat(workspaceRelativeUri);
+                    const fileStat =
+                        await vscode.workspace.fs.stat(workspaceRelativeUri);
                     isValid = fileStat.type === vscode.FileType.File;
                     if (isValid) {
                         resolvedPath = workspaceRelativeUri.fsPath;
                     }
-                } catch {
-                }
+                } catch {}
             }
 
             // Send validation result back to webview (including resolved path for openFile)
@@ -362,29 +427,33 @@ export class UIManager {
                 filePath: payload.filePath,
                 isValid,
                 requestId: payload.requestId,
-                ...(resolvedPath && { resolvedPath })
+                ...(resolvedPath && { resolvedPath }),
             };
 
             webview.postMessage({
                 command: 'pathValidationResult',
-                payload: response
+                payload: response,
             });
 
-            Log.debug(`Path validation result for ${payload.filePath}: ${isValid}${resolvedPath ? ` (resolved: ${resolvedPath})` : ''}`);
+            Log.debug(
+                `Path validation result for ${payload.filePath}: ${isValid}${resolvedPath ? ` (resolved: ${resolvedPath})` : ''}`
+            );
         } catch (error) {
             // File doesn't exist or access error
-            Log.debug(`Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            Log.debug(
+                `Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`
+            );
 
             // Send negative validation result
             const response: PathValidationResultPayload = {
                 filePath: payload.filePath,
                 isValid: false,
-                requestId: payload.requestId
+                requestId: payload.requestId,
             };
 
             webview.postMessage({
                 command: 'pathValidationResult',
-                payload: response
+                payload: response,
             });
         }
     }
@@ -396,14 +465,14 @@ export class UIManager {
         const activeTheme = vscode.window.activeColorTheme;
         const themeData: ThemeUpdatePayload = {
             kind: activeTheme.kind,
-            isDarkTheme: activeTheme.kind === vscode.ColorThemeKind.Dark ||
-                activeTheme.kind === vscode.ColorThemeKind.HighContrast
+            isDarkTheme:
+                activeTheme.kind === vscode.ColorThemeKind.Dark ||
+                activeTheme.kind === vscode.ColorThemeKind.HighContrast,
         };
 
         webview.postMessage({
             command: 'themeUpdate',
-            payload: themeData
+            payload: themeData,
         });
     }
-
 }

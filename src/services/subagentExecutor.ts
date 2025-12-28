@@ -7,7 +7,11 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { SubagentLimits } from '../models/toolConstants';
 import type { SubagentTask, SubagentResult } from '../types/modelTypes';
-import type { ToolCallRecord, AnalysisProgressCallback, SubagentProgressContext } from '../types/toolCallTypes';
+import type {
+    ToolCallRecord,
+    AnalysisProgressCallback,
+    SubagentProgressContext,
+} from '../types/toolCallTypes';
 import type { ITool } from '../tools/ITool';
 import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
@@ -30,7 +34,7 @@ export class SubagentExecutor {
         private readonly toolRegistry: ToolRegistry,
         private readonly promptGenerator: SubagentPromptGenerator,
         private readonly workspaceSettings: WorkspaceSettingsService
-    ) { }
+    ) {}
 
     /**
      * Set progress callback for subagent iteration reporting.
@@ -48,12 +52,17 @@ export class SubagentExecutor {
      * Report progress with main analysis context prefix.
      */
     private reportProgress(message: string, increment?: number): void {
-        if (!this.progressCallback) {return;}
+        if (!this.progressCallback) {
+            return;
+        }
 
         if (this.progressContext) {
             const mainIter = this.progressContext.getCurrentIteration();
             const mainMax = this.progressContext.getMaxIterations();
-            this.progressCallback(`Turn ${mainIter}/${mainMax} → ${message}`, increment);
+            this.progressCallback(
+                `Turn ${mainIter}/${mainMax} → ${message}`,
+                increment
+            );
         } else {
             this.progressCallback(message, increment);
         }
@@ -74,9 +83,10 @@ export class SubagentExecutor {
         let toolCallsMade = 0;
 
         // Create short task label for logging and progress (first 30 chars)
-        const taskLabel = task.task.length > 30
-            ? task.task.substring(0, 30).replace(/\s+/g, ' ').trim() + '...'
-            : task.task.replace(/\s+/g, ' ').trim();
+        const taskLabel =
+            task.task.length > 30
+                ? task.task.substring(0, 30).replace(/\s+/g, ' ').trim() + '...'
+                : task.task.replace(/\s+/g, ' ').trim();
         const logLabel = `Subagent #${subagentId}`;
 
         try {
@@ -86,11 +96,21 @@ export class SubagentExecutor {
             const conversation = new ConversationManager();
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
-            const toolExecutor = new ToolExecutor(filteredRegistry, this.workspaceSettings);
-            const conversationRunner = new ConversationRunner(this.modelManager, toolExecutor);
+            const toolExecutor = new ToolExecutor(
+                filteredRegistry,
+                this.workspaceSettings
+            );
+            const conversationRunner = new ConversationRunner(
+                this.modelManager,
+                toolExecutor
+            );
 
             const maxIterations = this.workspaceSettings.getMaxIterations();
-            const systemPrompt = this.promptGenerator.generateSystemPrompt(task, filteredTools, maxIterations);
+            const systemPrompt = this.promptGenerator.generateSystemPrompt(
+                task,
+                filteredTools,
+                maxIterations
+            );
 
             conversation.addUserMessage(`Please investigate: ${task.task}`);
 
@@ -103,13 +123,16 @@ export class SubagentExecutor {
                     systemPrompt,
                     maxIterations,
                     tools: filteredTools,
-                    label: logLabel
+                    label: logLabel,
                 },
                 conversation,
                 token,
                 {
                     onIterationStart: (current, max) => {
-                        this.reportProgress(`Sub-analysis (${current}/${max})...`, 0.1);
+                        this.reportProgress(
+                            `Sub-analysis (${current}/${max})...`,
+                            0.1
+                        );
                     },
                     onToolCallComplete: (
                         toolCallId: string,
@@ -129,9 +152,9 @@ export class SubagentExecutor {
                             success,
                             error,
                             durationMs,
-                            timestamp: Date.now()
+                            timestamp: Date.now(),
                         });
-                    }
+                    },
                 }
             );
 
@@ -139,27 +162,31 @@ export class SubagentExecutor {
 
             // Check if cancelled (timeout or user) after run completes
             if (token.isCancellationRequested) {
-                Log.warn(`${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`);
+                Log.warn(
+                    `${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`
+                );
                 return {
                     success: false,
                     response: '',
                     toolCallsMade,
                     toolCalls,
-                    error: 'cancelled'
+                    error: 'cancelled',
                 };
             }
 
-            Log.info(`${logLabel} Completed in ${duration}ms with ${toolCallsMade} tool calls`);
+            Log.info(
+                `${logLabel} Completed in ${duration}ms with ${toolCallsMade} tool calls`
+            );
 
             return {
                 success: true,
                 response,
                 toolCallsMade,
-                toolCalls
+                toolCalls,
             };
-
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
             Log.error(`${logLabel} Failed: ${errorMessage}`);
 
             return {
@@ -167,7 +194,7 @@ export class SubagentExecutor {
                 response: '',
                 toolCallsMade,
                 toolCalls: [],
-                error: errorMessage
+                error: errorMessage,
             };
         }
     }
@@ -176,9 +203,14 @@ export class SubagentExecutor {
      * Filter tools to exclude run_subagent and prevent infinite recursion.
      */
     private filterTools(): ITool[] {
-        return this.toolRegistry.getAllTools().filter(
-            tool => !SubagentLimits.DISALLOWED_TOOLS.includes(tool.name as typeof SubagentLimits.DISALLOWED_TOOLS[number])
-        );
+        return this.toolRegistry
+            .getAllTools()
+            .filter(
+                (tool) =>
+                    !SubagentLimits.DISALLOWED_TOOLS.includes(
+                        tool.name as (typeof SubagentLimits.DISALLOWED_TOOLS)[number]
+                    )
+            );
     }
 
     /**

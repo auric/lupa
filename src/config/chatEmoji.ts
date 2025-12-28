@@ -10,13 +10,13 @@
  */
 export const SEVERITY = {
     /** 🔴 Critical issue - must fix before shipping */
-    critical: "🔴",
+    critical: '🔴',
     /** 🟡 Suggestion - consider improving */
-    suggestion: "🟡",
+    suggestion: '🟡',
     /** ✅ Success - positive confirmation */
-    success: "✅",
+    success: '✅',
     /** ⚠️ Warning - caution needed */
-    warning: "⚠️",
+    warning: '⚠️',
 } as const;
 
 /**
@@ -24,13 +24,13 @@ export const SEVERITY = {
  */
 export const ACTIVITY = {
     /** 💭 AI is reasoning/thinking */
-    thinking: "💭",
+    thinking: '💭',
     /** 🔍 Finding symbols, searching definitions */
-    searching: "🔍",
+    searching: '🔍',
     /** 📂 Reading files */
-    reading: "📂",
+    reading: '📂',
     /** 🔎 Deep code inspection */
-    analyzing: "🔎",
+    analyzing: '🔎',
 } as const;
 
 /**
@@ -38,13 +38,13 @@ export const ACTIVITY = {
  */
 export const SECTION = {
     /** 🔒 Security-related findings */
-    security: "🔒",
+    security: '🔒',
     /** 🧪 Testing suggestions */
-    testing: "🧪",
+    testing: '🧪',
     /** 📊 Summary statistics */
-    summary: "📊",
+    summary: '📊',
     /** 📁 File listings */
-    files: "📁",
+    files: '📁',
 } as const;
 
 /** Type for severity indicator keys */

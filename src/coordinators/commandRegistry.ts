@@ -16,7 +16,7 @@ export class CommandRegistry implements vscode.Disposable {
         private readonly services: IServiceRegistry,
         private readonly analysisOrchestrator: AnalysisOrchestrator,
         private readonly copilotModelCoordinator: CopilotModelCoordinator
-    ) { }
+    ) {}
 
     /**
      * Register all extension commands
@@ -63,8 +63,8 @@ export class CommandRegistry implements vscode.Disposable {
         this.services.workspaceSettings.resetAnalysisLimitsToDefaults();
         vscode.window.showInformationMessage(
             'Analysis limits reset to defaults: ' +
-            `Max Iterations: ${ANALYSIS_LIMITS.maxIterations.default}, ` +
-            `Request Timeout: ${ANALYSIS_LIMITS.requestTimeoutSeconds.default}s`
+                `Max Iterations: ${ANALYSIS_LIMITS.maxIterations.default}, ` +
+                `Request Timeout: ${ANALYSIS_LIMITS.requestTimeoutSeconds.default}s`
         );
     }
 
@@ -79,7 +79,7 @@ export class CommandRegistry implements vscode.Disposable {
      * Show test webview with sample data for development
      */
     private showTestWebview(): void {
-        const title = "Test PR Analysis - Sample Data";
+        const title = 'Test PR Analysis - Sample Data';
 
         const diffText = `diff --git a/src/services/analysisProvider.ts b/src/services/analysisProvider.ts
 index 1234567..abcdefg 100644
@@ -104,13 +104,20 @@ This is a sample analysis for development testing.
 The changes look good.`;
 
         // Display the test webview
-        this.services.uiManager.displayAnalysisResults(title, diffText, analysis);
+        this.services.uiManager.displayAnalysisResults(
+            title,
+            diffText,
+            analysis
+        );
     }
 
     /**
      * Helper method to register a command and track disposables
      */
-    private registerCommand(command: string, callback: (...args: any[]) => any): void {
+    private registerCommand(
+        command: string,
+        callback: (...args: any[]) => any
+    ): void {
         const disposable = vscode.commands.registerCommand(command, callback);
         this.disposables.push(disposable);
         this.context.subscriptions.push(disposable);
@@ -120,7 +127,7 @@ The changes look good.`;
      * Dispose of all registered commands
      */
     public dispose(): void {
-        this.disposables.forEach(disposable => disposable.dispose());
+        this.disposables.forEach((disposable) => disposable.dispose());
         this.disposables.length = 0;
     }
 }

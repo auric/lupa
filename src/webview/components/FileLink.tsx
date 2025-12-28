@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useVSCodeApi } from '../hooks/useVSCodeApi';
-import { ValidatePathPayload, PathValidationResultPayload } from '../../types/webviewMessages';
+import {
+    ValidatePathPayload,
+    PathValidationResultPayload,
+} from '../../types/webviewMessages';
 
 interface FileLinkProps {
     filePath: string;
@@ -17,7 +20,7 @@ export const FileLink: React.FC<FileLinkProps> = ({
     endLine,
     column,
     children,
-    className = ''
+    className = '',
 }) => {
     const [isValid, setIsValid] = useState<boolean | null>(null); // null = pending, false = invalid, true = valid
     const [resolvedPath, setResolvedPath] = useState<string | undefined>();
@@ -25,19 +28,21 @@ export const FileLink: React.FC<FileLinkProps> = ({
 
     // Validate this specific path
     useEffect(() => {
-        if (!vscode) {return;}
+        if (!vscode) {
+            return;
+        }
 
         const validatePath = () => {
             const requestId = `filelink-${filePath}-${Date.now()}`;
 
             const payload: ValidatePathPayload = {
                 filePath,
-                requestId
+                requestId,
             };
 
             vscode.postMessage({
                 command: 'validatePath',
-                payload
+                payload,
             });
         };
 
@@ -71,8 +76,8 @@ export const FileLink: React.FC<FileLinkProps> = ({
                     filePath: resolvedPath || filePath,
                     line,
                     endLine,
-                    column
-                }
+                    column,
+                },
             });
         }
     };
@@ -82,7 +87,11 @@ export const FileLink: React.FC<FileLinkProps> = ({
         return (
             <span
                 className={`${isValid === null ? 'text-gray-500' : 'text-inherit'} ${className}`}
-                title={isValid === null ? `Validating: ${filePath}` : `Invalid path: ${filePath}`}
+                title={
+                    isValid === null
+                        ? `Validating: ${filePath}`
+                        : `Invalid path: ${filePath}`
+                }
             >
                 {children}
             </span>

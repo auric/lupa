@@ -43,12 +43,14 @@ describe('CopilotModelManager model not supported handling', () => {
     });
 
     it('surfaces a friendly error when the selected model is not supported', async () => {
-        const unsupportedError = new Error('Request Failed: 400 {"error":{"message":"The requested model is not supported.","code":"model_not_supported","param":"model","type":"invalid_request_error"}}');
+        const unsupportedError = new Error(
+            'Request Failed: 400 {"error":{"message":"The requested model is not supported.","code":"model_not_supported","param":"model","type":"invalid_request_error"}}'
+        );
         mockModel.sendRequest.mockRejectedValue(unsupportedError);
 
         const request = {
             messages: [{ role: 'user' as const, content: 'test' }],
-            tools: []
+            tools: [],
         };
 
         await expect(

@@ -38,7 +38,7 @@ export interface ContextCleanupResult {
  * Handles token counting and context window management without complex truncation
  */
 export class TokenValidator {
-    constructor(private model: vscode.LanguageModelChat) { }
+    constructor(private model: vscode.LanguageModelChat) {}
 
     /**
      * Validate token count for a conversation
@@ -61,13 +61,18 @@ export class TokenValidator {
             }
 
             const totalTokens = systemTokens + messageTokens;
-            const maxTokens = this.model.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
-            const warningThreshold = Math.floor(maxTokens * TokenConstants.CONTEXT_WARNING_RATIO);
+            const maxTokens =
+                this.model.maxInputTokens ||
+                TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
+            const warningThreshold = Math.floor(
+                maxTokens * TokenConstants.CONTEXT_WARNING_RATIO
+            );
 
             const exceedsWarningThreshold = totalTokens >= warningThreshold;
             const exceedsMaxTokens = totalTokens >= maxTokens;
 
-            let suggestedAction: TokenValidationResult['suggestedAction'] = 'continue';
+            let suggestedAction: TokenValidationResult['suggestedAction'] =
+                'continue';
             if (exceedsMaxTokens) {
                 suggestedAction = 'request_final_answer';
             } else if (exceedsWarningThreshold) {
@@ -79,9 +84,8 @@ export class TokenValidator {
                 maxTokens,
                 exceedsWarningThreshold,
                 exceedsMaxTokens,
-                suggestedAction
+                suggestedAction,
             };
-
         } catch (error) {
             Log.error('Error validating tokens:', error);
             // Return conservative result on error
@@ -90,7 +94,7 @@ export class TokenValidator {
                 maxTokens: TokenConstants.DEFAULT_MAX_INPUT_TOKENS,
                 exceedsWarningThreshold: false,
                 exceedsMaxTokens: false,
-                suggestedAction: 'continue'
+                suggestedAction: 'continue',
             };
         }
     }
@@ -107,7 +111,9 @@ export class TokenValidator {
         systemPrompt: string,
         targetUtilization: number = 0.8
     ): Promise<ContextCleanupResult> {
-        const maxTokens = this.model.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
+        const maxTokens =
+            this.model.maxInputTokens ||
+            TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
         const targetTokens = Math.floor(maxTokens * targetUtilization);
 
         let cleanedMessages = [...messages];
@@ -118,14 +124,18 @@ export class TokenValidator {
         try {
             // Continue removing oldest tool interactions until we're under target
             while (cleanedMessages.length > 0) {
-                const validation = await this.validateTokens(cleanedMessages, systemPrompt);
+                const validation = await this.validateTokens(
+                    cleanedMessages,
+                    systemPrompt
+                );
 
                 if (validation.totalTokens <= targetTokens) {
                     break;
                 }
 
                 // Find oldest tool result to remove
-                const removalResult = this.removeOldestToolInteraction(cleanedMessages);
+                const removalResult =
+                    this.removeOldestToolInteraction(cleanedMessages);
 
                 if (!removalResult.found) {
                     // No more tool interactions to remove
@@ -134,7 +144,8 @@ export class TokenValidator {
 
                 cleanedMessages = removalResult.messages;
                 toolResultsRemoved += removalResult.toolResultsRemoved;
-                assistantMessagesRemoved += removalResult.assistantMessagesRemoved;
+                assistantMessagesRemoved +=
+                    removalResult.assistantMessagesRemoved;
             }
 
             // Add context full message if we removed any tool interactions
@@ -143,11 +154,10 @@ export class TokenValidator {
                     role: 'user',
                     content: TokenConstants.TOOL_CONTEXT_MESSAGES.CONTEXT_FULL,
                     toolCallId: undefined,
-                    toolCalls: undefined
+                    toolCalls: undefined,
                 });
                 contextFullMessageAdded = true;
             }
-
         } catch (error) {
             Log.error('Error during context cleanup:', error);
         }
@@ -156,7 +166,7 @@ export class TokenValidator {
             cleanedMessages,
             toolResultsRemoved,
             assistantMessagesRemoved,
-            contextFullMessageAdded
+            contextFullMessageAdded,
         };
     }
 
@@ -174,7 +184,9 @@ export class TokenValidator {
      * @param message Message to count tokens for
      * @returns Token count
      */
-    private async countMessageTokens(message: ToolCallMessage): Promise<number> {
+    private async countMessageTokens(
+        message: ToolCallMessage
+    ): Promise<number> {
         let tokens = TokenConstants.TOKEN_OVERHEAD_PER_MESSAGE;
 
         // Count content tokens
@@ -206,7 +218,10 @@ export class TokenValidator {
         assistantMessagesRemoved: number;
     } {
         const assistantIndex = messages.findIndex(
-            msg => msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0
+            (msg) =>
+                msg.role === 'assistant' &&
+                msg.toolCalls &&
+                msg.toolCalls.length > 0
         );
 
         if (assistantIndex === -1) {
@@ -214,13 +229,13 @@ export class TokenValidator {
                 found: false,
                 messages,
                 toolResultsRemoved: 0,
-                assistantMessagesRemoved: 0
+                assistantMessagesRemoved: 0,
             };
         }
 
         const assistantMessage = messages[assistantIndex]!;
         const toolCallIds = new Set(
-            assistantMessage.toolCalls!.map(call => call.id)
+            assistantMessage.toolCalls!.map((call) => call.id)
         );
 
         // Filter out the assistant message and ALL its corresponding tool results
@@ -230,21 +245,28 @@ export class TokenValidator {
                 return false;
             }
             // Remove tool results that belong to this assistant message
-            if (msg.role === 'tool' && msg.toolCallId && toolCallIds.has(msg.toolCallId)) {
+            if (
+                msg.role === 'tool' &&
+                msg.toolCallId &&
+                toolCallIds.has(msg.toolCallId)
+            ) {
                 return false;
             }
             return true;
         });
 
         const toolResultsRemoved = messages.filter(
-            msg => msg.role === 'tool' && msg.toolCallId && toolCallIds.has(msg.toolCallId)
+            (msg) =>
+                msg.role === 'tool' &&
+                msg.toolCallId &&
+                toolCallIds.has(msg.toolCallId)
         ).length;
 
         return {
             found: true,
             messages: newMessages,
             toolResultsRemoved,
-            assistantMessagesRemoved: 1
+            assistantMessagesRemoved: 1,
         };
     }
 }

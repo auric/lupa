@@ -16,33 +16,33 @@ vi.mock('vscode', async (importOriginal) => {
             fs: {
                 stat: vi.fn(),
                 readDirectory: vi.fn(),
-                readFile: vi.fn()
-            }
+                readFile: vi.fn(),
+            },
         },
         commands: {
-            executeCommand: vi.fn()
+            executeCommand: vi.fn(),
         },
         Uri: {
             ...vscodeMock.Uri,
             file: vi.fn((path) => ({
                 toString: () => path,
                 fsPath: path,
-                path: path
-            }))
-        }
+                path: path,
+            })),
+        },
     };
 });
 
 // Mock PathSanitizer
 vi.mock('../utils/pathSanitizer', () => ({
     PathSanitizer: {
-        sanitizePath: vi.fn((path) => path)
-    }
+        sanitizePath: vi.fn((path) => path),
+    },
 }));
 
 // Mock readGitignore to simulate .gitignore filtering
 vi.mock('../utils/gitUtils', () => ({
-    readGitignore: vi.fn().mockResolvedValue('node_modules\n*.log\n.env')
+    readGitignore: vi.fn().mockResolvedValue('node_modules\n*.log\n.env'),
 }));
 
 // Mock ignore library with realistic behavior
@@ -51,10 +51,11 @@ vi.mock('ignore', () => ({
         add: vi.fn().mockReturnThis(),
         checkIgnore: vi.fn((path) => {
             // Simulate ignoring node_modules and log files
-            const ignored = path.includes('node_modules') || path.endsWith('.log');
+            const ignored =
+                path.includes('node_modules') || path.endsWith('.log');
             return { ignored };
-        })
-    }))
+        }),
+    })),
 }));
 
 // Mock SymbolExtractor
@@ -70,8 +71,8 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
     beforeEach(() => {
         mockGitOperationsManager = {
             getRepository: vi.fn().mockReturnValue({
-                rootUri: { fsPath: '/test/project' }
-            })
+                rootUri: { fsPath: '/test/project' },
+            }),
         } as any;
 
         // Mock SymbolExtractor with all required methods
@@ -80,15 +81,21 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             getPathStat: vi.fn(),
             extractSymbolsWithContext: vi.fn(),
             getDirectorySymbols: vi.fn(),
-            getTextDocument: vi.fn()
+            getTextDocument: vi.fn(),
         };
 
-        getSymbolsOverviewTool = new GetSymbolsOverviewTool(mockGitOperationsManager, mockSymbolExtractor);
+        getSymbolsOverviewTool = new GetSymbolsOverviewTool(
+            mockGitOperationsManager,
+            mockSymbolExtractor
+        );
 
         // Set up tool registry and executor for integration testing
         toolRegistry = new ToolRegistry();
         toolRegistry.registerTool(getSymbolsOverviewTool);
-        toolExecutor = new ToolExecutor(toolRegistry, createMockWorkspaceSettings());
+        toolExecutor = new ToolExecutor(
+            toolRegistry,
+            createMockWorkspaceSettings()
+        );
 
         vi.clearAllMocks();
     });
@@ -97,7 +104,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
         it('should handle complete project analysis workflow', async () => {
             // Mock the SymbolExtractor to return appropriate directory results
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.Directory
+                type: vscode.FileType.Directory,
             });
 
             mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
@@ -107,18 +114,30 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                         {
                             name: 'App',
                             kind: vscode.SymbolKind.Class,
-                            range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 9 } },
-                            children: []
+                            range: {
+                                start: { line: 0, character: 0 },
+                                end: { line: 10, character: 0 },
+                            },
+                            selectionRange: {
+                                start: { line: 0, character: 6 },
+                                end: { line: 0, character: 9 },
+                            },
+                            children: [],
                         },
                         {
                             name: 'main',
                             kind: vscode.SymbolKind.Function,
-                            range: { start: { line: 12, character: 0 }, end: { line: 15, character: 1 } },
-                            selectionRange: { start: { line: 12, character: 9 }, end: { line: 12, character: 13 } },
-                            children: []
-                        }
-                    ]
+                            range: {
+                                start: { line: 12, character: 0 },
+                                end: { line: 15, character: 1 },
+                            },
+                            selectionRange: {
+                                start: { line: 12, character: 9 },
+                                end: { line: 12, character: 13 },
+                            },
+                            children: [],
+                        },
+                    ],
                 },
                 {
                     filePath: 'src/models/auth.ts',
@@ -126,11 +145,17 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                         {
                             name: 'AuthToken',
                             kind: vscode.SymbolKind.Interface,
-                            range: { start: { line: 0, character: 0 }, end: { line: 5, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 10 }, end: { line: 0, character: 19 } },
-                            children: []
-                        }
-                    ]
+                            range: {
+                                start: { line: 0, character: 0 },
+                                end: { line: 5, character: 0 },
+                            },
+                            selectionRange: {
+                                start: { line: 0, character: 10 },
+                                end: { line: 0, character: 19 },
+                            },
+                            children: [],
+                        },
+                    ],
                 },
                 {
                     filePath: 'src/models/user.ts',
@@ -138,18 +163,30 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                         {
                             name: 'User',
                             kind: vscode.SymbolKind.Interface,
-                            range: { start: { line: 0, character: 0 }, end: { line: 5, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 10 }, end: { line: 0, character: 14 } },
-                            children: []
+                            range: {
+                                start: { line: 0, character: 0 },
+                                end: { line: 5, character: 0 },
+                            },
+                            selectionRange: {
+                                start: { line: 0, character: 10 },
+                                end: { line: 0, character: 14 },
+                            },
+                            children: [],
                         },
                         {
                             name: 'UserRole',
                             kind: vscode.SymbolKind.Interface,
-                            range: { start: { line: 7, character: 0 }, end: { line: 10, character: 0 } },
-                            selectionRange: { start: { line: 7, character: 10 }, end: { line: 7, character: 18 } },
-                            children: []
-                        }
-                    ]
+                            range: {
+                                start: { line: 7, character: 0 },
+                                end: { line: 10, character: 0 },
+                            },
+                            selectionRange: {
+                                start: { line: 7, character: 10 },
+                                end: { line: 7, character: 18 },
+                            },
+                            children: [],
+                        },
+                    ],
                 },
                 {
                     filePath: 'src/services/authService.ts',
@@ -157,11 +194,17 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                         {
                             name: 'AuthService',
                             kind: vscode.SymbolKind.Class,
-                            range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 17 } },
-                            children: []
-                        }
-                    ]
+                            range: {
+                                start: { line: 0, character: 0 },
+                                end: { line: 10, character: 0 },
+                            },
+                            selectionRange: {
+                                start: { line: 0, character: 6 },
+                                end: { line: 0, character: 17 },
+                            },
+                            children: [],
+                        },
+                    ],
                 },
                 {
                     filePath: 'src/services/userService.ts',
@@ -169,18 +212,30 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                         {
                             name: 'UserService',
                             kind: vscode.SymbolKind.Class,
-                            range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                            selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 17 } },
-                            children: []
+                            range: {
+                                start: { line: 0, character: 0 },
+                                end: { line: 10, character: 0 },
+                            },
+                            selectionRange: {
+                                start: { line: 0, character: 6 },
+                                end: { line: 0, character: 17 },
+                            },
+                            children: [],
                         },
                         {
                             name: 'createUser',
                             kind: vscode.SymbolKind.Function,
-                            range: { start: { line: 12, character: 0 }, end: { line: 15, character: 1 } },
-                            selectionRange: { start: { line: 12, character: 9 }, end: { line: 12, character: 19 } },
-                            children: []
-                        }
-                    ]
+                            range: {
+                                start: { line: 12, character: 0 },
+                                end: { line: 15, character: 1 },
+                            },
+                            selectionRange: {
+                                start: { line: 12, character: 9 },
+                                end: { line: 12, character: 19 },
+                            },
+                            children: [],
+                        },
+                    ],
                 },
                 {
                     filePath: 'src/utils/helpers.ts',
@@ -188,27 +243,39 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                         {
                             name: 'formatDate',
                             kind: vscode.SymbolKind.Function,
-                            range: { start: { line: 0, character: 0 }, end: { line: 5, character: 1 } },
-                            selectionRange: { start: { line: 0, character: 9 }, end: { line: 0, character: 19 } },
-                            children: []
+                            range: {
+                                start: { line: 0, character: 0 },
+                                end: { line: 5, character: 1 },
+                            },
+                            selectionRange: {
+                                start: { line: 0, character: 9 },
+                                end: { line: 0, character: 19 },
+                            },
+                            children: [],
                         },
                         {
                             name: 'API_URL',
                             kind: vscode.SymbolKind.Variable,
-                            range: { start: { line: 7, character: 0 }, end: { line: 7, character: 30 } },
-                            selectionRange: { start: { line: 7, character: 6 }, end: { line: 7, character: 13 } },
-                            children: []
-                        }
-                    ]
-                }
+                            range: {
+                                start: { line: 7, character: 0 },
+                                end: { line: 7, character: 30 },
+                            },
+                            selectionRange: {
+                                start: { line: 7, character: 6 },
+                                end: { line: 7, character: 13 },
+                            },
+                            children: [],
+                        },
+                    ],
+                },
             ]);
 
             // Execute through tool executor
             const toolCalls = [
                 {
                     name: 'get_symbols_overview',
-                    args: { path: 'src' }
-                }
+                    args: { path: 'src' },
+                },
             ];
 
             const results = await toolExecutor.executeTools(toolCalls);
@@ -228,43 +295,63 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
         it('should handle single file analysis through tool executor', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.File
+                type: vscode.FileType.File,
             });
 
-            const mockDocument = { getText: vi.fn().mockReturnValue('class Calculator {}') };
+            const mockDocument = {
+                getText: vi.fn().mockReturnValue('class Calculator {}'),
+            };
 
             mockSymbolExtractor.extractSymbolsWithContext.mockResolvedValue({
                 symbols: [
                     {
                         name: 'Calculator',
                         kind: vscode.SymbolKind.Class,
-                        range: { start: { line: 0, character: 0 }, end: { line: 10, character: 0 } },
-                        selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 16 } },
-                        children: []
+                        range: {
+                            start: { line: 0, character: 0 },
+                            end: { line: 10, character: 0 },
+                        },
+                        selectionRange: {
+                            start: { line: 0, character: 6 },
+                            end: { line: 0, character: 16 },
+                        },
+                        children: [],
                     },
                     {
                         name: 'add',
                         kind: vscode.SymbolKind.Method,
-                        range: { start: { line: 2, character: 2 }, end: { line: 4, character: 3 } },
-                        selectionRange: { start: { line: 2, character: 2 }, end: { line: 2, character: 5 } },
-                        children: []
+                        range: {
+                            start: { line: 2, character: 2 },
+                            end: { line: 4, character: 3 },
+                        },
+                        selectionRange: {
+                            start: { line: 2, character: 2 },
+                            end: { line: 2, character: 5 },
+                        },
+                        children: [],
                     },
                     {
                         name: 'subtract',
                         kind: vscode.SymbolKind.Method,
-                        range: { start: { line: 6, character: 2 }, end: { line: 8, character: 3 } },
-                        selectionRange: { start: { line: 6, character: 2 }, end: { line: 6, character: 10 } },
-                        children: []
-                    }
+                        range: {
+                            start: { line: 6, character: 2 },
+                            end: { line: 8, character: 3 },
+                        },
+                        selectionRange: {
+                            start: { line: 6, character: 2 },
+                            end: { line: 6, character: 10 },
+                        },
+                        children: [],
+                    },
                 ],
-                document: mockDocument
+                document: mockDocument,
             });
 
             const toolCalls = [
                 {
                     name: 'get_symbols_overview',
-                    args: { path: 'src/calculator.ts' }
-                }
+                    args: { path: 'src/calculator.ts' },
+                },
             ];
 
             const results = await toolExecutor.executeTools(toolCalls);
@@ -284,23 +371,25 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             const toolCalls = [
                 {
                     name: 'get_symbols_overview',
-                    args: { path: 'nonexistent/file.ts' }
-                }
+                    args: { path: 'nonexistent/file.ts' },
+                },
             ];
 
             const results = await toolExecutor.executeTools(toolCalls);
 
             expect(results).toHaveLength(1);
             expect(results[0].success).toBe(false);
-            expect(results[0].error).toContain("Path 'nonexistent/file.ts' not found");
+            expect(results[0].error).toContain(
+                "Path 'nonexistent/file.ts' not found"
+            );
         });
 
         it('should handle invalid tool arguments', async () => {
             const toolCalls = [
                 {
                     name: 'get_symbols_overview',
-                    args: { path: '' } // Empty path should fail validation
-                }
+                    args: { path: '' }, // Empty path should fail validation
+                },
             ];
 
             const results = await toolExecutor.executeTools(toolCalls);
@@ -315,7 +404,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
         it('should handle large directory structures efficiently', async () => {
             // Mock SymbolExtractor methods
             mockSymbolExtractor.getPathStat.mockResolvedValue({
-                type: vscode.FileType.Directory
+                type: vscode.FileType.Directory,
             });
 
             // Generate many file results
@@ -325,17 +414,27 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
                     {
                         name: 'TestClass',
                         kind: vscode.SymbolKind.Class,
-                        range: { start: { line: 0, character: 0 }, end: { line: 5, character: 0 } },
-                        selectionRange: { start: { line: 0, character: 6 }, end: { line: 0, character: 15 } },
-                        children: []
-                    }
-                ]
+                        range: {
+                            start: { line: 0, character: 0 },
+                            end: { line: 5, character: 0 },
+                        },
+                        selectionRange: {
+                            start: { line: 0, character: 6 },
+                            end: { line: 0, character: 15 },
+                        },
+                        children: [],
+                    },
+                ],
             }));
 
-            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue(manyFileResults);
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue(
+                manyFileResults
+            );
 
             const start = Date.now();
-            const result = await getSymbolsOverviewTool.execute({ path: 'large-project' });
+            const result = await getSymbolsOverviewTool.execute({
+                path: 'large-project',
+            });
             const duration = Date.now() - start;
 
             // Should complete in reasonable time (less than 1 second for this test)
@@ -355,7 +454,9 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             const vscodeTools = getSymbolsOverviewTool.getVSCodeTool();
             expect(vscodeTools.name).toBe('get_symbols_overview');
             expect(vscodeTools.inputSchema).toBeDefined();
-            expect((vscodeTools.inputSchema as any).properties).toHaveProperty('path');
+            expect((vscodeTools.inputSchema as any).properties).toHaveProperty(
+                'path'
+            );
         });
     });
 });

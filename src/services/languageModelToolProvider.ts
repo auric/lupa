@@ -1,8 +1,8 @@
-import * as vscode from "vscode";
-import { z } from "zod";
-import { Log } from "./loggingService";
-import { GetSymbolsOverviewTool } from "../tools/getSymbolsOverviewTool";
-import type { ToolResult } from "../types/toolResultTypes";
+import * as vscode from 'vscode';
+import { z } from 'zod';
+import { Log } from './loggingService';
+import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
+import type { ToolResult } from '../types/toolResultTypes';
 
 /** Full input type derived from tool's Zod schema - no artificial limitations. */
 type GetSymbolsOverviewInput = z.infer<GetSymbolsOverviewTool['schema']>;
@@ -17,9 +17,7 @@ type GetSymbolsOverviewInput = z.infer<GetSymbolsOverviewTool['schema']>;
 export class LanguageModelToolProvider implements vscode.Disposable {
     private registration: vscode.Disposable | undefined;
 
-    constructor(
-        private readonly symbolsOverviewTool: GetSymbolsOverviewTool
-    ) { }
+    constructor(private readonly symbolsOverviewTool: GetSymbolsOverviewTool) {}
 
     /**
      * Register the tool with VS Code's Language Model API.
@@ -29,13 +27,13 @@ export class LanguageModelToolProvider implements vscode.Disposable {
             // Check if the API is available
             if (!vscode.lm || typeof vscode.lm.registerTool !== 'function') {
                 Log.warn(
-                    "[LanguageModelToolProvider]: Language Model API may not be available - tool registration skipped"
+                    '[LanguageModelToolProvider]: Language Model API may not be available - tool registration skipped'
                 );
                 return;
             }
 
             this.registration = vscode.lm.registerTool<GetSymbolsOverviewInput>(
-                "lupa_getSymbolsOverview",
+                'lupa_getSymbolsOverview',
                 {
                     invoke: async (options, token) => {
                         return this.handleInvoke(options.input, token);
@@ -43,11 +41,11 @@ export class LanguageModelToolProvider implements vscode.Disposable {
                 }
             );
             Log.info(
-                "[LanguageModelToolProvider]: lupa_getSymbolsOverview registered for Agent Mode"
+                '[LanguageModelToolProvider]: lupa_getSymbolsOverview registered for Agent Mode'
             );
         } catch (error) {
             Log.warn(
-                "[LanguageModelToolProvider]: Tool registration failed - Language Model API may not be available",
+                '[LanguageModelToolProvider]: Tool registration failed - Language Model API may not be available',
                 error
             );
         }
@@ -61,7 +59,8 @@ export class LanguageModelToolProvider implements vscode.Disposable {
         _token: vscode.CancellationToken
     ): Promise<vscode.LanguageModelToolResult> {
         try {
-            const result: ToolResult = await this.symbolsOverviewTool.execute(input);
+            const result: ToolResult =
+                await this.symbolsOverviewTool.execute(input);
 
             if (result.success && result.data) {
                 return new vscode.LanguageModelToolResult([
@@ -70,13 +69,17 @@ export class LanguageModelToolProvider implements vscode.Disposable {
             } else {
                 return new vscode.LanguageModelToolResult([
                     new vscode.LanguageModelTextPart(
-                        `Error: ${result.error || "Unknown error occurred"}`
+                        `Error: ${result.error || 'Unknown error occurred'}`
                     ),
                 ]);
             }
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            Log.error("[LanguageModelToolProvider]: Tool invocation failed", error);
+            const message =
+                error instanceof Error ? error.message : String(error);
+            Log.error(
+                '[LanguageModelToolProvider]: Tool invocation failed',
+                error
+            );
             return new vscode.LanguageModelToolResult([
                 new vscode.LanguageModelTextPart(`Error: ${message}`),
             ]);

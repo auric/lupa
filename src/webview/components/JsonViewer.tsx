@@ -21,21 +21,22 @@ const vscodeTheme = {
             border: 'none',
             borderRadius: '0',
         },
-        property: 'var(--vscode-symbolIcon-propertyForeground, hsl(var(--primary)))',
+        property:
+            'var(--vscode-symbolIcon-propertyForeground, hsl(var(--primary)))',
         string: 'var(--vscode-debugTokenExpression-string, #ce9178)',
         number: 'var(--vscode-debugTokenExpression-number, #b5cea8)',
         boolean: 'var(--vscode-debugTokenExpression-boolean, #4fc1ff)',
         null: {
             color: 'var(--vscode-descriptionForeground)',
-            fontStyle: 'italic'
+            fontStyle: 'italic',
         },
         bracket: {
             color: 'var(--vscode-editor-foreground)',
-            fontWeight: 'bold'
+            fontWeight: 'bold',
         },
         itemCount: {
             color: 'var(--vscode-descriptionForeground)',
-            fontStyle: 'italic'
+            fontStyle: 'italic',
         },
         iconCollection: 'var(--vscode-editor-foreground)',
         iconCopy: 'var(--vscode-editor-foreground)',
@@ -44,9 +45,9 @@ const vscodeTheme = {
         error: {
             color: 'var(--vscode-errorForeground)',
             fontSize: '0.8em',
-            fontWeight: 'bold'
-        }
-    }
+            fontWeight: 'bold',
+        },
+    },
 };
 
 export const JsonViewer = function JsonViewer({
@@ -54,7 +55,7 @@ export const JsonViewer = function JsonViewer({
     className = '',
     rootKey = 'data',
     collapseDepth = 2,
-    maxHeight = '300px'
+    maxHeight = '300px',
 }: JsonViewerProps) {
     return (
         <div className={`font-mono text-xs ${className}`.trim()}>

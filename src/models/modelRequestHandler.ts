@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
-import type { ToolCallRequest, ToolCallResponse, ToolCall, ToolCallMessage } from '../types/modelTypes';
+import type {
+    ToolCallRequest,
+    ToolCallResponse,
+    ToolCall,
+    ToolCallMessage,
+} from '../types/modelTypes';
 
 /**
  * Static utility class for handling language model requests.
@@ -21,17 +26,24 @@ export class ModelRequestHandler {
      * @param messages - Array of ToolCallMessage to convert
      * @returns Array of VS Code LanguageModelChatMessage
      */
-    static convertMessages(messages: ToolCallMessage[]): vscode.LanguageModelChatMessage[] {
+    static convertMessages(
+        messages: ToolCallMessage[]
+    ): vscode.LanguageModelChatMessage[] {
         const result: vscode.LanguageModelChatMessage[] = [];
 
         for (const msg of messages) {
             if (msg.role === 'system' && msg.content) {
                 // VS Code API quirk: system messages are sent as Assistant messages
-                result.push(vscode.LanguageModelChatMessage.Assistant(msg.content));
+                result.push(
+                    vscode.LanguageModelChatMessage.Assistant(msg.content)
+                );
             } else if (msg.role === 'user' && msg.content) {
                 result.push(vscode.LanguageModelChatMessage.User(msg.content));
             } else if (msg.role === 'assistant') {
-                const content: (vscode.LanguageModelTextPart | vscode.LanguageModelToolCallPart)[] = [];
+                const content: (
+                    | vscode.LanguageModelTextPart
+                    | vscode.LanguageModelToolCallPart
+                )[] = [];
 
                 if (msg.content) {
                     content.push(new vscode.LanguageModelTextPart(msg.content));
@@ -40,12 +52,16 @@ export class ModelRequestHandler {
                 if (msg.toolCalls) {
                     for (const toolCall of msg.toolCalls) {
                         try {
-                            const input = JSON.parse(toolCall.function.arguments);
-                            content.push(new vscode.LanguageModelToolCallPart(
-                                toolCall.id,
-                                toolCall.function.name,
-                                input
-                            ));
+                            const input = JSON.parse(
+                                toolCall.function.arguments
+                            );
+                            content.push(
+                                new vscode.LanguageModelToolCallPart(
+                                    toolCall.id,
+                                    toolCall.function.name,
+                                    input
+                                )
+                            );
                         } catch {
                             continue;
                         }
@@ -60,8 +76,13 @@ export class ModelRequestHandler {
                 result.push(vscode.LanguageModelChatMessage.Assistant(content));
             } else if (msg.role === 'tool') {
                 // Tool responses become user messages with LanguageModelToolResultPart
-                const toolResultContent = [new vscode.LanguageModelTextPart(msg.content || '')];
-                const toolResult = new vscode.LanguageModelToolResultPart(msg.toolCallId || '', toolResultContent);
+                const toolResultContent = [
+                    new vscode.LanguageModelTextPart(msg.content || ''),
+                ];
+                const toolResult = new vscode.LanguageModelToolResultPart(
+                    msg.toolCallId || '',
+                    toolResultContent
+                );
                 result.push(vscode.LanguageModelChatMessage.User([toolResult]));
             }
         }
@@ -96,10 +117,12 @@ export class ModelRequestHandler {
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
-                reject(new Error(
-                    `LLM request timed out after ${timeoutMs / 1000} seconds. ` +
-                    `The model may be overloaded. Please try again.`
-                ));
+                reject(
+                    new Error(
+                        `LLM request timed out after ${timeoutMs / 1000} seconds. ` +
+                            `The model may be overloaded. Please try again.`
+                    )
+                );
             }, timeoutMs);
         });
 
@@ -113,7 +136,7 @@ export class ModelRequestHandler {
             return await Promise.race([
                 Promise.resolve(thenable),
                 timeoutPromise,
-                cancellationPromise
+                cancellationPromise,
             ]);
         } finally {
             if (timeoutId !== undefined) {
@@ -148,7 +171,7 @@ export class ModelRequestHandler {
         const messages = ModelRequestHandler.convertMessages(request.messages);
 
         const options: vscode.LanguageModelChatRequestOptions = {
-            tools: request.tools || []
+            tools: request.tools || [],
         };
 
         const response = await ModelRequestHandler.withTimeout(
@@ -168,15 +191,15 @@ export class ModelRequestHandler {
                     id: chunk.callId,
                     function: {
                         name: chunk.name,
-                        arguments: JSON.stringify(chunk.input)
-                    }
+                        arguments: JSON.stringify(chunk.input),
+                    },
                 });
             }
         }
 
         return {
             content: responseText || null,
-            toolCalls: toolCalls.length > 0 ? toolCalls : undefined
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
         };
     }
 }

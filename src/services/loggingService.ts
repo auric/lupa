@@ -6,7 +6,7 @@ const LOG_LEVEL_VALUES: Record<LogLevel, number> = {
     debug: 0,
     info: 1,
     warn: 2,
-    error: 3
+    error: 3,
 };
 
 /**
@@ -38,7 +38,9 @@ export class LoggingService implements vscode.Disposable {
     private settingsService: WorkspaceSettingsService | null = null;
 
     private constructor() {
-        this.outputChannel = vscode.window.createOutputChannel('Lupa', { log: true });
+        this.outputChannel = vscode.window.createOutputChannel('Lupa', {
+            log: true,
+        });
 
         // Initialize with default values - will be updated when settings service is set
         this.logLevel = 'info';
@@ -110,7 +112,11 @@ export class LoggingService implements vscode.Disposable {
     /**
      * Format a log message with timestamp and level
      */
-    private formatMessage(level: LogLevel, message: string, ...args: any[]): string {
+    private formatMessage(
+        level: LogLevel,
+        message: string,
+        ...args: any[]
+    ): string {
         const now = new Date();
         const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.${String(now.getMilliseconds()).padStart(3, '0')}`;
 
@@ -118,7 +124,7 @@ export class LoggingService implements vscode.Disposable {
         let formattedMessage = `${timestamp} [${levelStr}] ${message}`;
 
         if (args.length > 0) {
-            const argsStr = args.map(arg => this.formatArg(arg)).join(' ');
+            const argsStr = args.map((arg) => this.formatArg(arg)).join(' ');
             formattedMessage += ` ${argsStr}`;
         }
 
@@ -128,7 +134,11 @@ export class LoggingService implements vscode.Disposable {
     /**
      * Internal logging method used by all public logging methods
      */
-    private _log(level: LogLevel, message: string | Error, ...args: any[]): void {
+    private _log(
+        level: LogLevel,
+        message: string | Error,
+        ...args: any[]
+    ): void {
         if (!this.shouldLog(level)) {
             return;
         }
@@ -142,7 +152,8 @@ export class LoggingService implements vscode.Disposable {
 
         const formattedMessage = this.formatMessage(level, logMessage, ...args);
 
-        const output = this.outputTarget === 'channel' ? this.outputChannel : console;
+        const output =
+            this.outputTarget === 'channel' ? this.outputChannel : console;
         if (this.outputTarget === 'channel') {
             // Use native VS Code log methods for colored output
             switch (level) {

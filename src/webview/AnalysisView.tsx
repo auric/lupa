@@ -14,7 +14,12 @@ interface AnalysisViewProps {
     toolCalls: ToolCallsData | null;
 }
 
-const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, analysis, toolCalls }) => {
+const AnalysisView: React.FC<AnalysisViewProps> = ({
+    title,
+    diffText,
+    analysis,
+    toolCalls,
+}) => {
     const [windowWidth, setWindowWidth] = useState<number>(window.innerWidth);
 
     // Use custom hooks
@@ -50,27 +55,49 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, analysis, 
             <div className="flex-shrink-0 px-3 py-2 border-b border-border bg-card">
                 <div className="flex justify-between items-start">
                     <div className="flex-1">
-                        <h1 className="text-xs font-medium text-foreground truncate">{title}</h1>
-                        <p className="text-xs text-muted-foreground mt-0.5 opacity-75">Pull request analysis with tool calls and code changes</p>
+                        <h1 className="text-xs font-medium text-foreground truncate">
+                            {title}
+                        </h1>
+                        <p className="text-xs text-muted-foreground mt-0.5 opacity-75">
+                            Pull request analysis with tool calls and code
+                            changes
+                        </p>
                     </div>
                 </div>
             </div>
 
             {/* VSCode-style tabs */}
-            <Tabs defaultValue="analysis" className="flex-1 flex flex-col min-h-0">
+            <Tabs
+                defaultValue="analysis"
+                className="flex-1 flex flex-col min-h-0"
+            >
                 <TabsList className="vscode-tabs-list">
-                    <TabsTrigger value="analysis" className="vscode-tab-trigger">
+                    <TabsTrigger
+                        value="analysis"
+                        className="vscode-tab-trigger"
+                    >
                         Analysis
                     </TabsTrigger>
-                    <TabsTrigger value="toolcalls" className="vscode-tab-trigger">
-                        Tool Calls {toolCallsCount > 0 && <span className="ml-1 text-xs opacity-70">({toolCallsCount})</span>}
+                    <TabsTrigger
+                        value="toolcalls"
+                        className="vscode-tab-trigger"
+                    >
+                        Tool Calls{' '}
+                        {toolCallsCount > 0 && (
+                            <span className="ml-1 text-xs opacity-70">
+                                ({toolCallsCount})
+                            </span>
+                        )}
                     </TabsTrigger>
                     <TabsTrigger value="changes" className="vscode-tab-trigger">
                         Changes
                     </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="analysis" className="vscode-tab-content flex-1 min-h-0 overflow-auto bg-background">
+                <TabsContent
+                    value="analysis"
+                    className="vscode-tab-content flex-1 min-h-0 overflow-auto bg-background"
+                >
                     <AnalysisTab
                         content={analysis}
                         isDarkTheme={isDarkTheme}
@@ -78,11 +105,20 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ title, diffText, analysis, 
                     />
                 </TabsContent>
 
-                <TabsContent value="toolcalls" className="vscode-tab-content flex-1 min-h-0 overflow-hidden flex flex-col bg-background">
-                    <ToolCallsTab toolCalls={toolCalls} onCopy={copyToClipboard} />
+                <TabsContent
+                    value="toolcalls"
+                    className="vscode-tab-content flex-1 min-h-0 overflow-hidden flex flex-col bg-background"
+                >
+                    <ToolCallsTab
+                        toolCalls={toolCalls}
+                        onCopy={copyToClipboard}
+                    />
                 </TabsContent>
 
-                <TabsContent value="changes" className="vscode-tab-content flex-1 min-h-0 overflow-hidden flex flex-col bg-background">
+                <TabsContent
+                    value="changes"
+                    className="vscode-tab-content flex-1 min-h-0 overflow-hidden flex flex-col bg-background"
+                >
                     <DiffTab diffText={diffText} viewType={viewType} />
                 </TabsContent>
             </Tabs>

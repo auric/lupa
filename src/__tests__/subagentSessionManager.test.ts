@@ -3,9 +3,12 @@ import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 
-const createMockSettings = (maxPerSession: number = SUBAGENT_LIMITS.maxPerSession.default): WorkspaceSettingsService => ({
-    getMaxSubagentsPerSession: vi.fn().mockReturnValue(maxPerSession),
-} as unknown as WorkspaceSettingsService);
+const createMockSettings = (
+    maxPerSession: number = SUBAGENT_LIMITS.maxPerSession.default
+): WorkspaceSettingsService =>
+    ({
+        getMaxSubagentsPerSession: vi.fn().mockReturnValue(maxPerSession),
+    }) as unknown as WorkspaceSettingsService;
 
 describe('SubagentSessionManager', () => {
     let sessionManager: SubagentSessionManager;

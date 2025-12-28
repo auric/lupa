@@ -48,11 +48,11 @@ describe('CopilotModelManager timeout', () => {
 
     it('should timeout after configured duration', async () => {
         // Mock a request that never resolves
-        mockModel.sendRequest.mockImplementation(() => new Promise(() => { }));
+        mockModel.sendRequest.mockImplementation(() => new Promise(() => {}));
 
         const request = {
             messages: [{ role: 'user' as const, content: 'test' }],
-            tools: []
+            tools: [],
         };
 
         await expect(
@@ -64,17 +64,20 @@ describe('CopilotModelManager timeout', () => {
         const mockStream = {
             async *[Symbol.asyncIterator]() {
                 yield new vscode.LanguageModelTextPart('Hello, world!');
-            }
+            },
         };
 
         mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
 
         const request = {
             messages: [{ role: 'user' as const, content: 'test' }],
-            tools: []
+            tools: [],
         };
 
-        const response = await modelManager.sendRequest(request, cancellationTokenSource.token);
+        const response = await modelManager.sendRequest(
+            request,
+            cancellationTokenSource.token
+        );
         expect(response.content).toBe('Hello, world!');
     });
 
@@ -82,20 +85,26 @@ describe('CopilotModelManager timeout', () => {
         const mockStream = {
             async *[Symbol.asyncIterator]() {
                 yield new vscode.LanguageModelTextPart('Success!');
-            }
+            },
         };
 
         // Mock request that resolves after 20ms (well before 100ms timeout)
-        mockModel.sendRequest.mockImplementation(() =>
-            new Promise(resolve => setTimeout(() => resolve({ stream: mockStream }), 20))
+        mockModel.sendRequest.mockImplementation(
+            () =>
+                new Promise((resolve) =>
+                    setTimeout(() => resolve({ stream: mockStream }), 20)
+                )
         );
 
         const request = {
             messages: [{ role: 'user' as const, content: 'test' }],
-            tools: []
+            tools: [],
         };
 
-        const response = await modelManager.sendRequest(request, cancellationTokenSource.token);
+        const response = await modelManager.sendRequest(
+            request,
+            cancellationTokenSource.token
+        );
         expect(response.content).toBe('Success!');
     }, 1000);
 
@@ -104,7 +113,7 @@ describe('CopilotModelManager timeout', () => {
 
         const request = {
             messages: [{ role: 'user' as const, content: 'test' }],
-            tools: []
+            tools: [],
         };
 
         await expect(
@@ -113,11 +122,11 @@ describe('CopilotModelManager timeout', () => {
     });
 
     it('should include helpful message in timeout error', async () => {
-        mockModel.sendRequest.mockImplementation(() => new Promise(() => { }));
+        mockModel.sendRequest.mockImplementation(() => new Promise(() => {}));
 
         const request = {
             messages: [{ role: 'user' as const, content: 'test' }],
-            tools: []
+            tools: [],
         };
 
         await expect(

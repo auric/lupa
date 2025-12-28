@@ -8,7 +8,10 @@ import { ListDirTool } from '../tools/listDirTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
-import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';
+import {
+    createMockWorkspaceSettings,
+    createMockCancellationTokenSource,
+} from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -19,37 +22,52 @@ vi.mock('vscode', async (importOriginal) => {
             workspaceFolders: [
                 {
                     uri: {
-                        fsPath: '/test/workspace'
-                    }
-                }
+                        fsPath: '/test/workspace',
+                    },
+                },
             ],
             fs: {
                 readDirectory: vi.fn(),
-                readFile: vi.fn()
-            }
+                readFile: vi.fn(),
+            },
         },
         Uri: {
             ...vscodeMock.Uri,
-            file: vi.fn((filePath) => ({ fsPath: filePath, toString: () => filePath }))
-        }
+            file: vi.fn((filePath) => ({
+                fsPath: filePath,
+                toString: () => filePath,
+            })),
+        },
     };
 });
 
 const mockModel = {
     countTokens: vi.fn(() => Promise.resolve(100)),
-    maxInputTokens: 8000
+    maxInputTokens: 8000,
 };
 
 const mockCopilotModelManager = {
     getCurrentModel: vi.fn(() => Promise.resolve(mockModel)),
-    sendRequest: vi.fn()
+    sendRequest: vi.fn(),
 };
 
 const mockPromptGenerator = {
-    getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: list_directory'),
-    generateToolAwareSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer with access to tools: list_directory'),
-    generateToolCallingUserPrompt: vi.fn().mockReturnValue('<files_to_review>Sample diff content</files_to_review>')
+    getSystemPrompt: vi
+        .fn()
+        .mockReturnValue('You are an expert code reviewer.'),
+    getToolInformation: vi
+        .fn()
+        .mockReturnValue('\n\nYou have access to tools: list_directory'),
+    generateToolAwareSystemPrompt: vi
+        .fn()
+        .mockReturnValue(
+            'You are an expert code reviewer with access to tools: list_directory'
+        ),
+    generateToolCallingUserPrompt: vi
+        .fn()
+        .mockReturnValue(
+            '<files_to_review>Sample diff content</files_to_review>'
+        ),
 };
 
 describe('ListDirTool Integration Tests', () => {
@@ -74,12 +92,12 @@ describe('ListDirTool Integration Tests', () => {
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
-                fsPath: '/test/git-repo'
-            }
+                fsPath: '/test/git-repo',
+            },
         });
 
         mockGitOperationsManager = {
-            getRepository: mockGetRepository
+            getRepository: mockGetRepository,
         } as any;
 
         // Initialize tools
@@ -89,7 +107,9 @@ describe('ListDirTool Integration Tests', () => {
         // Spy on executeTools to verify it's called
         vi.spyOn(toolExecutor, 'executeTools');
 
-        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
+        subagentSessionManager = new SubagentSessionManager(
+            mockWorkspaceSettings
+        );
 
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
@@ -101,7 +121,9 @@ describe('ListDirTool Integration Tests', () => {
             subagentSessionManager
         );
 
-        mockReadDirectory = vscode.workspace.fs.readDirectory as ReturnType<typeof vi.fn>;
+        mockReadDirectory = vscode.workspace.fs.readDirectory as ReturnType<
+            typeof vi.fn
+        >;
 
         // Clear all mocks
         vi.clearAllMocks();
@@ -109,11 +131,13 @@ describe('ListDirTool Integration Tests', () => {
         // Re-setup the essential mocks after clearing
         mockGetRepository.mockReturnValue({
             rootUri: {
-                fsPath: '/test/git-repo'
-            }
+                fsPath: '/test/git-repo',
+            },
         });
         // Use shared CancellationTokenSource mock from mockFactories
-        vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (this: any) {
+        vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (
+            this: any
+        ) {
             const mock = createMockCancellationTokenSource();
             this.token = mock.token;
             this.cancel = mock.cancel;
@@ -130,7 +154,7 @@ describe('ListDirTool Integration Tests', () => {
                 ['package.json', vscode.FileType.File],
                 ['README.md', vscode.FileType.File],
                 ['node_modules', vscode.FileType.Directory], // Should be ignored
-                ['.git', vscode.FileType.Directory] // Should be ignored
+                ['.git', vscode.FileType.Directory], // Should be ignored
             ];
 
             mockReadDirectory.mockResolvedValue(mockEntries);
@@ -139,25 +163,35 @@ describe('ListDirTool Integration Tests', () => {
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: '',
-                    toolCalls: [{
-                        id: 'call_123',
-                        function: {
-                            name: 'list_directory',
-                            arguments: '{"relative_path": ".", "recursive": false}'
-                        }
-                    }]
+                    toolCalls: [
+                        {
+                            id: 'call_123',
+                            function: {
+                                name: 'list_directory',
+                                arguments:
+                                    '{"relative_path": ".", "recursive": false}',
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Based on the directory listing, I can see the project structure contains a src directory, package.json, and README.md.',
-                    toolCalls: null
+                    content:
+                        'Based on the directory listing, I can see the project structure contains a src directory, package.json, and README.md.',
+                    toolCalls: null,
                 });
 
-            const diff = 'diff --git a/src/index.js b/src/index.js\n+console.log("hello");';
-            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            const diff =
+                'diff --git a/src/index.js b/src/index.js\n+console.log("hello");';
+            const result = await toolCallingAnalyzer.analyze(
+                diff,
+                tokenSource.token
+            );
 
             expect(result.analysis).toContain('Based on the directory listing');
             expect(result.analysis).toContain('project structure');
-            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
+            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
+                2
+            );
 
             // Verify tool was called with correct arguments
             expect(toolExecutor.executeTools).toHaveBeenCalled();
@@ -167,11 +201,12 @@ describe('ListDirTool Integration Tests', () => {
             expect(history.length).toBeGreaterThan(2);
 
             // Check that the tool response is in the history
-            const toolResponseMessage = history.find(msg =>
-                msg.role === 'tool' &&
-                msg.content &&
-                typeof msg.content === 'string' &&
-                msg.content.includes('src/')
+            const toolResponseMessage = history.find(
+                (msg) =>
+                    msg.role === 'tool' &&
+                    msg.content &&
+                    typeof msg.content === 'string' &&
+                    msg.content.includes('src/')
             );
             expect(toolResponseMessage).toBeDefined();
         });
@@ -181,40 +216,50 @@ describe('ListDirTool Integration Tests', () => {
             mockReadDirectory
                 .mockResolvedValueOnce([
                     ['src', vscode.FileType.Directory],
-                    ['package.json', vscode.FileType.File]
+                    ['package.json', vscode.FileType.File],
                 ])
                 .mockResolvedValueOnce([
                     ['components', vscode.FileType.Directory],
-                    ['index.js', vscode.FileType.File]
+                    ['index.js', vscode.FileType.File],
                 ])
                 .mockResolvedValueOnce([
                     ['Button.jsx', vscode.FileType.File],
-                    ['Modal.jsx', vscode.FileType.File]
+                    ['Modal.jsx', vscode.FileType.File],
                 ]);
 
             // Mock LLM requesting recursive directory listing
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: '',
-                    toolCalls: [{
-                        id: 'call_456',
-                        function: {
-                            name: 'list_directory',
-                            arguments: '{"relative_path": ".", "recursive": true}'
-                        }
-                    }]
+                    toolCalls: [
+                        {
+                            id: 'call_456',
+                            function: {
+                                name: 'list_directory',
+                                arguments:
+                                    '{"relative_path": ".", "recursive": true}',
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'The recursive listing shows a well-structured React project with components in src/components/.',
-                    toolCalls: null
+                    content:
+                        'The recursive listing shows a well-structured React project with components in src/components/.',
+                    toolCalls: null,
                 });
 
-            const diff = 'diff --git a/src/components/NewComponent.jsx b/src/components/NewComponent.jsx\n+export default NewComponent;';
-            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            const diff =
+                'diff --git a/src/components/NewComponent.jsx b/src/components/NewComponent.jsx\n+export default NewComponent;';
+            const result = await toolCallingAnalyzer.analyze(
+                diff,
+                tokenSource.token
+            );
 
             expect(result.analysis).toContain('recursive listing');
             expect(result.analysis).toContain('React project');
-            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
+            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
+                2
+            );
         });
 
         it('should handle directory listing errors gracefully', async () => {
@@ -225,32 +270,43 @@ describe('ListDirTool Integration Tests', () => {
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: '',
-                    toolCalls: [{
-                        id: 'call_error',
-                        function: {
-                            name: 'list_directory',
-                            arguments: '{"relative_path": "restricted", "recursive": false}'
-                        }
-                    }]
+                    toolCalls: [
+                        {
+                            id: 'call_error',
+                            function: {
+                                name: 'list_directory',
+                                arguments:
+                                    '{"relative_path": "restricted", "recursive": false}',
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'I encountered an error accessing the directory. I\'ll proceed with the analysis based on the diff alone.',
-                    toolCalls: null
+                    content:
+                        "I encountered an error accessing the directory. I'll proceed with the analysis based on the diff alone.",
+                    toolCalls: null,
                 });
 
-            const diff = 'diff --git a/test.js b/test.js\n+console.log("test");';
-            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            const diff =
+                'diff --git a/test.js b/test.js\n+console.log("test");';
+            const result = await toolCallingAnalyzer.analyze(
+                diff,
+                tokenSource.token
+            );
 
             expect(result.analysis).toContain('error accessing the directory');
-            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
+            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
+                2
+            );
 
             // Verify error was passed to LLM
             const history = conversationManager.getHistory();
-            const errorMessage = history.find(msg =>
-                msg.role === 'tool' &&
-                msg.content &&
-                typeof msg.content === 'string' &&
-                msg.content.includes('Error listing directory')
+            const errorMessage = history.find(
+                (msg) =>
+                    msg.role === 'tool' &&
+                    msg.content &&
+                    typeof msg.content === 'string' &&
+                    msg.content.includes('Error listing directory')
             );
             expect(errorMessage).toBeDefined();
         });
@@ -260,32 +316,45 @@ describe('ListDirTool Integration Tests', () => {
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: '',
-                    toolCalls: [{
-                        id: 'call_traversal',
-                        function: {
-                            name: 'list_directory',
-                            arguments: '{"relative_path": "../../../etc", "recursive": false}'
-                        }
-                    }]
+                    toolCalls: [
+                        {
+                            id: 'call_traversal',
+                            function: {
+                                name: 'list_directory',
+                                arguments:
+                                    '{"relative_path": "../../../etc", "recursive": false}',
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'I cannot access directories outside the project workspace for security reasons.',
-                    toolCalls: null
+                    content:
+                        'I cannot access directories outside the project workspace for security reasons.',
+                    toolCalls: null,
                 });
 
-            const diff = 'diff --git a/config.js b/config.js\n+const config = {};';
-            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            const diff =
+                'diff --git a/config.js b/config.js\n+const config = {};';
+            const result = await toolCallingAnalyzer.analyze(
+                diff,
+                tokenSource.token
+            );
 
-            expect(result.analysis).toContain('cannot access directories outside');
-            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
+            expect(result.analysis).toContain(
+                'cannot access directories outside'
+            );
+            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
+                2
+            );
 
             // Verify security error was passed to LLM
             const history = conversationManager.getHistory();
-            const securityMessage = history.find(msg =>
-                msg.role === 'tool' &&
-                msg.content &&
-                typeof msg.content === 'string' &&
-                msg.content.includes('Directory traversal detected')
+            const securityMessage = history.find(
+                (msg) =>
+                    msg.role === 'tool' &&
+                    msg.content &&
+                    typeof msg.content === 'string' &&
+                    msg.content.includes('Directory traversal detected')
             );
             expect(securityMessage).toBeDefined();
         });
@@ -295,7 +364,7 @@ describe('ListDirTool Integration Tests', () => {
             mockReadDirectory.mockResolvedValue([
                 ['src', vscode.FileType.Directory],
                 ['test', vscode.FileType.Directory],
-                ['package.json', vscode.FileType.File]
+                ['package.json', vscode.FileType.File],
             ]);
 
             // Mock LLM making multiple tool calls
@@ -307,22 +376,30 @@ describe('ListDirTool Integration Tests', () => {
                             id: 'call_list',
                             function: {
                                 name: 'list_directory',
-                                arguments: '{"relative_path": ".", "recursive": false}'
-                            }
-                        }
-                    ]
+                                arguments:
+                                    '{"relative_path": ".", "recursive": false}',
+                            },
+                        },
+                    ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Based on the project structure, this appears to be a well-organized codebase with separate src and test directories.',
-                    toolCalls: null
+                    content:
+                        'Based on the project structure, this appears to be a well-organized codebase with separate src and test directories.',
+                    toolCalls: null,
                 });
 
-            const diff = 'diff --git a/src/utils.js b/src/utils.js\n+export const helper = () => {};';
-            const result = await toolCallingAnalyzer.analyze(diff, tokenSource.token);
+            const diff =
+                'diff --git a/src/utils.js b/src/utils.js\n+export const helper = () => {};';
+            const result = await toolCallingAnalyzer.analyze(
+                diff,
+                tokenSource.token
+            );
 
             expect(result.analysis).toContain('well-organized codebase');
             expect(result.analysis).toContain('src and test directories');
-            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
+            expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
+                2
+            );
 
             // Verify all tools were executed
             const history = conversationManager.getHistory();
@@ -345,8 +422,12 @@ describe('ListDirTool Integration Tests', () => {
             const vscodeToolDef = tool!.getVSCodeTool();
             expect(vscodeToolDef.inputSchema).toBeDefined();
             expect(vscodeToolDef.inputSchema).toHaveProperty('properties');
-            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('relative_path');
-            expect((vscodeToolDef.inputSchema as any).properties).toHaveProperty('recursive');
+            expect(
+                (vscodeToolDef.inputSchema as any).properties
+            ).toHaveProperty('relative_path');
+            expect(
+                (vscodeToolDef.inputSchema as any).properties
+            ).toHaveProperty('recursive');
         });
     });
 });

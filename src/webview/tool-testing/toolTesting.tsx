@@ -5,52 +5,52 @@ import ToolTestingView from './ToolTestingView';
 
 // Extend Window interface for our webview data
 declare global {
-  interface Window {
-    vscode: any;
-    toolTestingData: {
-      initialTool: string | null;
-      initialParameters: Record<string, any>;
-    };
-    initialTheme: {
-      kind: number;
-      isDarkTheme: boolean;
-    };
-  }
+    interface Window {
+        vscode: any;
+        toolTestingData: {
+            initialTool: string | null;
+            initialParameters: Record<string, any>;
+        };
+        initialTheme: {
+            kind: number;
+            isDarkTheme: boolean;
+        };
+    }
 }
 
 // Tool Testing Application Component
 const ToolTestingApp: React.FC = () => {
-  // Get initial data from window object injected by extension
-  const { initialTool, initialParameters } = window.toolTestingData || {
-    initialTool: null,
-    initialParameters: {}
-  };
+    // Get initial data from window object injected by extension
+    const { initialTool, initialParameters } = window.toolTestingData || {
+        initialTool: null,
+        initialParameters: {},
+    };
 
-  return (
-    <ToolTestingView
-      initialTool={initialTool || undefined}
-      initialParameters={initialParameters}
-    />
-  );
+    return (
+        <ToolTestingView
+            initialTool={initialTool || undefined}
+            initialParameters={initialParameters}
+        />
+    );
 };
 
 // Initialize the React application
 document.addEventListener('DOMContentLoaded', () => {
-  const container = document.getElementById('root');
-  if (!container) {
-    console.error('Root container not found');
-    return;
-  }
+    const container = document.getElementById('root');
+    if (!container) {
+        console.error('Root container not found');
+        return;
+    }
 
-  const root = createRoot(container);
+    const root = createRoot(container);
 
-  try {
-    root.render(<ToolTestingApp />);
-  } catch (error) {
-    console.error('Failed to render tool testing interface:', error);
+    try {
+        root.render(<ToolTestingApp />);
+    } catch (error) {
+        console.error('Failed to render tool testing interface:', error);
 
-    // Fallback error display
-    container.innerHTML = `
+        // Fallback error display
+        container.innerHTML = `
       <div style="
         display: flex;
         flex-direction: column;
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </p>
       </div>
     `;
-  }
+    }
 });
 
 export default ToolTestingApp;

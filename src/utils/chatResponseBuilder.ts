@@ -1,5 +1,5 @@
-import { SEVERITY, SECTION } from "../config/chatEmoji";
-import type { Finding } from "../types/chatTypes";
+import { SEVERITY, SECTION } from '../config/chatEmoji';
+import type { Finding } from '../types/chatTypes';
 
 /**
  * Builder utility for constructing consistent chat responses.
@@ -25,12 +25,15 @@ export class ChatResponseBuilder {
      * @param status - 'success' (✅), 'issues' (🔍), or 'cancelled' (💬)
      * @param summary - Text to display after emoji (e.g., "Analysis Complete")
      */
-    addVerdictLine(status: "success" | "issues" | "cancelled", summary: string): this {
-        let emoji = "💬";
-        if (status === "success") {
+    addVerdictLine(
+        status: 'success' | 'issues' | 'cancelled',
+        summary: string
+    ): this {
+        let emoji = '💬';
+        if (status === 'success') {
             emoji = SEVERITY.success;
-        } else if (status === "issues") {
-            emoji = "🔍"
+        } else if (status === 'issues') {
+            emoji = '🔍';
         }
         this.sections.push(`## ${emoji} ${summary}\n`);
         return this;
@@ -59,8 +62,12 @@ export class ChatResponseBuilder {
      * @param critical - Number of critical issues
      * @param suggestions - Number of suggestions
      */
-    addSummaryStats(filesAnalyzed: number, critical: number, suggestions: number): this {
-        const fileWord = filesAnalyzed === 1 ? "file" : "files";
+    addSummaryStats(
+        filesAnalyzed: number,
+        critical: number,
+        suggestions: number
+    ): this {
+        const fileWord = filesAnalyzed === 1 ? 'file' : 'files';
         this.sections.push(
             `\n${SECTION.summary} **${filesAnalyzed} ${fileWord}** analyzed | **${critical}** critical | **${suggestions}** suggestions\n`
         );
@@ -74,14 +81,21 @@ export class ChatResponseBuilder {
      * @param emoji - Emoji to prefix title (use SEVERITY constants)
      * @param findings - Array of Finding objects
      */
-    addFindingsSection(title: string, emoji: string, findings: Finding[]): this {
-        if (findings.length === 0) {return this;}
+    addFindingsSection(
+        title: string,
+        emoji: string,
+        findings: Finding[]
+    ): this {
+        if (findings.length === 0) {
+            return this;
+        }
 
         this.sections.push(`\n---\n\n### ${emoji} ${title}\n\n`);
         const findingCards = findings.map(
-            (finding) => `**${finding.title}** in [${finding.location}](${finding.anchor})\n${finding.description}`
+            (finding) =>
+                `**${finding.title}** in [${finding.location}](${finding.anchor})\n${finding.description}`
         );
-        this.sections.push(findingCards.join("\n\n") + "\n\n");
+        this.sections.push(findingCards.join('\n\n') + '\n\n');
         return this;
     }
 
@@ -92,11 +106,13 @@ export class ChatResponseBuilder {
      * @param notes - Array of positive observations
      */
     addPositiveNotes(notes: string[]): this {
-        if (notes.length === 0) {return this;}
+        if (notes.length === 0) {
+            return this;
+        }
 
         this.sections.push(`\n---\n\n### ${SEVERITY.success} What's Good\n\n`);
-        const bulletList = notes.map((note) => `- ${note}`).join("\n");
-        this.sections.push(bulletList + "\n");
+        const bulletList = notes.map((note) => `- ${note}`).join('\n');
+        this.sections.push(bulletList + '\n');
         return this;
     }
 
@@ -114,6 +130,6 @@ export class ChatResponseBuilder {
      * @returns Concatenated markdown string
      */
     build(): string {
-        return this.sections.join("");
+        return this.sections.join('');
     }
 }

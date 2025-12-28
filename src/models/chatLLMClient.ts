@@ -22,7 +22,7 @@ export class ChatLLMClient implements ILLMClient {
     constructor(
         private readonly model: vscode.LanguageModelChat,
         private readonly timeoutMs: number
-    ) { }
+    ) {}
 
     /**
      * Send a request to the language model with tool-calling support.

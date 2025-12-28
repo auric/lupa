@@ -15,7 +15,7 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
  * @see docs/architecture.md - Architecture Decision 10: Streaming Debounce Pattern
  */
 export class ToolCallStreamAdapter implements ToolCallHandler {
-    constructor(private readonly chatHandler: ChatToolCallHandler) { }
+    constructor(private readonly chatHandler: ChatToolCallHandler) {}
 
     /**
      * Called when a conversation iteration starts.
@@ -56,7 +56,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
         _durationMs?: number,
         _metadata?: ToolResultMetadata
     ): void {
-        const summary = success ? 'completed' : (error || 'failed');
+        const summary = success ? 'completed' : error || 'failed';
         this.chatHandler.onToolComplete(toolName, success, summary);
     }
 
@@ -64,7 +64,10 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
      * Formats a human-readable progress message for tool execution.
      * Uses tool-specific templates with argument interpolation.
      */
-    private formatToolStartMessage(toolName: string, args: Record<string, unknown>): string {
+    private formatToolStartMessage(
+        toolName: string,
+        args: Record<string, unknown>
+    ): string {
         switch (toolName) {
             case 'read_file':
                 return `${ACTIVITY.reading} Reading ${args.file_path || 'file'}...`;

@@ -13,22 +13,22 @@ vi.mock('vscode', async (importOriginal) => {
                     html: '',
                     onDidReceiveMessage: vi.fn(),
                     postMessage: vi.fn(),
-                    asWebviewUri: vi.fn().mockImplementation((uri: any) => uri)
+                    asWebviewUri: vi.fn().mockImplementation((uri: any) => uri),
                 },
                 onDidDispose: vi.fn(),
-                dispose: vi.fn()
+                dispose: vi.fn(),
             })),
             showTextDocument: vi.fn(),
             showErrorMessage: vi.fn(),
             onDidChangeActiveColorTheme: vi.fn(),
             activeColorTheme: {
-                kind: 1 // ColorThemeKind.Light
-            }
+                kind: 1, // ColorThemeKind.Light
+            },
         },
         workspace: {
             ...vscodeMock.workspace,
-            openTextDocument: vi.fn()
-        }
+            openTextDocument: vi.fn(),
+        },
     };
 });
 
@@ -38,8 +38,8 @@ vi.mock('../services/loggingService', () => ({
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
-        debug: vi.fn()
-    }
+        debug: vi.fn(),
+    },
 }));
 
 // Mock StatusBarService
@@ -47,8 +47,8 @@ vi.mock('../services/statusBarService', () => ({
     StatusBarService: {
         getInstance: vi.fn(() => ({
             // Mock status bar methods if needed
-        }))
-    }
+        })),
+    },
 }));
 
 describe('UIManager', () => {
@@ -62,7 +62,7 @@ describe('UIManager', () => {
 
         // Create mock extension context
         mockExtensionContext = {
-            extensionUri: { path: '/mock/path' }
+            extensionUri: { path: '/mock/path' },
         } as any;
 
         // Create mock webview with message handling
@@ -73,14 +73,14 @@ describe('UIManager', () => {
                 return { dispose: vi.fn() };
             }),
             postMessage: vi.fn(),
-            asWebviewUri: vi.fn().mockImplementation((uri) => uri)
+            asWebviewUri: vi.fn().mockImplementation((uri) => uri),
         };
 
         // Mock createWebviewPanel to return our controlled webview
         (vscode.window.createWebviewPanel as any).mockReturnValue({
             webview: mockWebview,
             onDidDispose: vi.fn(),
-            dispose: vi.fn()
+            dispose: vi.fn(),
         });
 
         uiManager = new UIManager(mockExtensionContext, '/mock/git/repo/root');
@@ -92,7 +92,11 @@ describe('UIManager', () => {
             const diffText = 'diff --git a/file.ts b/file.ts';
             const analysis = 'Test analysis';
 
-            const panel = uiManager.displayAnalysisResults(title, diffText, analysis);
+            const panel = uiManager.displayAnalysisResults(
+                title,
+                diffText,
+                analysis
+            );
 
             expect(vscode.window.createWebviewPanel).toHaveBeenCalledWith(
                 'prAnalyzerResults',
@@ -114,16 +118,20 @@ describe('UIManager', () => {
 
         it('should handle openFile message with valid file path', async () => {
             const mockDocument = { uri: { fsPath: 'test.ts' } };
-            (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
-            (vscode.window.showTextDocument as any).mockResolvedValue(undefined);
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+            (vscode.window.showTextDocument as any).mockResolvedValue(
+                undefined
+            );
 
             const message = {
                 command: 'openFile',
                 payload: {
                     filePath: '/path/to/test.ts',
                     line: 10,
-                    column: 5
-                }
+                    column: 5,
+                },
             };
 
             // Simulate message from webview
@@ -135,21 +143,25 @@ describe('UIManager', () => {
                 mockDocument,
                 expect.objectContaining({
                     viewColumn: vscode.ViewColumn.One,
-                    selection: expect.any(Object)
+                    selection: expect.any(Object),
                 })
             );
         });
 
         it('should handle openFile message without line/column', async () => {
             const mockDocument = { uri: { fsPath: 'test.ts' } };
-            (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
-            (vscode.window.showTextDocument as any).mockResolvedValue(undefined);
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+            (vscode.window.showTextDocument as any).mockResolvedValue(
+                undefined
+            );
 
             const message = {
                 command: 'openFile',
                 payload: {
-                    filePath: '/path/to/test.ts'
-                }
+                    filePath: '/path/to/test.ts',
+                },
             };
 
             await messageHandler(message);
@@ -157,7 +169,7 @@ describe('UIManager', () => {
             expect(vscode.window.showTextDocument).toHaveBeenCalledWith(
                 mockDocument,
                 expect.objectContaining({
-                    viewColumn: vscode.ViewColumn.One
+                    viewColumn: vscode.ViewColumn.One,
                 })
             );
         });
@@ -169,21 +181,23 @@ describe('UIManager', () => {
             const message = {
                 command: 'openFile',
                 payload: {
-                    filePath: '/path/to/nonexistent.ts'
-                }
+                    filePath: '/path/to/nonexistent.ts',
+                },
             };
 
             await messageHandler(message);
 
             expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-                expect.stringContaining('Could not open file: /path/to/nonexistent.ts')
+                expect.stringContaining(
+                    'Could not open file: /path/to/nonexistent.ts'
+                )
             );
         });
 
         it('should handle unknown message commands', () => {
             const message = {
                 command: 'unknownCommand',
-                payload: {}
+                payload: {},
             };
 
             // Should not throw
@@ -192,16 +206,20 @@ describe('UIManager', () => {
 
         it('should convert 1-based line/column to 0-based for VSCode API', async () => {
             const mockDocument = { uri: { fsPath: 'test.ts' } };
-            (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
-            (vscode.window.showTextDocument as any).mockResolvedValue(undefined);
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+            (vscode.window.showTextDocument as any).mockResolvedValue(
+                undefined
+            );
 
             const message = {
                 command: 'openFile',
                 payload: {
                     filePath: '/path/to/test.ts',
                     line: 1,
-                    column: 1
-                }
+                    column: 1,
+                },
             };
 
             await messageHandler(message);
@@ -213,8 +231,12 @@ describe('UIManager', () => {
 
         it('should handle openFile message with line range', async () => {
             const mockDocument = { uri: { fsPath: 'test.ts' } };
-            (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
-            (vscode.window.showTextDocument as any).mockResolvedValue(undefined);
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+            (vscode.window.showTextDocument as any).mockResolvedValue(
+                undefined
+            );
 
             const message = {
                 command: 'openFile',
@@ -222,18 +244,21 @@ describe('UIManager', () => {
                     filePath: '/path/to/test.ts',
                     line: 10,
                     endLine: 15,
-                    column: 5
-                }
+                    column: 5,
+                },
             };
 
             await messageHandler(message);
 
             // Should create a range from line 10 to 15
             expect(vscode.Position).toHaveBeenCalledWith(9, 4); // 0-based: line 10-1=9, column 5-1=4
-            expect(vscode.Position).toHaveBeenCalledWith(14, Number.MAX_SAFE_INTEGER); // 0-based: endLine 15-1=14, end of line
+            expect(vscode.Position).toHaveBeenCalledWith(
+                14,
+                Number.MAX_SAFE_INTEGER
+            ); // 0-based: endLine 15-1=14, end of line
             expect(vscode.Range).toHaveBeenCalledWith(
                 expect.any(Object), // start position
-                expect.any(Object)  // end position
+                expect.any(Object) // end position
             );
         });
     });
@@ -242,7 +267,9 @@ describe('UIManager', () => {
         it('should set up theme change listeners', () => {
             uiManager.displayAnalysisResults('Test', 'diff', 'analysis');
 
-            expect(vscode.window.onDidChangeActiveColorTheme).toHaveBeenCalled();
+            expect(
+                vscode.window.onDidChangeActiveColorTheme
+            ).toHaveBeenCalled();
         });
     });
 
@@ -252,23 +279,35 @@ describe('UIManager', () => {
 <example_fix>Fixed code</example_fix>
 <explanation>Detailed explanation</explanation>`;
 
-            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(
+                analysis
+            );
 
-            expect(cleanedAnalysis).toBe('Security issue\nFixed code\nDetailed explanation');
+            expect(cleanedAnalysis).toBe(
+                'Security issue\nFixed code\nDetailed explanation'
+            );
         });
 
         it('should handle inline tags', () => {
-            const analysis = 'This is <suggestion_performance>inline performance issue</suggestion_performance> text.';
+            const analysis =
+                'This is <suggestion_performance>inline performance issue</suggestion_performance> text.';
 
-            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(
+                analysis
+            );
 
-            expect(cleanedAnalysis).toBe('This is inline performance issue text.');
+            expect(cleanedAnalysis).toBe(
+                'This is inline performance issue text.'
+            );
         });
 
         it('should handle tags with attributes', () => {
-            const analysis = '<suggestion_security severity="high">Critical issue</suggestion_security>';
+            const analysis =
+                '<suggestion_security severity="high">Critical issue</suggestion_security>';
 
-            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(
+                analysis
+            );
 
             expect(cleanedAnalysis).toBe('Critical issue');
         });
@@ -276,7 +315,9 @@ describe('UIManager', () => {
         it('should preserve content without tags', () => {
             const analysis = 'Plain text without any tags.';
 
-            const cleanedAnalysis = (uiManager as any).stripOutputTags(analysis);
+            const cleanedAnalysis = (uiManager as any).stripOutputTags(
+                analysis
+            );
 
             expect(cleanedAnalysis).toBe(analysis);
         });
@@ -284,12 +325,19 @@ describe('UIManager', () => {
         it('should integrate stripOutputTags in generatePRAnalysisHtml', () => {
             const mockPanel = {
                 webview: {
-                    asWebviewUri: vi.fn().mockImplementation((uri) => uri)
-                }
+                    asWebviewUri: vi.fn().mockImplementation((uri) => uri),
+                },
             } as any;
-            const analysis = '<suggestion_security>Security issue</suggestion_security>';
+            const analysis =
+                '<suggestion_security>Security issue</suggestion_security>';
 
-            const html = uiManager.generatePRAnalysisHtml('Test', 'diff', analysis, mockPanel, undefined);
+            const html = uiManager.generatePRAnalysisHtml(
+                'Test',
+                'diff',
+                analysis,
+                mockPanel,
+                undefined
+            );
 
             expect(html).toContain('Security issue');
             expect(html).not.toContain('<suggestion_security>');

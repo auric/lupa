@@ -9,13 +9,17 @@ import type { DiffHunk } from '../types/contextTypes';
  * @param parsedDiff Array of diff hunks containing file paths
  * @returns Hierarchical tree structure for vscode chat filetree rendering
  */
-export function buildFileTree(parsedDiff: DiffHunk[]): vscode.ChatResponseFileTree[] {
+export function buildFileTree(
+    parsedDiff: DiffHunk[]
+): vscode.ChatResponseFileTree[] {
     if (!parsedDiff || parsedDiff.length === 0) {
         return [];
     }
 
     // Extract unique file paths and sort them for consistent ordering
-    const filePaths = [...new Set(parsedDiff.map(hunk => hunk.filePath))].sort();
+    const filePaths = [
+        ...new Set(parsedDiff.map((hunk) => hunk.filePath)),
+    ].sort();
 
     // Build hierarchical tree structure
     const root: Map<string, TreeNode> = new Map();
@@ -26,13 +30,15 @@ export function buildFileTree(parsedDiff: DiffHunk[]): vscode.ChatResponseFileTr
 
         for (let i = 0; i < parts.length; i++) {
             const part = parts[i];
-            if (!part) {continue;}
+            if (!part) {
+                continue;
+            }
             const isFile = i === parts.length - 1;
 
             if (!currentLevel.has(part)) {
                 currentLevel.set(part, {
                     name: part,
-                    children: isFile ? undefined : new Map()
+                    children: isFile ? undefined : new Map(),
                 });
             }
 
@@ -51,7 +57,9 @@ interface TreeNode {
     children: Map<string, TreeNode> | undefined;
 }
 
-function convertToFileTree(nodes: Map<string, TreeNode>): vscode.ChatResponseFileTree[] {
+function convertToFileTree(
+    nodes: Map<string, TreeNode>
+): vscode.ChatResponseFileTree[] {
     const result: vscode.ChatResponseFileTree[] = [];
 
     // Sort: folders first, then files, alphabetically within each group
@@ -67,7 +75,7 @@ function convertToFileTree(nodes: Map<string, TreeNode>): vscode.ChatResponseFil
 
     for (const [, node] of sortedEntries) {
         const treeItem: vscode.ChatResponseFileTree = {
-            name: node.name
+            name: node.name,
         };
 
         if (node.children && node.children.size > 0) {

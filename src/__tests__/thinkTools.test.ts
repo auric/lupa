@@ -299,7 +299,7 @@ describe('Think Tools Integration', () => {
             new ThinkAboutContextTool(),
             new ThinkAboutTaskTool(),
             new ThinkAboutCompletionTool(),
-            new ThinkAboutInvestigationTool()
+            new ThinkAboutInvestigationTool(),
         ];
 
         for (const tool of tools) {
@@ -316,7 +316,7 @@ describe('Think Tools Integration', () => {
             new ThinkAboutContextTool(),
             new ThinkAboutTaskTool(),
             new ThinkAboutCompletionTool(),
-            new ThinkAboutInvestigationTool()
+            new ThinkAboutInvestigationTool(),
         ];
 
         for (const tool of tools) {
@@ -330,10 +330,10 @@ describe('Think Tools Integration', () => {
             new ThinkAboutContextTool(),
             new ThinkAboutTaskTool(),
             new ThinkAboutCompletionTool(),
-            new ThinkAboutInvestigationTool()
+            new ThinkAboutInvestigationTool(),
         ];
 
-        const names = tools.map(t => t.name);
+        const names = tools.map((t) => t.name);
         const uniqueNames = new Set(names);
         expect(uniqueNames.size).toBe(tools.length);
     });

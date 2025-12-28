@@ -137,7 +137,7 @@
         "pretest": "npm run check-types",
         "check-types": "tsc --noEmit && npm run lint",
         "lint": "oxlint",
-        "lint:fix": "oxlint --fix && prettier --write src/**/*.{ts,tsx}",
+        "lint:fix": "oxlint --fix && prettier --write src/**/*.{ts,tsx} __mocks__/*.{ts,js}",
         "clean": "rimraf -g ./*.vsix && rimraf ./dist",
         "test": "npx vitest run",
         "test:watch": "vitest",

@@ -3,7 +3,7 @@ import type { ITool } from '../tools/ITool';
 
 /**
  * Generates focused system prompts for subagent investigations.
- * 
+ *
  * Subagents are lightweight investigation agents that:
  * - Do NOT see the PR diff (context must be provided by parent)
  * - Have limited tool iterations
@@ -18,7 +18,11 @@ export class SubagentPromptGenerator {
      * @param maxIterations Maximum conversation iterations for this subagent
      * @returns Complete system prompt for the subagent
      */
-    generateSystemPrompt(task: SubagentTask, tools: ITool[], maxIterations: number): string {
+    generateSystemPrompt(
+        task: SubagentTask,
+        tools: ITool[],
+        maxIterations: number
+    ): string {
         const toolList = this.formatToolList(tools);
         const contextSection = task.context
             ? `<context_from_parent>
@@ -101,7 +105,6 @@ If you find NO issues, explicitly state what you checked and why it passed.
 - Use \`think_about_investigation\` to check if you're staying focused
 - Return partial findings if running low on iterations - partial evidence is valuable
 </constraints>`;
-
     }
 
     /**
@@ -113,7 +116,7 @@ If you find NO issues, explicitly state what you checked and why it passed.
         }
 
         return tools
-            .map(tool => {
+            .map((tool) => {
                 // Get first line of description for conciseness
                 const shortDesc = tool.description.split('\n')[0];
                 return `- **${tool.name}**: ${shortDesc}`;

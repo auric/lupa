@@ -6,7 +6,10 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { createMockWorkspaceSettings, createMockFdirInstance } from './testUtils/mockFactories';
+import {
+    createMockWorkspaceSettings,
+    createMockFdirInstance,
+} from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -17,18 +20,21 @@ vi.mock('vscode', async (importOriginal) => {
             workspaceFolders: [
                 {
                     uri: {
-                        fsPath: '/test/workspace'
-                    }
-                }
+                        fsPath: '/test/workspace',
+                    },
+                },
             ],
             fs: {
-                readFile: vi.fn()
-            }
+                readFile: vi.fn(),
+            },
         },
         Uri: {
             ...vscodeMock.Uri,
-            file: vi.fn((filePath) => ({ fsPath: filePath, toString: () => filePath }))
-        }
+            file: vi.fn((filePath) => ({
+                fsPath: filePath,
+                toString: () => filePath,
+            })),
+        },
     };
 });
 
@@ -42,14 +48,14 @@ vi.mock('fdir', () => ({
             exclude: vi.fn().mockReturnThis(),
             filter: vi.fn().mockReturnThis(),
             crawl: vi.fn().mockReturnThis(),
-            withPromise: vi.fn()
+            withPromise: vi.fn(),
         };
-    })
+    }),
 }));
 
 // Mock picomatch
 vi.mock('picomatch', () => ({
-    default: vi.fn()
+    default: vi.fn(),
 }));
 
 // Mock ignore - Vitest 4 requires function/class for mocks used as constructors
@@ -57,11 +63,17 @@ vi.mock('ignore', () => ({
     default: vi.fn(function () {
         return {
             add: vi.fn().mockReturnThis(),
-            checkIgnore: vi.fn(function () { return { ignored: false }; }),
-            ignores: vi.fn(function () { return false; }),
-            filter: vi.fn().mockImplementation(function (files) { return files; })
+            checkIgnore: vi.fn(function () {
+                return { ignored: false };
+            }),
+            ignores: vi.fn(function () {
+                return false;
+            }),
+            filter: vi.fn().mockImplementation(function (files) {
+                return files;
+            }),
         };
-    })
+    }),
 }));
 
 describe('FindFileTool Integration Tests', () => {
@@ -81,12 +93,12 @@ describe('FindFileTool Integration Tests', () => {
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
-                fsPath: '/test/git-repo'
-            }
+                fsPath: '/test/git-repo',
+            },
         });
 
         mockGitOperationsManager = {
-            getRepository: mockGetRepository
+            getRepository: mockGetRepository,
         } as any;
 
         // Initialize tools
@@ -101,8 +113,8 @@ describe('FindFileTool Integration Tests', () => {
         // Re-setup the essential mocks after clearing
         mockGetRepository.mockReturnValue({
             rootUri: {
-                fsPath: '/test/git-repo'
-            }
+                fsPath: '/test/git-repo',
+            },
         });
 
         // Mock empty .gitignore by default
@@ -114,7 +126,7 @@ describe('FindFileTool Integration Tests', () => {
             // Mock file search results with full paths from git repo
             const mockFdirInstance = createMockFdirInstance([
                 '/test/git-repo/components/Button.tsx',
-                '/test/git-repo/components/Input.tsx'
+                '/test/git-repo/components/Input.tsx',
             ]);
             // Vitest 4: use mockImplementation with function syntax for constructor mocks
             vi.mocked(fdir).mockImplementation(function () {
@@ -122,13 +134,15 @@ describe('FindFileTool Integration Tests', () => {
             } as any);
 
             // Execute tool call through the ToolExecutor
-            const toolCallResults = await toolExecutor.executeTools([{
-                name: 'find_files_by_pattern',
-                args: {
-                    pattern: '*.tsx',
-                    search_directory: 'components'
-                }
-            }]);
+            const toolCallResults = await toolExecutor.executeTools([
+                {
+                    name: 'find_files_by_pattern',
+                    args: {
+                        pattern: '*.tsx',
+                        search_directory: 'components',
+                    },
+                },
+            ]);
 
             // Verify results are properly formatted
             expect(toolCallResults).toHaveLength(1);
@@ -138,8 +152,6 @@ describe('FindFileTool Integration Tests', () => {
                 'components/Button.tsx\ncomponents/Input.tsx'
             );
         });
-
-
 
         it('should handle tool execution errors gracefully', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
@@ -151,27 +163,29 @@ describe('FindFileTool Integration Tests', () => {
                 return mockFdirInstance;
             } as any);
 
-            const toolCallResults = await toolExecutor.executeTools([{
-                name: 'find_files_by_pattern',
-                args: {
-                    pattern: '*.js',
-                    search_directory: 'restricted'
-                }
-            }]);
+            const toolCallResults = await toolExecutor.executeTools([
+                {
+                    name: 'find_files_by_pattern',
+                    args: {
+                        pattern: '*.js',
+                        search_directory: 'restricted',
+                    },
+                },
+            ]);
 
             expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(false);
             expect(toolCallResults[0].error).toContain('Unable to find files');
             expect(toolCallResults[0].error).toContain('Permission denied');
         });
-
-
     });
 
     describe('Tool Registry Integration', () => {
         it('should register FindFileTool correctly', () => {
             expect(toolRegistry.hasTool('find_files_by_pattern')).toBe(true);
-            expect(toolRegistry.getTool('find_files_by_pattern')).toBe(findFileTool);
+            expect(toolRegistry.getTool('find_files_by_pattern')).toBe(
+                findFileTool
+            );
         });
 
         it('should include FindFileTool in available tools list', () => {
@@ -188,7 +202,9 @@ describe('FindFileTool Integration Tests', () => {
             expect(tool!.name).toBe('find_files_by_pattern');
 
             // Verify description is LLM-friendly with key features
-            expect(vscodeToolDef.description).toContain('Find files matching glob patterns within a directory');
+            expect(vscodeToolDef.description).toContain(
+                'Find files matching glob patterns within a directory'
+            );
             expect(vscodeToolDef.description).toContain('glob patterns');
             expect(vscodeToolDef.description).toContain('.gitignore');
             expect(vscodeToolDef.description).toContain('relative paths');
@@ -213,7 +229,9 @@ describe('FindFileTool Integration Tests', () => {
             // Verify search_directory parameter details
             const searchDirProp = schema.properties.search_directory;
             expect(searchDirProp.type).toBe('string');
-            expect(searchDirProp.description).toContain('relative to project root');
+            expect(searchDirProp.description).toContain(
+                'relative to project root'
+            );
             expect(searchDirProp.description).toContain('default');
             expect(searchDirProp.default).toBe('.');
         });

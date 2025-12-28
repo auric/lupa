@@ -72,7 +72,7 @@ export class ConversationRunner {
     constructor(
         private readonly client: ILLMClient,
         private readonly toolExecutor: ToolExecutor
-    ) { }
+    ) {}
 
     /**
      * Execute a conversation loop until completion or max iterations.
@@ -89,18 +89,27 @@ export class ConversationRunner {
 
         while (iteration < config.maxIterations) {
             iteration++;
-            Log.info(`${logPrefix} Iteration ${iteration}/${config.maxIterations}`);
+            Log.info(
+                `${logPrefix} Iteration ${iteration}/${config.maxIterations}`
+            );
 
             if (token.isCancellationRequested) {
-                Log.info(`${logPrefix} Cancelled before iteration ${iteration}`);
+                Log.info(
+                    `${logPrefix} Cancelled before iteration ${iteration}`
+                );
                 return CANCELLATION_MESSAGE;
             }
 
             handler?.onIterationStart?.(iteration, config.maxIterations);
 
             try {
-                const vscodeTools = config.tools.map(tool => tool.getVSCodeTool());
-                let messages = this.prepareMessagesForLLM(config.systemPrompt, conversation);
+                const vscodeTools = config.tools.map((tool) =>
+                    tool.getVSCodeTool()
+                );
+                let messages = this.prepareMessagesForLLM(
+                    config.systemPrompt,
+                    conversation
+                );
 
                 // Initialize token validator if not already done
                 if (!this.tokenValidator) {
@@ -118,8 +127,13 @@ export class ConversationRunner {
                     conversation.addUserMessage(
                         'Context window is full. Please provide your final analysis based on the information you have gathered so far.'
                     );
-                    messages = this.prepareMessagesForLLM(config.systemPrompt, conversation);
-                } else if (validation.suggestedAction === 'remove_old_context') {
+                    messages = this.prepareMessagesForLLM(
+                        config.systemPrompt,
+                        conversation
+                    );
+                } else if (
+                    validation.suggestedAction === 'remove_old_context'
+                ) {
                     const cleanup = await this.tokenValidator.cleanupContext(
                         messages.slice(1),
                         config.systemPrompt
@@ -131,23 +145,37 @@ export class ConversationRunner {
                         if (message.role === 'user') {
                             conversation.addUserMessage(message.content || '');
                         } else if (message.role === 'assistant') {
-                            conversation.addAssistantMessage(message.content, message.toolCalls);
+                            conversation.addAssistantMessage(
+                                message.content,
+                                message.toolCalls
+                            );
                         } else if (message.role === 'tool') {
-                            conversation.addToolMessage(message.toolCallId || '', message.content || '');
+                            conversation.addToolMessage(
+                                message.toolCallId || '',
+                                message.content || ''
+                            );
                         }
                     }
 
-                    messages = this.prepareMessagesForLLM(config.systemPrompt, conversation);
+                    messages = this.prepareMessagesForLLM(
+                        config.systemPrompt,
+                        conversation
+                    );
 
                     if (cleanup.contextFullMessageAdded) {
-                        Log.info(`${logPrefix} Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`);
+                        Log.info(
+                            `${logPrefix} Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`
+                        );
                     }
                 }
 
-                const response = await this.client.sendRequest({
-                    messages,
-                    tools: vscodeTools
-                }, token);
+                const response = await this.client.sendRequest(
+                    {
+                        messages,
+                        tools: vscodeTools,
+                    },
+                    token
+                );
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
@@ -160,22 +188,39 @@ export class ConversationRunner {
                 );
 
                 if (response.toolCalls && response.toolCalls.length > 0) {
-                    await this.handleToolCalls(response.toolCalls, conversation, handler, logPrefix);
+                    await this.handleToolCalls(
+                        response.toolCalls,
+                        conversation,
+                        handler,
+                        logPrefix
+                    );
                     continue;
                 }
 
                 Log.info(`${logPrefix} Completed successfully`);
-                return response.content || 'Conversation completed but no content returned.';
-
+                return (
+                    response.content ||
+                    'Conversation completed but no content returned.'
+                );
             } catch (error) {
-                if (token.isCancellationRequested || error instanceof vscode.CancellationError || (error instanceof Error && error.message?.toLowerCase().includes('cancel'))) {
-                    Log.info(`${logPrefix} Cancelled during iteration ${iteration}`);
+                if (
+                    token.isCancellationRequested ||
+                    error instanceof vscode.CancellationError ||
+                    (error instanceof Error &&
+                        error.message?.toLowerCase().includes('cancel'))
+                ) {
+                    Log.info(
+                        `${logPrefix} Cancelled during iteration ${iteration}`
+                    );
                     return CANCELLATION_MESSAGE;
                 }
 
                 if (this.isFatalModelError(error)) {
-                    const errorMsg = error instanceof Error ? error.message : String(error);
-                    Log.error(`${logPrefix} Fatal model error encountered: ${errorMsg}`);
+                    const errorMsg =
+                        error instanceof Error ? error.message : String(error);
+                    Log.error(
+                        `${logPrefix} Fatal model error encountered: ${errorMsg}`
+                    );
                     vscode.window.showErrorMessage(errorMsg);
                     throw error instanceof Error ? error : new Error(errorMsg);
                 }
@@ -184,7 +229,10 @@ export class ConversationRunner {
                 Log.error(errorMessage);
 
                 // Re-throw service unavailable errors to be handled by caller
-                if (error instanceof Error && error.message.includes('service unavailable')) {
+                if (
+                    error instanceof Error &&
+                    error.message.includes('service unavailable')
+                ) {
                     throw error;
                 }
 
@@ -198,25 +246,33 @@ export class ConversationRunner {
             }
         }
 
-        Log.warn(`${logPrefix} Reached maximum iterations (${config.maxIterations})`);
+        Log.warn(
+            `${logPrefix} Reached maximum iterations (${config.maxIterations})`
+        );
         return 'Conversation reached maximum iterations. The conversation may be incomplete.';
     }
 
     private isFatalModelError(error: unknown): boolean {
-        return error instanceof CopilotApiError && error.code === 'model_not_supported';
+        return (
+            error instanceof CopilotApiError &&
+            error.code === 'model_not_supported'
+        );
     }
 
     /**
      * Prepare messages for the LLM including system prompt and conversation history.
      */
-    private prepareMessagesForLLM(systemPrompt: string, conversation: ConversationManager): ToolCallMessage[] {
+    private prepareMessagesForLLM(
+        systemPrompt: string,
+        conversation: ConversationManager
+    ): ToolCallMessage[] {
         const messages: ToolCallMessage[] = [
             {
                 role: 'system',
                 content: systemPrompt,
                 toolCalls: undefined,
-                toolCallId: undefined
-            }
+                toolCallId: undefined,
+            },
         ];
 
         const history = conversation.getHistory();
@@ -225,7 +281,7 @@ export class ConversationRunner {
                 role: message.role,
                 content: message.content,
                 toolCalls: message.toolCalls,
-                toolCallId: message.toolCallId
+                toolCallId: message.toolCallId,
             });
         }
 
@@ -242,22 +298,27 @@ export class ConversationRunner {
         logPrefix = '[Conversation]'
     ): Promise<void> {
         // Log which tools are being called
-        const toolNames = toolCalls.map(tc => tc.function.name).join(', ');
-        Log.info(`${logPrefix} Executing ${toolCalls.length} tool(s): ${toolNames}`);
+        const toolNames = toolCalls.map((tc) => tc.function.name).join(', ');
+        Log.info(
+            `${logPrefix} Executing ${toolCalls.length} tool(s): ${toolNames}`
+        );
 
         // Pre-parse arguments for all tool calls before notifying handlers
-        const toolRequests: ToolExecutionRequest[] = toolCalls.map(call => {
+        const toolRequests: ToolExecutionRequest[] = toolCalls.map((call) => {
             let parsedArgs: Record<string, unknown> = {};
 
             try {
                 parsedArgs = JSON.parse(call.function.arguments);
             } catch (error) {
-                Log.error(`${logPrefix} Failed to parse args for ${call.function.name}: ${call.function.arguments}`, error);
+                Log.error(
+                    `${logPrefix} Failed to parse args for ${call.function.name}: ${call.function.arguments}`,
+                    error
+                );
             }
 
             return {
                 name: call.function.name,
-                args: parsedArgs
+                args: parsedArgs,
             };
         });
 
@@ -276,7 +337,10 @@ export class ConversationRunner {
         const startTime = Date.now();
         const results = await this.toolExecutor.executeTools(toolRequests);
         const endTime = Date.now();
-        const avgDuration = results.length > 0 ? Math.floor((endTime - startTime) / results.length) : 0;
+        const avgDuration =
+            results.length > 0
+                ? Math.floor((endTime - startTime) / results.length)
+                : 0;
 
         for (let i = 0; i < results.length; i++) {
             const result = results[i]!;
@@ -284,9 +348,10 @@ export class ConversationRunner {
             const request = toolRequests[i]!;
             const toolCallId = toolCall.id || `tool_call_${i}`;
 
-            const baseContent = result.success && result.result
-                ? result.result
-                : `Error: ${result.error || 'Unknown error'}`;
+            const baseContent =
+                result.success && result.result
+                    ? result.result
+                    : `Error: ${result.error || 'Unknown error'}`;
 
             // Get context status suffix if handler provides it
             const contextStatus = handler?.getContextStatusSuffix

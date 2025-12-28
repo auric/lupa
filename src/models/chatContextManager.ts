@@ -24,7 +24,9 @@ export class ChatContextManager {
      * @returns Array of Message objects compatible with ConversationManager
      */
     async prepareConversationHistory(
-        history: ReadonlyArray<vscode.ChatRequestTurn | vscode.ChatResponseTurn>,
+        history: ReadonlyArray<
+            vscode.ChatRequestTurn | vscode.ChatResponseTurn
+        >,
         model: vscode.LanguageModelChat,
         systemPrompt: string,
         token: vscode.CancellationToken
@@ -41,29 +43,42 @@ export class ChatContextManager {
             let availableTokens = targetTokens - systemTokens;
 
             if (availableTokens <= 0) {
-                Log.warn('[ChatContextManager]: No budget available after system prompt');
+                Log.warn(
+                    '[ChatContextManager]: No budget available after system prompt'
+                );
                 return [];
             }
 
             const prepared: Message[] = [];
 
-            for (let i = history.length - 1; i >= 0 && availableTokens > 0; i--) {
+            for (
+                let i = history.length - 1;
+                i >= 0 && availableTokens > 0;
+                i--
+            ) {
                 if (token.isCancellationRequested) {
                     break;
                 }
 
                 const turn = history[i];
-                if (!turn) {continue;}
+                if (!turn) {
+                    continue;
+                }
                 const message = this.convertTurn(turn);
 
                 if (!message.content) {
                     continue;
                 }
 
-                const tokenCount = await model.countTokens(message.content, token);
+                const tokenCount = await model.countTokens(
+                    message.content,
+                    token
+                );
 
                 if (tokenCount > availableTokens) {
-                    Log.info(`[ChatContextManager]: Truncating history at turn ${i} (budget: ${Math.floor(availableTokens)}, needed: ${tokenCount})`);
+                    Log.info(
+                        `[ChatContextManager]: Truncating history at turn ${i} (budget: ${Math.floor(availableTokens)}, needed: ${tokenCount})`
+                    );
                     break;
                 }
 
@@ -72,12 +87,17 @@ export class ChatContextManager {
             }
 
             if (prepared.length < history.length) {
-                Log.info(`[ChatContextManager]: Included ${prepared.length} of ${history.length} history turns`);
+                Log.info(
+                    `[ChatContextManager]: Included ${prepared.length} of ${history.length} history turns`
+                );
             }
 
             return prepared;
         } catch (error) {
-            Log.warn('[ChatContextManager]: History processing failed, continuing without history', error);
+            Log.warn(
+                '[ChatContextManager]: History processing failed, continuing without history',
+                error
+            );
             return [];
         }
     }
@@ -85,7 +105,9 @@ export class ChatContextManager {
     /**
      * Converts a VS Code chat turn to internal Message format.
      */
-    private convertTurn(turn: vscode.ChatRequestTurn | vscode.ChatResponseTurn): Message {
+    private convertTurn(
+        turn: vscode.ChatRequestTurn | vscode.ChatResponseTurn
+    ): Message {
         if (this.isRequestTurn(turn)) {
             return this.extractFromRequestTurn(turn);
         }
@@ -95,7 +117,9 @@ export class ChatContextManager {
     /**
      * Type guard to determine if turn is a ChatRequestTurn.
      */
-    private isRequestTurn(turn: vscode.ChatRequestTurn | vscode.ChatResponseTurn): turn is vscode.ChatRequestTurn {
+    private isRequestTurn(
+        turn: vscode.ChatRequestTurn | vscode.ChatResponseTurn
+    ): turn is vscode.ChatRequestTurn {
         return 'prompt' in turn;
     }
 
@@ -105,7 +129,7 @@ export class ChatContextManager {
     private extractFromRequestTurn(turn: vscode.ChatRequestTurn): Message {
         return {
             role: 'user',
-            content: turn.prompt
+            content: turn.prompt,
         };
     }
 
@@ -125,7 +149,7 @@ export class ChatContextManager {
 
         return {
             role: 'assistant',
-            content: textParts.join('\n\n') || null
+            content: textParts.join('\n\n') || null,
         };
     }
 

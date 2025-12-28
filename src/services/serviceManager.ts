@@ -86,7 +86,7 @@ export class ServiceManager implements vscode.Disposable {
     private initialized = false;
     private disposed = false;
 
-    constructor(private readonly context: vscode.ExtensionContext) { }
+    constructor(private readonly context: vscode.ExtensionContext) {}
 
     /**
      * Initialize all services in proper dependency order
@@ -109,7 +109,9 @@ export class ServiceManager implements vscode.Disposable {
             this.initialized = true;
             return this.services as IServiceRegistry;
         } catch (error) {
-            throw new Error(`Service initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Service initialization failed: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -118,7 +120,9 @@ export class ServiceManager implements vscode.Disposable {
      */
     public getServices(): IServiceRegistry {
         if (!this.initialized) {
-            throw new Error('ServiceManager not initialized. Call initialize() first.');
+            throw new Error(
+                'ServiceManager not initialized. Call initialize() first.'
+            );
         }
         return this.services as IServiceRegistry;
     }
@@ -128,14 +132,18 @@ export class ServiceManager implements vscode.Disposable {
      */
     private async initializeFoundationServices(): Promise<void> {
         // Foundation services with no dependencies
-        this.services.workspaceSettings = new WorkspaceSettingsService(this.context);
+        this.services.workspaceSettings = new WorkspaceSettingsService(
+            this.context
+        );
         this.services.logging = LoggingService.getInstance();
         this.services.logging.initialize(this.services.workspaceSettings);
 
         this.services.statusBar = StatusBarService.getInstance();
 
         // Initialize Git operations first to get repository root
-        this.services.gitOperations = new GitOperationsManager(this.services.workspaceSettings);
+        this.services.gitOperations = new GitOperationsManager(
+            this.services.workspaceSettings
+        );
         await this.services.gitOperations.initialize();
 
         // Get Git repository root path for UIManager dependency injection
@@ -151,11 +159,15 @@ export class ServiceManager implements vscode.Disposable {
      */
     private async initializeCoreServices(): Promise<void> {
         // Language model manager
-        this.services.copilotModelManager = new CopilotModelManager(this.services.workspaceSettings!);
+        this.services.copilotModelManager = new CopilotModelManager(
+            this.services.workspaceSettings!
+        );
         this.services.promptGenerator = new PromptGenerator();
 
         // Utility services (depend on gitOperations)
-        this.services.symbolExtractor = new SymbolExtractor(this.services.gitOperations!);
+        this.services.symbolExtractor = new SymbolExtractor(
+            this.services.gitOperations!
+        );
     }
 
     /**
@@ -164,17 +176,23 @@ export class ServiceManager implements vscode.Disposable {
     private async initializeHighLevelServices(): Promise<void> {
         // Initialize tool-calling services
         this.services.toolRegistry = new ToolRegistry();
-        this.services.toolExecutor = new ToolExecutor(this.services.toolRegistry, this.services.workspaceSettings!);
-        this.services.conversationManager = new ConversationManager();
-        this.services.subagentSessionManager = new SubagentSessionManager(this.services.workspaceSettings!);
-        this.services.toolCallingAnalysisProvider = new ToolCallingAnalysisProvider(
-            this.services.conversationManager,
-            this.services.toolExecutor,
-            this.services.copilotModelManager!,
-            this.services.promptGenerator!,
-            this.services.workspaceSettings!,
-            this.services.subagentSessionManager
+        this.services.toolExecutor = new ToolExecutor(
+            this.services.toolRegistry,
+            this.services.workspaceSettings!
         );
+        this.services.conversationManager = new ConversationManager();
+        this.services.subagentSessionManager = new SubagentSessionManager(
+            this.services.workspaceSettings!
+        );
+        this.services.toolCallingAnalysisProvider =
+            new ToolCallingAnalysisProvider(
+                this.services.conversationManager,
+                this.services.toolExecutor,
+                this.services.copilotModelManager!,
+                this.services.promptGenerator!,
+                this.services.workspaceSettings!,
+                this.services.subagentSessionManager
+            );
 
         this.services.subagentExecutor = new SubagentExecutor(
             this.services.copilotModelManager!,
@@ -184,13 +202,16 @@ export class ServiceManager implements vscode.Disposable {
         );
 
         // Wire up SubagentExecutor to ToolCallingAnalysisProvider for progress context sharing
-        this.services.toolCallingAnalysisProvider.setSubagentExecutor(this.services.subagentExecutor);
+        this.services.toolCallingAnalysisProvider.setSubagentExecutor(
+            this.services.subagentExecutor
+        );
 
         // Register available tools
         this.initializeTools();
 
         // Initialize tool testing webview service
-        const gitRootPath = this.services.gitOperations!.getRepository()?.rootUri.fsPath || '';
+        const gitRootPath =
+            this.services.gitOperations!.getRepository()?.rootUri.fsPath || '';
         this.services.toolTestingWebview = new ToolTestingWebviewService(
             this.context,
             gitRootPath,
@@ -198,19 +219,21 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolExecutor
         );
 
-        this.services.chatParticipantService = ChatParticipantService.getInstance();
+        this.services.chatParticipantService =
+            ChatParticipantService.getInstance();
         this.services.chatParticipantService.setDependencies({
             toolExecutor: this.services.toolExecutor!,
             toolRegistry: this.services.toolRegistry!,
             workspaceSettings: this.services.workspaceSettings!,
             promptGenerator: this.services.promptGenerator!,
-            gitOperations: this.services.gitOperations!
+            gitOperations: this.services.gitOperations!,
         });
 
         // Register language model tools for Agent Mode
-        const getSymbolsOverviewTool = this.services.toolRegistry!.getToolByName(
-            "get_symbols_overview"
-        ) as GetSymbolsOverviewTool;
+        const getSymbolsOverviewTool =
+            this.services.toolRegistry!.getToolByName(
+                'get_symbols_overview'
+            ) as GetSymbolsOverviewTool;
         if (getSymbolsOverviewTool) {
             this.services.languageModelToolProvider =
                 new LanguageModelToolProvider(getSymbolsOverviewTool);
@@ -224,11 +247,16 @@ export class ServiceManager implements vscode.Disposable {
     private initializeTools(): void {
         try {
             // Register the FindSymbolTool (Get Definition functionality)
-            const findSymbolTool = new FindSymbolTool(this.services.gitOperations!, this.services.symbolExtractor!);
+            const findSymbolTool = new FindSymbolTool(
+                this.services.gitOperations!,
+                this.services.symbolExtractor!
+            );
             this.services.toolRegistry!.registerTool(findSymbolTool);
 
             // Register the FindUsagesTool (Find Usages functionality)
-            const findUsagesTool = new FindUsagesTool(this.services.gitOperations!);
+            const findUsagesTool = new FindUsagesTool(
+                this.services.gitOperations!
+            );
             this.services.toolRegistry!.registerTool(findUsagesTool);
 
             // Register the ListDirTool (List Directory functionality)
@@ -236,7 +264,9 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(listDirTool);
 
             // Register the FindFileTool (Find File functionality)
-            const findFileTool = new FindFilesByPatternTool(this.services.gitOperations!);
+            const findFileTool = new FindFilesByPatternTool(
+                this.services.gitOperations!
+            );
             this.services.toolRegistry!.registerTool(findFileTool);
 
             // Register the ReadFileTool (Read File functionality)
@@ -244,17 +274,28 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(readFileTool);
 
             // Register the GetSymbolsOverviewTool (Get Symbols Overview functionality)
-            const getSymbolsOverviewTool = new GetSymbolsOverviewTool(this.services.gitOperations!, this.services.symbolExtractor!);
+            const getSymbolsOverviewTool = new GetSymbolsOverviewTool(
+                this.services.gitOperations!,
+                this.services.symbolExtractor!
+            );
             this.services.toolRegistry!.registerTool(getSymbolsOverviewTool);
 
             // Register the SearchForPatternTool (Search for Pattern functionality)
-            const searchForPatternTool = new SearchForPatternTool(this.services.gitOperations!);
+            const searchForPatternTool = new SearchForPatternTool(
+                this.services.gitOperations!
+            );
             this.services.toolRegistry!.registerTool(searchForPatternTool);
 
-            this.services.toolRegistry!.registerTool(new ThinkAboutContextTool());
+            this.services.toolRegistry!.registerTool(
+                new ThinkAboutContextTool()
+            );
             this.services.toolRegistry!.registerTool(new ThinkAboutTaskTool());
-            this.services.toolRegistry!.registerTool(new ThinkAboutCompletionTool());
-            this.services.toolRegistry!.registerTool(new ThinkAboutInvestigationTool());
+            this.services.toolRegistry!.registerTool(
+                new ThinkAboutCompletionTool()
+            );
+            this.services.toolRegistry!.registerTool(
+                new ThinkAboutInvestigationTool()
+            );
 
             // Register the RunSubagentTool for delegating complex investigations
             const runSubagentTool = new RunSubagentTool(
@@ -264,9 +305,13 @@ export class ServiceManager implements vscode.Disposable {
             );
             this.services.toolRegistry!.registerTool(runSubagentTool);
 
-            Log.info(`Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`);
+            Log.info(
+                `Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`
+            );
         } catch (error) {
-            Log.error(`Failed to initialize tools: ${error instanceof Error ? error.message : String(error)}`);
+            Log.error(
+                `Failed to initialize tools: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -274,7 +319,9 @@ export class ServiceManager implements vscode.Disposable {
      * Dispose all services in reverse order
      */
     public dispose(): void {
-        if (this.disposed) {return;}
+        if (this.disposed) {
+            return;
+        }
 
         const servicesToDispose = [
             this.services.promptGenerator,
@@ -287,7 +334,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.chatParticipantService,
             this.services.gitOperations,
             this.services.statusBar,
-            this.services.logging
+            this.services.logging,
         ];
 
         for (const service of servicesToDispose) {

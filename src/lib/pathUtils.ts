@@ -15,7 +15,8 @@ export interface ParsedPath {
  * - Handles quoted paths and line numbers
  * - Matches relative paths like src/file.ts and absolute paths
  */
-export const FILE_PATH_REGEX = /(?:^|[\s([{,;])((?:[`"']?)(?:[a-zA-Z]:[/\\]|\.{0,2}[/\\]|[a-zA-Z0-9._-]+[/\\])[a-zA-Z0-9._/\\-]*\.[a-zA-Z0-9]+(?:[`"'])?)(?:\s*(?:[:([\s]?\s*(?:line\s+)?(\d+)(?:\s*[:\],]?\s*(?:col(?:umn)?\s*)?(\d+))?\s*[)\]]?)|(?:\s+at\s+line\s+(\d+)))?/gi;
+export const FILE_PATH_REGEX =
+    /(?:^|[\s([{,;])((?:[`"']?)(?:[a-zA-Z]:[/\\]|\.{0,2}[/\\]|[a-zA-Z0-9._-]+[/\\])[a-zA-Z0-9._/\\-]*\.[a-zA-Z0-9]+(?:[`"'])?)(?:\s*(?:[:([\s]?\s*(?:line\s+)?(\d+)(?:\s*[:\],]?\s*(?:col(?:umn)?\s*)?(\d+))?\s*[)\]]?)|(?:\s+at\s+line\s+(\d+)))?/gi;
 
 /**
  * Parse text content to find all potential file paths
@@ -31,7 +32,9 @@ export function parseFilePaths(text: string): ParsedPath[] {
 
     while ((match = regex.exec(text)) !== null) {
         let filePath = match[1];
-        if (!filePath) {continue;}
+        if (!filePath) {
+            continue;
+        }
 
         const lineStr = match[2] || match[4]; // Handle both formats: :123 and "at line 123"
         const columnStr = match[3];
@@ -58,7 +61,7 @@ export function parseFilePaths(text: string): ParsedPath[] {
             line,
             column,
             startIndex: filePathStart,
-            endIndex: filePathEnd
+            endIndex: filePathEnd,
         });
     }
 
@@ -113,7 +116,12 @@ function isValidFilePath(path: string): boolean {
  * @param url The URL from a markdown link
  * @returns Parsed path information or null if not a file path
  */
-export function parseFilePathFromUrl(url: string): { filePath: string; line?: number; endLine?: number; column?: number } | null {
+export function parseFilePathFromUrl(url: string): {
+    filePath: string;
+    line?: number;
+    endLine?: number;
+    column?: number;
+} | null {
     // Skip external URLs (http:, https:, mailto:, etc.) but NOT Windows drive letters
     // Windows drive letters are single letters followed by colon, e.g., C: or D:
     if (/^[a-z]{2,}:/i.test(url)) {
@@ -137,8 +145,8 @@ export function parseFilePathFromUrl(url: string): { filePath: string; line?: nu
 
     const filePath = match[1];
     const line = match[2] ? parseInt(match[2], 10) : undefined;
-    const endLine = match[3] ? parseInt(match[3], 10) : undefined;  // For :line-endLine format
-    const column = match[4] ? parseInt(match[4], 10) : undefined;   // For :line:column format
+    const endLine = match[3] ? parseInt(match[3], 10) : undefined; // For :line-endLine format
+    const column = match[4] ? parseInt(match[4], 10) : undefined; // For :line:column format
 
     if (!isValidFilePath(filePath)) {
         return null;
@@ -187,14 +195,16 @@ export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
 
     while ((match = linkRegex.exec(markdown)) !== null) {
         const [fullMatch, title, url] = match;
-        if (!url) {continue;}
+        if (!url) {
+            continue;
+        }
         const parsedPath = parseFilePathFromUrl(url);
 
         // Add text before this match
         if (match.index > lastIndex) {
             segments.push({
                 type: 'text',
-                content: markdown.slice(lastIndex, match.index)
+                content: markdown.slice(lastIndex, match.index),
             });
         }
 
@@ -207,13 +217,13 @@ export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
                 line: parsedPath.line,
                 endLine: parsedPath.endLine,
                 column: parsedPath.column,
-                title
+                title,
             });
         } else {
             // Not a file link, keep as text (regular markdown link)
             segments.push({
                 type: 'text',
-                content: fullMatch
+                content: fullMatch,
             });
         }
 
@@ -224,7 +234,7 @@ export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
     if (lastIndex < markdown.length) {
         segments.push({
             type: 'text',
-            content: markdown.slice(lastIndex)
+            content: markdown.slice(lastIndex),
         });
     }
 
