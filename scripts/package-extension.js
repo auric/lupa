@@ -77,7 +77,7 @@ async function main() {
     const profile = parseProfile();
     console.log(`📦 Packaging extension [${profile}]...\n`);
 
-    // Run build with BUILD_PROFILE set for internal builds
+    // Run build with BUILD_PROFILE set to control which features are included
     console.log(`🔨 Running npm run package...\n`);
     execSync('npm run package', {
         stdio: 'inherit',

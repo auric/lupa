@@ -1,23 +1,16 @@
 /**
- * Build profile configuration - single source of truth for dev/production filtering.
+ * Build profile configuration for dev/production filtering.
  *
  * Profiles:
  * - production: Public release, strips dev features
  * - internal: Full-featured build for testing/dogfooding
- * - development: Local dev mode (implicit, no packaging)
  */
 
-/** Command patterns to filter from production builds */
+/** Command patterns to filter from production builds (lowercase) */
 const DEV_COMMAND_PATTERNS = ['tooltesting', 'testwebview'];
 
-/** Webview entry points by profile */
-const WEBVIEW_ENTRIES = {
-    core: ['main'],
-    dev: ['main', 'toolTesting'],
-};
-
 /**
- * Determine if a command should be filtered based on profile
+ * Determine if a command should be kept based on build profile.
  * @param {string} commandId - Command ID (e.g., 'lupa.openToolTesting')
  * @param {string} profile - Build profile ('production' | 'internal')
  * @returns {boolean} - true if command should be KEPT
@@ -32,27 +25,4 @@ function shouldKeepCommand(commandId, profile) {
     );
 }
 
-/**
- * Get webview entries for a build profile
- * @param {string} profile - Build profile ('production' | 'internal')
- * @returns {string[]} - Array of webview entry names to include
- */
-function getWebviewEntries(profile) {
-    return profile === 'internal' ? WEBVIEW_ENTRIES.dev : WEBVIEW_ENTRIES.core;
-}
-
-/**
- * Check if running in internal profile
- * @returns {boolean}
- */
-function isInternalProfile() {
-    return process.env.BUILD_PROFILE === 'internal';
-}
-
-module.exports = {
-    DEV_COMMAND_PATTERNS,
-    WEBVIEW_ENTRIES,
-    shouldKeepCommand,
-    getWebviewEntries,
-    isInternalProfile,
-};
+module.exports = { shouldKeepCommand };
