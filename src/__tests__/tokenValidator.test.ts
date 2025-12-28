@@ -126,7 +126,7 @@ describe('TokenValidator', () => {
 
       // Mock high token counts to trigger cleanup
       mockModel.countTokens.mockImplementation(async (text: string) => {
-        if (text.includes('system')) return 100;
+        if (text.includes('system')) {return 100;}
         return 1000; // High count to trigger cleanup
       });
 

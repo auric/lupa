@@ -191,7 +191,7 @@ Requires file_path where the symbol is defined as starting point.`;
     // Look for the symbol in the document
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      if (!line) continue;
+      if (!line) {continue;}
       const symbolIndex = this.findWholeWordIndex(line, symbolName);
 
       if (symbolIndex !== -1) {
@@ -221,7 +221,7 @@ Requires file_path where the symbol is defined as starting point.`;
     // If no definition found, return the first occurrence as fallback
     for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
       const line = lines[lineIndex];
-      if (!line) continue;
+      if (!line) {continue;}
       const symbolIndex = this.findWholeWordIndex(line, symbolName);
 
       if (symbolIndex !== -1) {

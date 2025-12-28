@@ -163,7 +163,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
       const sortedResults = directoryResults.sort((a, b) => a.filePath.localeCompare(b.filePath));
 
       for (const { filePath, symbols } of sortedResults) {
-        if (symbols.length === 0) continue;
+        if (symbols.length === 0) {continue;}
         if (totalSymbolCount >= options.maxSymbols) {
           anyTruncated = true;
           break;

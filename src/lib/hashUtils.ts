@@ -24,7 +24,7 @@
  */
 export function quickHash(content: string): number {
     let hash = 0;
-    if (content.length === 0) return hash;
+    if (content.length === 0) {return hash;}
 
     for (let i = 0; i < content.length; i++) {
         const char = content.charCodeAt(i);

@@ -98,7 +98,7 @@ function buildContextualFollowups(
     ];
 
     for (const followup of generalFollowups) {
-        if (followups.length >= MAX_FOLLOWUPS) break;
+        if (followups.length >= MAX_FOLLOWUPS) {break;}
         followups.push(followup);
     }
 

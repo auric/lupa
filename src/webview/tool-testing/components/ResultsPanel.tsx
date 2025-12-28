@@ -24,13 +24,13 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   const [activeTab, setActiveTab] = useState<'output' | 'raw'>('output');
 
   const formatExecutionTime = (ms: number) => {
-    if (ms < 1000) return `${ms}ms`;
+    if (ms < 1000) {return `${ms}ms`;}
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
   const getExecutionStatus = (): ExecutionStatus => {
-    if (isExecuting) return 'running';
-    if (!session) return 'idle';
+    if (isExecuting) {return 'running';}
+    if (!session) {return 'idle';}
     return session.status as ExecutionStatus;
   };
 

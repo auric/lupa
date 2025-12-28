@@ -274,7 +274,7 @@ export class ServiceManager implements vscode.Disposable {
      * Dispose all services in reverse order
      */
     public dispose(): void {
-        if (this.disposed) return;
+        if (this.disposed) {return;}
 
         const servicesToDispose = [
             this.services.promptGenerator,

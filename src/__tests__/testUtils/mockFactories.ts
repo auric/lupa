@@ -99,7 +99,7 @@ export function createMockDocument(options: {
 
     return {
         getText: vi.fn().mockImplementation((range?: any) => {
-            if (!range) return content;
+            if (!range) {return content;}
             // Simplified range extraction
             const startLine = range.start?.line ?? 0;
             const endLine = range.end?.line ?? lines.length - 1;

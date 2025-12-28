@@ -125,7 +125,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
    */
   private parseNamePath(namePath: string): string[] {
     const cleaned = namePath.trim();
-    if (!cleaned) return [];
+    if (!cleaned) {return [];}
 
     const segments = cleaned.split('/').filter(segment => segment.length > 0);
 
@@ -210,8 +210,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
       const matches: SymbolMatch[] = [];
 
       for (const symbol of filteredSymbols.slice(0, 50)) {
-        if (excludeKinds?.includes(symbol.kind)) continue;
-        if (includeKinds && !includeKinds.includes(symbol.kind)) continue;
+        if (excludeKinds?.includes(symbol.kind)) {continue;}
+        if (includeKinds && !includeKinds.includes(symbol.kind)) {continue;}
 
         try {
           const processSymbolPromise = this.processWorkspaceSymbol(symbol, pathSegments);
@@ -285,7 +285,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     excludeKinds?: number[]
   ): Promise<SymbolMatch[]> {
     const gitRootDirectory = this.symbolExtractor.getGitRootPath();
-    if (!gitRootDirectory) return [];
+    if (!gitRootDirectory) {return [];}
 
     if (pathSegments.length === 0) {
       Log.warn(`Empty pathSegments array provided for findSymbolsInPath`);
@@ -299,7 +299,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
     try {
       const stat = await this.symbolExtractor.getPathStat(targetPath);
-      if (!stat) return [];
+      if (!stat) {return [];}
 
       if (stat.type === vscode.FileType.File) {
         // Single file - check with text pre-filtering
@@ -332,8 +332,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             );
 
             for (const match of documentMatches) {
-              if (excludeKinds?.includes(match.symbol.kind)) continue;
-              if (includeKinds && !includeKinds.includes(match.symbol.kind)) continue;
+              if (excludeKinds?.includes(match.symbol.kind)) {continue;}
+              if (includeKinds && !includeKinds.includes(match.symbol.kind)) {continue;}
 
               allMatches.push({
                 symbol: match.symbol,
@@ -396,8 +396,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
       // Apply kind filtering and convert to SymbolMatch format
       for (const match of documentMatches) {
         // Apply kind filtering
-        if (excludeKinds?.includes(match.symbol.kind)) continue;
-        if (includeKinds && !includeKinds.includes(match.symbol.kind)) continue;
+        if (excludeKinds?.includes(match.symbol.kind)) {continue;}
+        if (includeKinds && !includeKinds.includes(match.symbol.kind)) {continue;}
 
         matches.push({
           symbol: match.symbol,
@@ -601,8 +601,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     const childSymbols: SymbolMatch[] = [];
 
     for (const child of children) {
-      if (excludeKinds?.includes(child.kind)) continue;
-      if (includeKinds && !includeKinds.includes(child.kind)) continue;
+      if (excludeKinds?.includes(child.kind)) {continue;}
+      if (includeKinds && !includeKinds.includes(child.kind)) {continue;}
 
       // Use clean name for path building
       const cleanChildName = SymbolMatcher.cleanSymbolName(child.name);

@@ -75,7 +75,7 @@ export class ChatResponseBuilder {
      * @param findings - Array of Finding objects
      */
     addFindingsSection(title: string, emoji: string, findings: Finding[]): this {
-        if (findings.length === 0) return this;
+        if (findings.length === 0) {return this;}
 
         this.sections.push(`\n---\n\n### ${emoji} ${title}\n\n`);
         const findingCards = findings.map(
@@ -92,7 +92,7 @@ export class ChatResponseBuilder {
      * @param notes - Array of positive observations
      */
     addPositiveNotes(notes: string[]): this {
-        if (notes.length === 0) return this;
+        if (notes.length === 0) {return this;}
 
         this.sections.push(`\n---\n\n### ${SEVERITY.success} What's Good\n\n`);
         const bulletList = notes.map((note) => `- ${note}`).join("\n");

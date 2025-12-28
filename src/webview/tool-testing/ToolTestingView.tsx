@@ -63,7 +63,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   // Get current tool info
   // React Compiler handles memoization automatically
   const currentToolInfo = (() => {
-    if (!selectedTool || !tools.length) return undefined;
+    if (!selectedTool || !tools.length) {return undefined;}
     return tools.find(t => t.name === selectedTool);
   })();
 
@@ -74,7 +74,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   };
 
   const handleExecute = async (parameters: Record<string, any>) => {
-    if (!selectedTool) return;
+    if (!selectedTool) {return;}
 
     try {
       await executeToolTest(selectedTool, parameters);

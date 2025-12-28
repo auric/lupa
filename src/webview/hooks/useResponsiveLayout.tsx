@@ -21,7 +21,7 @@ export const useResponsiveLayout = (): ResponsiveLayoutResult => {
   const [mode, setMode] = useState<LayoutMode>('standard');
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {return;}
 
     const handleResize = () => {
       const newWidth = window.innerWidth;

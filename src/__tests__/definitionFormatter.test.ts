@@ -133,7 +133,7 @@ describe('DefinitionFormatter', () => {
 
         it('should escape XML characters in symbol name', () => {
             const result = formatter.formatNotFoundMessage('Symbol<with>&special"chars\'');
-            expect(result).toBe("Symbol 'Symbol<with>&special\"chars\'' not found"); // No XML escaping needed for plain strings
+            expect(result).toBe("Symbol 'Symbol<with>&special\"chars'' not found"); // No XML escaping needed for plain strings
         });
     });
 });

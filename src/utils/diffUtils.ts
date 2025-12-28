@@ -22,7 +22,7 @@ export class DiffUtils {
             if (fileMatch) {
                 const oldPath = fileMatch[1];
                 const newPath = fileMatch[2];
-                if (!oldPath || !newPath) continue;
+                if (!oldPath || !newPath) {continue;}
 
                 // Determine file operation type
                 const isNewFile = oldPath === 'dev/null';
@@ -56,7 +56,7 @@ export class DiffUtils {
                 if (hunkHeaderMatch) {
                     const oldStartStr = hunkHeaderMatch[1];
                     const newStartStr = hunkHeaderMatch[3];
-                    if (!oldStartStr || !newStartStr) continue;
+                    if (!oldStartStr || !newStartStr) {continue;}
 
                     const oldStart = parseInt(oldStartStr, 10);
                     const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1;

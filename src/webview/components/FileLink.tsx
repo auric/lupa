@@ -25,7 +25,7 @@ export const FileLink: React.FC<FileLinkProps> = ({
 
     // Validate this specific path
     useEffect(() => {
-        if (!vscode) return;
+        if (!vscode) {return;}
 
         const validatePath = () => {
             const requestId = `filelink-${filePath}-${Date.now()}`;

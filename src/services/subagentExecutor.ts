@@ -48,7 +48,7 @@ export class SubagentExecutor {
      * Report progress with main analysis context prefix.
      */
     private reportProgress(message: string, increment?: number): void {
-        if (!this.progressCallback) return;
+        if (!this.progressCallback) {return;}
 
         if (this.progressContext) {
             const mainIter = this.progressContext.getCurrentIteration();

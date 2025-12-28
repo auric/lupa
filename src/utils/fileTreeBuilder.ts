@@ -26,7 +26,7 @@ export function buildFileTree(parsedDiff: DiffHunk[]): vscode.ChatResponseFileTr
 
         for (let i = 0; i < parts.length; i++) {
             const part = parts[i];
-            if (!part) continue;
+            if (!part) {continue;}
             const isFile = i === parts.length - 1;
 
             if (!currentLevel.has(part)) {

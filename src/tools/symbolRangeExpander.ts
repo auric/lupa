@@ -72,7 +72,7 @@ export class SymbolRangeExpander {
     // Expand backwards to include comments and decorators
     for (let line = startLine - 1; line >= 0; line--) {
       const currentLine = lines[line];
-      if (!currentLine) break;
+      if (!currentLine) {break;}
       const lineText = currentLine.trim();
       if (lineText.startsWith('//') || lineText.startsWith('/*') || lineText.startsWith('@') || lineText === '') {
         expandedStartLine = line;
@@ -87,7 +87,7 @@ export class SymbolRangeExpander {
 
     for (let line = startLine; line < lines.length; line++) {
       const lineText = lines[line];
-      if (!lineText) continue;
+      if (!lineText) {continue;}
 
       // Count braces to find the end of blocks
       for (const char of lineText) {

@@ -156,7 +156,7 @@ export class RipgrepSearchService {
                 buffer = lines.pop() ?? '';
 
                 for (const line of lines) {
-                    if (!line.trim()) continue;
+                    if (!line.trim()) {continue;}
 
                     try {
                         const message = JSON.parse(line) as RipgrepJsonMessage;
@@ -259,7 +259,7 @@ export class RipgrepSearchService {
         if (message.type === 'match' || message.type === 'context') {
             const data = message.data as RipgrepMatchData | RipgrepContextData;
             const filePath = this.extractText(data.path);
-            if (!filePath) return;
+            if (!filePath) {return;}
 
             const relativePath = this.normalizeFilePath(filePath, cwd);
             const lineContent = this.extractText(data.lines)?.replace(/\n$/, '') ?? '';
@@ -281,7 +281,7 @@ export class RipgrepSearchService {
     }
 
     private extractText(obj: { text?: string; bytes?: string }): string | undefined {
-        if (obj.text) return obj.text;
+        if (obj.text) {return obj.text;}
         if (obj.bytes) {
             try {
                 return Buffer.from(obj.bytes, 'base64').toString('utf-8');
@@ -329,7 +329,7 @@ export class RipgrepSearchService {
     }
 
     private groupConsecutiveLines(matches: RipgrepMatch[]): RipgrepMatch[][] {
-        if (matches.length === 0) return [];
+        if (matches.length === 0) {return [];}
 
         const firstMatch = matches[0]!;
         const groups: RipgrepMatch[][] = [];

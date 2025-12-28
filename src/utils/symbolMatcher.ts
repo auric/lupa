@@ -157,7 +157,7 @@ export class SymbolMatcher {
     // Handle different namespace separators used across languages
     // Split on :: (C++), . (C#/Java), \ or / (some tools)
     return containerName
-      .split(/[::.\\\/]/)
+      .split(/[::.\\/]/)
       .map(part => part.trim())
       .filter(part => part.length > 0);
   }
@@ -169,7 +169,7 @@ export class SymbolMatcher {
    * @returns True if container matches target
    */
   static matchesContainer(containerName: string | undefined, targetContainer: string): boolean {
-    if (!containerName) return false;
+    if (!containerName) {return false;}
 
     // Parse container into parts and check if any part matches target
     const containerParts = this.parseContainerName(containerName);
@@ -228,8 +228,8 @@ export class SymbolMatcher {
    * @returns True if needle appears as a subsequence in haystack
    */
   static arrayContainsSequence(haystack: string[], needle: string[]): boolean {
-    if (needle.length === 0) return false;
-    if (haystack.length < needle.length) return false;
+    if (needle.length === 0) {return false;}
+    if (haystack.length < needle.length) {return false;}
 
     // Try each possible starting position
     for (let start = 0; start <= haystack.length - needle.length; start++) {
@@ -254,7 +254,7 @@ export class SymbolMatcher {
         }
       }
 
-      if (matches) return true;
+      if (matches) {return true;}
     }
 
     return false;

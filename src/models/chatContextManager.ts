@@ -53,7 +53,7 @@ export class ChatContextManager {
                 }
 
                 const turn = history[i];
-                if (!turn) continue;
+                if (!turn) {continue;}
                 const message = this.convertTurn(turn);
 
                 if (!message.content) {

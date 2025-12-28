@@ -15,7 +15,7 @@ export interface ParsedPath {
  * - Handles quoted paths and line numbers
  * - Matches relative paths like src/file.ts and absolute paths
  */
-export const FILE_PATH_REGEX = /(?:^|[\s\(\[\{,;])((?:[`"']?)(?:[a-zA-Z]:[/\\]|\.{0,2}[/\\]|[a-zA-Z0-9._-]+[/\\])[a-zA-Z0-9._/\\\-]*\.[a-zA-Z0-9]+(?:[`"'])?)(?:\s*(?:[:(\[\s]?\s*(?:line\s+)?(\d+)(?:\s*[:\],]?\s*(?:col(?:umn)?\s*)?(\d+))?\s*[\)\]]?)|(?:\s+at\s+line\s+(\d+)))?/gi;
+export const FILE_PATH_REGEX = /(?:^|[\s([{,;])((?:[`"']?)(?:[a-zA-Z]:[/\\]|\.{0,2}[/\\]|[a-zA-Z0-9._-]+[/\\])[a-zA-Z0-9._/\\-]*\.[a-zA-Z0-9]+(?:[`"'])?)(?:\s*(?:[:([\s]?\s*(?:line\s+)?(\d+)(?:\s*[:\],]?\s*(?:col(?:umn)?\s*)?(\d+))?\s*[)\]]?)|(?:\s+at\s+line\s+(\d+)))?/gi;
 
 /**
  * Parse text content to find all potential file paths
@@ -31,7 +31,7 @@ export function parseFilePaths(text: string): ParsedPath[] {
 
     while ((match = regex.exec(text)) !== null) {
         let filePath = match[1];
-        if (!filePath) continue;
+        if (!filePath) {continue;}
 
         const lineStr = match[2] || match[4]; // Handle both formats: :123 and "at line 123"
         const columnStr = match[3];
@@ -187,7 +187,7 @@ export function parseMarkdownFileLinks(markdown: string): MarkdownSegment[] {
 
     while ((match = linkRegex.exec(markdown)) !== null) {
         const [fullMatch, title, url] = match;
-        if (!url) continue;
+        if (!url) {continue;}
         const parsedPath = parseFilePathFromUrl(url);
 
         // Add text before this match

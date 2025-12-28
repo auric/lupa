@@ -43,7 +43,7 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
   // Extract parameter info from tool schema
   // React Compiler handles memoization automatically
   const parameterInfos = (() => {
-    if (!toolInfo?.schema) return [];
+    if (!toolInfo?.schema) {return [];}
 
     const infos: ParameterInfo[] = [];
     const shape = (toolInfo.schema as any).def?.shape || {};
@@ -91,8 +91,8 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
 
     return infos.sort((a, b) => {
       // Sort required fields first
-      if (a.required && !b.required) return -1;
-      if (!a.required && b.required) return 1;
+      if (a.required && !b.required) {return -1;}
+      if (!a.required && b.required) {return 1;}
       return a.name.localeCompare(b.name);
     });
   })();
@@ -150,7 +150,7 @@ export const ParameterInputPanel: React.FC<ParameterInputPanelProps> = ({
   };
 
   const handleExecute = async () => {
-    if (!toolInfo || isExecuting) return;
+    if (!toolInfo || isExecuting) {return;}
 
     const filteredParams = Object.entries(parameters).reduce((acc, [key, value]) => {
       const paramInfo = parameterInfos.find(p => p.name === key);

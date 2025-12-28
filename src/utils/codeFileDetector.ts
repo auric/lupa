@@ -106,12 +106,12 @@ export class CodeFileDetector {
   ]);
 
   static isCodeFile(filePath: string): boolean {
-    if (!filePath) return false;
+    if (!filePath) {return false;}
 
     const lastSlash = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
     const fileName = (lastSlash >= 0 ? filePath.slice(lastSlash + 1) : filePath).toLowerCase();
 
-    if (this.CODE_FILENAMES.has(fileName)) return true;
+    if (this.CODE_FILENAMES.has(fileName)) {return true;}
 
     const dotIndex = fileName.lastIndexOf('.');
     if (dotIndex > 0) {

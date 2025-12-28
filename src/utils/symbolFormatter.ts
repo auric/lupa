@@ -153,7 +153,7 @@ export class SymbolFormatter {
         truncated = true;
         return;
       }
-      if (options.maxDepth >= 0 && currentDepth > options.maxDepth) return;
+      if (options.maxDepth >= 0 && currentDepth > options.maxDepth) {return;}
 
       for (const symbol of symbolList) {
         if (symbolCount >= options.maxSymbols) {
@@ -162,8 +162,8 @@ export class SymbolFormatter {
         }
 
         // Apply kind filtering
-        if (options.excludeKinds?.includes(symbol.kind)) continue;
-        if (options.includeKinds && !options.includeKinds.includes(symbol.kind)) continue;
+        if (options.excludeKinds?.includes(symbol.kind)) {continue;}
+        if (options.includeKinds && !options.includeKinds.includes(symbol.kind)) {continue;}
 
         // Get line number from symbol range
         const lineNumber = symbol.range.start.line + 1; // Convert from 0-based to 1-based
