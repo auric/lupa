@@ -21,7 +21,7 @@
 git clone https://github.com/auric/lupa.git
 cd lupa
 
-# Install dependencies
+# Install dependencies (also installs Git hooks)
 npm install
 
 # Build extension
@@ -31,6 +31,32 @@ npm run build
 code .
 
 # Press F5 to launch Extension Development Host
+```
+
+---
+
+## Git Hooks
+
+Pre-commit hooks are installed automatically via Husky when you run `npm install`.
+
+### What Runs on Commit
+
+| Step | Check    | Scope          | Purpose                       |
+| ---- | -------- | -------------- | ----------------------------- |
+| 1    | tsc      | Entire project | TypeScript type checking      |
+| 2    | oxlint   | Entire project | Linting (blocks on errors)    |
+| 3    | prettier | Staged files   | Auto-format (writes to files) |
+
+### Fixing Issues Before Commit
+
+```bash
+npm run lint:fix    # Auto-fix lint issues and format code
+```
+
+### Hook Not Working?
+
+```bash
+npm run prepare     # Reinstall hooks
 ```
 
 ---

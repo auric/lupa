@@ -1,0 +1,7 @@
+# Type checking (entire project)
+
+npm run check-types
+
+# Lint and format staged files
+
+npx lint-staged

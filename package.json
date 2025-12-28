@@ -123,6 +123,7 @@
         ]
     },
     "scripts": {
+        "prepare": "husky",
         "vscode:prepublish": "npm run package",
         "build": "npm run check-types && npm run build:node && npm run build:webview",
         "build:node": "vite build --mode development",
@@ -170,11 +171,13 @@
         "clsx": "^2.1.1",
         "cross-env": "^10.1.0",
         "fdir": "^6.5.0",
+        "husky": "^9.1.7",
         "ignore": "^7.0.5",
         "jsdom": "^27.3.0",
         "json-edit-react": "^1.29.0",
         "license-checker": "^25.0.1",
         "license-report": "^6.8.1",
+        "lint-staged": "^16.2.7",
         "lucide-react": "^0.562.0",
         "oxlint": "^1.35.0",
         "picomatch": "^4.0.3",
@@ -196,5 +199,10 @@
         "vite-plugin-static-copy": "^3.1.4",
         "vitest": "^4.0.16",
         "zod": "^4.2.1"
+    },
+    "lint-staged": {
+        "*.{ts,tsx,js,jsx,json,md,yaml,yml,css,html}": [
+            "prettier --write"
+        ]
     }
 }

@@ -101,6 +101,12 @@ For detailed documentation, see the [docs](./docs/index.md) folder:
 - [Component Inventory](./docs/component-inventory.md)
 - [Development Guide](./docs/development-guide.md)
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup and guidelines.
+
+Pre-commit hooks for linting and formatting are installed automatically when you run `npm install`.
+
 ## License
 
 See [LICENSE](./LICENSE) for details.
