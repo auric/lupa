@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- FindFilesByPatternTool provided picomatch glob function to fix bundling issues with Vite. Previously, the tool failed to execute in the bundled extension due to missing dependencies.
+- `FindFilesByPatternTool`: provided picomatch glob function to fix bundling issues with Vite. Previously, the tool failed to execute in the bundled extension due to missing dependencies.
+- **Webview initialization bug**: Fixed an issue where the analysis webview could fail to load on first open. In `0.1.4` it hasn't been fully resolved. Added timeout to defer loading to next event loop tick, ensuring inline scripts have executed.
 
 ## [0.1.4] - 2025-12-28
 
