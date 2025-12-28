@@ -160,8 +160,8 @@ export class FileDiscoverer {
             matchBase: true,
         };
 
-        // Build fdir crawler
-        let crawler = new fdir().withFullPaths();
+        // Build fdir crawler, add withGlobFunction to bundle it correctly
+        let crawler = new fdir().withGlobFunction(picomatch).withFullPaths();
 
         // Add include pattern if provided
         if (includePattern) {
