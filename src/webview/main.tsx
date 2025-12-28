@@ -2,24 +2,22 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import AnalysisView from './AnalysisView';
 import type { ToolCallsData } from '../types/toolCallTypes';
+import './types/webviewGlobals'; // Import for side-effect (global declarations)
 import './globals.css';
 
-// Type for the data that will be injected by the extension
-interface AnalysisData {
-    title: string;
-    diffText: string;
-    analysis: string;
-    toolCalls: ToolCallsData | null;
-}
-
-// Extend the Window interface to include our injected data
+// Extend Window interface for analysis-specific data
 declare global {
     interface Window {
-        analysisData: AnalysisData;
+        analysisData: {
+            title: string;
+            diffText: string;
+            analysis: string;
+            toolCalls: ToolCallsData | null;
+        };
     }
 }
 
-// Wait for the DOM to be ready
+// Initialize the React application (matches toolTesting.tsx pattern)
 document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('root');
     if (!container) {
@@ -27,14 +25,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // Get the analysis data from the window object
     const analysisData = window.analysisData;
     if (!analysisData) {
         console.error('Analysis data not found on window object');
         return;
     }
 
-    // Create the React root and render the component
     const root = createRoot(container);
     root.render(
         <React.StrictMode>
@@ -47,27 +43,3 @@ document.addEventListener('DOMContentLoaded', () => {
         </React.StrictMode>
     );
 });
-
-// If DOMContentLoaded has already fired, execute immediately
-if (document.readyState === 'loading') {
-    // Document is still loading, wait for DOMContentLoaded
-} else {
-    // Document is already loaded, execute immediately
-    const container = document.getElementById('root');
-    if (container) {
-        const analysisData = window.analysisData;
-        if (analysisData) {
-            const root = createRoot(container);
-            root.render(
-                <React.StrictMode>
-                    <AnalysisView
-                        title={analysisData.title}
-                        diffText={analysisData.diffText}
-                        analysis={analysisData.analysis}
-                        toolCalls={analysisData.toolCalls}
-                    />
-                </React.StrictMode>
-            );
-        }
-    }
-}

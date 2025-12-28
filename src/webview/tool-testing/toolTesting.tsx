@@ -1,19 +1,15 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles/toolTesting.css';
+import '../types/webviewGlobals'; // Import for side-effect (global declarations)
 import ToolTestingView from './ToolTestingView';
 
-// Extend Window interface for our webview data
+// Extend Window interface for tool testing specific data
 declare global {
     interface Window {
-        vscode: any;
         toolTestingData: {
             initialTool: string | null;
-            initialParameters: Record<string, any>;
-        };
-        initialTheme: {
-            kind: number;
-            isDarkTheme: boolean;
+            initialParameters: Record<string, unknown>;
         };
     }
 }

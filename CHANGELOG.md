@@ -5,6 +5,16 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2025-12-27
+
+### Fixed
+
+- **Webview initialization bug**: Fixed an issue where the analysis webview could fail to load on first open. The root cause was duplicate initialization paths in `main.tsx` - both a `DOMContentLoaded` listener AND an immediate execution check were present, causing race conditions. Simplified to match the working `toolTesting.tsx` pattern: single `DOMContentLoaded` listener only.
+
+### Changed
+
+- **Shared webview type declarations**: Created `webviewGlobals.ts` for consistent `Window` interface declarations across webview entry points, eliminating duplicate type definitions.
+
 ## [0.1.3] - 2025-12-26
 
 ### Changed
@@ -127,6 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.4]: https://github.com/auric/lupa/releases/tag/v0.1.4
 [0.1.3]: https://github.com/auric/lupa/releases/tag/v0.1.3
 [0.1.2]: https://github.com/auric/lupa/releases/tag/v0.1.2
 [0.1.1]: https://github.com/auric/lupa/releases/tag/v0.1.1
