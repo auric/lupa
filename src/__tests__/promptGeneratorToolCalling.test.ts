@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffHunk } from '../types/contextTypes';
@@ -22,7 +22,7 @@ class MockTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<any> {
+    async execute(_args: any): Promise<any> {
         return [];
     }
 }
@@ -30,24 +30,11 @@ class MockTool implements ITool {
 describe('PromptGenerator - Tool Calling Features', () => {
     let promptGenerator: PromptGenerator;
     let mockTools: ITool[];
-    let sampleDiff: string;
     let sampleParsedDiff: DiffHunk[];
 
     beforeEach(() => {
         promptGenerator = new PromptGenerator();
         mockTools = [new MockTool()];
-
-        sampleDiff = `diff --git a/src/example.ts b/src/example.ts
-index 1234567..abcdefg 100644
---- a/src/example.ts
-+++ b/src/example.ts
-@@ -1,5 +1,7 @@
- function example() {
-+    // New comment
-     const value = 42;
-+    console.log('Debug:', value);
-     return value;
- }`;
 
         sampleParsedDiff = [{
             filePath: 'src/example.ts',

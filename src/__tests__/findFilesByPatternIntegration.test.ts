@@ -1,15 +1,12 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
-import { ConversationManager } from '../models/conversationManager';
+import { fdir } from 'fdir';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { fdir } from 'fdir';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
-import { createMockWorkspaceSettings, createMockFdirInstance, createMockGitRepository } from './testUtils/mockFactories';
+import { createMockWorkspaceSettings, createMockFdirInstance } from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -67,25 +64,13 @@ vi.mock('ignore', () => ({
     })
 }));
 
-const mockCopilotModelManager = {
-    sendRequest: vi.fn()
-};
-
-const mockPromptGenerator = {
-    getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: find_files_by_pattern')
-};
-
 describe('FindFileTool Integration Tests', () => {
-    let toolCallingAnalyzer: ToolCallingAnalysisProvider;
-    let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findFileTool: FindFilesByPatternTool;
     let mockReadFile: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
-    let subagentSessionManager: SubagentSessionManager;
     let mockGitOperationsManager: GitOperationsManager;
 
     beforeEach(() => {
@@ -93,7 +78,6 @@ describe('FindFileTool Integration Tests', () => {
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
         toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
-        conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
@@ -108,18 +92,6 @@ describe('FindFileTool Integration Tests', () => {
         // Initialize tools
         findFileTool = new FindFilesByPatternTool(mockGitOperationsManager);
         toolRegistry.registerTool(findFileTool);
-
-        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
-
-        // Initialize orchestrator
-        toolCallingAnalyzer = new ToolCallingAnalysisProvider(
-            conversationManager,
-            toolExecutor,
-            mockCopilotModelManager as any,
-            mockPromptGenerator as any,
-            mockWorkspaceSettings,
-            subagentSessionManager
-        );
 
         mockReadFile = vscode.workspace.fs.readFile as ReturnType<typeof vi.fn>;
 

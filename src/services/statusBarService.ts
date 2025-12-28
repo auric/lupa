@@ -138,7 +138,7 @@ export class StatusBarService {
      */
     public dispose(): void {
         // Dispose all active status items
-        for (const [id, statusItem] of this.activeStatusItems) {
+        for (const [_id, statusItem] of this.activeStatusItems) {
             statusItem.dispose();
         }
         this.activeStatusItems.clear();

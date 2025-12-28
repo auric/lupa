@@ -17,7 +17,6 @@ interface MarkdownRendererProps {
 
 export const MarkdownRenderer = ({
     content,
-    id,
     isDarkTheme,
     showCopy = true,
     onCopy
@@ -66,9 +65,6 @@ export const MarkdownRenderer = ({
             const isCodeBlock = isBlock || hasLanguageClass || hasNewlines;
 
             if (isCodeBlock) {
-                // Use a simple hash instead of expensive string operations
-                const codeBlockId = `code-${id}-${Math.abs(textContent.split('').reduce((a, b) => a + b.charCodeAt(0), 0))}`;
-
                 return (
                     <div style={{ position: 'relative' }}>
                         <SyntaxHighlighter

@@ -157,7 +157,7 @@ describe('ListDirTool Integration Tests', () => {
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(2);
 
             // Verify tool was called with correct arguments
-            expect(toolExecutor.executeTools).toHaveBeenCalled;
+            expect(toolExecutor.executeTools).toHaveBeenCalled();
 
             // Verify conversation history includes tool call and response
             const history = conversationManager.getHistory();

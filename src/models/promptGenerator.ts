@@ -1,4 +1,3 @@
-import { AnalysisMode } from '../types/modelTypes';
 import { DiffHunk } from '../types/contextTypes';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { ITool } from '../tools/ITool';

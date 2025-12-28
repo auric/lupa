@@ -326,7 +326,7 @@ export class UIManager {
                     if (isValid) {
                         resolvedPath = fileUri.fsPath;
                     }
-                } catch (error) {
+                } catch {
                 }
             }
 
@@ -339,7 +339,7 @@ export class UIManager {
                     if (isValid) {
                         resolvedPath = gitRelativeUri.fsPath;
                     }
-                } catch (error) {
+                } catch {
                 }
             }
 
@@ -353,7 +353,7 @@ export class UIManager {
                     if (isValid) {
                         resolvedPath = workspaceRelativeUri.fsPath;
                     }
-                } catch (error) {
+                } catch {
                 }
             }
 

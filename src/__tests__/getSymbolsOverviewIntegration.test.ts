@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { SymbolExtractor } from '../utils/symbolExtractor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import { createMockWorkspaceSettings } from './testUtils/mockFactories';

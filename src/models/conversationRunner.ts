@@ -252,7 +252,7 @@ export class ConversationRunner {
             try {
                 parsedArgs = JSON.parse(call.function.arguments);
             } catch (error) {
-                Log.error(`${logPrefix} Failed to parse args for ${call.function.name}: ${call.function.arguments}`);
+                Log.error(`${logPrefix} Failed to parse args for ${call.function.name}: ${call.function.arguments}`, error);
             }
 
             return {

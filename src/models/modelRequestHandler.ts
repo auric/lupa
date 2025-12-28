@@ -46,7 +46,7 @@ export class ModelRequestHandler {
                                 toolCall.function.name,
                                 input
                             ));
-                        } catch (error) {
+                        } catch {
                             continue;
                         }
                     }

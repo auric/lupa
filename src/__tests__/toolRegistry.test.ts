@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
 import * as z from 'zod';

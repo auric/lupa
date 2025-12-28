@@ -63,7 +63,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   // Get current tool info
   // React Compiler handles memoization automatically
   const currentToolInfo = (() => {
-    if (!selectedTool || !tools.length) {return undefined;}
+    if (!selectedTool || !tools.length) { return undefined; }
     return tools.find(t => t.name === selectedTool);
   })();
 
@@ -74,7 +74,7 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
   };
 
   const handleExecute = async (parameters: Record<string, any>) => {
-    if (!selectedTool) {return;}
+    if (!selectedTool) { return; }
 
     try {
       await executeToolTest(selectedTool, parameters);
@@ -82,14 +82,6 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
       // Error handling is managed by useToolExecution hook
       console.error('Tool execution failed:', error);
     }
-  };
-
-
-  const handleNavigateToFile = (filePath: string, line?: number) => {
-    vscode?.postMessage({
-      command: 'openFile',
-      payload: { filePath, line }
-    });
   };
 
   // Auto-switch to results tab when execution starts
@@ -150,7 +142,6 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
                 <ResultsPanel
                   session={currentSession}
                   isExecuting={isExecuting}
-                  onNavigateToFile={handleNavigateToFile}
                 />
               </TabsContent>
             </div>
@@ -173,7 +164,6 @@ const ToolTestingView: React.FC<ToolTestingViewProps> = ({
               <ResultsPanel
                 session={currentSession}
                 isExecuting={isExecuting}
-                onNavigateToFile={handleNavigateToFile}
               />
             </div>
           </div>

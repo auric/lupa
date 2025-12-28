@@ -3,7 +3,7 @@ import { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ToolResult, ToolResultMetadata } from '../types/toolResultTypes';
+import { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 
 /**
@@ -251,7 +251,7 @@ export class ToolExecutor {
 
       return { isValid: true };
 
-    } catch (error) {
+    } catch {
       // If validation itself fails, allow the result through but log the issue
       return { isValid: true };
     }

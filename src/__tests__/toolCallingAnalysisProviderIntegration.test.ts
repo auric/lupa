@@ -6,7 +6,6 @@ import { ToolResult } from '../types/toolResultTypes';
 import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { DiffHunk } from '../types/contextTypes';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';

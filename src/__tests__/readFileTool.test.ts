@@ -1,11 +1,8 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { ReadFileTool } from '../tools/readFileTool';
 import { TokenConstants } from '../models/tokenConstants';
-import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { ToolResult } from '../types/toolResultTypes';
 
 // Mock VS Code
 vi.mock('vscode', () => ({

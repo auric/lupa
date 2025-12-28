@@ -12,25 +12,23 @@ import { ScrollArea } from '../../../components/ui/scroll-area';
 interface ResultsPanelProps {
   session: ToolTestSession | null;
   isExecuting: boolean;
-  onNavigateToFile?: (filePath: string, line?: number) => void;
 }
 
 export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   session,
-  isExecuting,
-  onNavigateToFile
+  isExecuting
 }) => {
   const copyToClipboard = useCopyToClipboard();
   const [activeTab, setActiveTab] = useState<'output' | 'raw'>('output');
 
   const formatExecutionTime = (ms: number) => {
-    if (ms < 1000) {return `${ms}ms`;}
+    if (ms < 1000) { return `${ms}ms`; }
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
   const getExecutionStatus = (): ExecutionStatus => {
-    if (isExecuting) {return 'running';}
-    if (!session) {return 'idle';}
+    if (isExecuting) { return 'running'; }
+    if (!session) { return 'idle'; }
     return session.status as ExecutionStatus;
   };
 

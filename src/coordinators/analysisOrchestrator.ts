@@ -56,7 +56,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 return;
             }
 
-            const { diffResult, analysisMode } = analysisOptions;
+            const { diffResult } = analysisOptions;
             const { diffText, refName, error } = diffResult;
 
             if (error) {

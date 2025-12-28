@@ -45,7 +45,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
         // Mock SymbolExtractor
         mockSymbolExtractor = {
-            getGitRelativePathFromUri: vi.fn((uri) => 'test.ts'),
+            getGitRelativePathFromUri: vi.fn((_uri) => 'test.ts'),
             getDirectorySymbols: vi.fn(),
             getTextDocument: vi.fn(),
             getGitRootPath: vi.fn(() => '/mock/repo/root'),
@@ -131,7 +131,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
 
             // Mock VS Code commands for workspace and document symbols
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockWorkspaceSymbol]);
                 }
@@ -213,7 +213,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
 
             // Mock VS Code commands
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve(mockWorkspaceSymbols);
                 }
@@ -269,7 +269,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
 
             // Mock VS Code commands
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockWorkspaceSymbol]);
                 }
@@ -312,7 +312,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
         it('should handle symbol not found workflow', async () => {
             // Mock workspace symbol provider to return empty results
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([]);
                 }
@@ -348,7 +348,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             vi.mocked(vscode.workspace.openTextDocument).mockRejectedValue(new Error('File not readable'));
 
             // Mock VS Code commands
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockWorkspaceSymbol]);
                 }
@@ -382,7 +382,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             };
 
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockWorkspaceSymbol]);
                 }
@@ -437,7 +437,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             };
 
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockSymbolInformation]);
                 }
@@ -499,7 +499,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             vi.mocked(vscode.workspace.fs.readFile).mockResolvedValue(Buffer.from(mockFileContent));
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeDocumentSymbolProvider') {
                     return Promise.resolve([mockDocumentSymbol]);
                 }
@@ -576,7 +576,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             };
 
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockSymbolInformation]);
                 }
@@ -629,7 +629,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             vi.mocked(vscode.workspace.fs.readFile).mockResolvedValue(Buffer.from(mockFileContent));
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeDocumentSymbolProvider') {
                     return Promise.resolve([mockDocumentSymbol]);
                 }
@@ -688,7 +688,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             vi.mocked(vscode.workspace.fs.readFile).mockResolvedValue(Buffer.from(mockFileContent));
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeDocumentSymbolProvider') {
                     return Promise.resolve([mockClassSymbol]);
                 }
@@ -736,7 +736,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             vi.mocked(vscode.workspace.fs.readFile).mockResolvedValue(Buffer.from(mockFileContent));
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeDocumentSymbolProvider') {
                     return Promise.resolve([mockMethodSymbol]);
                 }
@@ -790,7 +790,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             };
 
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([{
                         name: 'method',
@@ -859,7 +859,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             };
 
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([{
                         name: 'method',
@@ -895,7 +895,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             };
 
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 expect(command).toBe('vscode.executeWorkspaceSymbolProvider');
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([{
@@ -951,7 +951,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 range: {
                     start: { line: 0, character: 6 },
                     end: { line: 4, character: 1 },
-                    contains: vi.fn().mockImplementation((range) => {
+                    contains: vi.fn().mockImplementation((_range) => {
                         // Outer contains everything
                         return true;
                     })
@@ -984,7 +984,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             }];
 
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockSymbolInformation]);
                 }
@@ -1041,7 +1041,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             };
 
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeWorkspaceSymbolProvider') {
                     return Promise.resolve([mockSymbolInformation]);
                 }
@@ -1099,7 +1099,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             vi.mocked(vscode.workspace.fs.readFile).mockResolvedValue(Buffer.from(mockFileContent));
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(mockDocument as any);
-            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ...args) => {
+            vi.mocked(vscode.commands.executeCommand).mockImplementation((command, ..._args) => {
                 if (command === 'vscode.executeDocumentSymbolProvider') {
                     return Promise.resolve([mockDocumentSymbol]);
                 }

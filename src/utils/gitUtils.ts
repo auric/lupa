@@ -17,7 +17,7 @@ export async function readGitignore(repository: Repository | null): Promise<stri
         const gitignoreUri = vscode.Uri.file(path.join(repository.rootUri.fsPath, '.gitignore'));
         const gitignoreContent = await vscode.workspace.fs.readFile(gitignoreUri);
         return gitignoreContent.toString();
-    } catch (error) {
+    } catch {
         return '';
     }
 }

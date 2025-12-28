@@ -1,9 +1,8 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { fdir } from 'fdir';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { fdir } from 'fdir';
-import picomatch from 'picomatch';
 import { PathSanitizer } from '../utils/pathSanitizer';
 
 // Mock vscode
@@ -87,14 +86,6 @@ function createMockFdirInstance(syncReturnValue: string[] = []) {
     } as any;
 }
 
-function createMockGitRepository(gitRootPath: string = '/test/git-repo') {
-    return {
-        rootUri: {
-            fsPath: gitRootPath
-        }
-    };
-}
-
 describe('FindFileTool', () => {
     let findFileTool: FindFilesByPatternTool;
     let mockGitOperationsManager: GitOperationsManager;
@@ -166,7 +157,7 @@ describe('FindFileTool', () => {
 
         it('should sanitize search path using PathSanitizer', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             await findFileTool.execute({ pattern: '*.js', search_directory: 'src/../test' });
 
@@ -175,7 +166,7 @@ describe('FindFileTool', () => {
 
         it('should use default path when path is undefined', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             await findFileTool.execute({ pattern: '*.js' });
 
@@ -186,7 +177,7 @@ describe('FindFileTool', () => {
     describe('File Finding', () => {
         it('should execute file search with mocked fdir', async () => {
             const mockFdirInstance = createMockFdirInstance(['/test/git-repo/src/file1.js', '/test/git-repo/src/file2.js']);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             const result = await findFileTool.execute({ pattern: '*.js', search_directory: 'src' });
 
@@ -200,7 +191,7 @@ describe('FindFileTool', () => {
 
         it('should sort results alphabetically', async () => {
             const mockFdirInstance = createMockFdirInstance(['/test/git-repo/z.js', '/test/git-repo/a.js', '/test/git-repo/m.js']);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
@@ -214,7 +205,7 @@ describe('FindFileTool', () => {
             mockReadFile.mockResolvedValue(Buffer.from('node_modules\n.env\n*.log'));
 
             const mockFdirInstance = createMockFdirInstance([]);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             await findFileTool.execute({ pattern: '*.js' });
 
@@ -229,7 +220,7 @@ describe('FindFileTool', () => {
             mockReadFile.mockRejectedValue(new Error('File not found'));
 
             const mockFdirInstance = createMockFdirInstance(['/test/git-repo/file.js']);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
@@ -252,7 +243,7 @@ describe('FindFileTool', () => {
             mockFdirInstance.sync.mockImplementation(() => {
                 throw new Error('Directory not found');
             });
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
@@ -277,7 +268,7 @@ describe('FindFileTool', () => {
     describe('Path Normalization', () => {
         it('should normalize Windows paths to forward slashes', async () => {
             const mockFdirInstance = createMockFdirInstance(['/test/git-repo/src/components/Button.tsx']);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             const result = await findFileTool.execute({ pattern: '*.tsx' });
 
@@ -296,7 +287,7 @@ describe('FindFileTool', () => {
                 '/test/git-repo/src/WGChelper.h',
                 '/test/git-repo/lib/WGCmath.h'
             ]);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             await findFileTool.execute({ pattern: '**/WGC*h' });
 
@@ -314,7 +305,7 @@ describe('FindFileTool', () => {
                 `/test/git-repo/file${i.toString().padStart(4, '0')}.js`
             );
             const mockFdirInstance = createMockFdirInstance(largeFileList);
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             const result = await findFileTool.execute({ pattern: '*.js' });
 
@@ -333,7 +324,7 @@ describe('FindFileTool', () => {
             mockFdirInstance.sync.mockImplementation(() => {
                 throw new Error('ENOENT: no such file or directory, scandir');
             });
-            vi.mocked(fdir).mockImplementation(function() { return mockFdirInstance; } as any);
+            vi.mocked(fdir).mockImplementation(function () { return mockFdirInstance; } as any);
 
             const result = await findFileTool.execute({ pattern: '**/*.js', search_directory: 'nonexistent' });
 

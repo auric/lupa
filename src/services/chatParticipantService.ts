@@ -15,7 +15,7 @@ import { PromptGenerator } from '../models/promptGenerator';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
-import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
+import { ACTIVITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
 import type { ChatToolCallHandler, ChatAnalysisMetadata } from '../types/chatTypes';

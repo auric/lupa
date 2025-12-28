@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import * as z from 'zod';
 import { ToolExecutor, ToolExecutionRequest } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
@@ -50,7 +50,7 @@ class MockErrorTool implements ITool {
     };
   }
 
-  async execute(args: any): Promise<ToolResult> {
+  async execute(_args: any): Promise<ToolResult> {
     throw new Error('Simulated tool error');
   }
 }

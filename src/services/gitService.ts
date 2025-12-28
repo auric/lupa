@@ -146,7 +146,6 @@ export class GitService {
         }
 
         for (const repo of this.gitApi.repositories) {
-            const repoRoot = repo.rootUri.fsPath;
             for (const submodule of repo.state.submodules) {
                 // Submodule path is relative to the parent repo
                 const absolutePath = vscode.Uri.joinPath(repo.rootUri, submodule.path).fsPath;

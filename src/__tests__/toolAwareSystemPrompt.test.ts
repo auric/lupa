@@ -22,7 +22,7 @@ class MockFindSymbolTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<any> {
+    async execute(_args: any): Promise<any> {
         return [];
     }
 }
@@ -44,7 +44,7 @@ class MockSearchPatternTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<any> {
+    async execute(_args: any): Promise<any> {
         return [];
     }
 }

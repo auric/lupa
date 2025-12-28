@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseFilePaths, parseFilePathFromUrl, parseMarkdownFileLinks, ParsedPath, FILE_PATH_REGEX, MarkdownSegment } from '../lib/pathUtils';
+import { parseFilePaths, parseFilePathFromUrl, parseMarkdownFileLinks, FILE_PATH_REGEX } from '../lib/pathUtils';
 
 describe('pathUtils', () => {
     describe('FILE_PATH_REGEX', () => {

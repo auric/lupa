@@ -1,14 +1,7 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
-import { ConversationManager } from '../models/conversationManager';
-import { ToolExecutor } from '../models/toolExecutor';
-import { CopilotModelManager } from '../models/copilotModelManager';
-import { PromptGenerator } from '../models/promptGenerator';
 import { TokenConstants } from '../models/tokenConstants';
-import { ReadFileTool } from '../tools/readFileTool';
-import { ToolRegistry } from '../models/toolRegistry';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { createMockWorkspaceSettings, createMockCancellationTokenSource } from './testUtils/mockFactories';
 
@@ -127,10 +120,10 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       // Mock high token counts to trigger context cleanup
       mockModel.countTokens.mockImplementation(async (text: string) => {
-        if (text.includes('System')) {return 100;}
-        if (text === smallDiff) {return 50;} // Small diff should have low token count
-        if (text.includes('A'.repeat(1000)) || text.includes('A'.repeat(2000))) {return 2000;} // Large tool responses
-        if (text.includes('B'.repeat(1000)) || text.includes('B'.repeat(2000))) {return 2000;}
+        if (text.includes('System')) { return 100; }
+        if (text === smallDiff) { return 50; } // Small diff should have low token count
+        if (text.includes('A'.repeat(1000)) || text.includes('A'.repeat(2000))) { return 2000; } // Large tool responses
+        if (text.includes('B'.repeat(1000)) || text.includes('B'.repeat(2000))) { return 2000; }
         // High token count to trigger warning threshold but not max
         return 1500; // This should accumulate to exceed warning threshold
       });
@@ -155,8 +148,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       // Mock very high token counts to trigger final answer request
       mockModel.countTokens.mockImplementation(async (text: string) => {
-        if (text.includes('System')) {return 100;}
-        if (text === smallDiff) {return 50;} // Small diff should have low token count
+        if (text.includes('System')) { return 100; }
+        if (text === smallDiff) { return 50; } // Small diff should have low token count
         return 8000; // High token count for messages to exceed max tokens
       });
 
@@ -222,8 +215,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     it('should disable tools when diff is too large', async () => {
       // Mock high token count for the diff
       mockModel.countTokens.mockImplementation(async (text: string) => {
-        if (text.includes('System')) {return 100;}
-        if (text.includes('User message')) {return 5700;} // user message is where the diff is included
+        if (text.includes('System')) { return 100; }
+        if (text.includes('User message')) { return 5700; } // user message is where the diff is included
         return 50;
       });
 
@@ -262,8 +255,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
       // Mock reasonable token counts
       mockModel.countTokens.mockImplementation(async (text: string) => {
-        if (text.includes('System')) {return 100;}
-        if (text === reasonableDiff) {return 200;} // Small diff
+        if (text.includes('System')) { return 100; }
+        if (text === reasonableDiff) { return 200; } // Small diff
         return 50;
       });
 

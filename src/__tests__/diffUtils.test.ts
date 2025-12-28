@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DiffUtils } from '../utils/diffUtils';
-import type { DiffHunk, DiffHunkLine, ParsedDiffLine } from '../types/contextTypes';
+import type { DiffHunk, DiffHunkLine } from '../types/contextTypes';
 
 describe('DiffUtils', () => {
     describe('parseDiff', () => {

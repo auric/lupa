@@ -6,7 +6,6 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
-import { CodeFileUtils } from '../utils/codeFileUtils';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
@@ -163,7 +162,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
       const sortedResults = directoryResults.sort((a, b) => a.filePath.localeCompare(b.filePath));
 
       for (const { filePath, symbols } of sortedResults) {
-        if (symbols.length === 0) {continue;}
+        if (symbols.length === 0) { continue; }
         if (totalSymbolCount >= options.maxSymbols) {
           anyTruncated = true;
           break;

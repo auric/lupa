@@ -259,7 +259,7 @@ describe('FindUsages Integration Tests', () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue(mockDocument);
 
             let callCount = 0;
-            (vscode.commands.executeCommand as any).mockImplementation((command: string, uri: any, position: any, context: any) => {
+            (vscode.commands.executeCommand as any).mockImplementation((command: string, _uri: any, _position: any, _context: any) => {
                 if (command === 'vscode.executeReferenceProvider') {
                     callCount++;
                     return Promise.resolve(callCount === 1 ? mockReferencesA : mockReferencesB);

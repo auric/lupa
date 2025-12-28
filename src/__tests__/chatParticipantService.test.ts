@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach, Mocked } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ChatParticipantService } from '../services/chatParticipantService';
 import { GitService } from '../services/gitService';

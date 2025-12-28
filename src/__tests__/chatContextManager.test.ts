@@ -206,7 +206,7 @@ describe('ChatContextManager', () => {
                 createMockRequestTurn('Message 2'),
                 createMockRequestTurn('Message 3')
             ];
-            const model = createMockModel(10000, (text) => {
+            const model = createMockModel(10000, (_text) => {
                 const count = 100;
                 tokenCounts.push(count);
                 return count;

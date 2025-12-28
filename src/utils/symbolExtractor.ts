@@ -41,7 +41,7 @@ export class SymbolExtractor {
         fileUri
       );
       return symbols || [];
-    } catch (error) {
+    } catch {
       // Return empty array if no symbols or provider not available
       return [];
     }
@@ -87,7 +87,7 @@ export class SymbolExtractor {
         if (symbols.length > 0) {
           results.push({ filePath, symbols });
         }
-      } catch (error) {
+      } catch {
         // Skip files that can't be processed
         continue;
       }
@@ -175,7 +175,7 @@ export class SymbolExtractor {
           files.push(...subFiles);
         }
       }
-    } catch (error) {
+    } catch {
       // Skip directories that can't be read
     }
 
@@ -226,7 +226,7 @@ export class SymbolExtractor {
     try {
       const targetUri = vscode.Uri.file(targetPath);
       return await vscode.workspace.fs.stat(targetUri);
-    } catch (error) {
+    } catch {
       return undefined;
     }
   }
@@ -239,7 +239,7 @@ export class SymbolExtractor {
   async getTextDocument(fileUri: vscode.Uri): Promise<vscode.TextDocument | undefined> {
     try {
       return await vscode.workspace.openTextDocument(fileUri);
-    } catch (error) {
+    } catch {
       return undefined;
     }
   }

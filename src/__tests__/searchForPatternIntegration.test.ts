@@ -1,30 +1,15 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
-import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService, RipgrepFileResult } from '../services/ripgrepSearchService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
-// Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');
 
-const mockCopilotModelManager = {
-    sendRequest: vi.fn()
-};
-
-const mockPromptGenerator = {
-    getSystemPrompt: vi.fn().mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi.fn().mockReturnValue('\n\nYou have access to tools: search_for_pattern')
-};
-
 describe('SearchForPatternTool Integration Tests', () => {
-    let toolCallingAnalyzer: ToolCallingAnalysisProvider;
-    let conversationManager: ConversationManager;
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
@@ -35,7 +20,6 @@ describe('SearchForPatternTool Integration Tests', () => {
         search: Mock;
         formatResults: Mock;
     };
-    let subagentSessionManager: SubagentSessionManager;
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -44,7 +28,6 @@ describe('SearchForPatternTool Integration Tests', () => {
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
         toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
-        conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
@@ -71,18 +54,6 @@ describe('SearchForPatternTool Integration Tests', () => {
         // Initialize tools
         searchForPatternTool = new SearchForPatternTool(mockGitOperationsManager);
         toolRegistry.registerTool(searchForPatternTool);
-
-        subagentSessionManager = new SubagentSessionManager(mockWorkspaceSettings);
-
-        // Initialize orchestrator
-        toolCallingAnalyzer = new ToolCallingAnalysisProvider(
-            conversationManager,
-            toolExecutor,
-            mockCopilotModelManager as never,
-            mockPromptGenerator as never,
-            mockWorkspaceSettings,
-            subagentSessionManager
-        );
     });
 
     describe('End-to-End Tool-Calling Workflow', () => {

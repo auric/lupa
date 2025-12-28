@@ -14,7 +14,6 @@ export class DiffUtils {
         const lines = diff.split('\n');
         let currentFile: DiffHunk | null = null;
         let currentHunk: DiffHunkLine | null = null;
-        let currentFileHeader = '';
 
         for (const line of lines) {
             // Check for file header (diff --git a/... b/...)
@@ -22,7 +21,7 @@ export class DiffUtils {
             if (fileMatch) {
                 const oldPath = fileMatch[1];
                 const newPath = fileMatch[2];
-                if (!oldPath || !newPath) {continue;}
+                if (!oldPath || !newPath) { continue; }
 
                 // Determine file operation type
                 const isNewFile = oldPath === 'dev/null';
@@ -38,7 +37,6 @@ export class DiffUtils {
                 };
                 files.push(currentFile);
                 currentHunk = null;
-                currentFileHeader = line;
                 continue;
             }
 
@@ -56,7 +54,7 @@ export class DiffUtils {
                 if (hunkHeaderMatch) {
                     const oldStartStr = hunkHeaderMatch[1];
                     const newStartStr = hunkHeaderMatch[3];
-                    if (!oldStartStr || !newStartStr) {continue;}
+                    if (!oldStartStr || !newStartStr) { continue; }
 
                     const oldStart = parseInt(oldStartStr, 10);
                     const oldLines = hunkHeaderMatch[2] ? parseInt(hunkHeaderMatch[2], 10) : 1;
