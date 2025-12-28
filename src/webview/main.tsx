@@ -4,7 +4,6 @@ import AnalysisView from './AnalysisView';
 import type { ToolCallsData } from '../types/toolCallTypes';
 import './globals.css';
 
-// Type for the data that will be injected by the extension
 interface AnalysisData {
     title: string;
     diffText: string;
@@ -12,62 +11,71 @@ interface AnalysisData {
     toolCalls: ToolCallsData | null;
 }
 
-// Extend the Window interface to include our injected data
 declare global {
     interface Window {
         analysisData: AnalysisData;
     }
 }
 
-// Wait for the DOM to be ready
-document.addEventListener('DOMContentLoaded', () => {
+const MAX_RETRIES = 50;
+const RETRY_INTERVAL_MS = 20;
+
+/**
+ * Wait for analysisData to be available on window object.
+ * VS Code webviews can have timing issues where the inline script
+ * setting window.analysisData hasn't completed when the module script runs.
+ */
+function waitForAnalysisData(retries = 0): Promise<AnalysisData> {
+    return new Promise((resolve, reject) => {
+        if (window.analysisData) {
+            resolve(window.analysisData);
+            return;
+        }
+
+        if (retries >= MAX_RETRIES) {
+            reject(new Error('Analysis data not found after timeout'));
+            return;
+        }
+
+        setTimeout(() => {
+            waitForAnalysisData(retries + 1)
+                .then(resolve)
+                .catch(reject);
+        }, RETRY_INTERVAL_MS);
+    });
+}
+
+async function initializeApp(): Promise<void> {
     const container = document.getElementById('root');
     if (!container) {
         console.error('Root container not found');
         return;
     }
 
-    // Get the analysis data from the window object
-    const analysisData = window.analysisData;
-    if (!analysisData) {
-        console.error('Analysis data not found on window object');
-        return;
+    try {
+        const analysisData = await waitForAnalysisData();
+
+        const root = createRoot(container);
+        root.render(
+            <React.StrictMode>
+                <AnalysisView
+                    title={analysisData.title}
+                    diffText={analysisData.diffText}
+                    analysis={analysisData.analysis}
+                    toolCalls={analysisData.toolCalls}
+                />
+            </React.StrictMode>
+        );
+    } catch (error) {
+        console.error('Failed to initialize analysis view:', error);
+        container.innerHTML =
+            '<div style="padding: 20px; color: var(--vscode-errorForeground, red);">Failed to load analysis data. Please try reopening the panel.</div>';
     }
+}
 
-    // Create the React root and render the component
-    const root = createRoot(container);
-    root.render(
-        <React.StrictMode>
-            <AnalysisView
-                title={analysisData.title}
-                diffText={analysisData.diffText}
-                analysis={analysisData.analysis}
-                toolCalls={analysisData.toolCalls}
-            />
-        </React.StrictMode>
-    );
-});
-
-// If DOMContentLoaded has already fired, execute immediately
+// Initialize when DOM is ready (single initialization path)
 if (document.readyState === 'loading') {
-    // Document is still loading, wait for DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', initializeApp);
 } else {
-    // Document is already loaded, execute immediately
-    const container = document.getElementById('root');
-    if (container) {
-        const analysisData = window.analysisData;
-        if (analysisData) {
-            const root = createRoot(container);
-            root.render(
-                <React.StrictMode>
-                    <AnalysisView
-                        title={analysisData.title}
-                        diffText={analysisData.diffText}
-                        analysis={analysisData.analysis}
-                        toolCalls={analysisData.toolCalls}
-                    />
-                </React.StrictMode>
-            );
-        }
-    }
+    initializeApp();
 }
