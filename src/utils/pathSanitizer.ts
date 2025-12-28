@@ -6,7 +6,8 @@ import * as path from 'path';
  */
 export class PathSanitizer {
   private static readonly MAX_PATH_LENGTH = 1024;
-  private static readonly NULL_BYTE_PATTERN = /\x00/;
+  // eslint-disable-next-line no-control-regex
+  private static readonly NULL_BYTE_PATTERN = /\u0000/;
   /**
    * Sanitizes the relative path to prevent directory traversal attacks
    * Handles Windows absolute paths and UNC paths by rejecting them
