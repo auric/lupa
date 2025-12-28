@@ -122,6 +122,9 @@ export class UIManager {
             titleTruncated = title.substring(0, 97) + '...';
         }
 
+        // Generate nonce for CSP - required for inline scripts in VS Code webviews
+        const nonce = this.generateNonce();
+
         // Generate URIs for the assets using extension context
         const mainScriptUri = panel.webview.asWebviewUri(
             vscode.Uri.joinPath(
@@ -141,12 +144,16 @@ export class UIManager {
             )
         );
 
+        // CSP source for webview resources
+        const cspSource = panel.webview.cspSource;
+
         return `
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}' ${cspSource}; font-src ${cspSource}; img-src ${cspSource} data:;">
             <title>${titleTruncated}</title>
             <link href="${mainStylesUri}" rel="stylesheet">
             <style>
@@ -177,7 +184,7 @@ export class UIManager {
                 <div class="loading">Loading analysis...</div>
             </div>
 
-            <script>
+            <script nonce="${nonce}">
                 // Acquire VSCode API immediately and make it globally available
                 window.vscode = (function() {
                     if (typeof acquireVsCodeApi !== 'undefined') {
@@ -205,10 +212,21 @@ export class UIManager {
                     }
                 };
             </script>
-            <script type="module" src="${mainScriptUri}"></script>
+            <script nonce="${nonce}" type="module" src="${mainScriptUri}"></script>
         </body>
         </html>
         `;
+    }
+
+    /**
+     * Generate a cryptographic nonce for CSP
+     */
+    private generateNonce(): string {
+        const array = new Uint32Array(4);
+        crypto.getRandomValues(array);
+        return Array.from(array, (n) => n.toString(16).padStart(8, '0')).join(
+            ''
+        );
     }
 
     /**
