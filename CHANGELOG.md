@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Webview data loading failure**: Fixed an issue where the analysis webview would fail to load on first open, showing "Analysis data not available". The root cause was using inline scripts to inject data into the webview, which is unreliable due to CSP restrictions and script execution timing in VS Code webviews. Now uses the VS Code recommended pattern of embedding data in `<meta>` tag `data-` attributes, which the module script reads synchronously after DOM is ready. Also added proper CSP headers with nonce for secure script execution.
+- **Webview initialization bug**: Fixed an issue where the analysis webview could fail to load on first open. The root cause was duplicate initialization paths in `main.tsx` - both a `DOMContentLoaded` listener AND an immediate execution check were present, causing race conditions. Simplified to match the working `toolTesting.tsx` pattern: single `DOMContentLoaded` listener only.
+
+### Changed
+
+- **Shared webview type declarations**: Created `webviewGlobals.ts` for consistent `Window` interface declarations across webview entry points, eliminating duplicate type definitions.
 
 ## [0.1.3] - 2025-12-26
 
