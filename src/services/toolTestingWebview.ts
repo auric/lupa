@@ -7,7 +7,7 @@ import type {
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
 import type { ToolInfo } from '../webview/types/toolTestingTypes';
-import { safeJsonStringify } from '../utils/htmlEscape';
+import { safeJsonStringify } from '../utils/safeJson';
 
 /**
  * ToolTestingWebviewService handles the tool testing webview functionality

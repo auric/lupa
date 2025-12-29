@@ -14,7 +14,7 @@ import type {
     PathValidationResultPayload,
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
-import { safeJsonStringify } from '../utils/htmlEscape';
+import { safeJsonStringify } from '../utils/safeJson';
 
 /**
  * UIManager handles all UI-related functionality
