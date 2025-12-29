@@ -232,7 +232,7 @@ export class UIManager {
                 'prAnalyzerResults',
                 title,
                 vscode.ViewColumn.Beside,
-                { enableScripts: true }
+                { enableScripts: true, retainContextWhenHidden: true }
             );
             this.activeAnalysisPanel = panel;
         }

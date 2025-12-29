@@ -5,12 +5,12 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.5] - 2025-12-28
+## [0.1.5] - 2025-12-29
 
 ### Fixed
 
 - `FindFilesByPatternTool`: provided picomatch glob function to fix bundling issues with Vite. Previously, the tool failed to execute in the bundled extension due to missing dependencies.
-- **Webview initialization bug**: Fixed an issue where the analysis webview could fail to load on first open. In `0.1.4` it hasn't been fully resolved. Added timeout to defer loading to next event loop tick, ensuring inline scripts have executed.
+- **Webview initialization bug**: Fixed issue where analysis webview failed to load on first open with "Analysis data not found" error. Root cause: panel reuse combined with missing `retainContextWhenHidden: true` option caused race conditions when VS Code asynchronously replaced webview content. When a panel was reused, the old webview context was destroyed before the new HTML was fully loaded, causing `window.analysisData` to be undefined. Fix: Added `retainContextWhenHidden: true` to panel creation options, matching the working `toolTestingWebview.ts` pattern.
 
 ## [0.1.4] - 2025-12-28
 
