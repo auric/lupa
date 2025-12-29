@@ -4,6 +4,7 @@ import AnalysisView from './AnalysisView';
 import type { ToolCallsData } from '../types/toolCallTypes';
 import './types/webviewGlobals'; // Import for side-effect (global declarations)
 import './globals.css';
+import { onDomReady } from './utils/domReady';
 
 declare global {
     interface Window {
@@ -74,7 +75,9 @@ const AnalysisApp: React.FC = () => {
 };
 
 // Initialize the React application
-document.addEventListener('DOMContentLoaded', () => {
+// Note: Module scripts execute after DOMContentLoaded, so we use onDomReady
+// to handle both cases (still loading vs already ready)
+onDomReady(() => {
     const container = document.getElementById('root');
     if (!container) {
         console.error('Root container not found');

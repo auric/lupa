@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles/toolTesting.css';
 import '../types/webviewGlobals'; // Import for side-effect (global declarations)
 import ToolTestingView from './ToolTestingView';
+import { onDomReady } from '../utils/domReady';
 
 // Extend Window interface for tool testing specific data
 declare global {
@@ -31,7 +32,9 @@ const ToolTestingApp: React.FC = () => {
 };
 
 // Initialize the React application
-document.addEventListener('DOMContentLoaded', () => {
+// Note: Module scripts execute after DOMContentLoaded, so we use onDomReady
+// to handle both cases (still loading vs already ready)
+onDomReady(() => {
     const container = document.getElementById('root');
     if (!container) {
         console.error('Root container not found');
