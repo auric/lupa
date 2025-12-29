@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `subagentGuidance.ts` - Condensed delegation rules (~300 tokens vs ~1500 previously)
     - `analysisMethodology.ts` - Step-by-step analysis process
     - `outputFormat.ts` - Review structure and severity guide
-    - `selfReflection.ts` - think*about*\* tools guidance
+    - `selfReflection.ts` - think_about_* tools guidance
 
 ### Changed
 
