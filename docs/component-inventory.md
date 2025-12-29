@@ -26,6 +26,7 @@
 | `GitService`                  | `gitService.ts`                  | Low-level Git commands                     |
 | `SubagentExecutor`            | `subagentExecutor.ts`            | Isolated subagent execution                |
 | `SubagentSessionManager`      | `subagentSessionManager.ts`      | Subagent lifecycle and limits              |
+| `PlanSessionManager`          | `planSessionManager.ts`          | Review plan state for current analysis     |
 | `UIManager`                   | `uiManager.ts`                   | Webview panel management                   |
 | `WorkspaceSettingsService`    | `workspaceSettingsService.ts`    | Settings persistence (`.vscode/lupa.json`) |
 | `LoggingService`              | `loggingService.ts`              | Centralized logging with levels            |
@@ -101,6 +102,12 @@
 | Tool              | File                 | Name           | Description                     |
 | ----------------- | -------------------- | -------------- | ------------------------------- |
 | `RunSubagentTool` | `runSubagentTool.ts` | `run_subagent` | Delegate complex investigations |
+
+### Planning Tools
+
+| Tool             | File                | Name          | Description                                 |
+| ---------------- | ------------------- | ------------- | ------------------------------------------- |
+| `UpdatePlanTool` | `updatePlanTool.ts` | `update_plan` | Create and track review plan with checklist |
 
 ### Tool Utilities
 

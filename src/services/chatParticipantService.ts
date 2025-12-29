@@ -35,7 +35,6 @@ export interface ChatParticipantDependencies {
     workspaceSettings: WorkspaceSettingsService;
     promptGenerator: PromptGenerator;
     gitOperations: GitOperationsManager;
-    planSessionManager?: PlanSessionManager;
 }
 
 /**
@@ -440,10 +439,9 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
-        // Set unique session for plan isolation (chat requests can run in parallel)
-        const sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        this.deps?.planSessionManager?.setActiveSession(sessionId);
-        this.deps?.planSessionManager?.reset();
+        // Create fresh PlanSessionManager for this analysis (ensures isolation)
+        const planManager = new PlanSessionManager();
+        this.deps!.toolExecutor.setCurrentPlanManager(planManager);
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
@@ -499,6 +497,9 @@ export class ChatParticipantService implements vscode.Disposable {
         streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
         const contentAnalysis = this.analyzeResultContent(analysisResult);
+
+        // Clean up plan manager after analysis
+        this.deps!.toolExecutor.clearCurrentPlanManager();
 
         return {
             metadata: {

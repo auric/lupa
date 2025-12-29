@@ -160,6 +160,8 @@ describe('ChatParticipantService', () => {
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
                 resetToolCallCount: vi.fn(),
+                setCurrentPlanManager: vi.fn(),
+                clearCurrentPlanManager: vi.fn(),
             };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
@@ -405,6 +407,8 @@ describe('ChatParticipantService', () => {
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
                 resetToolCallCount: vi.fn(),
+                setCurrentPlanManager: vi.fn(),
+                clearCurrentPlanManager: vi.fn(),
             };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
@@ -867,6 +871,8 @@ describe('ChatParticipantService', () => {
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
                 resetToolCallCount: vi.fn(),
+                setCurrentPlanManager: vi.fn(),
+                clearCurrentPlanManager: vi.fn(),
             };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
@@ -1309,6 +1315,8 @@ describe('ChatParticipantService', () => {
             mockToolExecutor = {
                 getAvailableTools: vi.fn().mockReturnValue([]),
                 resetToolCallCount: vi.fn(),
+                setCurrentPlanManager: vi.fn(),
+                clearCurrentPlanManager: vi.fn(),
             };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),

@@ -145,6 +145,7 @@ LLM-callable tools extending `BaseTool` with Zod schemas.
 | `FindFilesByPatternTool` | Glob-based file search                        |
 | `GetSymbolsOverviewTool` | Hierarchical symbol structure                 |
 | `SearchForPatternTool`   | Ripgrep-based text search                     |
+| `UpdatePlanTool`         | Create and track review plan with checklist   |
 | `RunSubagentTool`        | Delegate investigations to subagents          |
 | `ThinkAbout*Tools`       | Structured reasoning tools                    |
 

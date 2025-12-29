@@ -25,15 +25,17 @@ export function generateToolSelectionGuide(): string {
 
 ### Principles
 
-1. **Verify before claiming**: Use tools to confirm behavior, don't assume
-2. **Symbols over text**: Use \`find_symbol\` for code, \`read_file\` for configs only
-3. **Parallelize**: Call independent tools in one turn
-4. **Scope searches**: Provide \`relative_path\` when you know the area
-5. **Track with plan**: Create a plan early, update as you investigate
-6. **Delegate complexity**: Spawn subagent for 3+ file investigations
+1. **Plan first**: Call \`update_plan\` before any investigation to structure your review
+2. **Verify before claiming**: Use tools to confirm behavior, don't assume
+3. **Symbols over text**: Use \`find_symbol\` for code, \`read_file\` for configs only
+4. **Parallelize**: Call independent tools in one turn
+5. **Scope searches**: Provide \`relative_path\` when you know the area
+6. **Track progress**: Update your plan as you complete checklist items
+7. **Delegate complexity**: Spawn subagent for 3+ file investigations
 
 ### Anti-Patterns
 
+- ❌ Investigating code without first creating a plan with \`update_plan\`
 - ❌ Reading files when you only need one function (use \`find_symbol\`)
 - ❌ Sequential tool calls that could be parallel
 - ❌ Claims without tool verification

@@ -11,7 +11,9 @@ export function generateAnalysisMethodology(): string {
     return `<analysis_methodology>
 ## Analysis Process
 
-### Step 1: Create Your Plan (REQUIRED)
+### Step 1: Create Your Plan (MANDATORY - FIRST ACTION)
+⚠️ **Your first tool call MUST be \`update_plan\`.** Do not investigate before planning.
+
 After scanning the diff, immediately call \`update_plan\` to create a structured checklist:
 \`\`\`markdown
 ## PR Review Plan

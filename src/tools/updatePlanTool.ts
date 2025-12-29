@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
-import { ToolResult, toolSuccess } from '../types/toolResultTypes';
-import { PlanSessionManager } from '../services/planSessionManager';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ToolExecutor } from '../models/toolExecutor';
 
 /**
  * Tool for creating and updating a structured review plan.
@@ -11,8 +11,9 @@ import { PlanSessionManager } from '../services/planSessionManager';
  * 2. Mark checklist items as complete during investigation
  * 3. Add findings and notes as the review progresses
  *
- * The plan persists across conversation turns, allowing the LLM to track
- * progress and ensure comprehensive coverage of the PR.
+ * The plan is scoped to the current analysis session via ToolExecutor.
+ * Each analysis run gets a fresh PlanSessionManager, ensuring isolation
+ * between parallel analyses.
  */
 export class UpdatePlanTool extends BaseTool {
     name = 'update_plan';
@@ -29,15 +30,22 @@ export class UpdatePlanTool extends BaseTool {
             ),
     });
 
-    constructor(private readonly planManager: PlanSessionManager) {
+    constructor(private readonly toolExecutor: ToolExecutor) {
         super();
     }
 
     async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
         const { plan } = args;
 
-        const isUpdate = this.planManager.hasPlan();
-        this.planManager.updatePlan(plan);
+        const planManager = this.toolExecutor.getCurrentPlanManager();
+        if (!planManager) {
+            return toolError(
+                'No active analysis session. The update_plan tool is only available during PR analysis.'
+            );
+        }
+
+        const isUpdate = planManager.hasPlan();
+        planManager.updatePlan(plan);
 
         const statusMessage = isUpdate
             ? '✅ Plan updated successfully.'

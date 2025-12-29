@@ -33,7 +33,6 @@ export class ToolCallingAnalysisProvider {
 
     private currentIteration = 0;
     private currentMaxIterations = 0;
-    private planSessionManager: PlanSessionManager | undefined = undefined;
 
     constructor(
         private conversationManager: ConversationManager,
@@ -56,14 +55,6 @@ export class ToolCallingAnalysisProvider {
      */
     setSubagentExecutor(executor: SubagentExecutor): void {
         this.subagentExecutor = executor;
-    }
-
-    /**
-     * Set the plan session manager for resetting plan state.
-     * Called by ServiceManager after tools are initialized.
-     */
-    setPlanSessionManager(manager: PlanSessionManager): void {
-        this.planSessionManager = manager;
     }
 
     private get maxIterations(): number {
@@ -118,8 +109,9 @@ export class ToolCallingAnalysisProvider {
             this.subagentSessionManager.reset();
             this.subagentSessionManager.setParentCancellationToken(token);
 
-            // Reset plan state for fresh analysis
-            this.planSessionManager?.reset();
+            // Create fresh PlanSessionManager for this analysis (ensures isolation)
+            const planManager = new PlanSessionManager();
+            this.toolExecutor.setCurrentPlanManager(planManager);
 
             // Clear previous conversation history for a fresh analysis
             this.conversationManager.clearHistory();
@@ -218,6 +210,8 @@ export class ToolCallingAnalysisProvider {
             // Clear subagent progress callback
             this.subagentExecutor?.setProgressCallback(undefined, undefined);
             this.subagentSessionManager.setParentCancellationToken(undefined);
+            // Clear plan manager after analysis completes
+            this.toolExecutor.clearCurrentPlanManager();
         }
 
         return this.buildAnalysisResult(

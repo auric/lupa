@@ -90,6 +90,8 @@ index 1234567..abcdefg 100644
                 },
             ]),
             resetToolCallCount: vi.fn(),
+            setCurrentPlanManager: vi.fn(),
+            clearCurrentPlanManager: vi.fn(),
         };
 
         const mockModel = {

@@ -38,7 +38,6 @@ import { UpdatePlanTool } from '../tools/updatePlanTool';
 // Subagent services
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentSessionManager } from './subagentSessionManager';
-import { PlanSessionManager } from './planSessionManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 
 import { Log } from './loggingService';
@@ -74,9 +73,6 @@ export interface IServiceRegistry {
     // Subagent services
     subagentExecutor: SubagentExecutor;
     subagentSessionManager: SubagentSessionManager;
-
-    // Plan tracking
-    planSessionManager: PlanSessionManager;
 
     // Language Model Tool Provider
     languageModelToolProvider: LanguageModelToolProvider;
@@ -214,10 +210,7 @@ export class ServiceManager implements vscode.Disposable {
         // Register available tools
         this.initializeTools();
 
-        // Wire up PlanSessionManager to ToolCallingAnalysisProvider for reset on new analysis
-        this.services.toolCallingAnalysisProvider.setPlanSessionManager(
-            this.services.planSessionManager!
-        );
+        // Note: PlanSessionManager is created per-analysis in ToolCallingAnalysisProvider
 
         // Initialize tool testing webview service
         const gitRootPath =
@@ -237,7 +230,6 @@ export class ServiceManager implements vscode.Disposable {
             workspaceSettings: this.services.workspaceSettings!,
             promptGenerator: this.services.promptGenerator!,
             gitOperations: this.services.gitOperations!,
-            planSessionManager: this.services.planSessionManager!,
         });
 
         // Register language model tools for Agent Mode
@@ -309,9 +301,9 @@ export class ServiceManager implements vscode.Disposable {
             );
 
             // Register the UpdatePlanTool for tracking review progress
-            this.services.planSessionManager = new PlanSessionManager();
+            // Note: UpdatePlanTool gets PlanSessionManager from ToolExecutor per-analysis
             this.services.toolRegistry!.registerTool(
-                new UpdatePlanTool(this.services.planSessionManager)
+                new UpdatePlanTool(this.services.toolExecutor!)
             );
 
             // Register the RunSubagentTool for delegating complex investigations

@@ -5,6 +5,7 @@ import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
+import { PlanSessionManager } from '../services/planSessionManager';
 
 /**
  * Interface for tool execution requests
@@ -33,11 +34,35 @@ export interface ToolExecutionResult {
  */
 export class ToolExecutor {
     private toolCallCount = 0;
+    private currentPlanManager: PlanSessionManager | undefined;
 
     constructor(
         private toolRegistry: ToolRegistry,
         private workspaceSettings: WorkspaceSettingsService
     ) {}
+
+    /**
+     * Set the plan manager for the current analysis session.
+     * Call this at the start of each analysis with a fresh instance.
+     */
+    setCurrentPlanManager(manager: PlanSessionManager): void {
+        this.currentPlanManager = manager;
+    }
+
+    /**
+     * Get the plan manager for the current analysis session.
+     * Returns undefined if no analysis is in progress.
+     */
+    getCurrentPlanManager(): PlanSessionManager | undefined {
+        return this.currentPlanManager;
+    }
+
+    /**
+     * Clear the current plan manager after analysis completes.
+     */
+    clearCurrentPlanManager(): void {
+        this.currentPlanManager = undefined;
+    }
 
     private get maxToolCalls(): number {
         return this.workspaceSettings.getMaxIterations();
