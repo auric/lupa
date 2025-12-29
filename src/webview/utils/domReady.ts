@@ -12,7 +12,7 @@
 export function onDomReady(callback: () => void): void {
     if (document.readyState === 'loading') {
         // DOM is still loading, wait for it
-        document.addEventListener('DOMContentLoaded', callback);
+        document.addEventListener('DOMContentLoaded', callback, { once: true });
     } else {
         // DOM is already ready (interactive or complete)
         callback();
