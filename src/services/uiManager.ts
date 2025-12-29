@@ -198,13 +198,27 @@ export class UIManager {
             <script>
                 // Parse analysis data from JSON script tag
                 // Using JSON script tag avoids issues with special characters in JS template literals
+                var jsonScript = document.getElementById('analysis-data');
                 try {
-                    var jsonScript = document.getElementById('analysis-data');
                     if (jsonScript && jsonScript.textContent) {
                         window.analysisData = JSON.parse(jsonScript.textContent);
+                    } else {
+                        // Explicitly mark that no analysis data was available
+                        window.analysisData = null;
+                        console.error('Analysis data script tag is missing or empty.');
                     }
                 } catch (e) {
-                    console.error('Failed to parse analysis data:', e);
+                    // Ensure a consistent fallback value on parse failure
+                    window.analysisData = null;
+                    var contentPreview = jsonScript && jsonScript.textContent
+                        ? jsonScript.textContent.slice(0, 200)
+                        : '';
+                    console.error(
+                        'Failed to parse analysis data. Content preview (first 200 chars):',
+                        contentPreview,
+                        'Error:',
+                        e
+                    );
                 }
 
                 // Inject initial theme data
