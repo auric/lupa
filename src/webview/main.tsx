@@ -22,7 +22,7 @@ const AnalysisApp: React.FC = () => {
     // Get analysis data from window object injected by extension
     const analysisData = window.analysisData;
 
-    if (!analysisData) {
+    if (!analysisData || typeof analysisData !== 'object') {
         return (
             <div
                 style={{
