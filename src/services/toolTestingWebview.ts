@@ -7,6 +7,7 @@ import type {
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
 import type { ToolInfo } from '../webview/types/toolTestingTypes';
+import { safeJsonStringify } from '../utils/safeJson';
 
 /**
  * ToolTestingWebviewService handles the tool testing webview functionality
@@ -140,8 +141,13 @@ export class ToolTestingWebviewService {
                 </div>
             </div>
 
+            <script id="tool-testing-data" type="application/json">
+                ${safeJsonStringify({
+                    initialTool,
+                    initialParameters,
+                })}
+            </script>
             <script>
-                // Acquire VSCode API immediately and make it globally available
                 window.vscode = (function() {
                     if (typeof acquireVsCodeApi !== 'undefined') {
                         return acquireVsCodeApi();
@@ -149,13 +155,27 @@ export class ToolTestingWebviewService {
                     return null;
                 })();
 
-                // Inject initial data into window object
-                window.toolTestingData = {
-                    initialTool: ${JSON.stringify(initialTool || null)},
-                    initialParameters: ${JSON.stringify(initialParameters || {})}
-                };
+                try {
+                    var jsonScript = document.getElementById('tool-testing-data');
+                    if (jsonScript && jsonScript.textContent) {
+                        window.toolTestingData = JSON.parse(jsonScript.textContent);
+                    } else {
+                        window.toolTestingData = null;
+                        console.error('Tool testing data script tag is missing or empty.');
+                    }
+                } catch (e) {
+                    window.toolTestingData = null;
+                    var contentPreview = jsonScript && jsonScript.textContent
+                        ? jsonScript.textContent.slice(0, 200)
+                        : '';
+                    console.error(
+                        'Failed to parse tool testing data. Content preview (first 200 chars):',
+                        contentPreview,
+                        'Error:',
+                        e
+                    );
+                }
 
-                // Inject initial theme data
                 window.initialTheme = {
                     kind: ${vscode.window.activeColorTheme.kind},
                     isDarkTheme: ${

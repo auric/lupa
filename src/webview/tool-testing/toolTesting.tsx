@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles/toolTesting.css';
 import '../types/webviewGlobals'; // Import for side-effect (global declarations)
 import ToolTestingView from './ToolTestingView';
+import { onDomReady } from '../utils/domReady';
 
 // Extend Window interface for tool testing specific data
 declare global {
@@ -14,9 +15,7 @@ declare global {
     }
 }
 
-// Tool Testing Application Component
 const ToolTestingApp: React.FC = () => {
-    // Get initial data from window object injected by extension
     const { initialTool, initialParameters } = window.toolTestingData || {
         initialTool: null,
         initialParameters: {},
@@ -31,7 +30,9 @@ const ToolTestingApp: React.FC = () => {
 };
 
 // Initialize the React application
-document.addEventListener('DOMContentLoaded', () => {
+// Note: Module scripts execute after DOMContentLoaded, so we use onDomReady
+// to handle both cases (still loading vs already ready)
+onDomReady(() => {
     const container = document.getElementById('root');
     if (!container) {
         console.error('Root container not found');
@@ -45,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) {
         console.error('Failed to render tool testing interface:', error);
 
-        // Fallback error display
+        // Fallback error display - use DOM methods to avoid XSS from error content
         container.innerHTML = `
       <div style="
         display: flex;
@@ -73,19 +74,26 @@ document.addEventListener('DOMContentLoaded', () => {
           border-radius: 4px;
         ">
           <summary style="cursor: pointer; margin-bottom: 10px;">Error Details</summary>
-          <pre style="
+          <pre id="error-details" style="
             font-family: 'Courier New', monospace;
             font-size: 12px;
             white-space: pre-wrap;
             color: var(--vscode-errorForeground);
-          ">${error}</pre>
+          "></pre>
         </details>
         <p style="margin-top: 20px; font-size: 14px; color: var(--vscode-descriptionForeground);">
           Please check the VS Code developer console for more information.
         </p>
       </div>
     `;
+
+        // Safely set error content using textContent to prevent XSS
+        const errorDetails = container.querySelector('#error-details');
+        if (errorDetails) {
+            errorDetails.textContent =
+                error instanceof Error
+                    ? (error.stack ?? error.message)
+                    : String(error);
+        }
     }
 });
-
-export default ToolTestingApp;

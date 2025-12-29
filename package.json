@@ -5,7 +5,7 @@
     "repository": "https://github.com/auric/lupa",
     "license": "AGPL-3.0-or-later",
     "description": "A VS Code extension for comprehensive pull request analysis using GitHub Copilot models",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "engines": {
         "vscode": "^1.107.0",
         "node": ">=20"
@@ -172,6 +172,7 @@
         "clsx": "^2.1.1",
         "cross-env": "^10.1.0",
         "fdir": "^6.5.0",
+        "html-safe-json": "^2.0.3",
         "husky": "^9.1.7",
         "ignore": "^7.0.5",
         "jsdom": "^27.3.0",

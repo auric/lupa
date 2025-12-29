@@ -102,7 +102,7 @@ describe('UIManager', () => {
                 'prAnalyzerResults',
                 title,
                 vscode.ViewColumn.Beside,
-                { enableScripts: true }
+                { enableScripts: true, retainContextWhenHidden: true }
             );
 
             expect(mockWebview.onDidReceiveMessage).toHaveBeenCalled();

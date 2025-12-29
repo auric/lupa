@@ -5,11 +5,14 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.5] - 2025-12-28
+## [0.1.5] - 2025-12-29
 
 ### Fixed
 
-- FindFilesByPatternTool provided picomatch glob function to fix bundling issues with Vite. Previously, the tool failed to execute in the bundled extension due to missing dependencies.
+- `FindFilesByPatternTool`: provided picomatch glob function to fix bundling issues with Vite. Previously, the tool failed to execute in the bundled extension due to missing dependencies.
+- **Webview data injection failures**: Fixed critical bug where analysis webview failed on first open with "Analysis data not found" error but worked on subsequent opens. Root cause: JSON data was embedded directly in `<script>` tags as JavaScript literals, which silently failed when content contained special characters (backticks, `${}`, `</script>`) that broke either the HTML parser or JavaScript template literal generation. Fix: Changed to `<script type="application/json">` pattern - data is stored as text in a non-executable script tag and parsed with `JSON.parse()` at runtime, avoiding all parsing conflicts.
+- **Webview module script timing**: Fixed issue where `DOMContentLoaded` listener in module scripts never fired because module scripts have implicit `defer` and execute after the event has already fired. Fix: Created `onDomReady()` utility that checks `document.readyState` and either waits for the event or executes immediately if DOM is already ready.
+- **Webview panel context preservation**: Added `retainContextWhenHidden: true` to analysis webview panel options to prevent context destruction during panel reuse.
 
 ## [0.1.4] - 2025-12-28
 

@@ -14,6 +14,7 @@ import type {
     PathValidationResultPayload,
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
+import { safeJsonStringify } from '../utils/safeJson';
 
 /**
  * UIManager handles all UI-related functionality
@@ -185,14 +186,39 @@ export class UIManager {
                     }
                     return null;
                 })();
-
-                // Inject analysis data into window object
-                window.analysisData = {
-                    title: ${JSON.stringify(titleTruncated)},
-                    diffText: ${JSON.stringify(diffText)},
-                    analysis: ${JSON.stringify(cleanedAnalysis)},
-                    toolCalls: ${JSON.stringify(toolCalls ?? null)}
-                };
+            </script>
+            <script id="analysis-data" type="application/json">
+                ${safeJsonStringify({
+                    title: titleTruncated,
+                    diffText: diffText,
+                    analysis: cleanedAnalysis,
+                    toolCalls: toolCalls ?? null,
+                })}
+            </script>
+            <script>
+                // Parse analysis data from JSON script tag
+                // Using JSON script tag avoids issues with special characters in JS template literals
+                var jsonScript = document.getElementById('analysis-data');
+                try {
+                    if (jsonScript && jsonScript.textContent) {
+                        window.analysisData = JSON.parse(jsonScript.textContent);
+                    } else {
+                        // Explicitly mark that no analysis data was available
+                        window.analysisData = null;
+                        console.error('Analysis data script tag is missing or empty.');
+                    }
+                } catch (e) {
+                    window.analysisData = null;
+                    var contentPreview = jsonScript && jsonScript.textContent
+                        ? jsonScript.textContent.slice(0, 200)
+                        : '';
+                    console.error(
+                        'Failed to parse analysis data. Content preview (first 200 chars):',
+                        contentPreview,
+                        'Error:',
+                        e
+                    );
+                }
 
                 // Inject initial theme data
                 window.initialTheme = {
@@ -232,7 +258,7 @@ export class UIManager {
                 'prAnalyzerResults',
                 title,
                 vscode.ViewColumn.Beside,
-                { enableScripts: true }
+                { enableScripts: true, retainContextWhenHidden: true }
             );
             this.activeAnalysisPanel = panel;
         }
