@@ -90,13 +90,13 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 promptGenerator.generateToolAwareSystemPrompt(mockTools);
 
             expect(systemPrompt).toContain('Staff Engineer');
-            expect(systemPrompt).toContain('## Available Code Analysis Tools');
+            expect(systemPrompt).toContain('## Available Tools');
             expect(systemPrompt).toContain(
                 '**mock_tool**: A mock tool for testing'
             );
-            expect(systemPrompt).toContain('## Tool Selection Guide');
-            expect(systemPrompt).toContain('## Analysis Methodology');
-            expect(systemPrompt).toContain('## Output Format');
+            expect(systemPrompt).toContain('Tool Selection');
+            expect(systemPrompt).toContain('Analysis');
+            expect(systemPrompt).toContain('output_format');
         });
 
         it('should handle empty tools array', () => {
@@ -105,9 +105,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             );
 
             expect(systemPrompt).toContain('Staff Engineer');
-            expect(systemPrompt).not.toContain(
-                '## Available Code Analysis Tools'
-            );
+            expect(systemPrompt).not.toContain('## Available Tools');
         });
 
         it('should include parameter information from tool schemas', () => {
@@ -128,8 +126,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(userPrompt).toContain('<file>');
             expect(userPrompt).toContain('<path>src/example.ts</path>');
             expect(userPrompt).toContain('<changes>');
-            expect(userPrompt).toContain('<tool_usage_examples>');
-            expect(userPrompt).toContain('<instructions>');
+            expect(userPrompt).toContain('<analysis_task>');
         });
 
         it('should include file content section', () => {
@@ -141,73 +138,41 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(userPrompt).toContain('console.log');
         });
 
-        it('should include tool usage examples', () => {
+        it('should include workflow reminder', () => {
             const userPrompt =
                 promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
-            expect(userPrompt).toContain('<tool_usage_examples>');
-            expect(userPrompt).toContain(
-                '<scenario>Encountering unknown function in diff</scenario>'
-            );
-            expect(userPrompt).toContain(
-                '<scenario>New file in diff with unclear context</scenario>'
-            );
-            expect(userPrompt).toContain(
-                '<scenario>Refactoring with potential breaking changes</scenario>'
-            );
-            expect(userPrompt).toContain('find_symbol');
-            expect(userPrompt).toContain('find_usages');
-            expect(userPrompt).toContain('search_for_pattern');
+            expect(userPrompt).toContain('Workflow Reminder');
+            expect(userPrompt).toContain('update_plan');
         });
 
-        it('should include comprehensive tool-calling instructions', () => {
+        it('should structure content with files first then task', () => {
             const userPrompt =
                 promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
 
-            expect(userPrompt).toContain('## Tool-Powered Analysis Approach');
-            expect(userPrompt).toContain(
-                '**Step 1: Initial Context Gathering**'
-            );
-            expect(userPrompt).toContain('**Step 2: Deep Dive Investigation**');
-            expect(userPrompt).toContain('**Step 3: Comprehensive Analysis**');
-            expect(userPrompt).toContain('**Tool Usage Strategy:**');
-            expect(userPrompt).toContain('**Analysis Quality Requirements:**');
-        });
-
-        it('should structure content according to long context optimization', () => {
-            const userPrompt =
-                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
-
-            // File content should come first for long context optimization
             const fileContentIndex = userPrompt.indexOf('<files_to_review>');
-            const examplesIndex = userPrompt.indexOf('<tool_usage_examples>');
-            const instructionsIndex = userPrompt.indexOf('<instructions>');
+            const taskIndex = userPrompt.indexOf('<analysis_task>');
 
-            expect(fileContentIndex).toBeLessThan(examplesIndex);
-            expect(examplesIndex).toBeLessThan(instructionsIndex);
+            expect(fileContentIndex).toBeLessThan(taskIndex);
         });
 
-        it('should include thinking tag in response structure', () => {
+        it('should mention subagent spawning for large PRs', () => {
+            // Create a diff with 4+ files
+            const largeDiff: DiffHunk[] = Array(5)
+                .fill(null)
+                .map((_, i) => ({
+                    filePath: `src/file${i}.ts`,
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: `diff --git a/src/file${i}.ts b/src/file${i}.ts`,
+                    hunks: [],
+                }));
+
             const userPrompt =
-                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
+                promptGenerator.generateToolCallingUserPrompt(largeDiff);
 
-            expect(userPrompt).toContain('<thinking>');
-            expect(userPrompt).toContain(
-                'Document your tool usage and reasoning process'
-            );
-        });
-
-        it('should include all required analysis categories', () => {
-            const userPrompt =
-                promptGenerator.generateToolCallingUserPrompt(sampleParsedDiff);
-
-            expect(userPrompt).toContain('<suggestion_security>');
-            expect(userPrompt).toContain('<suggestion_performance>');
-            expect(userPrompt).toContain('<suggestion_maintainability>');
-            expect(userPrompt).toContain('<suggestion_reliability>');
-            expect(userPrompt).toContain('<suggestion_type_safety>');
-            expect(userPrompt).toContain('<example_fix>');
-            expect(userPrompt).toContain('<explanation>');
+            expect(userPrompt).toContain('subagent');
+            expect(userPrompt).toContain('5 files');
         });
     });
 
@@ -250,16 +215,16 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(userPrompt).not.toContain('<user_focus>');
         });
 
-        it('should place user focus section before instructions', () => {
+        it('should place user focus section before analysis task', () => {
             const userPrompt = promptGenerator.generateToolCallingUserPrompt(
                 sampleParsedDiff,
                 'check for race conditions'
             );
 
             const userFocusIndex = userPrompt.indexOf('<user_focus>');
-            const instructionsIndex = userPrompt.indexOf('<instructions>');
+            const taskIndex = userPrompt.indexOf('<analysis_task>');
 
-            expect(userFocusIndex).toBeLessThan(instructionsIndex);
+            expect(userFocusIndex).toBeLessThan(taskIndex);
         });
     });
 

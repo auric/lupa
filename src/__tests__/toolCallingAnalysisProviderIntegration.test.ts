@@ -178,10 +178,7 @@ index 1234567..abcdefg 100644
                 expect.stringContaining('<files_to_review>')
             );
             expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining('<tool_usage_examples>')
-            );
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining('<instructions>')
+                expect.stringContaining('<analysis_task>')
             );
         });
 

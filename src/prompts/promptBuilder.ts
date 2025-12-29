@@ -11,7 +11,7 @@ import {
     generateExplorationOutputFormat,
     generateSelfReflectionGuidance,
     generateExplorationReflectionGuidance,
-} from './blocks';
+} from './blocks/promptBlocks';
 
 /**
  * Builder for composing system prompts from modular blocks.

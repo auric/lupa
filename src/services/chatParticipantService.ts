@@ -12,6 +12,7 @@ import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { ChatContextManager } from '../models/chatContextManager';
 import { PromptGenerator } from '../models/promptGenerator';
+import { PlanSessionManager } from './planSessionManager';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -34,6 +35,7 @@ export interface ChatParticipantDependencies {
     workspaceSettings: WorkspaceSettingsService;
     promptGenerator: PromptGenerator;
     gitOperations: GitOperationsManager;
+    planSessionManager?: PlanSessionManager;
 }
 
 /**
@@ -437,6 +439,11 @@ export class ChatParticipantService implements vscode.Disposable {
         if (token.isCancellationRequested) {
             return this.handleCancellation(stream);
         }
+
+        // Set unique session for plan isolation (chat requests can run in parallel)
+        const sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        this.deps?.planSessionManager?.setActiveSession(sessionId);
+        this.deps?.planSessionManager?.reset();
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);

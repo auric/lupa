@@ -20,6 +20,7 @@ import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
+import { PlanSessionManager } from './planSessionManager';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -32,6 +33,7 @@ export class ToolCallingAnalysisProvider {
 
     private currentIteration = 0;
     private currentMaxIterations = 0;
+    private planSessionManager: PlanSessionManager | undefined = undefined;
 
     constructor(
         private conversationManager: ConversationManager,
@@ -54,6 +56,14 @@ export class ToolCallingAnalysisProvider {
      */
     setSubagentExecutor(executor: SubagentExecutor): void {
         this.subagentExecutor = executor;
+    }
+
+    /**
+     * Set the plan session manager for resetting plan state.
+     * Called by ServiceManager after tools are initialized.
+     */
+    setPlanSessionManager(manager: PlanSessionManager): void {
+        this.planSessionManager = manager;
     }
 
     private get maxIterations(): number {
@@ -107,6 +117,9 @@ export class ToolCallingAnalysisProvider {
             progressCallback?.('Initializing analysis...', 0.5);
             this.subagentSessionManager.reset();
             this.subagentSessionManager.setParentCancellationToken(token);
+
+            // Reset plan state for fresh analysis
+            this.planSessionManager?.reset();
 
             // Clear previous conversation history for a fresh analysis
             this.conversationManager.clearHistory();

@@ -11,8 +11,8 @@ export function generateAnalysisMethodology(): string {
     return `<analysis_methodology>
 ## Analysis Process
 
-### Step 1: Create a Plan
-After scanning the diff, call \`update_plan\` to create a structured checklist:
+### Step 1: Create Your Plan (REQUIRED)
+After scanning the diff, immediately call \`update_plan\` to create a structured checklist:
 \`\`\`markdown
 ## PR Review Plan
 
@@ -33,21 +33,30 @@ For each checklist item:
 - Use \`find_usages\` for changed signatures
 - Spawn subagents for complex areas (4+ files or security-sensitive)
 
+**After each file or area reviewed**: Call \`update_plan\` to mark progress.
+
 ### Step 3: Self-Reflection Checkpoints
 - After gathering context: call \`think_about_context\`
 - Before conclusions: call \`think_about_task\`
 - Before final response: call \`think_about_completion\`
 
-### Step 4: Update Plan
-Mark items complete as you investigate:
+### Step 4: Track Progress (REQUIRED)
+Call \`update_plan\` after completing each checklist item:
 \`\`\`markdown
 - [x] Reviewed auth changes - found timing attack risk
 - [x] Verified callers updated
 - [ ] Check test coverage
 \`\`\`
 
+**When to call update_plan:**
+- After creating your initial plan
+- After completing each major review item
+- When you discover new areas to investigate (add new items)
+- Before synthesizing final review (all items should be checked)
+
 ### Step 5: Synthesize
 Combine findings into structured review. Ensure:
+- All checklist items marked complete
 - All files analyzed
 - Findings have evidence
 - Critical issues clearly highlighted

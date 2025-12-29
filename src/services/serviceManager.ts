@@ -75,6 +75,9 @@ export interface IServiceRegistry {
     subagentExecutor: SubagentExecutor;
     subagentSessionManager: SubagentSessionManager;
 
+    // Plan tracking
+    planSessionManager: PlanSessionManager;
+
     // Language Model Tool Provider
     languageModelToolProvider: LanguageModelToolProvider;
 }
@@ -211,6 +214,11 @@ export class ServiceManager implements vscode.Disposable {
         // Register available tools
         this.initializeTools();
 
+        // Wire up PlanSessionManager to ToolCallingAnalysisProvider for reset on new analysis
+        this.services.toolCallingAnalysisProvider.setPlanSessionManager(
+            this.services.planSessionManager!
+        );
+
         // Initialize tool testing webview service
         const gitRootPath =
             this.services.gitOperations!.getRepository()?.rootUri.fsPath || '';
@@ -229,6 +237,7 @@ export class ServiceManager implements vscode.Disposable {
             workspaceSettings: this.services.workspaceSettings!,
             promptGenerator: this.services.promptGenerator!,
             gitOperations: this.services.gitOperations!,
+            planSessionManager: this.services.planSessionManager!,
         });
 
         // Register language model tools for Agent Mode
@@ -300,9 +309,9 @@ export class ServiceManager implements vscode.Disposable {
             );
 
             // Register the UpdatePlanTool for tracking review progress
-            const planSessionManager = new PlanSessionManager();
+            this.services.planSessionManager = new PlanSessionManager();
             this.services.toolRegistry!.registerTool(
-                new UpdatePlanTool(planSessionManager)
+                new UpdatePlanTool(this.services.planSessionManager)
             );
 
             // Register the RunSubagentTool for delegating complex investigations

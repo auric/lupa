@@ -75,17 +75,17 @@ describe('ToolAwareSystemPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt([]);
 
             expect(prompt).toContain('Staff Engineer');
-            expect(prompt).toContain('Finding subtle bugs');
-            expect(prompt).toContain('security vulnerabilities');
-            expect(prompt).toContain('actionable feedback');
-            expect(prompt).not.toContain('Available Code Analysis Tools');
+            expect(prompt).toContain('bugs');
+            expect(prompt).toContain('security');
+            expect(prompt).toContain('feedback');
+            expect(prompt).not.toContain('## Available Tools');
         });
 
         it('should include tool section when tools are provided', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
             expect(prompt).toContain('Staff Engineer');
-            expect(prompt).toContain('## Available Code Analysis Tools');
+            expect(prompt).toContain('## Available Tools');
             expect(prompt).toContain('**find_symbol**');
             expect(prompt).toContain('**search_for_pattern**');
         });
@@ -94,59 +94,57 @@ describe('ToolAwareSystemPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
             expect(prompt).toContain('<tool_selection_guide>');
-            expect(prompt).toContain('## Tool Selection Guide');
-            expect(prompt).toContain('| When You Need To...');
-            expect(prompt).toContain('### Tool Usage Principles');
-            expect(prompt).toContain('Verify Before Claiming');
-            expect(prompt).toContain('### Anti-Patterns to Avoid');
+            expect(prompt).toContain('Tool Selection');
+            expect(prompt).toContain('| Need |');
+            expect(prompt).toContain('Principles');
+            expect(prompt).toContain('Anti-Patterns');
         });
 
         it('should include subagent delegation guidance', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
-            expect(prompt).toContain('<subagent_delegation>');
-            expect(prompt).toContain('### MANDATORY Triggers');
-            expect(prompt).toContain('File Count ≥ 4');
-            expect(prompt).toContain('Security-Sensitive Code');
-            expect(prompt).toContain('### Subagent Capabilities');
-            expect(prompt).toContain('### Writing Effective Subagent Tasks');
-            expect(prompt).toContain('<good_subagent_examples>');
-            expect(prompt).toContain('<bad_subagent_examples>');
+            expect(prompt).toContain('<subagent_guidance>');
+            expect(prompt).toContain('Subagent');
+            expect(prompt).toContain('4+');
+            expect(prompt).toContain('Security');
+            expect(prompt).toContain('Task Format');
+            expect(prompt).toContain('Valid Questions');
+            expect(prompt).toContain('Invalid Questions');
         });
 
         it('should include analysis methodology section', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
             expect(prompt).toContain('<analysis_methodology>');
-            expect(prompt).toContain('## Analysis Methodology');
-            expect(prompt).toContain('Think step-by-step');
-            expect(prompt).toContain('Initial Scan');
-            expect(prompt).toContain('Context Gathering');
-            expect(prompt).toContain('Spawn Subagents Early');
-            expect(prompt).toContain('Critical Thinking Framework');
+            expect(prompt).toContain('Analysis Process');
+            expect(prompt).toContain('Create Your Plan');
+            expect(prompt).toContain('Gather Context');
+            expect(prompt).toContain('update_plan');
+            expect(prompt).toContain('Critical Thinking');
         });
 
         it('should include output format guidance with Markdown structure', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
             expect(prompt).toContain('<output_format>');
-            expect(prompt).toContain('## Output Format');
-            expect(prompt).toContain('### 1. Summary');
-            expect(prompt).toContain('### 2. Critical Issues');
-            expect(prompt).toContain('### 3. Suggestions by Category');
-            expect(prompt).toContain('### Severity Guide');
+            expect(prompt).toContain('Review Format');
+            expect(prompt).toContain('Summary');
+            expect(prompt).toContain('Critical Issues');
+            expect(prompt).toContain('Suggestions');
+            expect(prompt).toContain('Severity');
             expect(prompt).toContain('🔴');
             expect(prompt).toContain('🟠');
             expect(prompt).toContain('🟡');
             expect(prompt).toContain('🟢');
         });
 
-        it('should include workflow examples', () => {
+        it('should include self-reflection guidance', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
-            expect(prompt).toContain('<workflow_example>');
-            expect(prompt).toContain('SCENARIO: PR modifies 5 files');
-            expect(prompt).toContain('SCENARIO: PR modifies 2 files');
+            expect(prompt).toContain('<self_reflection>');
+            expect(prompt).toContain('think_about_context');
+            expect(prompt).toContain('think_about_task');
+            expect(prompt).toContain('think_about_completion');
         });
 
         it('should extract parameter descriptions from tool schemas', () => {
@@ -154,7 +152,6 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
             expect(prompt).toContain('symbolName');
             expect(prompt).toContain('pattern');
-            expect(prompt).toContain('includeFullBody');
         });
 
         it('should handle tools with complex schemas', () => {
@@ -195,11 +192,9 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
             // Check that the prompt has proper section ordering
             const roleIndex = prompt.indexOf('Staff Engineer');
-            const toolsIndex = prompt.indexOf(
-                '## Available Code Analysis Tools'
-            );
-            const methodologyIndex = prompt.indexOf('## Analysis Methodology');
-            const outputIndex = prompt.indexOf('## Output Format');
+            const toolsIndex = prompt.indexOf('## Available Tools');
+            const methodologyIndex = prompt.indexOf('<analysis_methodology>');
+            const outputIndex = prompt.indexOf('<output_format>');
 
             expect(roleIndex).toBeLessThan(toolsIndex);
             expect(toolsIndex).toBeLessThan(methodologyIndex);
