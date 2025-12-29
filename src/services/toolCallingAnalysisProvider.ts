@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolExecutor } from '../models/toolExecutor';
+import { ToolRegistry } from '../models/toolRegistry';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { TokenValidator } from '../models/tokenValidator';
@@ -29,25 +30,19 @@ import { PlanSessionManager } from './planSessionManager';
 export class ToolCallingAnalysisProvider {
     private tokenValidator: TokenValidator | null = null;
     private toolCallRecords: ToolCallRecord[] = [];
-    private conversationRunner: ConversationRunner;
 
     private currentIteration = 0;
     private currentMaxIterations = 0;
 
     constructor(
         private conversationManager: ConversationManager,
-        private toolExecutor: ToolExecutor,
+        private toolRegistry: ToolRegistry,
         private copilotModelManager: CopilotModelManager,
         private promptGenerator: PromptGenerator,
         private workspaceSettings: WorkspaceSettingsService,
         private subagentSessionManager: SubagentSessionManager,
         private subagentExecutor: SubagentExecutor | undefined = undefined
-    ) {
-        this.conversationRunner = new ConversationRunner(
-            copilotModelManager,
-            toolExecutor
-        );
-    }
+    ) {}
 
     /**
      * Set the subagent executor for progress context sharing.
@@ -83,10 +78,20 @@ export class ToolCallingAnalysisProvider {
         token: vscode.CancellationToken,
         progressCallback?: AnalysisProgressCallback
     ): Promise<ToolCallingAnalysisResult> {
+        // Create per-analysis instances for complete isolation
+        const planManager = new PlanSessionManager();
+        const toolExecutor = new ToolExecutor(
+            this.toolRegistry,
+            this.workspaceSettings,
+            { planManager }
+        );
+        const conversationRunner = new ConversationRunner(
+            this.copilotModelManager,
+            toolExecutor
+        );
+
         // Reset state for new analysis
         this.toolCallRecords = [];
-        this.conversationRunner.reset();
-        this.toolExecutor.resetToolCallCount();
         this.currentIteration = 0;
         this.currentMaxIterations = this.maxIterations;
 
@@ -109,10 +114,6 @@ export class ToolCallingAnalysisProvider {
             this.subagentSessionManager.reset();
             this.subagentSessionManager.setParentCancellationToken(token);
 
-            // Create fresh PlanSessionManager for this analysis (ensures isolation)
-            const planManager = new PlanSessionManager();
-            this.toolExecutor.setCurrentPlanManager(planManager);
-
             // Clear previous conversation history for a fresh analysis
             this.conversationManager.clearHistory();
 
@@ -123,7 +124,7 @@ export class ToolCallingAnalysisProvider {
 
             // Get available tools and generate system prompt based on tool availability
             const availableTools = toolsAvailable
-                ? this.toolExecutor.getAvailableTools()
+                ? toolExecutor.getAvailableTools()
                 : [];
             const systemPrompt =
                 this.promptGenerator.generateToolAwareSystemPrompt(
@@ -182,7 +183,7 @@ export class ToolCallingAnalysisProvider {
             };
 
             // Run conversation loop using extracted ConversationRunner
-            analysisText = await this.conversationRunner.run(
+            analysisText = await conversationRunner.run(
                 {
                     systemPrompt,
                     maxIterations: this.maxIterations,
@@ -210,8 +211,7 @@ export class ToolCallingAnalysisProvider {
             // Clear subagent progress callback
             this.subagentExecutor?.setProgressCallback(undefined, undefined);
             this.subagentSessionManager.setParentCancellationToken(undefined);
-            // Clear plan manager after analysis completes
-            this.toolExecutor.clearCurrentPlanManager();
+            // No cleanup needed - toolExecutor and planManager are garbage collected
         }
 
         return this.buildAnalysisResult(
@@ -258,7 +258,7 @@ export class ToolCallingAnalysisProvider {
         try {
             const systemPrompt =
                 this.promptGenerator.generateToolAwareSystemPrompt(
-                    this.toolExecutor.getAvailableTools()
+                    this.toolRegistry.getAllTools()
                 );
             const messages = this.conversationManager
                 .getHistory()
@@ -317,7 +317,7 @@ export class ToolCallingAnalysisProvider {
             const parsedDiff = DiffUtils.parseDiff(diff);
 
             // Generate actual system prompt and user message to get real token counts
-            const availableTools = this.toolExecutor.getAvailableTools();
+            const availableTools = this.toolRegistry.getAllTools();
             const systemPrompt =
                 this.promptGenerator.generateToolAwareSystemPrompt(
                     availableTools

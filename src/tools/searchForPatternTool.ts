@@ -3,6 +3,7 @@ import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 
 /**
  * High-performance tool for searching regex patterns in the codebase using ripgrep.
@@ -101,7 +102,10 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
         this.ripgrepService = new RipgrepSearchService();
     }
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(

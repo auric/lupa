@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 
 /**
  * Self-reflection tool for main agent: evaluates gathered context.
@@ -15,7 +16,10 @@ export class ThinkAboutContextTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<ToolResult> {
+    async execute(
+        _args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         return toolSuccess(`## Context Evaluation
 
 ### Diff Coverage Check

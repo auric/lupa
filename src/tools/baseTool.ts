@@ -2,6 +2,7 @@ import * as z from 'zod';
 import * as vscode from 'vscode';
 import { ITool } from './ITool';
 import { ToolResult } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 
 // Abstract base class for tools
 export abstract class BaseTool implements ITool {
@@ -17,5 +18,8 @@ export abstract class BaseTool implements ITool {
         };
     }
 
-    abstract execute(args: z.infer<this['schema']>): Promise<ToolResult>;
+    abstract execute(
+        args: z.infer<this['schema']>,
+        context?: ExecutionContext
+    ): Promise<ToolResult>;
 }

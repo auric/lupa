@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
-import { ToolExecutor } from '../models/toolExecutor';
+import { ExecutionContext } from '../types/executionContext';
 
 /**
  * Tool for creating and updating a structured review plan.
@@ -11,9 +11,9 @@ import { ToolExecutor } from '../models/toolExecutor';
  * 2. Mark checklist items as complete during investigation
  * 3. Add findings and notes as the review progresses
  *
- * The plan is scoped to the current analysis session via ToolExecutor.
- * Each analysis run gets a fresh PlanSessionManager, ensuring isolation
- * between parallel analyses.
+ * The plan is scoped to the current analysis via ExecutionContext.
+ * Each analysis creates its own context with a fresh PlanSessionManager,
+ * ensuring complete isolation between parallel analyses.
  */
 export class UpdatePlanTool extends BaseTool {
     name = 'update_plan';
@@ -30,14 +30,13 @@ export class UpdatePlanTool extends BaseTool {
             ),
     });
 
-    constructor(private readonly toolExecutor: ToolExecutor) {
-        super();
-    }
-
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        context?: ExecutionContext
+    ): Promise<ToolResult> {
         const { plan } = args;
 
-        const planManager = this.toolExecutor.getCurrentPlanManager();
+        const planManager = context?.planManager;
         if (!planManager) {
             return toolError(
                 'No active analysis session. The update_plan tool is only available during PR analysis.'

@@ -30,7 +30,6 @@ import { createFollowupProvider } from './chatFollowupProvider';
  * Injected after construction via setDependencies().
  */
 export interface ChatParticipantDependencies {
-    toolExecutor: ToolExecutor;
     toolRegistry: ToolRegistry;
     workspaceSettings: WorkspaceSettingsService;
     promptGenerator: PromptGenerator;
@@ -213,15 +212,18 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
+            // Create per-request ToolExecutor for isolation (no planManager for exploration)
+            const toolExecutor = new ToolExecutor(
+                this.deps.toolRegistry,
+                this.deps.workspaceSettings
+            );
+
             const timeoutMs =
                 this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
             const client = new ChatLLMClient(request.model, timeoutMs);
-            const runner = new ConversationRunner(
-                client,
-                this.deps.toolExecutor
-            );
+            const runner = new ConversationRunner(client, toolExecutor);
             const conversation = new ConversationManager();
-            const availableTools = this.deps.toolExecutor.getAvailableTools();
+            const availableTools = toolExecutor.getAvailableTools();
             const systemPrompt =
                 this.deps.promptGenerator.generateExplorationSystemPrompt(
                     availableTools
@@ -439,9 +441,13 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
-        // Create fresh PlanSessionManager for this analysis (ensures isolation)
+        // Create per-analysis instances for complete isolation
         const planManager = new PlanSessionManager();
-        this.deps!.toolExecutor.setCurrentPlanManager(planManager);
+        const toolExecutor = new ToolExecutor(
+            this.deps!.toolRegistry,
+            this.deps!.workspaceSettings,
+            { planManager }
+        );
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
@@ -449,9 +455,9 @@ export class ChatParticipantService implements vscode.Disposable {
         const timeoutMs =
             this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
         const client = new ChatLLMClient(request.model, timeoutMs);
-        const runner = new ConversationRunner(client, this.deps!.toolExecutor);
+        const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
-        const availableTools = this.deps!.toolExecutor.getAvailableTools();
+        const availableTools = toolExecutor.getAvailableTools();
         const systemPrompt =
             this.deps!.promptGenerator.generateToolAwareSystemPrompt(
                 availableTools
@@ -498,8 +504,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
         const contentAnalysis = this.analyzeResultContent(analysisResult);
 
-        // Clean up plan manager after analysis
-        this.deps!.toolExecutor.clearCurrentPlanManager();
+        // No cleanup needed - toolExecutor and planManager are garbage collected
 
         return {
             metadata: {

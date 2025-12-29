@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ConversationManager } from '../models/conversationManager';
-import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
@@ -42,7 +41,6 @@ const mockCopilotModelManager = {
 describe('Tool-Calling Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
     let conversationManager: ConversationManager;
-    let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findSymbolTool: FindSymbolTool;
@@ -56,7 +54,6 @@ describe('Tool-Calling Integration Tests', () => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         mockGitOperationsManager = {
@@ -87,7 +84,7 @@ describe('Tool-Calling Integration Tests', () => {
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
-            toolExecutor,
+            toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
             mockWorkspaceSettings,
@@ -404,7 +401,7 @@ describe('Tool-Calling Integration Tests', () => {
     describe('System Integration', () => {
         it('should properly initialize all components', () => {
             expect(toolRegistry.getToolNames()).toContain('find_symbol');
-            expect(toolExecutor.isToolAvailable('find_symbol')).toBe(true);
+            expect(toolRegistry.hasTool('find_symbol')).toBe(true);
             expect(conversationManager.getMessageCount()).toBe(0);
         });
 
@@ -464,7 +461,6 @@ describe('Tool-Calling Integration Tests', () => {
             expect(() => {
                 toolCallingAnalyzer.dispose();
                 conversationManager.dispose();
-                toolExecutor.dispose();
                 toolRegistry.dispose();
             }).not.toThrow();
         });

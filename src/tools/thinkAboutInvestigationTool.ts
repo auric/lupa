@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 
 /**
  * Self-reflection tool optimized for subagent investigations.
@@ -17,7 +18,10 @@ export class ThinkAboutInvestigationTool extends BaseTool {
 
     schema = z.object({}).strict();
 
-    async execute(): Promise<ToolResult> {
+    async execute(
+        _args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         return toolSuccess(`## Investigation Progress Check
 
 ### Task Focus

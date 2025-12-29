@@ -1,24 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { PlanSessionManager } from '../services/planSessionManager';
-import { ToolExecutor } from '../models/toolExecutor';
+import { ExecutionContext } from '../types/executionContext';
 
 describe('UpdatePlanTool', () => {
     let tool: UpdatePlanTool;
     let planManager: PlanSessionManager;
-    let mockToolExecutor: ToolExecutor;
+    let executionContext: ExecutionContext;
 
     beforeEach(() => {
         planManager = new PlanSessionManager();
+        executionContext = { planManager };
 
-        // Create mock ToolExecutor that returns our planManager
-        mockToolExecutor = {
-            getCurrentPlanManager: vi.fn().mockReturnValue(planManager),
-            setCurrentPlanManager: vi.fn(),
-            clearCurrentPlanManager: vi.fn(),
-        } as unknown as ToolExecutor;
-
-        tool = new UpdatePlanTool(mockToolExecutor);
+        tool = new UpdatePlanTool();
     });
 
     describe('tool metadata', () => {
@@ -42,7 +36,7 @@ describe('UpdatePlanTool', () => {
             const plan =
                 '## Review Plan\n- [ ] Check authentication\n- [ ] Verify tests';
 
-            const result = await tool.execute({ plan });
+            const result = await tool.execute({ plan }, executionContext);
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Review plan created');
@@ -51,10 +45,13 @@ describe('UpdatePlanTool', () => {
 
         it('should report update when plan already exists', async () => {
             const initialPlan = '## Initial Plan\n- [ ] First task';
-            await tool.execute({ plan: initialPlan });
+            await tool.execute({ plan: initialPlan }, executionContext);
 
             const updatedPlan = '## Initial Plan\n- [x] First task';
-            const result = await tool.execute({ plan: updatedPlan });
+            const result = await tool.execute(
+                { plan: updatedPlan },
+                executionContext
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Plan updated successfully');
@@ -64,7 +61,7 @@ describe('UpdatePlanTool', () => {
         it('should store plan in manager', async () => {
             const plan = '## Test Plan\n- [ ] Verify functionality';
 
-            await tool.execute({ plan });
+            await tool.execute({ plan }, executionContext);
 
             expect(planManager.hasPlan()).toBe(true);
             expect(planManager.getPlan()).toBe(plan);
@@ -73,7 +70,7 @@ describe('UpdatePlanTool', () => {
         it('should include next steps guidance', async () => {
             const plan = '## Plan\n- [ ] Task 1';
 
-            const result = await tool.execute({ plan });
+            const result = await tool.execute({ plan }, executionContext);
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Next Steps');
@@ -81,11 +78,7 @@ describe('UpdatePlanTool', () => {
         });
 
         it('should return error when no active analysis session', async () => {
-            // ToolExecutor returns undefined - no active session
-            vi.mocked(mockToolExecutor.getCurrentPlanManager).mockReturnValue(
-                undefined
-            );
-
+            // No context provided - simulates no active session
             const result = await tool.execute({
                 plan: '## Plan\n- [ ] Task',
             });
@@ -116,19 +109,18 @@ describe('UpdatePlanTool', () => {
 
     describe('per-analysis isolation', () => {
         it('should use plan manager from current analysis context', async () => {
-            // First analysis
+            // First analysis with its own context
             const manager1 = new PlanSessionManager();
-            vi.mocked(mockToolExecutor.getCurrentPlanManager).mockReturnValue(
-                manager1
-            );
-            await tool.execute({ plan: 'Plan for analysis 1' });
+            const context1: ExecutionContext = { planManager: manager1 };
+            await tool.execute({ plan: 'Plan for analysis 1' }, context1);
 
-            // Second analysis with different manager
+            // Second analysis with different context
             const manager2 = new PlanSessionManager();
-            vi.mocked(mockToolExecutor.getCurrentPlanManager).mockReturnValue(
-                manager2
+            const context2: ExecutionContext = { planManager: manager2 };
+            const result = await tool.execute(
+                { plan: 'Plan for analysis 2' },
+                context2
             );
-            const result = await tool.execute({ plan: 'Plan for analysis 2' });
 
             // Should show "created" not "updated" since it's a new context
             expect(result.success).toBe(true);

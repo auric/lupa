@@ -4,6 +4,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
 import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 
 const FILE_SEARCH_TIMEOUT = 60000; // 60 seconds for file search operations
 
@@ -45,7 +46,10 @@ export class FindFilesByPatternTool extends BaseTool {
         super();
     }
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         try {
             const { pattern, search_directory: searchPath } = args;
 

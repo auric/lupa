@@ -8,6 +8,7 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { withTimeout } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 
 const DIRECTORY_OPERATION_TIMEOUT = 15000; // 15 seconds for directory operations
 
@@ -36,7 +37,10 @@ export class ListDirTool extends BaseTool {
         super();
     }
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         try {
             const { relative_path, recursive } = args;
 

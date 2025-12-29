@@ -6,6 +6,7 @@ import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import type { SubagentResult } from '../types/modelTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
@@ -68,7 +69,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         });
     }
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(

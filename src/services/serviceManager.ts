@@ -188,7 +188,7 @@ export class ServiceManager implements vscode.Disposable {
         this.services.toolCallingAnalysisProvider =
             new ToolCallingAnalysisProvider(
                 this.services.conversationManager,
-                this.services.toolExecutor,
+                this.services.toolRegistry,
                 this.services.copilotModelManager!,
                 this.services.promptGenerator!,
                 this.services.workspaceSettings!,
@@ -225,7 +225,6 @@ export class ServiceManager implements vscode.Disposable {
         this.services.chatParticipantService =
             ChatParticipantService.getInstance();
         this.services.chatParticipantService.setDependencies({
-            toolExecutor: this.services.toolExecutor!,
             toolRegistry: this.services.toolRegistry!,
             workspaceSettings: this.services.workspaceSettings!,
             promptGenerator: this.services.promptGenerator!,
@@ -301,10 +300,8 @@ export class ServiceManager implements vscode.Disposable {
             );
 
             // Register the UpdatePlanTool for tracking review progress
-            // Note: UpdatePlanTool gets PlanSessionManager from ToolExecutor per-analysis
-            this.services.toolRegistry!.registerTool(
-                new UpdatePlanTool(this.services.toolExecutor!)
-            );
+            // Note: UpdatePlanTool gets PlanSessionManager from ExecutionContext per-analysis
+            this.services.toolRegistry!.registerTool(new UpdatePlanTool());
 
             // Register the RunSubagentTool for delegating complex investigations
             const runSubagentTool = new RunSubagentTool(

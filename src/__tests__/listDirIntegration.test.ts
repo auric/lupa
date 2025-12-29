@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { ConversationManager } from '../models/conversationManager';
-import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ListDirTool } from '../tools/listDirTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
@@ -55,7 +54,6 @@ const mockCopilotModelManager = {
 describe('ListDirTool Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
     let conversationManager: ConversationManager;
-    let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let listDirTool: ListDirTool;
@@ -70,7 +68,6 @@ describe('ListDirTool Integration Tests', () => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
@@ -87,9 +84,6 @@ describe('ListDirTool Integration Tests', () => {
         listDirTool = new ListDirTool(mockGitOperationsManager);
         toolRegistry.registerTool(listDirTool);
 
-        // Spy on executeTools to verify it's called
-        vi.spyOn(toolExecutor, 'executeTools');
-
         subagentSessionManager = new SubagentSessionManager(
             mockWorkspaceSettings
         );
@@ -98,7 +92,7 @@ describe('ListDirTool Integration Tests', () => {
 
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
-            toolExecutor,
+            toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
             mockWorkspaceSettings,
@@ -176,9 +170,6 @@ describe('ListDirTool Integration Tests', () => {
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
-
-            // Verify tool was called with correct arguments
-            expect(toolExecutor.executeTools).toHaveBeenCalled();
 
             // Verify conversation history includes tool call and response
             const history = conversationManager.getHistory();

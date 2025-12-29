@@ -4,8 +4,8 @@ import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ToolResultMetadata } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
-import { PlanSessionManager } from '../services/planSessionManager';
 
 /**
  * Interface for tool execution requests
@@ -31,38 +31,20 @@ export interface ToolExecutionResult {
  * Service responsible for executing tools registered in the ToolRegistry.
  * Supports both single tool execution and parallel execution of multiple tools.
  * Includes rate limiting to prevent excessive tool call loops.
+ *
+ * IMPORTANT: Create a new ToolExecutor instance for each analysis.
+ * This ensures proper isolation of tool call counts and execution context
+ * between parallel analyses. Do NOT reuse a singleton ToolExecutor across
+ * multiple concurrent analyses.
  */
 export class ToolExecutor {
     private toolCallCount = 0;
-    private currentPlanManager: PlanSessionManager | undefined;
 
     constructor(
         private toolRegistry: ToolRegistry,
-        private workspaceSettings: WorkspaceSettingsService
+        private workspaceSettings: WorkspaceSettingsService,
+        private executionContext?: ExecutionContext
     ) {}
-
-    /**
-     * Set the plan manager for the current analysis session.
-     * Call this at the start of each analysis with a fresh instance.
-     */
-    setCurrentPlanManager(manager: PlanSessionManager): void {
-        this.currentPlanManager = manager;
-    }
-
-    /**
-     * Get the plan manager for the current analysis session.
-     * Returns undefined if no analysis is in progress.
-     */
-    getCurrentPlanManager(): PlanSessionManager | undefined {
-        return this.currentPlanManager;
-    }
-
-    /**
-     * Clear the current plan manager after analysis completes.
-     */
-    clearCurrentPlanManager(): void {
-        this.currentPlanManager = undefined;
-    }
 
     private get maxToolCalls(): number {
         return this.workspaceSettings.getMaxIterations();
@@ -127,7 +109,7 @@ export class ToolExecutor {
                 };
             }
 
-            const toolResult = await tool.execute(args);
+            const toolResult = await tool.execute(args, this.executionContext);
             const elapsed = Date.now() - startTime;
 
             // Validate response size only for successful results with data

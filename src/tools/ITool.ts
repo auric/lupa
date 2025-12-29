@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import * as vscode from 'vscode';
 import { ToolResult } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 
 // Base interface for a tool
 export interface ITool {
@@ -8,5 +9,5 @@ export interface ITool {
     description: string;
     schema: z.ZodType;
     getVSCodeTool(): vscode.LanguageModelChatTool;
-    execute(args: any): Promise<ToolResult>;
+    execute(args: any, context?: ExecutionContext): Promise<ToolResult>;
 }

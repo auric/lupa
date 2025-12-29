@@ -140,7 +140,6 @@ describe('ChatParticipantService', () => {
         let capturedHandler: any;
         let mockStream: any;
         let mockToken: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -157,14 +156,9 @@ describe('ChatParticipantService', () => {
                 isCancellationRequested: false,
                 onCancellationRequested: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-                setCurrentPlanManager: vi.fn(),
-                clearCurrentPlanManager: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -207,7 +201,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -244,7 +237,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -279,7 +271,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -325,7 +316,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -358,7 +348,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -387,7 +376,6 @@ describe('ChatParticipantService', () => {
         let capturedHandler: any;
         let mockStream: any;
         let mockToken: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -404,14 +392,9 @@ describe('ChatParticipantService', () => {
                 isCancellationRequested: false,
                 onCancellationRequested: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-                setCurrentPlanManager: vi.fn(),
-                clearCurrentPlanManager: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -454,7 +437,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -491,7 +473,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -524,7 +505,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -557,7 +537,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -597,7 +576,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -630,7 +608,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -667,7 +644,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -705,7 +681,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -750,7 +725,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -797,7 +771,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -855,7 +828,6 @@ describe('ChatParticipantService', () => {
     describe('cancellation handling', () => {
         let capturedHandler: any;
         let mockStream: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -868,14 +840,9 @@ describe('ChatParticipantService', () => {
                 progress: vi.fn(),
                 filetree: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-                setCurrentPlanManager: vi.fn(),
-                clearCurrentPlanManager: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -924,7 +891,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -967,7 +933,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -1021,7 +986,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -1076,7 +1040,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -1118,7 +1081,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -1162,7 +1124,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -1207,7 +1168,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -1253,7 +1213,6 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
@@ -1295,7 +1254,6 @@ describe('ChatParticipantService', () => {
         let capturedHandler: any;
         let mockStream: any;
         let mockToken: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -1312,14 +1270,9 @@ describe('ChatParticipantService', () => {
                 isCancellationRequested: false,
                 onCancellationRequested: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-                setCurrentPlanManager: vi.fn(),
-                clearCurrentPlanManager: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -1362,7 +1315,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1402,7 +1354,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1436,7 +1387,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1490,7 +1440,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1527,7 +1476,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1566,7 +1514,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1606,7 +1553,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1643,7 +1589,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1675,7 +1620,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1708,7 +1652,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1769,7 +1712,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1818,7 +1760,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
@@ -1857,7 +1798,6 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,

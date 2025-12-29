@@ -23,6 +23,7 @@ vi.mock('../services/loggingService', () => ({
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
+        debug: vi.fn(),
     },
 }));
 
@@ -35,13 +36,10 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         addToolMessage: Mock;
         getHistory: Mock;
     };
-    let mockToolExecutor: {
-        getAvailableTools: Mock;
-        executeTools: Mock;
-        resetToolCallCount: Mock;
-        setCurrentPlanManager: Mock;
-        getCurrentPlanManager: Mock;
-        clearCurrentPlanManager: Mock;
+    let mockToolRegistry: {
+        getAllTools: Mock;
+        getTool: Mock;
+        getToolNames: Mock;
     };
     let mockCopilotModelManager: {
         getCurrentModel: Mock;
@@ -78,13 +76,10 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             sendRequest: vi.fn(),
         };
 
-        mockToolExecutor = {
-            getAvailableTools: vi.fn(() => []),
-            executeTools: vi.fn(() => Promise.resolve([])),
-            resetToolCallCount: vi.fn(),
-            setCurrentPlanManager: vi.fn(),
-            getCurrentPlanManager: vi.fn(() => undefined),
-            clearCurrentPlanManager: vi.fn(),
+        mockToolRegistry = {
+            getAllTools: vi.fn(() => []),
+            getTool: vi.fn(() => undefined),
+            getToolNames: vi.fn(() => []),
         };
 
         mockPromptGenerator = {
@@ -98,7 +93,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         );
         analysisProvider = new ToolCallingAnalysisProvider(
             mockConversationManager as any,
-            mockToolExecutor as any,
+            mockToolRegistry as any,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
             mockWorkspaceSettings,
@@ -254,11 +249,14 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     description: 'Read file',
                     inputSchema: {},
                 }),
+                execute: vi.fn().mockResolvedValue({
+                    success: false,
+                    error: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool 'read_file' returned 10000 characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`,
+                }),
             };
 
-            mockToolExecutor.getAvailableTools.mockReturnValue([
-                mockReadFileTool,
-            ]);
+            mockToolRegistry.getAllTools.mockReturnValue([mockReadFileTool]);
+            mockToolRegistry.getTool.mockReturnValue(mockReadFileTool);
 
             // Mock LLM requesting tool call
             mockCopilotModelManager.sendRequest
@@ -280,15 +278,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     content: 'Analysis based on error message',
                     toolCalls: undefined,
                 });
-
-            // Mock tool execution that fails due to size
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'read_file',
-                    success: false,
-                    error: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool 'read_file' returned 10000 characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`,
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 smallDiff,
@@ -360,7 +349,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 { name: 'find_symbol', getVSCodeTool: () => ({}) },
             ];
 
-            mockToolExecutor.getAvailableTools.mockReturnValue(mockTools);
+            mockToolRegistry.getAllTools.mockReturnValue(mockTools);
 
             // Mock reasonable token counts
             mockModel.countTokens.mockImplementation(async (text: string) => {
@@ -411,9 +400,14 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     description: 'Read file',
                     inputSchema: {},
                 }),
+                execute: vi.fn().mockResolvedValue({
+                    success: true,
+                    data: '<file_content>\n  <file>src/test.ts</file>\n  <content>\n1: function new() {}\n2: // Additional context\n  </content>\n</file_content>',
+                }),
             };
 
-            mockToolExecutor.getAvailableTools.mockReturnValue([mockTool]);
+            mockToolRegistry.getAllTools.mockReturnValue([mockTool]);
+            mockToolRegistry.getTool.mockReturnValue(mockTool);
 
             // Simulate conversation flow
             mockCopilotModelManager.sendRequest
@@ -437,15 +431,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                         'Based on the file content, here is my analysis: The function was renamed from old() to new().',
                     toolCalls: undefined,
                 });
-
-            // Mock successful tool execution
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'read_file',
-                    success: true,
-                    result: '<file_content>\n  <file>src/test.ts</file>\n  <content>\n1: function new() {}\n2: // Additional context\n  </content>\n</file_content>',
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 diff,
@@ -507,6 +492,22 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         it('should handle maximum iteration limit gracefully', async () => {
             const diff = 'small diff';
 
+            const mockTool = {
+                name: 'read_file',
+                getVSCodeTool: () => ({
+                    name: 'read_file',
+                    description: 'Read file',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
+                    success: true,
+                    data: 'Some file content',
+                }),
+            };
+
+            mockToolRegistry.getAllTools.mockReturnValue([mockTool]);
+            mockToolRegistry.getTool.mockReturnValue(mockTool);
+
             // Mock infinite tool calling loop
             mockCopilotModelManager.sendRequest.mockResolvedValue({
                 content: 'I need more information',
@@ -520,14 +521,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     },
                 ],
             });
-
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'read_file',
-                    success: true,
-                    result: ['Some file content'],
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 diff,
@@ -544,6 +537,22 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         it('should handle tool execution errors gracefully', async () => {
             const diff = 'small diff';
 
+            const mockBrokenTool = {
+                name: 'broken_tool',
+                getVSCodeTool: () => ({
+                    name: 'broken_tool',
+                    description: 'Broken tool',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
+                    success: false,
+                    error: 'Tool execution failed',
+                }),
+            };
+
+            mockToolRegistry.getAllTools.mockReturnValue([mockBrokenTool]);
+            mockToolRegistry.getTool.mockReturnValue(mockBrokenTool);
+
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: 'I will call a tool',
@@ -559,14 +568,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     toolCalls: undefined,
                 });
 
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'broken_tool',
-                    success: false,
-                    error: 'Tool execution failed',
-                },
-            ]);
-
             const result = await analysisProvider.analyze(
                 diff,
                 tokenSource.token
@@ -581,6 +582,22 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
         it('should handle malformed tool call arguments', async () => {
             const diff = 'small diff';
+
+            const mockTestTool = {
+                name: 'test_tool',
+                getVSCodeTool: () => ({
+                    name: 'test_tool',
+                    description: 'Test tool',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
+                    success: false,
+                    error: 'Invalid arguments',
+                }),
+            };
+
+            mockToolRegistry.getAllTools.mockReturnValue([mockTestTool]);
+            mockToolRegistry.getTool.mockReturnValue(mockTestTool);
 
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
@@ -599,14 +616,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     content: 'Analysis with malformed tool call handled',
                     toolCalls: undefined,
                 });
-
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'test_tool',
-                    success: false,
-                    error: 'Invalid arguments',
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 diff,

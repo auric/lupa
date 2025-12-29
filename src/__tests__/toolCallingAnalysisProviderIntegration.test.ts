@@ -15,6 +15,15 @@ import {
 
 vi.mock('vscode');
 
+vi.mock('../services/loggingService', () => ({
+    Log: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+    },
+}));
+
 // Mock tool for testing
 class MockAnalysisTool implements ITool {
     name = 'find_symbol';
@@ -46,7 +55,7 @@ class MockAnalysisTool implements ITool {
 describe('ToolCallingAnalysisProvider Integration', () => {
     let provider: ToolCallingAnalysisProvider;
     let mockConversationManager: any;
-    let mockToolExecutor: any;
+    let mockToolRegistry: any;
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
     let sampleDiff: string;
@@ -78,20 +87,12 @@ index 1234567..abcdefg 100644
             getHistory: vi.fn().mockReturnValue([]),
         };
 
-        mockToolExecutor = {
-            getAvailableTools: vi
-                .fn()
-                .mockReturnValue([new MockAnalysisTool()]),
-            executeTools: vi.fn().mockResolvedValue([
-                {
-                    success: true,
-                    result: ['Tool execution result'],
-                    name: 'find_symbol',
-                },
-            ]),
-            resetToolCallCount: vi.fn(),
-            setCurrentPlanManager: vi.fn(),
-            clearCurrentPlanManager: vi.fn(),
+        mockToolRegistry = {
+            getAllTools: vi.fn().mockReturnValue([new MockAnalysisTool()]),
+            getTool: vi.fn((name: string) =>
+                name === 'find_symbol' ? new MockAnalysisTool() : undefined
+            ),
+            getToolNames: vi.fn().mockReturnValue(['find_symbol']),
         };
 
         const mockModel = {
@@ -116,7 +117,7 @@ index 1234567..abcdefg 100644
 
         provider = new ToolCallingAnalysisProvider(
             mockConversationManager,
-            mockToolExecutor,
+            mockToolRegistry,
             mockCopilotModelManager,
             mockPromptGenerator,
             mockWorkspaceSettings,
@@ -185,6 +186,16 @@ index 1234567..abcdefg 100644
         });
 
         it('should handle tool calls in conversation loop', async () => {
+            // Create spy on the mock tool's execute method
+            const mockTool = new MockAnalysisTool();
+            const executeSpy = vi.spyOn(mockTool, 'execute');
+
+            // Update registry to return our spied tool
+            mockToolRegistry.getAllTools.mockReturnValue([mockTool]);
+            mockToolRegistry.getTool.mockImplementation((name: string) =>
+                name === 'find_symbol' ? mockTool : undefined
+            );
+
             // Mock tool calls response
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
@@ -211,13 +222,11 @@ index 1234567..abcdefg 100644
                 tokenSource.token
             );
 
-            // Verify tool execution was called
-            expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([
-                {
-                    name: 'find_symbol',
-                    args: { symbolName: 'validateToken' },
-                },
-            ]);
+            // Verify tool execute was called with parsed arguments
+            expect(executeSpy).toHaveBeenCalledWith(
+                { symbolName: 'validateToken' },
+                expect.anything() // ExecutionContext
+            );
 
             // Verify final result
             expect(result.analysis).toBe(
@@ -265,13 +274,24 @@ index 1234567..abcdefg 100644
 
     describe('error handling', () => {
         it('should handle tool execution errors gracefully', async () => {
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
+            // Create a mock tool that returns an error
+            const failingTool = {
+                name: 'find_symbol',
+                description: 'Find the definition of a code symbol',
+                schema: {},
+                getVSCodeTool: () => ({
+                    name: 'find_symbol',
+                    description: 'Find the definition of a code symbol',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
                     success: false,
                     error: 'Tool execution failed',
-                    name: 'find_symbol',
-                },
-            ]);
+                }),
+            };
+
+            mockToolRegistry.getAllTools.mockReturnValue([failingTool]);
+            mockToolRegistry.getTool.mockReturnValue(failingTool);
 
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
@@ -306,6 +326,25 @@ index 1234567..abcdefg 100644
         });
 
         it('should handle malformed tool arguments', async () => {
+            // Create spy-able mock tool
+            const mockTool = {
+                name: 'find_symbol',
+                description: 'Find the definition of a code symbol',
+                schema: {},
+                getVSCodeTool: () => ({
+                    name: 'find_symbol',
+                    description: 'Find the definition of a code symbol',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
+                    success: true,
+                    data: 'Symbol definition found',
+                }),
+            };
+
+            mockToolRegistry.getAllTools.mockReturnValue([mockTool]);
+            mockToolRegistry.getTool.mockReturnValue(mockTool);
+
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: 'Calling tool with bad args',
@@ -331,12 +370,11 @@ index 1234567..abcdefg 100644
 
             // Should still complete despite malformed arguments
             expect(result.analysis).toBe('Final result');
-            expect(mockToolExecutor.executeTools).toHaveBeenCalledWith([
-                {
-                    name: 'find_symbol',
-                    args: {}, // Empty object for malformed JSON
-                },
-            ]);
+            // Verify tool was called with empty object for malformed JSON
+            expect(mockTool.execute).toHaveBeenCalledWith(
+                {}, // Empty object for malformed JSON
+                expect.anything() // ExecutionContext
+            );
         });
 
         it('should handle analysis errors and return error message', async () => {

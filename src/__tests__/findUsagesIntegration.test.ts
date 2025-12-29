@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { ConversationManager } from '../models/conversationManager';
-import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
@@ -55,7 +54,6 @@ const mockCopilotModelManager = {
 describe('FindUsages Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
     let conversationManager: ConversationManager;
-    let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findUsagesTool: FindUsagesTool;
@@ -67,7 +65,6 @@ describe('FindUsages Integration Tests', () => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
         conversationManager = new ConversationManager();
 
         // Initialize tools with mock GitOperationsManager
@@ -84,7 +81,7 @@ describe('FindUsages Integration Tests', () => {
 
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
-            toolExecutor,
+            toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
             mockWorkspaceSettings,
