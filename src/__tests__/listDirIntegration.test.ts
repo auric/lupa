@@ -12,6 +12,7 @@ import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
 } from './testUtils/mockFactories';
+import { PromptGenerator } from '../models/promptGenerator';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -51,25 +52,6 @@ const mockCopilotModelManager = {
     sendRequest: vi.fn(),
 };
 
-const mockPromptGenerator = {
-    getSystemPrompt: vi
-        .fn()
-        .mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi
-        .fn()
-        .mockReturnValue('\n\nYou have access to tools: list_directory'),
-    generateToolAwareSystemPrompt: vi
-        .fn()
-        .mockReturnValue(
-            'You are an expert code reviewer with access to tools: list_directory'
-        ),
-    generateToolCallingUserPrompt: vi
-        .fn()
-        .mockReturnValue(
-            '<files_to_review>Sample diff content</files_to_review>'
-        ),
-};
-
 describe('ListDirTool Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
     let conversationManager: ConversationManager;
@@ -81,6 +63,7 @@ describe('ListDirTool Integration Tests', () => {
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
     let subagentSessionManager: SubagentSessionManager;
+    let promptGenerator: PromptGenerator;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -111,12 +94,13 @@ describe('ListDirTool Integration Tests', () => {
             mockWorkspaceSettings
         );
 
-        // Initialize orchestrator
+        promptGenerator = new PromptGenerator();
+
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any,
+            promptGenerator,
             mockWorkspaceSettings,
             subagentSessionManager
         );

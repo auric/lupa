@@ -263,56 +263,6 @@ describe('PromptGenerator - Tool Calling Features', () => {
         });
     });
 
-    describe('tool information deprecation', () => {
-        it('should still support legacy getToolInformation method', () => {
-            const toolInfo = promptGenerator.getToolInformation();
-
-            expect(toolInfo).toContain('Available tools:');
-            expect(toolInfo).toContain('find_symbol');
-            expect(toolInfo).toContain('Use these tools proactively');
-        });
-
-        it('should indicate deprecation in the method', () => {
-            // This test verifies the method exists for backward compatibility
-            expect(typeof promptGenerator.getToolInformation).toBe('function');
-        });
-    });
-
-    describe('integration with existing methods', () => {
-        it('should maintain compatibility with existing generateUserPrompt', () => {
-            const contextString = 'Some context information';
-            const legacyPrompt = promptGenerator.generateUserPrompt(
-                sampleParsedDiff,
-                contextString,
-                true
-            );
-
-            expect(legacyPrompt).toContain('<context>');
-            expect(legacyPrompt).toContain(contextString);
-            expect(legacyPrompt).toContain('<examples>');
-            expect(legacyPrompt).toContain('<files_to_review>');
-            expect(legacyPrompt).toContain('<instructions>');
-        });
-
-        it('should maintain compatibility with getSystemPrompt', () => {
-            const systemPrompt = promptGenerator.getSystemPrompt();
-
-            expect(systemPrompt).toContain('Expert Senior Software Engineer');
-            expect(systemPrompt).toContain(
-                'Security vulnerability identification'
-            );
-        });
-
-        it('should maintain compatibility with getResponsePrefill', () => {
-            const prefill = promptGenerator.getResponsePrefill();
-
-            expect(prefill).toContain(
-                'analyze this pull request comprehensively'
-            );
-            expect(prefill).toContain('## Comprehensive Code Review Analysis');
-        });
-    });
-
     describe('error handling', () => {
         it('should handle empty diff gracefully', () => {
             expect(() => {

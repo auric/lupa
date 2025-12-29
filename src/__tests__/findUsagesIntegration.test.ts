@@ -12,6 +12,7 @@ import {
     createMockCancellationTokenSource,
     createMockGitOperationsManager,
 } from './testUtils/mockFactories';
+import { PromptGenerator } from '../models/promptGenerator';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -51,25 +52,6 @@ const mockCopilotModelManager = {
     sendRequest: vi.fn(),
 };
 
-const mockPromptGenerator = {
-    getSystemPrompt: vi
-        .fn()
-        .mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi
-        .fn()
-        .mockReturnValue('\n\nYou have access to tools: find_usages'),
-    generateToolAwareSystemPrompt: vi
-        .fn()
-        .mockReturnValue(
-            'You are an expert code reviewer with access to tools: find_usages'
-        ),
-    generateToolCallingUserPrompt: vi
-        .fn()
-        .mockReturnValue(
-            '<files_to_review>Sample diff content</files_to_review>'
-        ),
-};
-
 describe('FindUsages Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
     let conversationManager: ConversationManager;
@@ -79,6 +61,7 @@ describe('FindUsages Integration Tests', () => {
     let findUsagesTool: FindUsagesTool;
     let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
+    let promptGenerator: PromptGenerator;
 
     beforeEach(() => {
         // Initialize the tool-calling system
@@ -97,12 +80,13 @@ describe('FindUsages Integration Tests', () => {
             mockWorkspaceSettings
         );
 
-        // Initialize orchestrator
+        promptGenerator = new PromptGenerator();
+
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             conversationManager,
             toolExecutor,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any,
+            promptGenerator,
             mockWorkspaceSettings,
             subagentSessionManager
         );
