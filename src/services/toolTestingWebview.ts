@@ -141,7 +141,12 @@ export class ToolTestingWebviewService {
                 </div>
             </div>
 
-            <script id="tool-testing-data" type="application/json">${safeJsonStringify({ initialTool, initialParameters })}</script>
+            <script id="tool-testing-data" type="application/json">
+                ${safeJsonStringify({
+                    initialTool,
+                    initialParameters,
+                })}
+            </script>
             <script>
                 window.vscode = (function() {
                     if (typeof acquireVsCodeApi !== 'undefined') {
@@ -154,9 +159,21 @@ export class ToolTestingWebviewService {
                     var jsonScript = document.getElementById('tool-testing-data');
                     if (jsonScript && jsonScript.textContent) {
                         window.toolTestingData = JSON.parse(jsonScript.textContent);
+                    } else {
+                        window.toolTestingData = null;
+                        console.error('Tool testing data script tag is missing or empty.');
                     }
                 } catch (e) {
-                    console.error('Failed to parse tool testing data:', e);
+                    window.toolTestingData = null;
+                    var contentPreview = jsonScript && jsonScript.textContent
+                        ? jsonScript.textContent.slice(0, 200)
+                        : '';
+                    console.error(
+                        'Failed to parse tool testing data. Content preview (first 200 chars):',
+                        contentPreview,
+                        'Error:',
+                        e
+                    );
                 }
 
                 window.initialTheme = {

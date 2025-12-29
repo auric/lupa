@@ -187,14 +187,14 @@ export class UIManager {
                     return null;
                 })();
             </script>
-            <script id="analysis-data" type="application/json">${safeJsonStringify(
-                {
+            <script id="analysis-data" type="application/json">
+                ${safeJsonStringify({
                     title: titleTruncated,
                     diffText: diffText,
                     analysis: cleanedAnalysis,
                     toolCalls: toolCalls ?? null,
-                }
-            )}</script>
+                })}
+            </script>
             <script>
                 // Parse analysis data from JSON script tag
                 // Using JSON script tag avoids issues with special characters in JS template literals
@@ -208,7 +208,6 @@ export class UIManager {
                         console.error('Analysis data script tag is missing or empty.');
                     }
                 } catch (e) {
-                    // Ensure a consistent fallback value on parse failure
                     window.analysisData = null;
                     var contentPreview = jsonScript && jsonScript.textContent
                         ? jsonScript.textContent.slice(0, 200)
