@@ -133,5 +133,3 @@ onDomReady(() => {
     `;
     }
 });
-
-export default AnalysisApp;
