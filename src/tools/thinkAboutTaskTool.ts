@@ -3,54 +3,130 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
+const TaskDecision = z.enum([
+    'off_track',
+    'gaps_in_coverage',
+    'ready_to_synthesize',
+]);
+
+const IssueSchema = z.object({
+    description: z.string().describe('Brief description of the issue found'),
+    file: z.string().describe('File where the issue was found'),
+    severity: z
+        .enum(['critical', 'high', 'medium', 'low'])
+        .describe('Severity of the issue'),
+});
+
 /**
  * Self-reflection tool for main agent: verifies task alignment.
- * Call before drawing conclusions to ensure the analysis stays focused
- * on the actual PR changes and addresses all review categories.
+ *
+ * Forces explicit articulation of analysis focus and findings rather than
+ * passive checklists. Per prompt engineering best practices: "articulation > checklists" -
+ * writing explicit statements is more rigorous than checking boxes.
  */
 export class ThinkAboutTaskTool extends BaseTool {
     name = 'think_about_task';
     description =
-        'Pause to verify you are on track with the PR review task. Call this before drawing ' +
-        'conclusions to ensure your analysis aligns with the original request and covers all changed files.';
+        'Articulate your analysis focus and findings before drawing conclusions. ' +
+        'Forces you to state what you are analyzing, issues found with evidence, and areas needing more work.';
 
-    schema = z.object({}).strict();
+    schema = z
+        .object({
+            analysis_focus: z
+                .string()
+                .describe(
+                    'What aspect of the PR are you currently focused on? (e.g., "auth changes in auth.ts", "API contract changes")'
+                ),
+            issues_found: z
+                .array(IssueSchema)
+                .describe(
+                    'Issues identified so far with file location and severity'
+                ),
+            areas_needing_investigation: z
+                .array(z.string())
+                .describe(
+                    'Areas that still need deeper investigation or verification'
+                ),
+            positive_observations: z
+                .array(z.string())
+                .describe('Good practices observed (balance is important)'),
+            decision: TaskDecision.describe(
+                'Your decision: off_track (refocus on diff), gaps_in_coverage (continue analysis), or ready_to_synthesize'
+            ),
+        })
+        .strict();
 
     async execute(
-        _args: z.infer<typeof this.schema>,
+        args: z.infer<typeof this.schema>,
         _context?: ExecutionContext
     ): Promise<ToolResult> {
-        return toolSuccess(`## Task Alignment Check
+        const {
+            analysis_focus,
+            issues_found,
+            areas_needing_investigation,
+            positive_observations,
+            decision,
+        } = args;
 
-### Scope Verification
-- Am I analyzing what CHANGED in this PR, not the entire codebase?
-- Have I avoided deep rabbit-holes into unchanged code?
-- Are my findings relevant to these specific changes?
+        let guidance = '## Task Alignment Reflection\n\n';
 
-### Review Coverage
-Have I evaluated:
-□ Bugs and logic errors - incorrect behavior, edge cases
-□ Security issues - vulnerabilities, data exposure, auth problems
-□ Performance impact - complexity, resource usage, scalability
-□ Code quality - readability, maintainability, patterns
-□ Error handling - exceptions, recovery, user experience
-□ Test implications - what should be tested, coverage gaps
+        guidance += `### Current Focus\n${analysis_focus}\n\n`;
 
-### Finding Quality
-For each finding I plan to report:
-□ Do I have a specific markdown file link?
-□ Can I show evidence (code snippet)?
-□ Is my severity assessment justified?
-□ Is my recommendation actionable?
+        if (issues_found.length > 0) {
+            guidance += `### Issues Found (${issues_found.length})\n`;
+            for (const issue of issues_found) {
+                const emoji =
+                    issue.severity === 'critical'
+                        ? '🔴'
+                        : issue.severity === 'high'
+                          ? '🟠'
+                          : issue.severity === 'medium'
+                            ? '🟡'
+                            : '🟢';
+                guidance += `- ${emoji} **${issue.severity.toUpperCase()}** in \`${issue.file}\`: ${issue.description}\n`;
+            }
+            guidance += '\n';
+        } else {
+            guidance += '### Issues Found\nNone identified yet.\n\n';
+        }
 
-### Balance Check
-□ Have I acknowledged good practices, not just problems?
-□ Am I being fair to the author's intent?
-□ Is my tone constructive?
+        if (positive_observations.length > 0) {
+            guidance += `### Positive Observations\n`;
+            guidance += positive_observations.map((p) => `- ✓ ${p}`).join('\n');
+            guidance += '\n\n';
+        }
 
-### Decision
-□ Off-track → Refocus on the actual diff changes
-□ Gaps in coverage → Continue analysis for uncovered areas
-□ Ready → Proceed to final synthesis`);
+        if (areas_needing_investigation.length > 0) {
+            guidance += `### Areas Needing Investigation\n`;
+            guidance += areas_needing_investigation
+                .map((a) => `- ${a}`)
+                .join('\n');
+            guidance += '\n\n';
+        }
+
+        guidance += `### Decision: ${decision.replace(/_/g, ' ').toUpperCase()}\n\n`;
+
+        // Provide guidance based on decision
+        switch (decision) {
+            case 'off_track':
+                guidance += '**Action**: Refocus on the actual diff changes.\n';
+                guidance +=
+                    '- Step back from implementation details of unchanged code\n';
+                guidance += '- Center analysis on what THIS PR modifies\n';
+                break;
+            case 'gaps_in_coverage':
+                guidance += `**Action**: Continue analysis for the ${areas_needing_investigation.length} uncovered area(s).\n`;
+                guidance += '- Update your plan with new items if needed\n';
+                guidance += '- Consider spawning subagents for complex areas\n';
+                break;
+            case 'ready_to_synthesize':
+                guidance += '**Action**: Proceed to final synthesis.\n';
+                guidance +=
+                    '- Call `think_about_completion` before final response\n';
+                guidance += '- Ensure all plan items are marked complete\n';
+                break;
+        }
+
+        return toolSuccess(guidance);
     }
 }

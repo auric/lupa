@@ -156,6 +156,7 @@ NEVER produce these patterns:
 - Propose alternatives if you see a better approach
 - Acknowledge limitations honestly rather than fabricating answers
 - Use subagents for parallel research tasks—break complex work into small, focused subtasks (never delegate the entire task to a single subagent)
+- **Use subagents for bulk similar edits**—when making the same type of change across many files (e.g., updating test files for new API signatures, adding a parameter to multiple functions), delegate the bulk edits to a subagent with clear instructions and examples
 - **Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
 - At session end, provide a ready-to-use git commit message summarizing changes
 

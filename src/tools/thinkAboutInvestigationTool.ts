@@ -3,51 +3,125 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
+const InvestigationDecision = z.enum([
+    'continue_investigating',
+    'wrap_up_partial',
+    'investigation_complete',
+]);
+
 /**
  * Self-reflection tool optimized for subagent investigations.
- * Call midway through investigation to evaluate progress and ensure
- * the investigation stays on track and delivers useful results.
  *
- * Also useful for main agent during complex investigations.
+ * Forces explicit articulation of investigation progress rather than passive checklists.
+ * Subagents have limited context (no diff) and limited iterations, so they need
+ * focused reflection on task completion within budget constraints.
  */
 export class ThinkAboutInvestigationTool extends BaseTool {
     name = 'think_about_investigation';
     description =
-        'Evaluate progress on your investigation. Call this midway through ' +
-        'to verify you are on track and making efficient use of your tool budget.';
+        'Articulate your investigation progress (primarily for subagents). ' +
+        'Forces you to state questions answered, evidence gathered, and remaining work within your budget.';
 
-    schema = z.object({}).strict();
+    schema = z
+        .object({
+            assigned_task: z
+                .string()
+                .describe('What task were you assigned to investigate?'),
+            questions_answered: z
+                .array(z.string())
+                .describe('Questions from the task that you have answered'),
+            questions_remaining: z
+                .array(z.string())
+                .describe('Questions that still need investigation'),
+            evidence_gathered: z
+                .array(z.string())
+                .describe(
+                    'Concrete evidence found (file paths, code references, findings)'
+                ),
+            estimated_iterations_used: z
+                .number()
+                .int()
+                .min(0)
+                .describe(
+                    'Approximate number of tool calls/iterations used so far'
+                ),
+            decision: InvestigationDecision.describe(
+                'Your decision: continue_investigating, wrap_up_partial (time running out), or investigation_complete'
+            ),
+        })
+        .strict();
 
     async execute(
-        _args: z.infer<typeof this.schema>,
+        args: z.infer<typeof this.schema>,
         _context?: ExecutionContext
     ): Promise<ToolResult> {
-        return toolSuccess(`## Investigation Progress Check
+        const {
+            assigned_task,
+            questions_answered,
+            questions_remaining,
+            evidence_gathered,
+            estimated_iterations_used,
+            decision,
+        } = args;
 
-### Task Focus
-- What was my assigned task?
-- Am I still investigating that specific concern?
-- Have I drifted into unrelated areas?
+        const answeredCount = questions_answered.length;
+        const remainingCount = questions_remaining.length;
+        const hasEvidence = evidence_gathered.length > 0;
 
-### Evidence Gathered
-- What concrete evidence have I found?
-- Do I have markdown file links for each finding?
-- Are my findings supported by code snippets?
+        let guidance = '## Investigation Progress Reflection\n\n';
 
-### Tool Budget
-- How many iterations have I used?
-- What's the most important thing I still need to check?
-- Should I wrap up or continue investigating?
+        guidance += `### Assigned Task\n${assigned_task}\n\n`;
 
-### Deliverable Readiness
-Can I provide:
-□ Findings with location, evidence, and severity
-□ Specific recommendations
-□ Summary for parent agent
+        guidance += `### Progress: ${answeredCount} answered, ${remainingCount} remaining\n\n`;
 
-### Decision
-□ Key gaps remain → Use remaining iterations on highest-priority investigation
-□ Running low on iterations → Start wrapping up, provide partial findings
-□ Investigation complete → Formulate response with findings + recommendations`);
+        if (answeredCount > 0) {
+            guidance += `**Questions Answered:**\n`;
+            guidance += questions_answered.map((q) => `- ✓ ${q}`).join('\n');
+            guidance += '\n\n';
+        }
+
+        if (remainingCount > 0) {
+            guidance += `**Questions Remaining:**\n`;
+            guidance += questions_remaining.map((q) => `- ○ ${q}`).join('\n');
+            guidance += '\n\n';
+        }
+
+        if (hasEvidence) {
+            guidance += `### Evidence Gathered (${evidence_gathered.length})\n`;
+            guidance += evidence_gathered.map((e) => `- ${e}`).join('\n');
+            guidance += '\n\n';
+        }
+
+        guidance += `### Iterations Used: ~${estimated_iterations_used}\n\n`;
+
+        guidance += `### Decision: ${decision.replace(/_/g, ' ').toUpperCase()}\n\n`;
+
+        // Provide guidance based on decision
+        switch (decision) {
+            case 'continue_investigating':
+                guidance +=
+                    '**Action**: Focus on highest-priority remaining question(s).\n';
+                guidance +=
+                    '- Prioritize questions most relevant to the parent task\n';
+                guidance += '- Be efficient with remaining iterations\n';
+                break;
+            case 'wrap_up_partial':
+                guidance +=
+                    '**Action**: Start formulating response with partial findings.\n';
+                guidance += '- Summarize what you found with evidence\n';
+                guidance += '- Note which questions remain unanswered\n';
+                guidance +=
+                    '- Provide clear recommendations based on available evidence\n';
+                break;
+            case 'investigation_complete':
+                guidance +=
+                    '**Action**: Formulate final response to parent agent.\n';
+                guidance += '- Include findings with markdown file links\n';
+                guidance += '- Provide specific recommendations\n';
+                guidance += '- Summarize evidence clearly\n';
+                break;
+        }
+
+        return toolSuccess(guidance);
     }
 }

@@ -34,7 +34,7 @@ describe('UpdatePlanTool', () => {
     describe('execute', () => {
         it('should create initial plan successfully', async () => {
             const plan =
-                '## Review Plan\n- [ ] Check authentication\n- [ ] Verify tests';
+                '## Review Plan\n\n### Overview\nInitial review of auth changes.\n\n### Checklist\n- [ ] Check authentication\n- [ ] Verify tests';
 
             const result = await tool.execute({ plan }, executionContext);
 
@@ -44,10 +44,12 @@ describe('UpdatePlanTool', () => {
         });
 
         it('should report update when plan already exists', async () => {
-            const initialPlan = '## Initial Plan\n- [ ] First task';
+            const initialPlan =
+                '## Initial Plan\n\n### Overview\nTesting plan updates.\n\n### Checklist\n- [ ] First task';
             await tool.execute({ plan: initialPlan }, executionContext);
 
-            const updatedPlan = '## Initial Plan\n- [x] First task';
+            const updatedPlan =
+                '## Initial Plan\n\n### Overview\nTesting plan updates.\n\n### Checklist\n- [x] First task completed';
             const result = await tool.execute(
                 { plan: updatedPlan },
                 executionContext
@@ -59,7 +61,8 @@ describe('UpdatePlanTool', () => {
         });
 
         it('should store plan in manager', async () => {
-            const plan = '## Test Plan\n- [ ] Verify functionality';
+            const plan =
+                '## Test Plan\n\n### Overview\nVerifying functionality.\n\n### Checklist\n- [ ] Verify functionality';
 
             await tool.execute({ plan }, executionContext);
 
@@ -68,7 +71,8 @@ describe('UpdatePlanTool', () => {
         });
 
         it('should include next steps guidance', async () => {
-            const plan = '## Plan\n- [ ] Task 1';
+            const plan =
+                '## Plan\n\n### Overview\nTesting next steps guidance.\n\n### Checklist\n- [ ] Task 1';
 
             const result = await tool.execute({ plan }, executionContext);
 
@@ -80,7 +84,7 @@ describe('UpdatePlanTool', () => {
         it('should return error when no active analysis session', async () => {
             // No context provided - simulates no active session
             const result = await tool.execute({
-                plan: '## Plan\n- [ ] Task',
+                plan: '## Plan\n\n### Overview\nThis plan has no active session.\n\n### Checklist\n- [ ] Task',
             });
 
             expect(result.success).toBe(false);
@@ -89,14 +93,16 @@ describe('UpdatePlanTool', () => {
     });
 
     describe('schema validation', () => {
-        it('should reject plan shorter than 10 characters', () => {
-            const parseResult = tool.schema.safeParse({ plan: 'short' });
+        it('should reject plan shorter than 50 characters', () => {
+            const parseResult = tool.schema.safeParse({
+                plan: 'This plan is too short to be valid.',
+            });
             expect(parseResult.success).toBe(false);
         });
 
-        it('should accept plan with 10+ characters', () => {
+        it('should accept plan with 50+ characters', () => {
             const parseResult = tool.schema.safeParse({
-                plan: '0123456789',
+                plan: '## PR Review Plan\n\n### Overview\nThis is a valid plan with sufficient content.',
             });
             expect(parseResult.success).toBe(true);
         });
@@ -109,26 +115,28 @@ describe('UpdatePlanTool', () => {
 
     describe('per-analysis isolation', () => {
         it('should use plan manager from current analysis context', async () => {
+            const validPlan1 =
+                '## PR Review Plan\n\n### Overview\nThis is plan 1 for testing isolation.';
+            const validPlan2 =
+                '## PR Review Plan\n\n### Overview\nThis is plan 2 for testing isolation.';
+
             // First analysis with its own context
             const manager1 = new PlanSessionManager();
             const context1: ExecutionContext = { planManager: manager1 };
-            await tool.execute({ plan: 'Plan for analysis 1' }, context1);
+            await tool.execute({ plan: validPlan1 }, context1);
 
             // Second analysis with different context
             const manager2 = new PlanSessionManager();
             const context2: ExecutionContext = { planManager: manager2 };
-            const result = await tool.execute(
-                { plan: 'Plan for analysis 2' },
-                context2
-            );
+            const result = await tool.execute({ plan: validPlan2 }, context2);
 
             // Should show "created" not "updated" since it's a new context
             expect(result.success).toBe(true);
             expect(result.data).toContain('Review plan created');
 
             // Each manager has its own plan
-            expect(manager1.getPlan()).toBe('Plan for analysis 1');
-            expect(manager2.getPlan()).toBe('Plan for analysis 2');
+            expect(manager1.getPlan()).toBe(validPlan1);
+            expect(manager2.getPlan()).toBe(validPlan2);
         });
     });
 });
