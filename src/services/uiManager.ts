@@ -14,6 +14,7 @@ import type {
     PathValidationResultPayload,
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
+import { safeJsonStringify } from '../utils/htmlEscape';
 
 /**
  * UIManager handles all UI-related functionality
@@ -187,11 +188,12 @@ export class UIManager {
                 })();
 
                 // Inject analysis data into window object
+                // Using safeJsonStringify to escape </script> and other HTML-breaking sequences
                 window.analysisData = {
-                    title: ${JSON.stringify(titleTruncated)},
-                    diffText: ${JSON.stringify(diffText)},
-                    analysis: ${JSON.stringify(cleanedAnalysis)},
-                    toolCalls: ${JSON.stringify(toolCalls ?? null)}
+                    title: ${safeJsonStringify(titleTruncated)},
+                    diffText: ${safeJsonStringify(diffText)},
+                    analysis: ${safeJsonStringify(cleanedAnalysis)},
+                    toolCalls: ${safeJsonStringify(toolCalls ?? null)}
                 };
 
                 // Inject initial theme data

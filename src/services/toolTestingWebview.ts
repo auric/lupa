@@ -7,6 +7,7 @@ import type {
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
 import type { ToolInfo } from '../webview/types/toolTestingTypes';
+import { safeJsonStringify } from '../utils/htmlEscape';
 
 /**
  * ToolTestingWebviewService handles the tool testing webview functionality
@@ -150,9 +151,10 @@ export class ToolTestingWebviewService {
                 })();
 
                 // Inject initial data into window object
+                // Using safeJsonStringify to escape </script> and other HTML-breaking sequences
                 window.toolTestingData = {
-                    initialTool: ${JSON.stringify(initialTool || null)},
-                    initialParameters: ${JSON.stringify(initialParameters || {})}
+                    initialTool: ${safeJsonStringify(initialTool || null)},
+                    initialParameters: ${safeJsonStringify(initialParameters || {})}
                 };
 
                 // Inject initial theme data

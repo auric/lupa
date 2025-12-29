@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `FindFilesByPatternTool`: provided picomatch glob function to fix bundling issues with Vite. Previously, the tool failed to execute in the bundled extension due to missing dependencies.
-- **Webview initialization bug**: Fixed issue where analysis webview failed to load on first open with "Analysis data not found" error. Root cause: panel reuse combined with missing `retainContextWhenHidden: true` option caused race conditions when VS Code asynchronously replaced webview content. When a panel was reused, the old webview context was destroyed before the new HTML was fully loaded, causing `window.analysisData` to be undefined. Fix: Added `retainContextWhenHidden: true` to panel creation options, matching the working `toolTestingWebview.ts` pattern.
+- **Webview script injection syntax errors**: Fixed critical bug where analysis webview failed with `SyntaxError: Invalid or unexpected token` when PR diffs or analysis content contained `</script>` sequences. Root cause: `JSON.stringify()` output was embedded directly in HTML `<script>` tags, and content containing `</script>` or other HTML-breaking sequences would prematurely terminate the script block. Fix: Created `safeJsonStringify()` utility that escapes `<` and `>` characters using unicode escapes (`\u003C`, `\u003E`), applied to both analysis and tool testing webviews.
+- **Webview panel context preservation**: Added `retainContextWhenHidden: true` to analysis webview panel options to prevent context destruction during panel reuse.
+- **Webview error handling**: Updated `main.tsx` to match `toolTesting.tsx` pattern exactly—added try-catch with comprehensive fallback error display, improved missing-data UI with icon and guidance, removed `React.StrictMode` to avoid double-mount timing issues.
 
 ## [0.1.4] - 2025-12-28
 

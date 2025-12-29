@@ -16,7 +16,9 @@ declare global {
     }
 }
 
+// Analysis Application Component
 const AnalysisApp: React.FC = () => {
+    // Get analysis data from window object injected by extension
     const analysisData = window.analysisData;
 
     if (!analysisData) {
@@ -24,13 +26,39 @@ const AnalysisApp: React.FC = () => {
             <div
                 style={{
                     display: 'flex',
+                    flexDirection: 'column',
                     justifyContent: 'center',
                     alignItems: 'center',
                     height: '100vh',
-                    color: 'var(--vscode-errorForeground)',
+                    fontFamily:
+                        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                    color: 'var(--vscode-foreground)',
+                    backgroundColor: 'var(--vscode-editor-background)',
+                    textAlign: 'center',
+                    padding: '20px',
                 }}
             >
-                Analysis data not available
+                <div style={{ fontSize: '48px', marginBottom: '20px' }}>⚠️</div>
+                <h2 style={{ marginBottom: '10px' }}>
+                    Analysis Data Not Found
+                </h2>
+                <p
+                    style={{
+                        color: 'var(--vscode-descriptionForeground)',
+                        marginBottom: '20px',
+                    }}
+                >
+                    The analysis data was not properly initialized.
+                </p>
+                <p
+                    style={{
+                        fontSize: '14px',
+                        color: 'var(--vscode-descriptionForeground)',
+                    }}
+                >
+                    Please check the VS Code developer console for more
+                    information.
+                </p>
             </div>
         );
     }
@@ -45,6 +73,7 @@ const AnalysisApp: React.FC = () => {
     );
 };
 
+// Initialize the React application
 document.addEventListener('DOMContentLoaded', () => {
     const container = document.getElementById('root');
     if (!container) {
@@ -53,9 +82,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const root = createRoot(container);
-    root.render(
-        <React.StrictMode>
-            <AnalysisApp />
-        </React.StrictMode>
-    );
+
+    try {
+        root.render(<AnalysisApp />);
+    } catch (error) {
+        console.error('Failed to render analysis interface:', error);
+
+        // Fallback error display
+        container.innerHTML = `
+      <div style="
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        color: var(--vscode-foreground);
+        background-color: var(--vscode-editor-background);
+        text-align: center;
+        padding: 20px;
+      ">
+        <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
+        <h2 style="margin-bottom: 10px;">Analysis Interface Failed to Load</h2>
+        <p style="color: var(--vscode-descriptionForeground); margin-bottom: 20px;">
+          There was an error initializing the interface.
+        </p>
+        <details style="
+          max-width: 600px;
+          text-align: left;
+          background: var(--vscode-editor-background);
+          border: 1px solid var(--vscode-panel-border);
+          padding: 10px;
+          border-radius: 4px;
+        ">
+          <summary style="cursor: pointer; margin-bottom: 10px;">Error Details</summary>
+          <pre style="
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            color: var(--vscode-errorForeground);
+          ">${error}</pre>
+        </details>
+        <p style="margin-top: 20px; font-size: 14px; color: var(--vscode-descriptionForeground);">
+          Please check the VS Code developer console for more information.
+        </p>
+      </div>
+    `;
+    }
 });
+
+export default AnalysisApp;
