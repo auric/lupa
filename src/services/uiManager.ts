@@ -186,15 +186,26 @@ export class UIManager {
                     }
                     return null;
                 })();
-
-                // Inject analysis data into window object
-                // Using safeJsonStringify to escape </script> and other HTML-breaking sequences
-                window.analysisData = {
-                    title: ${safeJsonStringify(titleTruncated)},
-                    diffText: ${safeJsonStringify(diffText)},
-                    analysis: ${safeJsonStringify(cleanedAnalysis)},
-                    toolCalls: ${safeJsonStringify(toolCalls ?? null)}
-                };
+            </script>
+            <script id="analysis-data" type="application/json">${safeJsonStringify(
+                {
+                    title: titleTruncated,
+                    diffText: diffText,
+                    analysis: cleanedAnalysis,
+                    toolCalls: toolCalls ?? null,
+                }
+            )}</script>
+            <script>
+                // Parse analysis data from JSON script tag
+                // Using JSON script tag avoids issues with special characters in JS template literals
+                try {
+                    var jsonScript = document.getElementById('analysis-data');
+                    if (jsonScript && jsonScript.textContent) {
+                        window.analysisData = JSON.parse(jsonScript.textContent);
+                    }
+                } catch (e) {
+                    console.error('Failed to parse analysis data:', e);
+                }
 
                 // Inject initial theme data
                 window.initialTheme = {
