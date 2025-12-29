@@ -5,6 +5,37 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2025-12-29
+
+### Added
+
+#### Plan Tool
+
+- **`update_plan` tool**: New tool allowing the LLM to create and update a structured review plan during analysis. The LLM can now maintain a markdown checklist to track which files have been reviewed, what findings were discovered, and what remains to investigate. This improves analysis coverage and helps ensure comprehensive reviews.
+
+#### Modular Prompt Architecture
+
+- **Prompt Builder Pattern**: Refactored prompt generation to use a composable builder pattern. Prompts are now assembled from modular blocks stored in `src/prompts/blocks/`:
+    - `roleDefinitions.ts` - Staff Engineer personas for PR review and exploration
+    - `toolSection.ts` - Dynamic tool inventory generator
+    - `toolSelectionGuide.ts` - When-to-use-what tool reference tables
+    - `subagentGuidance.ts` - Condensed delegation rules (~300 tokens vs ~1500 previously)
+    - `analysisMethodology.ts` - Step-by-step analysis process
+    - `outputFormat.ts` - Review structure and severity guide
+    - `selfReflection.ts` - think*about*\* tools guidance
+
+### Changed
+
+- **Condensed subagent instructions**: Reduced subagent delegation guidance from ~1500 tokens to ~300 tokens while preserving critical information. Uses table format for mandatory triggers and constraint summary.
+- **Simplified user prompt**: Removed redundant tool instructions from user prompt (now in system prompt only). User prompt focuses on diff content and workflow reminder.
+- **Improved prompt maintainability**: Each prompt block is now a separate file, making it easier to update individual sections without modifying a 600-line monolithic generator.
+
+### Internal
+
+- `PlanSessionManager` service for tracking review plan state across tool calls
+- `PromptBuilder` class with fluent interface for composing prompts
+- Pre-configured builders: `createPRReviewPromptBuilder()`, `createExplorationPromptBuilder()`
+
 ## [0.1.5] - 2025-12-29
 
 ### Fixed
@@ -146,6 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.6]: https://github.com/auric/lupa/releases/tag/v0.1.6
 [0.1.5]: https://github.com/auric/lupa/releases/tag/v0.1.5
 [0.1.4]: https://github.com/auric/lupa/releases/tag/v0.1.4
 [0.1.3]: https://github.com/auric/lupa/releases/tag/v0.1.3

@@ -33,10 +33,12 @@ import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
 import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
 import { RunSubagentTool } from '../tools/runSubagentTool';
+import { UpdatePlanTool } from '../tools/updatePlanTool';
 
 // Subagent services
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentSessionManager } from './subagentSessionManager';
+import { PlanSessionManager } from './planSessionManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 
 import { Log } from './loggingService';
@@ -295,6 +297,12 @@ export class ServiceManager implements vscode.Disposable {
             );
             this.services.toolRegistry!.registerTool(
                 new ThinkAboutInvestigationTool()
+            );
+
+            // Register the UpdatePlanTool for tracking review progress
+            const planSessionManager = new PlanSessionManager();
+            this.services.toolRegistry!.registerTool(
+                new UpdatePlanTool(planSessionManager)
             );
 
             // Register the RunSubagentTool for delegating complex investigations
