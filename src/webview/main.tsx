@@ -87,7 +87,11 @@ onDomReady(() => {
     const root = createRoot(container);
 
     try {
-        root.render(<AnalysisApp />);
+        root.render(
+            <React.StrictMode>
+                <AnalysisApp />
+            </React.StrictMode>
+        );
     } catch (error) {
         console.error('Failed to render analysis interface:', error);
 
