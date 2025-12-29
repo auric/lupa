@@ -15,9 +15,7 @@ declare global {
     }
 }
 
-// Tool Testing Application Component
 const ToolTestingApp: React.FC = () => {
-    // Get initial data from window object injected by extension
     const { initialTool, initialParameters } = window.toolTestingData || {
         initialTool: null,
         initialParameters: {},
@@ -48,7 +46,7 @@ onDomReady(() => {
     } catch (error) {
         console.error('Failed to render tool testing interface:', error);
 
-        // Fallback error display
+        // Fallback error display - use DOM methods to avoid XSS from error content
         container.innerHTML = `
       <div style="
         display: flex;
@@ -76,19 +74,26 @@ onDomReady(() => {
           border-radius: 4px;
         ">
           <summary style="cursor: pointer; margin-bottom: 10px;">Error Details</summary>
-          <pre style="
+          <pre id="error-details" style="
             font-family: 'Courier New', monospace;
             font-size: 12px;
             white-space: pre-wrap;
             color: var(--vscode-errorForeground);
-          ">${error}</pre>
+          "></pre>
         </details>
         <p style="margin-top: 20px; font-size: 14px; color: var(--vscode-descriptionForeground);">
           Please check the VS Code developer console for more information.
         </p>
       </div>
     `;
+
+        // Safely set error content using textContent to prevent XSS
+        const errorDetails = container.querySelector('#error-details');
+        if (errorDetails) {
+            errorDetails.textContent =
+                error instanceof Error
+                    ? (error.stack ?? error.message)
+                    : String(error);
+        }
     }
 });
-
-export default ToolTestingApp;
