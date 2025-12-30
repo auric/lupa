@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { SEVERITY } from '../config/chatEmoji';
 
 const CompletionDecision = z.enum(['needs_work', 'ready_to_submit']);
 
@@ -86,8 +87,8 @@ export class ThinkAboutCompletionTool extends BaseTool {
         guidance += `### Summary Draft\n> ${summary_draft}\n\n`;
 
         guidance += `### Issue Count\n`;
-        guidance += `- 🔴 Critical: ${critical_issues_count}\n`;
-        guidance += `- 🟠 High: ${high_issues_count}\n\n`;
+        guidance += `- ${SEVERITY.critical} Critical: ${critical_issues_count}\n`;
+        guidance += `- ${SEVERITY.high} High: ${high_issues_count}\n\n`;
 
         guidance += `### Coverage\n`;
         guidance += `- Files analyzed: ${files_analyzed.length}/${files_in_diff} (${coveragePercent}%)\n`;

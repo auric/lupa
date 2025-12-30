@@ -34,6 +34,7 @@ import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
 import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
 import { RunSubagentTool } from '../tools/runSubagentTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 
 // Subagent services
 import { SubagentExecutor } from './subagentExecutor';
@@ -310,6 +311,9 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(runSubagentTool);
+
+            // Register the SubmitReviewTool for explicit completion signaling
+            this.services.toolRegistry!.registerTool(new SubmitReviewTool());
 
             Log.info(
                 `Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`

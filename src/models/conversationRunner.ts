@@ -9,6 +9,7 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
 import { CANCELLATION_MESSAGE } from '../config/constants';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 
 /**
  * Configuration for running a conversation loop.
@@ -54,6 +55,14 @@ export interface ToolCallHandler {
 
     /** Called when a conversation iteration starts */
     onIterationStart?: (current: number, max: number) => void;
+}
+
+/**
+ * Result from handling tool calls.
+ */
+interface HandleToolCallsResult {
+    /** If submit_review was called, contains the final review content */
+    finalReview?: string;
 }
 
 /**
@@ -188,11 +197,37 @@ export class ConversationRunner {
                 );
 
                 if (response.toolCalls && response.toolCalls.length > 0) {
-                    await this.handleToolCalls(
+                    const result = await this.handleToolCalls(
                         response.toolCalls,
                         conversation,
                         handler,
                         logPrefix
+                    );
+
+                    // If submit_review was called, return its content as the final review
+                    if (result.finalReview) {
+                        Log.info(
+                            `${logPrefix} Completed via submit_review tool`
+                        );
+                        return result.finalReview;
+                    }
+
+                    continue;
+                }
+
+                // No tool calls - check if this is a main analysis that should use submit_review
+                // Only apply nudge logic for main analysis, not subagents
+                if (
+                    config.label?.startsWith('Main Analysis') &&
+                    this.looksLikePlanningMessage(response.content)
+                ) {
+                    Log.info(
+                        `${logPrefix} Response appears to be planning, not final review. Nudging to continue.`
+                    );
+                    conversation.addUserMessage(
+                        'Please continue your analysis. When you have completed your review, ' +
+                            'call the `submit_review` tool with your findings. Do not describe what you will do - ' +
+                            'use the tools to do it, then submit your final review.'
                     );
                     continue;
                 }
@@ -290,13 +325,14 @@ export class ConversationRunner {
 
     /**
      * Execute tool calls and add results to conversation.
+     * @returns Object with finalReview if submit_review was called
      */
     private async handleToolCalls(
         toolCalls: ToolCall[],
         conversation: ConversationManager,
         handler?: ToolCallHandler,
         logPrefix = '[Conversation]'
-    ): Promise<void> {
+    ): Promise<HandleToolCallsResult> {
         // Log which tools are being called
         const toolNames = toolCalls.map((tc) => tc.function.name).join(', ');
         Log.info(
@@ -342,6 +378,8 @@ export class ConversationRunner {
                 ? Math.floor((endTime - startTime) / results.length)
                 : 0;
 
+        let finalReview: string | undefined;
+
         for (let i = 0; i < results.length; i++) {
             const result = results[i]!;
             const toolCall = toolCalls[i]!;
@@ -352,6 +390,15 @@ export class ConversationRunner {
                 result.success && result.result
                     ? result.result
                     : `Error: ${result.error || 'Unknown error'}`;
+
+            // Check if this is the submit_review tool - capture its content
+            if (
+                toolCall.function.name === SubmitReviewTool.TOOL_NAME &&
+                result.success &&
+                result.result
+            ) {
+                finalReview = result.result;
+            }
 
             // Get context status suffix if handler provides it
             const contextStatus = handler?.getContextStatusSuffix
@@ -373,6 +420,36 @@ export class ConversationRunner {
 
             conversation.addToolMessage(toolCallId, content);
         }
+
+        return { finalReview };
+    }
+
+    /**
+     * Check if a message appears to be describing future actions rather than a final review.
+     * Used to detect when dumb models respond with "I will do X" instead of using tools.
+     */
+    private looksLikePlanningMessage(content: string | null): boolean {
+        if (!content) {
+            return false;
+        }
+
+        // Patterns that indicate planning rather than final review
+        const planningPatterns = [
+            /^## Next Steps/im,
+            /^I will:?\s*\n/im,
+            /^I('ll| will) (now )?(review|check|examine|analyze|investigate)/im,
+            /^Let me (review|check|examine|analyze|investigate)/im,
+            /^First, I('ll| will)/im,
+            /will use (code exploration )?tools to/im,
+        ];
+
+        // If it contains planning language and is short (under 500 chars), likely not a final review
+        const isShort = content.length < 500;
+        const hasPlanning = planningPatterns.some((pattern) =>
+            pattern.test(content)
+        );
+
+        return isShort && hasPlanning;
     }
 
     /**

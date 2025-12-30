@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { SEVERITY } from '../config/chatEmoji';
 
 const TaskDecision = z.enum([
     'off_track',
@@ -75,14 +76,7 @@ export class ThinkAboutTaskTool extends BaseTool {
         if (issues_found.length > 0) {
             guidance += `### Issues Found (${issues_found.length})\n`;
             for (const issue of issues_found) {
-                const emoji =
-                    issue.severity === 'critical'
-                        ? '🔴'
-                        : issue.severity === 'high'
-                          ? '🟠'
-                          : issue.severity === 'medium'
-                            ? '🟡'
-                            : '🟢';
+                const emoji = SEVERITY[issue.severity];
                 guidance += `- ${emoji} **${issue.severity.toUpperCase()}** in \`${issue.file}\`: ${issue.description}\n`;
             }
             guidance += '\n';

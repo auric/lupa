@@ -75,6 +75,17 @@ Combine findings into structured review. Ensure:
 - Findings have evidence with file links
 - Critical issues clearly highlighted
 
+### Step 6: Submit Review (REQUIRED - FINAL ACTION)
+⚠️ **You MUST call \`submit_review\` to deliver your findings.** Do not respond without tool calls.
+
+Call \`submit_review\` with:
+- **summary**: 2-3 sentence overview of the PR and key findings
+- **risk_level**: overall assessment (low/medium/high/critical)
+- **recommendation**: your verdict (approve/request_changes/block)
+- **review_content**: the complete formatted review (all findings, file links, suggestions)
+
+This is the explicit signal that your review is complete.
+
 ### Critical Thinking
 
 For each change, ask:

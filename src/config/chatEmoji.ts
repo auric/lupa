@@ -11,7 +11,13 @@
 export const SEVERITY = {
     /** 🔴 Critical issue - must fix before shipping */
     critical: '🔴',
-    /** 🟡 Suggestion - consider improving */
+    /** 🟠 High severity issue - should fix */
+    high: '🟠',
+    /** 🟡 Medium severity issue - should fix soon */
+    medium: '🟡',
+    /** 🟢 Low severity issue - nice to have */
+    low: '🟢',
+    /** 🟡 Suggestion - consider improving (alias for medium) */
     suggestion: '🟡',
     /** ✅ Success - positive confirmation */
     success: '✅',

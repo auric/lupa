@@ -20,6 +20,10 @@ Use these to improve analysis quality. Each requires **structured articulation**
 | \`think_about_task\` | Before conclusions | analysis_focus, issues_found, areas_needing_investigation, decision |
 | \`think_about_completion\` | Before final response | summary_draft, issue_counts, files_analyzed, recommendation |
 
+### Submitting Your Review (REQUIRED)
+After completing \`think_about_completion\`, you MUST call \`submit_review\` to deliver your findings.
+**Never respond without tool calls** - use \`submit_review\` as the explicit completion signal.
+
 ### Why Articulation Matters
 Static checklists ("Did I do X?") are less effective than explicit articulation:
 - Writing "I examined auth.ts and found no issues" is more rigorous than checking a box
@@ -30,6 +34,7 @@ Static checklists ("Did I do X?") are less effective than explicit articulation:
 1. Gather context → \`think_about_context\` with files_examined and key_findings
 2. Analyze → \`think_about_task\` with analysis_focus and issues_found
 3. Synthesize → \`think_about_completion\` with summary_draft and recommendation
+4. **Finalize** → \`submit_review\` with the complete review output
 </self_reflection>`;
 }
 

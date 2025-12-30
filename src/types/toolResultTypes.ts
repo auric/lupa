@@ -22,6 +22,12 @@ export interface ToolResult {
 export interface ToolResultMetadata {
     /** Nested tool calls from subagent execution (reuses ToolCallRecord for consistency) */
     nestedToolCalls?: ToolCallRecord[];
+    /** Whether this tool signals completion (used by submit_review) */
+    isCompletion?: boolean;
+    /** Risk level for completion signals */
+    riskLevel?: string;
+    /** Recommendation for completion signals */
+    recommendation?: string;
 }
 
 /**

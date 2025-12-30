@@ -16,7 +16,7 @@ import { PlanSessionManager } from './planSessionManager';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
-import { ACTIVITY } from '../config/chatEmoji';
+import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
 import type {
@@ -532,10 +532,10 @@ export class ChatParticipantService implements vscode.Disposable {
     } {
         return {
             issuesFound:
-                analysisResult.includes('🔴') ||
-                analysisResult.includes('🟠') ||
-                analysisResult.includes('🟡'),
-            hasCriticalIssues: analysisResult.includes('🔴'),
+                analysisResult.includes(SEVERITY.critical) ||
+                analysisResult.includes(SEVERITY.high) ||
+                analysisResult.includes(SEVERITY.medium),
+            hasCriticalIssues: analysisResult.includes(SEVERITY.critical),
             hasSecurityIssues: analysisResult.includes('🔒'),
             hasTestingSuggestions: analysisResult.includes('🧪'),
         };
