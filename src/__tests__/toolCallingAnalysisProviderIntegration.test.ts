@@ -270,8 +270,9 @@ index 1234567..abcdefg 100644
             );
 
             // Verify tool execute was called with parsed arguments
+            // Zod schema adds default value for includeFullBody
             expect(executeSpy).toHaveBeenCalledWith(
-                { symbolName: 'validateToken' },
+                { symbolName: 'validateToken', includeFullBody: true },
                 expect.anything() // ExecutionContext
             );
 
@@ -327,7 +328,7 @@ index 1234567..abcdefg 100644
             const failingTool = {
                 name: 'find_symbol',
                 description: 'Find the definition of a code symbol',
-                schema: {},
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'find_symbol',
                     description: 'Find the definition of a code symbol',
@@ -404,7 +405,7 @@ index 1234567..abcdefg 100644
             const mockTool = {
                 name: 'find_symbol',
                 description: 'Find the definition of a code symbol',
-                schema: {},
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'find_symbol',
                     description: 'Find the definition of a code symbol',

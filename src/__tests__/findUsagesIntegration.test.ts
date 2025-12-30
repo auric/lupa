@@ -197,7 +197,7 @@ describe('FindUsages Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted.',
+                                        'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -212,7 +212,7 @@ describe('FindUsages Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted.'
+                'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted. Adding padding to meet 100 char minimum.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
@@ -284,7 +284,7 @@ describe('FindUsages Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references.',
+                                        'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -299,7 +299,7 @@ describe('FindUsages Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references.'
+                'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references. Adding padding to meet 100 char minimum.'
             );
 
             // Verify the "no usages" message was returned
@@ -401,7 +401,7 @@ describe('FindUsages Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files.',
+                                        'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -416,7 +416,7 @@ describe('FindUsages Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files.'
+                'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files. Adding padding to meet 100 char minimum.'
             );
             expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(4); // Two tools × (1 definition + 1 reference call each) = 4 calls
 
@@ -454,7 +454,7 @@ describe('FindUsages Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found.',
+                                        'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -473,7 +473,7 @@ describe('FindUsages Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found.'
+                'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found. Adding padding to meet 100 char minimum.'
             );
 
             // Verify error message was passed to LLM
@@ -536,7 +536,7 @@ describe('FindUsages Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'Analysis complete. The symbol declaration was included in the search results as requested by the parameter.',
+                                        'Analysis complete. The symbol declaration was included in the search results as requested by the parameter. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -615,7 +615,7 @@ describe('FindUsages Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'Found usage with context. The context lines around each usage have been included as requested.',
+                                        'Found usage with context. The context lines around each usage have been included as requested. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },

@@ -109,7 +109,32 @@ export class ToolExecutor {
                 };
             }
 
-            const toolResult = await tool.execute(args, this.executionContext);
+            // Validate args with Zod schema before execution
+            // VS Code's LM API should validate via JSON Schema, but some models bypass it
+            const parseResult = tool.schema.safeParse(args);
+            if (!parseResult.success) {
+                const zodError = parseResult.error;
+                const errorDetails = zodError.issues
+                    .map(
+                        (issue) =>
+                            `${issue.path.map(String).join('.')}: ${issue.message}`
+                    )
+                    .join(', ');
+                Log.warn(
+                    `Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}`
+                );
+                return {
+                    name,
+                    success: false,
+                    error: `Invalid arguments: ${errorDetails}`,
+                };
+            }
+
+            const validatedArgs = parseResult.data;
+            const toolResult = await tool.execute(
+                validatedArgs,
+                this.executionContext
+            );
             const elapsed = Date.now() - startTime;
 
             // Validate response size only for successful results with data

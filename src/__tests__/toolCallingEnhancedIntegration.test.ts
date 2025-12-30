@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
+import { z } from 'zod';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { TokenConstants } from '../models/tokenConstants';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
@@ -288,7 +289,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             const mockReadFileTool = {
                 name: 'read_file',
                 description: 'Read file content',
-                schema: {},
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'read_file',
                     description: 'Read file',
@@ -506,6 +507,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
             const mockTool = {
                 name: 'read_file',
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'read_file',
                     description: 'Read file',
@@ -658,6 +660,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
             const mockTool = {
                 name: 'read_file',
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'read_file',
                     description: 'Read file',
@@ -703,6 +706,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
             const mockBrokenTool = {
                 name: 'broken_tool',
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'broken_tool',
                     description: 'Broken tool',
@@ -774,6 +778,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
             const mockTestTool = {
                 name: 'test_tool',
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'test_tool',
                     description: 'Test tool',

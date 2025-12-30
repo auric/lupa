@@ -120,7 +120,7 @@ describe('Tool-Calling Integration Tests', () => {
                             name: 'submit_review',
                             arguments: JSON.stringify({
                                 review_content:
-                                    'This is a straightforward analysis without tool calls. The code changes look good and follow best practices.',
+                                    'This is a straightforward analysis without tool calls. The code changes look good and follow best practices. Adding padding to meet 100 char minimum.',
                             }),
                         },
                     },
@@ -135,7 +135,7 @@ describe('Tool-Calling Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'This is a straightforward analysis without tool calls. The code changes look good and follow best practices.'
+                'This is a straightforward analysis without tool calls. The code changes look good and follow best practices. Adding padding to meet 100 char minimum.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 1
@@ -203,7 +203,7 @@ describe('Tool-Calling Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'Based on the symbol definition, this is a class with a constructor. The implementation looks correct.',
+                                        'Based on the symbol definition, this is a class with a constructor. The implementation looks correct. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -310,7 +310,7 @@ describe('Tool-Calling Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'Analysis complete based on both definitions. The code correctly uses both MyClass and myFunction.',
+                                        'Analysis complete based on both definitions. The code correctly uses both MyClass and myFunction. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -366,7 +366,7 @@ describe('Tool-Calling Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'I could not find the symbol, but I can still provide analysis. The code changes appear reasonable.',
+                                        'I could not find the symbol, but I can still provide analysis. The code changes appear reasonable. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },
@@ -458,7 +458,7 @@ describe('Tool-Calling Integration Tests', () => {
                             name: 'submit_review',
                             arguments: JSON.stringify({
                                 review_content:
-                                    'Analysis complete. The code changes look good and follow best practices for this codebase.',
+                                    'Analysis complete. The code changes look good and follow best practices for this codebase. Adding padding to meet 100 char minimum.',
                             }),
                         },
                     },
@@ -505,7 +505,7 @@ describe('Tool-Calling Integration Tests', () => {
                                 name: 'submit_review',
                                 arguments: JSON.stringify({
                                     review_content:
-                                        'Handling the error gracefully. Despite the tool issue, the code changes appear acceptable.',
+                                        'Handling the error gracefully. Despite the tool issue, the code changes appear acceptable. Adding padding to meet 100 char minimum.',
                                 }),
                             },
                         },

@@ -64,20 +64,9 @@ export class ThinkAboutInvestigationTool extends BaseTool {
             decision,
         } = args;
 
-        // Defensive: ensure arrays even if model sends strings
-        const answeredArr = Array.isArray(questions_answered)
-            ? questions_answered
-            : [questions_answered].filter(Boolean);
-        const remainingArr = Array.isArray(questions_remaining)
-            ? questions_remaining
-            : [questions_remaining].filter(Boolean);
-        const evidenceArr = Array.isArray(evidence_gathered)
-            ? evidence_gathered
-            : [evidence_gathered].filter(Boolean);
-
-        const answeredCount = answeredArr.length;
-        const remainingCount = remainingArr.length;
-        const hasEvidence = evidenceArr.length > 0;
+        const answeredCount = questions_answered.length;
+        const remainingCount = questions_remaining.length;
+        const hasEvidence = evidence_gathered.length > 0;
 
         let guidance = '## Investigation Progress Reflection\n\n';
 
@@ -87,19 +76,19 @@ export class ThinkAboutInvestigationTool extends BaseTool {
 
         if (answeredCount > 0) {
             guidance += `**Questions Answered:**\n`;
-            guidance += answeredArr.map((q) => `- ✓ ${q}`).join('\n');
+            guidance += questions_answered.map((q) => `- ✓ ${q}`).join('\n');
             guidance += '\n\n';
         }
 
         if (remainingCount > 0) {
             guidance += `**Questions Remaining:**\n`;
-            guidance += remainingArr.map((q) => `- ○ ${q}`).join('\n');
+            guidance += questions_remaining.map((q) => `- ○ ${q}`).join('\n');
             guidance += '\n\n';
         }
 
         if (hasEvidence) {
-            guidance += `### Evidence Gathered (${evidenceArr.length})\n`;
-            guidance += evidenceArr.map((e) => `- ${e}`).join('\n');
+            guidance += `### Evidence Gathered (${evidence_gathered.length})\n`;
+            guidance += evidence_gathered.map((e) => `- ${e}`).join('\n');
             guidance += '\n\n';
         }
 
