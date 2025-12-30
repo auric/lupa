@@ -698,7 +698,7 @@ describe('ThinkAboutCompletionTool', () => {
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: READY TO SUBMIT');
-            expect(result.data).toContain('Submit your final review');
+            expect(result.data).toContain('submit_review');
             expect(result.data).toContain('Markdown formatting');
         });
 

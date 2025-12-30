@@ -116,7 +116,8 @@ export class ThinkAboutCompletionTool extends BaseTool {
             guidance += '- Ensure all plan items are complete\n';
             guidance += '- Verify all findings have evidence\n';
         } else {
-            guidance += '**Action**: Submit your final review.\n';
+            guidance +=
+                '**Action**: Call the `submit_review` tool now with your complete review.\n';
             guidance += '- Use the summary draft as your opening\n';
             guidance += '- Organize findings by severity\n';
             guidance += '- Include positive observations\n';
