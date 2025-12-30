@@ -4,6 +4,7 @@ import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProv
 import { ConversationManager } from '../models/conversationManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import {
@@ -72,6 +73,7 @@ describe('FindUsages Integration Tests', () => {
             createMockGitOperationsManager('/test/workspace');
         findUsagesTool = new FindUsagesTool(mockGitOperations as any);
         toolRegistry.registerTool(findUsagesTool);
+        toolRegistry.registerTool(new SubmitReviewTool());
 
         subagentSessionManager = new SubagentSessionManager(
             mockWorkspaceSettings
@@ -187,9 +189,19 @@ describe('FindUsages Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'Based on the tool results, I found 2 usages of MyClass.',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -200,7 +212,7 @@ describe('FindUsages Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'Based on the tool results, I found 2 usages of MyClass.'
+                'Based on the tool results, I found 2 usages of MyClass. The analysis is complete with all references identified and formatted.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
@@ -264,9 +276,19 @@ describe('FindUsages Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'No usages found for this class, it appears to be unused.',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -277,7 +299,7 @@ describe('FindUsages Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'No usages found for this class, it appears to be unused.'
+                'No usages found for this class, it appears to be unused. The symbol exists in the codebase but has no references.'
             );
 
             // Verify the "no usages" message was returned
@@ -371,8 +393,19 @@ describe('FindUsages Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Both classes have one usage each.',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -382,7 +415,9 @@ describe('FindUsages Integration Tests', () => {
                 tokenSource.token
             );
 
-            expect(result.analysis).toBe('Both classes have one usage each.');
+            expect(result.analysis).toBe(
+                'Both classes have one usage each. ClassA and ClassB are both referenced once in the codebase usage files.'
+            );
             expect(vscode.commands.executeCommand).toHaveBeenCalledTimes(4); // Two tools × (1 definition + 1 reference call each) = 4 calls
 
             // Verify both tool results are in conversation history
@@ -411,9 +446,19 @@ describe('FindUsages Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'I encountered an error finding usages for that symbol.',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             (vscode.workspace.openTextDocument as any).mockRejectedValue(
@@ -428,7 +473,7 @@ describe('FindUsages Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'I encountered an error finding usages for that symbol.'
+                'I encountered an error finding usages for that symbol. The file could not be opened or the symbol was not found.'
             );
 
             // Verify error message was passed to LLM
@@ -483,8 +528,19 @@ describe('FindUsages Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Analysis complete.',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis complete. The symbol declaration was included in the search results as requested by the parameter.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -551,8 +607,19 @@ describe('FindUsages Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Found usage with context.',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Found usage with context. The context lines around each usage have been included as requested.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =

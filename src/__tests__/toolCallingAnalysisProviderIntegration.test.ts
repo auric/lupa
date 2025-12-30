@@ -8,6 +8,7 @@ import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import type { DiffHunk } from '../types/contextTypes';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
@@ -88,11 +89,24 @@ index 1234567..abcdefg 100644
         };
 
         mockToolRegistry = {
-            getAllTools: vi.fn().mockReturnValue([new MockAnalysisTool()]),
-            getTool: vi.fn((name: string) =>
-                name === 'find_symbol' ? new MockAnalysisTool() : undefined
-            ),
-            getToolNames: vi.fn().mockReturnValue(['find_symbol']),
+            getAllTools: vi
+                .fn()
+                .mockReturnValue([
+                    new MockAnalysisTool(),
+                    new SubmitReviewTool(),
+                ]),
+            getTool: vi.fn((name: string) => {
+                if (name === 'find_symbol') {
+                    return new MockAnalysisTool();
+                }
+                if (name === 'submit_review') {
+                    return new SubmitReviewTool();
+                }
+                return undefined;
+            }),
+            getToolNames: vi
+                .fn()
+                .mockReturnValue(['find_symbol', 'submit_review']),
         };
 
         const mockModel = {
@@ -103,8 +117,19 @@ index 1234567..abcdefg 100644
         mockCopilotModelManager = {
             getCurrentModel: vi.fn(() => Promise.resolve(mockModel)),
             sendRequest: vi.fn().mockResolvedValue({
-                content: 'Mock analysis result',
-                toolCalls: null, // No tool calls for simple test
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_final',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'Mock analysis result. This is the complete review with sufficient content to meet the 100 character minimum requirement for the review_content field.',
+                            }),
+                        },
+                    },
+                ],
             }),
         };
 
@@ -149,9 +174,10 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            // Verify tool-aware system prompt was generated
+            // Verify tool-aware system prompt was generated with both tools
             expect(generateToolAwareSystemPromptSpy).toHaveBeenCalledWith([
                 expect.any(MockAnalysisTool),
+                expect.any(SubmitReviewTool),
             ]);
 
             // Verify tool-calling user prompt was generated
@@ -188,13 +214,23 @@ index 1234567..abcdefg 100644
         it('should handle tool calls in conversation loop', async () => {
             // Create spy on the mock tool's execute method
             const mockTool = new MockAnalysisTool();
+            const submitReviewTool = new SubmitReviewTool();
             const executeSpy = vi.spyOn(mockTool, 'execute');
 
-            // Update registry to return our spied tool
-            mockToolRegistry.getAllTools.mockReturnValue([mockTool]);
-            mockToolRegistry.getTool.mockImplementation((name: string) =>
-                name === 'find_symbol' ? mockTool : undefined
-            );
+            // Update registry to return our spied tool and submit_review
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
 
             // Mock tool calls response
             mockCopilotModelManager.sendRequest
@@ -213,8 +249,19 @@ index 1234567..abcdefg 100644
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Final analysis based on tool results',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Final analysis based on tool results. This review includes comprehensive findings about the validateToken function and its usage patterns.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const result = await provider.analyze(
@@ -230,7 +277,7 @@ index 1234567..abcdefg 100644
 
             // Verify final result
             expect(result.analysis).toBe(
-                'Final analysis based on tool results'
+                'Final analysis based on tool results. This review includes comprehensive findings about the validateToken function and its usage patterns.'
             );
         });
 
@@ -246,9 +293,11 @@ index 1234567..abcdefg 100644
                 generateToolAwareSystemPromptSpy.mock.calls[0];
             const tools = systemPromptCall[0] as ITool[];
 
-            expect(tools).toHaveLength(1);
+            expect(tools).toHaveLength(2);
             expect(tools[0]).toBeInstanceOf(MockAnalysisTool);
             expect(tools[0].name).toBe('find_symbol');
+            expect(tools[1]).toBeInstanceOf(SubmitReviewTool);
+            expect(tools[1].name).toBe('submit_review');
         });
 
         it('should structure user prompt for optimal tool usage', async () => {
@@ -289,9 +338,21 @@ index 1234567..abcdefg 100644
                     error: 'Tool execution failed',
                 }),
             };
+            const submitReviewTool = new SubmitReviewTool();
 
-            mockToolRegistry.getAllTools.mockReturnValue([failingTool]);
-            mockToolRegistry.getTool.mockReturnValue(failingTool);
+            mockToolRegistry.getAllTools.mockReturnValue([
+                failingTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return failingTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
 
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
@@ -309,8 +370,19 @@ index 1234567..abcdefg 100644
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Analysis despite tool error',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis despite tool error. The review continues with available information and provides recommendations based on the code changes.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const result = await provider.analyze(
@@ -318,7 +390,9 @@ index 1234567..abcdefg 100644
                 tokenSource.token
             );
 
-            expect(result.analysis).toBe('Analysis despite tool error');
+            expect(result.analysis).toBe(
+                'Analysis despite tool error. The review continues with available information and provides recommendations based on the code changes.'
+            );
             expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
                 'call_1',
                 'Error: Tool execution failed'
@@ -341,9 +415,21 @@ index 1234567..abcdefg 100644
                     data: 'Symbol definition found',
                 }),
             };
+            const submitReviewTool = new SubmitReviewTool();
 
-            mockToolRegistry.getAllTools.mockReturnValue([mockTool]);
-            mockToolRegistry.getTool.mockReturnValue(mockTool);
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'find_symbol') {
+                    return mockTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
 
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
@@ -359,8 +445,19 @@ index 1234567..abcdefg 100644
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Final result',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Final result. Despite the malformed tool arguments, the analysis completed successfully with comprehensive findings and recommendations.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const result = await provider.analyze(
@@ -369,7 +466,9 @@ index 1234567..abcdefg 100644
             );
 
             // Should still complete despite malformed arguments
-            expect(result.analysis).toBe('Final result');
+            expect(result.analysis).toBe(
+                'Final result. Despite the malformed tool arguments, the analysis completed successfully with comprehensive findings and recommendations.'
+            );
             // Verify tool was called with empty object for malformed JSON
             expect(mockTool.execute).toHaveBeenCalledWith(
                 {}, // Empty object for malformed JSON

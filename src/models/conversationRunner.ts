@@ -215,23 +215,22 @@ export class ConversationRunner {
                     continue;
                 }
 
-                // No tool calls - check if this is a main analysis that should use submit_review
-                // Only apply nudge logic for main analysis, not subagents
-                if (
-                    config.label?.startsWith('Main Analysis') &&
-                    this.looksLikePlanningMessage(response.content)
-                ) {
+                // No tool calls - for main analysis, always nudge to use submit_review
+                // Subagents can complete without submit_review (they report back to main agent)
+                if (config.label?.startsWith('Main Analysis')) {
+                    const contentPreview =
+                        response.content?.substring(0, 150) || '(empty)';
                     Log.info(
-                        `${logPrefix} Response appears to be planning, not final review. Nudging to continue.`
+                        `${logPrefix} No tool calls. Content preview: "${contentPreview}...". Nudging to use submit_review.`
                     );
                     conversation.addUserMessage(
-                        'Please continue your analysis. When you have completed your review, ' +
-                            'call the `submit_review` tool with your findings. Do not describe what you will do - ' +
-                            'use the tools to do it, then submit your final review.'
+                        'To complete your review, call the `submit_review` tool with your full review content. ' +
+                            'If you still have analysis to do, continue using the available tools.'
                     );
                     continue;
                 }
 
+                // For subagents and other contexts, accept the response as final
                 Log.info(`${logPrefix} Completed successfully`);
                 return (
                     response.content ||
@@ -422,34 +421,6 @@ export class ConversationRunner {
         }
 
         return { finalReview };
-    }
-
-    /**
-     * Check if a message appears to be describing future actions rather than a final review.
-     * Used to detect when dumb models respond with "I will do X" instead of using tools.
-     */
-    private looksLikePlanningMessage(content: string | null): boolean {
-        if (!content) {
-            return false;
-        }
-
-        // Patterns that indicate planning rather than final review
-        const planningPatterns = [
-            /^## Next Steps/im,
-            /^I will:?\s*\n/im,
-            /^I('ll| will) (now )?(review|check|examine|analyze|investigate)/im,
-            /^Let me (review|check|examine|analyze|investigate)/im,
-            /^First, I('ll| will)/im,
-            /will use (code exploration )?tools to/im,
-        ];
-
-        // If it contains planning language and is short (under 500 chars), likely not a final review
-        const isShort = content.length < 500;
-        const hasPlanning = planningPatterns.some((pattern) =>
-            pattern.test(content)
-        );
-
-        return isShort && hasPlanning;
     }
 
     /**

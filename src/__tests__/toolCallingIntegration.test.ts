@@ -5,6 +5,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
@@ -74,6 +75,7 @@ describe('Tool-Calling Integration Tests', () => {
             mockSymbolExtractor
         );
         toolRegistry.registerTool(findSymbolTool);
+        toolRegistry.registerTool(new SubmitReviewTool());
 
         subagentSessionManager = new SubagentSessionManager(
             mockWorkspaceSettings
@@ -108,11 +110,21 @@ describe('Tool-Calling Integration Tests', () => {
 
     describe('End-to-End Tool-Calling Workflow', () => {
         it('should complete full analysis without tool calls', async () => {
-            // Mock LLM response without tool calls
+            // Mock LLM response that immediately submits review
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content:
-                    'This is a straightforward analysis without tool calls.',
-                toolCalls: null,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_submit',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'This is a straightforward analysis without tool calls. The code changes look good and follow best practices.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             const diff =
@@ -123,7 +135,7 @@ describe('Tool-Calling Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'This is a straightforward analysis without tool calls.'
+                'This is a straightforward analysis without tool calls. The code changes look good and follow best practices.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 1
@@ -131,7 +143,7 @@ describe('Tool-Calling Integration Tests', () => {
 
             // Verify conversation history
             const history = conversationManager.getHistory();
-            expect(history).toHaveLength(2); // User message + Assistant response
+            expect(history).toHaveLength(3); // User message + Assistant (with submit_review) + Tool response
             expect(history[0].role).toBe('user');
             expect(history[1].role).toBe('assistant');
         });
@@ -183,9 +195,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'Based on the symbol definition, this is a class with a constructor.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Based on the symbol definition, this is a class with a constructor. The implementation looks correct.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -202,7 +224,7 @@ describe('Tool-Calling Integration Tests', () => {
 
             // Verify conversation flow
             const history = conversationManager.getHistory();
-            expect(history).toHaveLength(4); // User + Assistant (with tool call) + Tool response + Final assistant
+            expect(history).toHaveLength(5); // User + Assistant (with find_symbol) + Tool response + Assistant (with submit_review) + Tool response
             expect(history[0].role).toBe('user');
             expect(history[1].role).toBe('assistant');
             expect(history[1].toolCalls).toHaveLength(1);
@@ -280,8 +302,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Analysis complete based on both definitions.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis complete based on both definitions. The code correctly uses both MyClass and myFunction.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -300,7 +333,7 @@ describe('Tool-Calling Integration Tests', () => {
 
             // Verify multiple tool responses in conversation
             const history = conversationManager.getHistory();
-            expect(history).toHaveLength(5); // User + Assistant + 2 Tool responses + Final assistant
+            expect(history).toHaveLength(6); // User + Assistant (with 2 tool calls) + 2 Tool responses + Assistant (submit_review) + Tool response
             expect(history[2].role).toBe('tool');
             expect(history[2].toolCallId).toBe('call_1');
             expect(history[3].role).toBe('tool');
@@ -325,9 +358,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'I could not find the symbol, but I can still provide analysis.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'I could not find the symbol, but I can still provide analysis. The code changes appear reasonable.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             // Mock empty VS Code environment
@@ -407,8 +450,19 @@ describe('Tool-Calling Integration Tests', () => {
 
         it('should generate proper system prompt with tools', async () => {
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: 'Analysis complete',
-                toolCalls: null,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_submit',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'Analysis complete. The code changes look good and follow best practices for this codebase.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             await toolCallingAnalyzer.analyze('test diff', tokenSource.token);
@@ -419,8 +473,13 @@ describe('Tool-Calling Integration Tests', () => {
             expect(sendRequestCall.messages[0].content).toContain(
                 'find_symbol'
             );
-            expect(sendRequestCall.tools).toHaveLength(1);
-            expect(sendRequestCall.tools[0].name).toBe('find_symbol');
+            expect(sendRequestCall.tools).toHaveLength(2);
+            expect(sendRequestCall.tools.map((t: any) => t.name)).toContain(
+                'find_symbol'
+            );
+            expect(sendRequestCall.tools.map((t: any) => t.name)).toContain(
+                'submit_review'
+            );
         });
 
         it('should handle malformed tool call arguments', async () => {
@@ -438,8 +497,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Handling the error gracefully.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Handling the error gracefully. Despite the tool issue, the code changes appear acceptable.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff = 'diff --git a/test.js b/test.js\n+// test';

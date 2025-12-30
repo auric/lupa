@@ -147,6 +147,7 @@ LLM-callable tools extending `BaseTool` with Zod schemas.
 | `SearchForPatternTool`   | Ripgrep-based text search                     |
 | `UpdatePlanTool`         | Create and track review plan with checklist   |
 | `RunSubagentTool`        | Delegate investigations to subagents          |
+| `SubmitReviewTool`       | Explicit completion signal for PR review      |
 | `ThinkAbout*Tools`       | Structured reasoning tools                    |
 
 ### Layer 5: Prompts (`src/prompts/`)

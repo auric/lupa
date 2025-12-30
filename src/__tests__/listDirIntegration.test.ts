@@ -4,6 +4,7 @@ import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProv
 import { ConversationManager } from '../models/conversationManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ListDirTool } from '../tools/listDirTool';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
@@ -57,6 +58,7 @@ describe('ListDirTool Integration Tests', () => {
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let listDirTool: ListDirTool;
+    let submitReviewTool: SubmitReviewTool;
     let mockReadDirectory: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
@@ -82,7 +84,9 @@ describe('ListDirTool Integration Tests', () => {
 
         // Initialize tools
         listDirTool = new ListDirTool(mockGitOperationsManager);
+        submitReviewTool = new SubmitReviewTool();
         toolRegistry.registerTool(listDirTool);
+        toolRegistry.registerTool(submitReviewTool);
 
         subagentSessionManager = new SubagentSessionManager(
             mockWorkspaceSettings
@@ -153,9 +157,19 @@ describe('ListDirTool Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'Based on the directory listing, I can see the project structure contains a src directory, package.json, and README.md.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Based on the directory listing, I can see the project structure contains a src directory, package.json, and README.md.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -166,7 +180,9 @@ describe('ListDirTool Integration Tests', () => {
             );
 
             expect(result.analysis).toContain('Based on the directory listing');
-            expect(result.analysis).toContain('project structure');
+            expect(result.analysis).toContain(
+                'src directory, package.json, and README.md'
+            );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
@@ -218,9 +234,19 @@ describe('ListDirTool Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'The recursive listing shows a well-structured React project with components in src/components/.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'The recursive listing shows a well-structured React project with components in src/components/. The organization looks good.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -231,7 +257,7 @@ describe('ListDirTool Integration Tests', () => {
             );
 
             expect(result.analysis).toContain('recursive listing');
-            expect(result.analysis).toContain('React project');
+            expect(result.analysis).toContain('well-structured React project');
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
@@ -257,9 +283,19 @@ describe('ListDirTool Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        "I encountered an error accessing the directory. I'll proceed with the analysis based on the diff alone.",
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        "I encountered an error accessing the directory. I'll proceed with the analysis based on the diff alone.",
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -303,9 +339,19 @@ describe('ListDirTool Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'I cannot access directories outside the project workspace for security reasons.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'I cannot access directories outside the project workspace for security reasons. Proceeding with available information.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -316,7 +362,7 @@ describe('ListDirTool Integration Tests', () => {
             );
 
             expect(result.analysis).toContain(
-                'cannot access directories outside'
+                'cannot access directories outside the project workspace'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
@@ -358,9 +404,19 @@ describe('ListDirTool Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'Based on the project structure, this appears to be a well-organized codebase with separate src and test directories.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Based on the project structure, this appears to be a well-organized codebase with separate src and test directories.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -371,7 +427,9 @@ describe('ListDirTool Integration Tests', () => {
             );
 
             expect(result.analysis).toContain('well-organized codebase');
-            expect(result.analysis).toContain('src and test directories');
+            expect(result.analysis).toContain(
+                'separate src and test directories'
+            );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );

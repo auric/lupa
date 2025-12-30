@@ -109,6 +109,12 @@
 | ---------------- | ------------------- | ------------- | ------------------------------------------- |
 | `UpdatePlanTool` | `updatePlanTool.ts` | `update_plan` | Create and track review plan with checklist |
 
+### Completion Tools
+
+| Tool               | File                  | Name            | Description                                           |
+| ------------------ | --------------------- | --------------- | ----------------------------------------------------- |
+| `SubmitReviewTool` | `submitReviewTool.ts` | `submit_review` | Explicit completion signal - terminates analysis loop |
+
 ### Tool Utilities
 
 | Utility                 | File                       | Description                              |

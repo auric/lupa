@@ -45,6 +45,7 @@ export const SubagentLimits = {
     DISALLOWED_TOOLS: [
         'run_subagent', // Prevent sub-subagent recursion
         'update_plan', // Main agent only - subagents don't track review progress
+        'submit_review', // Main agent only - explicit completion signal
         'think_about_completion', // Main agent only - for final review verification
         'think_about_context', // Main agent only - references diff coverage
         'think_about_task', // Main agent only - references PR review scope

@@ -118,6 +118,9 @@ src/
 │   │ # Subagent Tool
 │   ├── runSubagentTool.ts        # Delegate investigations
 │   │
+│   │ # Completion Tool
+│   ├── submitReviewTool.ts       # Explicit completion signal
+│   │
 │   │ # Utilities
 │   ├── definitionFormatter.ts    # Format symbol definitions
 │   ├── usageFormatter.ts         # Format usage results
