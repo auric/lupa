@@ -69,32 +69,45 @@ export class ThinkAboutTaskTool extends BaseTool {
             decision,
         } = args;
 
+        // Defensive: ensure arrays even if model sends strings
+        const issuesArr = Array.isArray(issues_found)
+            ? issues_found
+            : [issues_found].filter(Boolean);
+        const areasArr = Array.isArray(areas_needing_investigation)
+            ? areas_needing_investigation
+            : [areas_needing_investigation].filter(Boolean);
+        const positivesArr = Array.isArray(positive_observations)
+            ? positive_observations
+            : [positive_observations].filter(Boolean);
+
         let guidance = '## Task Alignment Reflection\n\n';
 
         guidance += `### Current Focus\n${analysis_focus}\n\n`;
 
-        if (issues_found.length > 0) {
-            guidance += `### Issues Found (${issues_found.length})\n`;
-            for (const issue of issues_found) {
-                const emoji = SEVERITY[issue.severity];
-                guidance += `- ${emoji} **${issue.severity.toUpperCase()}** in \`${issue.file}\`: ${issue.description}\n`;
+        if (issuesArr.length > 0) {
+            guidance += `### Issues Found (${issuesArr.length})\n`;
+            for (const issue of issuesArr) {
+                if (typeof issue === 'object' && issue !== null) {
+                    const emoji = SEVERITY[issue.severity] || '';
+                    guidance += `- ${emoji} **${issue.severity?.toUpperCase() || 'UNKNOWN'}** in \`${issue.file || 'unknown'}\`: ${issue.description || ''}\n`;
+                } else {
+                    guidance += `- ${issue}\n`;
+                }
             }
             guidance += '\n';
         } else {
             guidance += '### Issues Found\nNone identified yet.\n\n';
         }
 
-        if (positive_observations.length > 0) {
+        if (positivesArr.length > 0) {
             guidance += `### Positive Observations\n`;
-            guidance += positive_observations.map((p) => `- ✓ ${p}`).join('\n');
+            guidance += positivesArr.map((p) => `- ✓ ${p}`).join('\n');
             guidance += '\n\n';
         }
 
-        if (areas_needing_investigation.length > 0) {
+        if (areasArr.length > 0) {
             guidance += `### Areas Needing Investigation\n`;
-            guidance += areas_needing_investigation
-                .map((a) => `- ${a}`)
-                .join('\n');
+            guidance += areasArr.map((a) => `- ${a}`).join('\n');
             guidance += '\n\n';
         }
 
@@ -109,7 +122,7 @@ export class ThinkAboutTaskTool extends BaseTool {
                 guidance += '- Center analysis on what THIS PR modifies\n';
                 break;
             case 'gaps_in_coverage':
-                guidance += `**Action**: Continue analysis for the ${areas_needing_investigation.length} uncovered area(s).\n`;
+                guidance += `**Action**: Continue analysis for the ${areasArr.length} uncovered area(s).\n`;
                 guidance += '- Update your plan with new items if needed\n';
                 guidance += '- Consider spawning subagents for complex areas\n';
                 break;

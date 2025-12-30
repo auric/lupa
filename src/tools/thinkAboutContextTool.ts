@@ -52,24 +52,35 @@ export class ThinkAboutContextTool extends BaseTool {
     ): Promise<ToolResult> {
         const { files_examined, key_findings, remaining_gaps, decision } = args;
 
-        const hasGaps = remaining_gaps.length > 0;
-        const hasFindings = key_findings.length > 0;
+        // Defensive: ensure arrays even if model sends strings
+        const filesArr = Array.isArray(files_examined)
+            ? files_examined
+            : [files_examined].filter(Boolean);
+        const findingsArr = Array.isArray(key_findings)
+            ? key_findings
+            : [key_findings].filter(Boolean);
+        const gapsArr = Array.isArray(remaining_gaps)
+            ? remaining_gaps
+            : [remaining_gaps].filter(Boolean);
+
+        const hasGaps = gapsArr.length > 0;
+        const hasFindings = findingsArr.length > 0;
 
         let guidance = '## Context Reflection\n\n';
 
-        guidance += `### Files/Symbols Examined (${files_examined.length})\n`;
-        guidance += files_examined.map((f) => `- ${f}`).join('\n');
+        guidance += `### Files/Symbols Examined (${filesArr.length})\n`;
+        guidance += filesArr.map((f) => `- ${f}`).join('\n');
         guidance += '\n\n';
 
         if (hasFindings) {
-            guidance += `### Key Findings (${key_findings.length})\n`;
-            guidance += key_findings.map((f) => `- ${f}`).join('\n');
+            guidance += `### Key Findings (${findingsArr.length})\n`;
+            guidance += findingsArr.map((f) => `- ${f}`).join('\n');
             guidance += '\n\n';
         }
 
         if (hasGaps) {
-            guidance += `### Remaining Gaps (${remaining_gaps.length})\n`;
-            guidance += remaining_gaps.map((g) => `- ${g}`).join('\n');
+            guidance += `### Remaining Gaps (${gapsArr.length})\n`;
+            guidance += gapsArr.map((g) => `- ${g}`).join('\n');
             guidance += '\n\n';
         }
 
@@ -78,7 +89,7 @@ export class ThinkAboutContextTool extends BaseTool {
         // Provide guidance based on decision
         switch (decision) {
             case 'need_more_context':
-                guidance += `**Next Steps**: Use tools to fill the ${remaining_gaps.length} identified gap(s).\n`;
+                guidance += `**Next Steps**: Use tools to fill the ${gapsArr.length} identified gap(s).\n`;
                 guidance += '- `find_symbol` for unfamiliar functions\n';
                 guidance += '- `find_usages` for changed signatures\n';
                 guidance += '- `read_file` for specific file sections\n';

@@ -76,8 +76,13 @@ export class ThinkAboutCompletionTool extends BaseTool {
             decision,
         } = args;
 
+        // Defensive: ensure array even if model sends string
+        const filesArr = Array.isArray(files_analyzed)
+            ? files_analyzed
+            : [files_analyzed].filter(Boolean);
+
         const coveragePercent = Math.round(
-            (files_analyzed.length / files_in_diff) * 100
+            (filesArr.length / files_in_diff) * 100
         );
         const hasCritical = critical_issues_count > 0;
         const hasHigh = high_issues_count > 0;
@@ -91,7 +96,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
         guidance += `- ${SEVERITY.high} High: ${high_issues_count}\n\n`;
 
         guidance += `### Coverage\n`;
-        guidance += `- Files analyzed: ${files_analyzed.length}/${files_in_diff} (${coveragePercent}%)\n`;
+        guidance += `- Files analyzed: ${filesArr.length}/${files_in_diff} (${coveragePercent}%)\n`;
         if (coveragePercent < 100) {
             guidance += `- ⚠️ Not all files analyzed\n`;
         }
@@ -111,7 +116,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
         if (decision === 'needs_work') {
             guidance += '**Action**: Address gaps before submitting.\n';
             if (coveragePercent < 100) {
-                guidance += `- Analyze remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
+                guidance += `- Analyze remaining ${files_in_diff - filesArr.length} file(s)\n`;
             }
             guidance += '- Ensure all plan items are complete\n';
             guidance += '- Verify all findings have evidence\n';

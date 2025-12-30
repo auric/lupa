@@ -152,12 +152,40 @@ LLM-callable tools extending `BaseTool` with Zod schemas.
 
 ### Layer 5: Prompts (`src/prompts/`)
 
-System prompt generators for different modes.
+System prompt generators using a modular block-based architecture.
 
-| Generator                        | Purpose                        |
-| -------------------------------- | ------------------------------ |
-| `ToolAwareSystemPromptGenerator` | Main analysis system prompt    |
-| `SubagentPromptGenerator`        | Subagent investigation prompts |
+| Generator                        | Purpose                              |
+| -------------------------------- | ------------------------------------ |
+| `ToolAwareSystemPromptGenerator` | Main analysis system prompt          |
+| `SubagentPromptGenerator`        | Subagent investigation prompts       |
+| `PromptBuilder`                  | Fluent builder for composing prompts |
+
+#### Modular Prompt Blocks (`src/prompts/blocks/`)
+
+The prompt system uses composable blocks that can be mixed and matched for different analysis modes:
+
+| Block                    | Purpose                                         |
+| ------------------------ | ----------------------------------------------- |
+| `roleDefinitions.ts`     | Role definitions (PR reviewer, explorer)        |
+| `analysisMethodology.ts` | Step-by-step analysis process and plan tracking |
+| `outputFormat.ts`        | Output structure requirements                   |
+| `selfReflection.ts`      | Self-reflection checkpoint guidance             |
+| `toolSection.ts`         | Tool inventory and descriptions                 |
+| `toolSelectionGuide.ts`  | When to use each tool                           |
+| `subagentGuidance.ts`    | Subagent delegation rules                       |
+| `promptBlocks.ts`        | Re-exports all block generators                 |
+
+The `PromptBuilder` uses a fluent interface to compose these blocks:
+
+```typescript
+new PromptBuilder()
+    .addPRReviewerRole()
+    .addToolInventory(tools)
+    .addToolSelectionGuide('pr-review')
+    .addAnalysisMethodology()
+    .addOutputFormat()
+    .build();
+```
 
 ### Layer 6: Webview (`src/webview/`)
 
