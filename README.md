@@ -10,7 +10,7 @@ Lupa is a VS Code extension that performs comprehensive pull request analysis us
 ## Features
 
 - 🔍 **Deep Code Analysis** - LLM-driven analysis with dynamic context gathering
-- 🛠️ **13 Specialized Tools** - Symbol lookup, file reading, grep search, usage finding, plan tracking, and more
+- 🛠️ **14 Specialized Tools** - Symbol lookup, file reading, grep search, usage finding, plan tracking, and more
 - 🤖 **Subagent Delegation** - Complex investigations handled by autonomous sub-agents
 - 📊 **Rich Webview UI** - Interactive results with Markdown rendering and syntax highlighting
 - 💬 **Chat Integration** - Native VS Code chat participant for quick analysis
