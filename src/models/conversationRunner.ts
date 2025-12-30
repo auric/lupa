@@ -9,7 +9,6 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
 import { CANCELLATION_MESSAGE } from '../config/constants';
-import { SubmitReviewTool } from '../tools/submitReviewTool';
 
 /**
  * Configuration for running a conversation loop.
@@ -390,10 +389,10 @@ export class ConversationRunner {
                     ? result.result
                     : `Error: ${result.error || 'Unknown error'}`;
 
-            // Check if this is the submit_review tool - capture its content
+            // Check if this tool signals completion - capture its content
             if (
-                toolCall.function.name === SubmitReviewTool.TOOL_NAME &&
                 result.success &&
+                result.metadata?.isCompletion &&
                 result.result
             ) {
                 finalReview = result.result;
