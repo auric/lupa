@@ -67,11 +67,11 @@ The following models are recommended for Lupa:
 - **GPT-4.1** (default) - Free, but poor at tool calling
 - **Grok Code Fast 1** - Free, reasonable quality (recommended)
 - **Raptor Mini** - Free alternative
-- **Claude Haiku 3.5** - 0.33x credits, good quality
+- **Claude Haiku 4.5** - 0.33x credits, good quality
 
 ### 💰 Using Your Own API Key
 
-You can configure alternative model providers in GitHub Copilot with your own API key to avoid credit consumption.
+You can configure alternative model providers in GitHub Copilot with your own API key to avoid credit consumption. These models are available only in Chat Participant mode and will not work in Webview mode.
 
 ## Requirements
 
