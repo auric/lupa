@@ -44,9 +44,7 @@ function extractSchemaParams(schema: z.ZodType): string | null {
 
             for (const [key, value] of Object.entries(shape)) {
                 if (value instanceof z.ZodType) {
-                    const desc = (
-                        value as z.ZodType & { _def?: { description?: string } }
-                    )._def?.description;
+                    const desc = value.description;
                     if (desc) {
                         params.push(`${key} (${desc})`);
                     } else {
