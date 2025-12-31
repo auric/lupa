@@ -5,7 +5,17 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.6] - 2025-12-31
+## [0.1.6] - 2026-01-01
+
+### Fixed
+
+#### Concurrent Analysis Support
+
+- **Thread-safe ToolCallingAnalysisProvider**: Refactored `ToolCallingAnalysisProvider` to support concurrent analyses from the chat participant. Previously, instance-level state (`tokenValidator`, `toolCallRecords`, `currentIteration`, etc.) would be corrupted if multiple analyses ran simultaneously. Now all per-analysis state is created locally within the `analyze()` method, enabling safe concurrent execution.
+
+#### Exploration Mode Tool Filtering
+
+- **Main-only tools excluded from exploration**: Chat participant exploration mode now correctly filters out tools that require PR context (`submit_review`, `update_plan`, `think_about_completion`, `think_about_context`, `think_about_task`). Previously all 14 tools were exposed in exploration mode, causing confusing behavior when users invoked PR-specific tools outside of a review.
 
 ### Added
 
