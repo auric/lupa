@@ -189,6 +189,7 @@ export class ToolCallingAnalysisProvider {
                     maxIterations: this.maxIterations,
                     tools: availableTools,
                     label: 'Main Analysis',
+                    requiresExplicitCompletion: true,
                 },
                 this.conversationManager,
                 token,

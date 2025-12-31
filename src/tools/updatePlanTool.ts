@@ -65,7 +65,11 @@ Add notes after items as you complete them (e.g., "- [x] auth.ts - found timing 
             ? '✅ Plan updated successfully.'
             : '📋 Review plan created.';
 
-        // Validate plan structure
+        // Validate plan structure with soft warnings (not schema errors).
+        // Design: We use a low schema bar (50 chars) to ensure the tool always works,
+        // then provide feedback warnings for structural issues. This allows the LLM to
+        // self-correct on the next call rather than getting stuck in validation errors.
+        // Making these schema-level errors would cause retry loops for minor formatting.
         const hasOverview =
             plan.includes('### Overview') || plan.includes('## Overview');
         const hasChecklist = plan.includes('- [ ]') || plan.includes('- [x]');

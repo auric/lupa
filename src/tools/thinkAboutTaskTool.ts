@@ -2,7 +2,7 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
-import { SEVERITY } from '../config/chatEmoji';
+import { SEVERITY, ISSUE_SEVERITY_VALUES } from '../config/chatEmoji';
 
 const TaskDecision = z.enum([
     'off_track',
@@ -13,9 +13,9 @@ const TaskDecision = z.enum([
 const IssueSchema = z.object({
     description: z.string().describe('Brief description of the issue found'),
     file: z.string().describe('File where the issue was found'),
-    severity: z
-        .enum(['critical', 'high', 'medium', 'low'])
-        .describe('Severity of the issue'),
+    // Uses IssueSeverity subset (critical/high/medium/low) - excludes UI states like
+    // 'suggestion', 'success', 'warning' which aren't applicable to code issues
+    severity: z.enum(ISSUE_SEVERITY_VALUES).describe('Severity of the issue'),
 });
 
 /**

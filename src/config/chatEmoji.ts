@@ -5,10 +5,10 @@
  */
 
 /**
- * Severity indicators - used for finding cards and status messages.
- * Circle shapes with different fills, plus checkmark for success.
+ * Issue severity levels - used for code review findings.
+ * These represent actual problem severity (critical → low).
  */
-export const SEVERITY = {
+const ISSUE_SEVERITIES = {
     /** 🔴 Critical issue - must fix before shipping */
     critical: '🔴',
     /** 🟠 High severity issue - should fix */
@@ -17,12 +17,27 @@ export const SEVERITY = {
     medium: '🟡',
     /** 🟢 Low severity issue - nice to have */
     low: '🟢',
+} as const;
+
+/**
+ * UI state indicators - not issue severities, but status/feedback states.
+ */
+const UI_STATES = {
     /** 🟡 Suggestion - consider improving (alias for medium) */
     suggestion: '🟡',
     /** ✅ Success - positive confirmation */
     success: '✅',
     /** ⚠️ Warning - caution needed */
     warning: '⚠️',
+} as const;
+
+/**
+ * Combined severity indicators - used for finding cards and status messages.
+ * Circle shapes with different fills, plus checkmark for success.
+ */
+export const SEVERITY = {
+    ...ISSUE_SEVERITIES,
+    ...UI_STATES,
 } as const;
 
 /**
@@ -55,6 +70,21 @@ export const SECTION = {
 
 /** Type for severity indicator keys */
 export type SeverityType = keyof typeof SEVERITY;
+
+/** Type for issue severity keys - derived from ISSUE_SEVERITIES, no duplication */
+export type IssueSeverity = keyof typeof ISSUE_SEVERITIES;
+
+/**
+ * Runtime array of issue severity values for Zod enum validation.
+ * Unfortunately TypeScript can't derive a const tuple from object keys at compile time,
+ * so we must list these explicitly. The `satisfies` ensures sync with IssueSeverity type.
+ */
+export const ISSUE_SEVERITY_VALUES = [
+    'critical',
+    'high',
+    'medium',
+    'low',
+] as const satisfies readonly IssueSeverity[];
 
 /** Type for activity indicator keys */
 export type ActivityType = keyof typeof ACTIVITY;

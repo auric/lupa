@@ -22,6 +22,15 @@ export interface ConversationRunnerConfig {
     tools: ITool[];
     /** Optional label for logging context (e.g., "Main Analysis", "Subagent #1: Security") */
     label?: string;
+    /**
+     * If true, the conversation must complete via a tool with isCompletion metadata
+     * (e.g., submit_review). The runner will nudge the LLM to call the completion tool
+     * if it tries to respond without tool calls.
+     *
+     * Use for main PR analysis where structured completion is required.
+     * Subagents and exploration modes can complete with direct responses.
+     */
+    requiresExplicitCompletion?: boolean;
 }
 
 /**
@@ -214,9 +223,9 @@ export class ConversationRunner {
                     continue;
                 }
 
-                // No tool calls - for main analysis, always nudge to use submit_review
-                // Subagents can complete without submit_review (they report back to main agent)
-                if (config.label?.startsWith('Main Analysis')) {
+                // No tool calls - check if explicit completion is required
+                // Main analysis requires submit_review; subagents/exploration can complete directly
+                if (config.requiresExplicitCompletion) {
                     const contentPreview =
                         response.content?.substring(0, 150) || '(empty)';
                     Log.info(
@@ -389,7 +398,11 @@ export class ConversationRunner {
                     ? result.result
                     : `Error: ${result.error || 'Unknown error'}`;
 
-            // Check if this tool signals completion - capture its content
+            // Check if this tool signals completion via metadata flag.
+            // Design: isCompletion is a boolean signal; the actual content comes from
+            // result.result (the tool's data output), not from metadata itself.
+            // This separation allows tools to signal completion while keeping content
+            // in the standard result.result location for consistency.
             if (
                 result.success &&
                 result.metadata?.isCompletion &&
