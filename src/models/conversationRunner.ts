@@ -102,6 +102,8 @@ export class ConversationRunner {
         handler?: ToolCallHandler
     ): Promise<string> {
         let iteration = 0;
+        let completionNudgeCount = 0;
+        const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
 
         while (iteration < config.maxIterations) {
@@ -226,10 +228,23 @@ export class ConversationRunner {
                 // No tool calls - check if explicit completion is required
                 // Main analysis requires submit_review; subagents/exploration can complete directly
                 if (config.requiresExplicitCompletion) {
+                    completionNudgeCount++;
+
+                    // After MAX_COMPLETION_NUDGES attempts, accept the response to prevent infinite loops
+                    if (completionNudgeCount > MAX_COMPLETION_NUDGES) {
+                        Log.warn(
+                            `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
+                        );
+                        return (
+                            response.content ||
+                            'Analysis completed but model did not use submit_review tool.'
+                        );
+                    }
+
                     const contentPreview =
                         response.content?.substring(0, 150) || '(empty)';
                     Log.info(
-                        `${logPrefix} No tool calls. Content preview: "${contentPreview}...". Nudging to use submit_review.`
+                        `${logPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). Content preview: "${contentPreview}...". Nudging to use submit_review.`
                     );
                     conversation.addUserMessage(
                         'To complete your review, call the `submit_review` tool with your full review content. ' +

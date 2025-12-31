@@ -76,15 +76,12 @@ export type IssueSeverity = keyof typeof ISSUE_SEVERITIES;
 
 /**
  * Runtime array of issue severity values for Zod enum validation.
- * Unfortunately TypeScript can't derive a const tuple from object keys at compile time,
- * so we must list these explicitly. The `satisfies` ensures sync with IssueSeverity type.
+ * Derived from ISSUE_SEVERITIES keys to stay in sync automatically.
  */
-export const ISSUE_SEVERITY_VALUES = [
-    'critical',
-    'high',
-    'medium',
-    'low',
-] as const satisfies readonly IssueSeverity[];
+export const ISSUE_SEVERITY_VALUES = Object.keys(ISSUE_SEVERITIES) as [
+    IssueSeverity,
+    ...IssueSeverity[],
+];
 
 /** Type for activity indicator keys */
 export type ActivityType = keyof typeof ACTIVITY;

@@ -49,7 +49,9 @@ export const SubagentLimits = {
         'think_about_completion', // Main agent only - for final review verification
         'think_about_context', // Main agent only - references diff coverage
         'think_about_task', // Main agent only - references PR review scope
-        // Subagent uses only: think_about_investigation
+        // NOTE: think_about_investigation is intentionally ALLOWED for subagents.
+        // It's the only think tool designed for focused investigations without
+        // needing diff context or PR-level review state that subagents don't have.
     ] as const,
 } as const;
 

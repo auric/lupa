@@ -40,6 +40,14 @@ export interface ToolExecutionResult {
 export class ToolExecutor {
     private toolCallCount = 0;
 
+    /**
+     * @param toolRegistry Registry containing available tools
+     * @param workspaceSettings Settings for rate limits etc.
+     * @param executionContext Optional context for tools that need it.
+     *   - Main analysis: Provides planManager for update_plan tool
+     *   - Subagents: Typically undefined (subagents can't use plan tools)
+     *   - Tools check for required context and return toolError if missing
+     */
     constructor(
         private toolRegistry: ToolRegistry,
         private workspaceSettings: WorkspaceSettingsService,
