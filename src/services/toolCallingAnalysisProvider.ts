@@ -26,16 +26,12 @@ import { PlanSessionManager } from './planSessionManager';
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
  * invoking tools, and interacting with the LLM.
+ *
+ * This class is designed to be concurrent-safe. All per-analysis state is created
+ * locally within the analyze() method, allowing multiple concurrent analyses.
  */
 export class ToolCallingAnalysisProvider {
-    private tokenValidator: TokenValidator | null = null;
-    private toolCallRecords: ToolCallRecord[] = [];
-
-    private currentIteration = 0;
-    private currentMaxIterations = 0;
-
     constructor(
-        private conversationManager: ConversationManager,
         private toolRegistry: ToolRegistry,
         private copilotModelManager: CopilotModelManager,
         private promptGenerator: PromptGenerator,
@@ -57,17 +53,11 @@ export class ToolCallingAnalysisProvider {
     }
 
     /**
-     * Create progress context for subagent to reference main analysis iteration.
-     */
-    private createSubagentProgressContext(): SubagentProgressContext {
-        return {
-            getCurrentIteration: () => this.currentIteration,
-            getMaxIterations: () => this.currentMaxIterations,
-        };
-    }
-
-    /**
      * Analyze a diff using the LLM with tool-calling capabilities.
+     *
+     * This method is concurrent-safe: all per-analysis state is created locally,
+     * allowing multiple analyses to run in parallel without interference.
+     *
      * @param diff The diff content to analyze
      * @param token Cancellation token
      * @param progressCallback Optional callback for reporting progress to UI
@@ -78,7 +68,13 @@ export class ToolCallingAnalysisProvider {
         token: vscode.CancellationToken,
         progressCallback?: AnalysisProgressCallback
     ): Promise<ToolCallingAnalysisResult> {
+        // === Per-analysis state (local for concurrent-safety) ===
+        const toolCallRecords: ToolCallRecord[] = [];
+        let currentIteration = 0;
+        let currentMaxIterations = this.maxIterations;
+
         // Create per-analysis instances for complete isolation
+        const conversationManager = new ConversationManager();
         const planManager = new PlanSessionManager();
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
@@ -90,21 +86,22 @@ export class ToolCallingAnalysisProvider {
             toolExecutor
         );
 
-        // Reset state for new analysis
-        this.toolCallRecords = [];
-        this.currentIteration = 0;
-        this.currentMaxIterations = this.maxIterations;
-
         let analysisCompleted = false;
         let analysisError: string | undefined;
         let analysisText = '';
         let toolCallCount = 0;
 
+        // Create progress context that captures local variables
+        const progressContext: SubagentProgressContext = {
+            getCurrentIteration: () => currentIteration,
+            getMaxIterations: () => currentMaxIterations,
+        };
+
         // Set up subagent progress callback with context
         if (this.subagentExecutor && progressCallback) {
             this.subagentExecutor.setProgressCallback(
                 progressCallback,
-                this.createSubagentProgressContext()
+                progressContext
             );
         }
 
@@ -113,9 +110,6 @@ export class ToolCallingAnalysisProvider {
             progressCallback?.('Initializing analysis...', 0.5);
             this.subagentSessionManager.reset();
             this.subagentSessionManager.setParentCancellationToken(token);
-
-            // Clear previous conversation history for a fresh analysis
-            this.conversationManager.clearHistory();
 
             // Check diff size and handle truncation/tool availability
             progressCallback?.('Processing diff...', 0.5);
@@ -143,14 +137,52 @@ export class ToolCallingAnalysisProvider {
                 userMessage = `${toolsDisabledMessage}\n\n${userMessage}`;
             }
 
-            this.conversationManager.addUserMessage(userMessage);
+            conversationManager.addUserMessage(userMessage);
             progressCallback?.('Starting conversation with AI model...', 0.5);
+
+            // Create token validator for this analysis
+            const model = await this.copilotModelManager.getCurrentModel();
+            const tokenValidator = new TokenValidator(model);
+
+            // Create context status function that captures local state
+            const getContextStatusSuffix = async (): Promise<string> => {
+                try {
+                    const messages = conversationManager
+                        .getHistory()
+                        .map((msg) => ({
+                            role: msg.role,
+                            content: msg.content,
+                            toolCalls: msg.toolCalls,
+                            toolCallId: msg.toolCallId,
+                        }));
+
+                    const validation = await tokenValidator.validateTokens(
+                        messages,
+                        systemPrompt
+                    );
+                    const usagePercent = Math.round(
+                        (validation.totalTokens / validation.maxTokens) * 100
+                    );
+                    const remainingTokens =
+                        validation.maxTokens - validation.totalTokens;
+
+                    if (usagePercent >= 80) {
+                        return `\n\n⚠️ [Context: ${usagePercent}% used (${validation.totalTokens}/${validation.maxTokens} tokens). ${remainingTokens} remaining - consider wrapping up soon]`;
+                    } else if (usagePercent >= 50) {
+                        return `\n\n[Context: ${usagePercent}% used. ${remainingTokens} tokens remaining]`;
+                    }
+                    return '';
+                } catch (error) {
+                    Log.error('Error calculating context status:', error);
+                    return '';
+                }
+            };
 
             // Create handler to record tool calls and track iteration for subagent context
             const handler: ToolCallHandler = {
                 onIterationStart: (current, max) => {
-                    this.currentIteration = current;
-                    this.currentMaxIterations = max;
+                    currentIteration = current;
+                    currentMaxIterations = max;
                     progressCallback?.(
                         `Turn ${current}/${max}: Analyzing...`,
                         0.2
@@ -167,7 +199,7 @@ export class ToolCallingAnalysisProvider {
                     metadata
                 ) => {
                     toolCallCount++;
-                    this.toolCallRecords.push({
+                    toolCallRecords.push({
                         id: toolCallId,
                         toolName,
                         arguments: args,
@@ -179,7 +211,7 @@ export class ToolCallingAnalysisProvider {
                         nestedCalls: metadata?.nestedToolCalls,
                     });
                 },
-                getContextStatusSuffix: () => this.getContextStatusSuffix(),
+                getContextStatusSuffix,
             };
 
             // Run conversation loop using extracted ConversationRunner
@@ -191,7 +223,7 @@ export class ToolCallingAnalysisProvider {
                     label: 'Main Analysis',
                     requiresExplicitCompletion: true,
                 },
-                this.conversationManager,
+                conversationManager,
                 token,
                 handler
             );
@@ -212,10 +244,11 @@ export class ToolCallingAnalysisProvider {
             // Clear subagent progress callback
             this.subagentExecutor?.setProgressCallback(undefined, undefined);
             this.subagentSessionManager.setParentCancellationToken(undefined);
-            // No cleanup needed - toolExecutor and planManager are garbage collected
+            // No cleanup needed - all per-analysis instances are garbage collected
         }
 
         return this.buildAnalysisResult(
+            toolCallRecords,
             analysisText,
             analysisCompleted,
             analysisError
@@ -223,73 +256,25 @@ export class ToolCallingAnalysisProvider {
     }
 
     private buildAnalysisResult(
+        toolCallRecords: ToolCallRecord[],
         analysis: string,
         completed: boolean,
         error: string | undefined
     ): ToolCallingAnalysisResult {
-        const successfulCalls = this.toolCallRecords.filter(
-            (r) => r.success
-        ).length;
-        const failedCalls = this.toolCallRecords.filter(
-            (r) => !r.success
-        ).length;
+        const successfulCalls = toolCallRecords.filter((r) => r.success).length;
+        const failedCalls = toolCallRecords.filter((r) => !r.success).length;
 
         return {
             analysis,
             toolCalls: {
-                calls: [...this.toolCallRecords],
-                totalCalls: this.toolCallRecords.length,
+                calls: [...toolCallRecords],
+                totalCalls: toolCallRecords.length,
                 successfulCalls,
                 failedCalls,
                 analysisCompleted: completed,
                 analysisError: error,
             },
         };
-    }
-
-    /**
-     * Get context usage status as a suffix to append to tool responses.
-     * Helps the LLM understand how much context it has remaining.
-     */
-    private async getContextStatusSuffix(): Promise<string> {
-        if (!this.tokenValidator) {
-            return '';
-        }
-
-        try {
-            const systemPrompt =
-                this.promptGenerator.generateToolAwareSystemPrompt(
-                    this.toolRegistry.getAllTools()
-                );
-            const messages = this.conversationManager
-                .getHistory()
-                .map((msg) => ({
-                    role: msg.role,
-                    content: msg.content,
-                    toolCalls: msg.toolCalls,
-                    toolCallId: msg.toolCallId,
-                }));
-
-            const validation = await this.tokenValidator.validateTokens(
-                messages,
-                systemPrompt
-            );
-            const usagePercent = Math.round(
-                (validation.totalTokens / validation.maxTokens) * 100
-            );
-            const remainingTokens =
-                validation.maxTokens - validation.totalTokens;
-
-            if (usagePercent >= 80) {
-                return `\n\n⚠️ [Context: ${usagePercent}% used (${validation.totalTokens}/${validation.maxTokens} tokens). ${remainingTokens} remaining - consider wrapping up soon]`;
-            } else if (usagePercent >= 50) {
-                return `\n\n[Context: ${usagePercent}% used. ${remainingTokens} tokens remaining]`;
-            }
-            return '';
-        } catch (error) {
-            Log.error('Error calculating context status:', error);
-            return '';
-        }
     }
 
     /**
@@ -303,13 +288,6 @@ export class ToolCallingAnalysisProvider {
         toolsDisabledMessage?: string;
     }> {
         try {
-            // Initialize token validator if not already done
-            if (!this.tokenValidator) {
-                const currentModel =
-                    await this.copilotModelManager.getCurrentModel();
-                this.tokenValidator = new TokenValidator(currentModel);
-            }
-
             const model = await this.copilotModelManager.getCurrentModel();
             const maxTokens =
                 model.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;

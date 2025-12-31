@@ -55,7 +55,6 @@ class MockAnalysisTool implements ITool {
 
 describe('ToolCallingAnalysisProvider Integration', () => {
     let provider: ToolCallingAnalysisProvider;
-    let mockConversationManager: any;
     let mockToolRegistry: any;
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
@@ -80,14 +79,7 @@ index 1234567..abcdefg 100644
  }`;
 
         // Mock dependencies
-        mockConversationManager = {
-            clearHistory: vi.fn(),
-            addUserMessage: vi.fn(),
-            addAssistantMessage: vi.fn(),
-            addToolMessage: vi.fn(),
-            getHistory: vi.fn().mockReturnValue([]),
-        };
-
+        // Note: ConversationManager is created internally per-analysis for concurrent-safety
         mockToolRegistry = {
             getAllTools: vi
                 .fn()
@@ -141,7 +133,6 @@ index 1234567..abcdefg 100644
         );
 
         provider = new ToolCallingAnalysisProvider(
-            mockConversationManager,
             mockToolRegistry,
             mockCopilotModelManager,
             mockPromptGenerator,
@@ -194,22 +185,8 @@ index 1234567..abcdefg 100644
             expect(parseDiffSpy).toHaveBeenCalledWith(sampleDiff);
         });
 
-        it('should clear conversation history at start', async () => {
-            await provider.analyze(sampleDiff, tokenSource.token);
-
-            expect(mockConversationManager.clearHistory).toHaveBeenCalled();
-        });
-
-        it('should add structured user message to conversation', async () => {
-            await provider.analyze(sampleDiff, tokenSource.token);
-
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining('<files_to_review>')
-            );
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining('<analysis_task>')
-            );
-        });
+        // Note: conversation history clearing and message adding are now internal
+        // to the analyze() method, tested via the overall analysis result
 
         it('should handle tool calls in conversation loop', async () => {
             // Create spy on the mock tool's execute method
@@ -401,10 +378,8 @@ index 1234567..abcdefg 100644
             expect(result.analysis).toBe(
                 'Analysis despite tool error. The review continues with available information and provides recommendations based on the code changes.'
             );
-            expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
-                'call_1',
-                'Error: Tool execution failed'
-            );
+            // Tool messages are now added to internal ConversationManager
+            // The analysis result confirms error handling worked correctly
         });
 
         it('should handle malformed tool arguments', async () => {

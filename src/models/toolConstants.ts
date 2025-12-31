@@ -56,6 +56,19 @@ export const SubagentLimits = {
 } as const;
 
 /**
+ * Tools that are only available during main analysis mode (not exploration mode).
+ * Exploration mode (no slash command) doesn't have PR context or a review plan,
+ * so these tools would either fail or return nonsensical guidance.
+ */
+export const MAIN_ANALYSIS_ONLY_TOOLS = [
+    'update_plan', // Requires planManager from ExecutionContext
+    'submit_review', // Semantically for completing PR analysis
+    'think_about_completion', // References PR analysis completion criteria
+    'think_about_context', // References diff coverage and PR-level context
+    'think_about_task', // References PR review scope and task structure
+] as const;
+
+/**
  * Error messages for subagent execution failures.
  */
 export const SubagentErrors = {

@@ -31,13 +31,6 @@ vi.mock('../services/loggingService', () => ({
 
 describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     let analysisProvider: ToolCallingAnalysisProvider;
-    let mockConversationManager: {
-        clearHistory: Mock;
-        addUserMessage: Mock;
-        addAssistantMessage: Mock;
-        addToolMessage: Mock;
-        getHistory: Mock;
-    };
     let mockToolRegistry: {
         getAllTools: Mock;
         getTool: Mock;
@@ -59,15 +52,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
-        // Setup mocks
-        mockConversationManager = {
-            clearHistory: vi.fn(),
-            addUserMessage: vi.fn(),
-            addAssistantMessage: vi.fn(),
-            addToolMessage: vi.fn(),
-            getHistory: vi.fn(() => []),
-        };
-
         mockModel = {
             countTokens: vi.fn(() => Promise.resolve(100)),
             maxInputTokens: 8000,
@@ -94,7 +78,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             mockWorkspaceSettings
         );
         analysisProvider = new ToolCallingAnalysisProvider(
-            mockConversationManager as any,
             mockToolRegistry as any,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
@@ -117,52 +100,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         it('should handle large conversations by cleaning up old context', async () => {
             const smallDiff =
                 'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
-
-            // Mock conversation history with many messages that exceed token limits
-            const longHistory = [
-                {
-                    role: 'user',
-                    content: 'Initial request',
-                    toolCalls: undefined,
-                    toolCallId: undefined,
-                },
-                {
-                    role: 'assistant',
-                    content: 'I will call a tool',
-                    toolCalls: [
-                        {
-                            id: 'call_1',
-                            function: { name: 'tool1', arguments: '{}' },
-                        },
-                    ],
-                    toolCallId: undefined,
-                },
-                {
-                    role: 'tool',
-                    content: 'A'.repeat(2000),
-                    toolCalls: undefined,
-                    toolCallId: 'call_1',
-                },
-                {
-                    role: 'assistant',
-                    content: 'I will call another tool',
-                    toolCalls: [
-                        {
-                            id: 'call_2',
-                            function: { name: 'tool2', arguments: '{}' },
-                        },
-                    ],
-                    toolCallId: undefined,
-                },
-                {
-                    role: 'tool',
-                    content: 'B'.repeat(2000),
-                    toolCalls: undefined,
-                    toolCallId: 'call_2',
-                },
-            ];
-
-            mockConversationManager.getHistory.mockReturnValue(longHistory);
 
             // Mock high token counts to trigger context cleanup
             mockModel.countTokens.mockImplementation(async (text: string) => {
@@ -223,9 +160,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(result.analysis).toBe(
                 'Final analysis based on available context. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
-            expect(mockConversationManager.clearHistory).toHaveBeenCalled();
-            // Verify that user message was added (content may vary based on implementation)
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalled();
         });
 
         it('should request final answer when context window is completely full', async () => {
@@ -276,8 +210,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(result.analysis).toBe(
                 'Final analysis with limited context. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
-            // Verify that user message was added (content may vary based on implementation)
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalled();
         });
     });
 
@@ -356,12 +288,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(result.analysis).toBe(
                 'Analysis based on error message. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
-            expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
-                'call_1',
-                expect.stringContaining(
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE
-                )
-            );
+            // The tool error is passed to the LLM internally, verifiable through the final result
         });
     });
 
@@ -423,12 +350,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(
                 mockPromptGenerator.generateToolCallingUserPrompt
             ).toHaveBeenCalledWith(expect.any(Object));
-
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining(
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED
-                )
-            );
         });
 
         it('should keep tools available when diff is reasonably sized', async () => {
@@ -490,13 +411,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(
                 mockPromptGenerator.generateToolAwareSystemPrompt
             ).toHaveBeenCalledWith(mockTools);
-
-            // User message should not contain tools disabled message
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.not.stringContaining(
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED
-                )
-            );
         });
     });
 
@@ -576,37 +490,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 'Based on the file content, here is my analysis: The function was renamed from old() to new(). Padding added for minimum character requirement.'
             );
 
-            // Verify conversation flow
-            expect(mockConversationManager.clearHistory).toHaveBeenCalled();
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining('User message') // From promptGenerator
-            );
-            expect(
-                mockConversationManager.addAssistantMessage
-            ).toHaveBeenCalledWith(
-                'I need to read the file to understand the changes',
-                expect.arrayContaining([
-                    expect.objectContaining({ id: 'call_1' }),
-                ])
-            );
-            expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
-                'call_1',
-                expect.stringContaining('<file_content>')
-            );
-            // Final response uses submit_review tool call, so content is null and toolCalls is present
-            expect(
-                mockConversationManager.addAssistantMessage
-            ).toHaveBeenCalledWith(
-                null,
-                expect.arrayContaining([
-                    expect.objectContaining({
-                        id: 'call_final',
-                        function: expect.objectContaining({
-                            name: 'submit_review',
-                        }),
-                    }),
-                ])
-            );
+            // Verify the tool was executed as part of the workflow
+            expect(mockTool.execute).toHaveBeenCalled();
         });
 
         it('should handle errors gracefully and continue analysis', async () => {
@@ -648,11 +533,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(result.analysis).toBe(
                 'Analysis after error recovery. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
-            expect(
-                mockConversationManager.addAssistantMessage
-            ).toHaveBeenCalledWith(
-                expect.stringContaining('I encountered an error')
-            );
+            // Error recovery is handled internally, verifiable through successful analysis completion
         });
 
         it('should handle maximum iteration limit gracefully', async () => {
@@ -767,10 +648,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(result.analysis).toBe(
                 'Analysis despite tool failure. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
-            expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
-                'call_1',
-                'Error: Tool execution failed'
-            );
+            // The tool error is passed to the LLM internally, verifiable through the final result
         });
 
         it('should handle malformed tool call arguments', async () => {

@@ -13,6 +13,7 @@ import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { ChatContextManager } from '../models/chatContextManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { PlanSessionManager } from './planSessionManager';
+import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -223,7 +224,17 @@ export class ChatParticipantService implements vscode.Disposable {
             const client = new ChatLLMClient(request.model, timeoutMs);
             const runner = new ConversationRunner(client, toolExecutor);
             const conversation = new ConversationManager();
-            const availableTools = toolExecutor.getAvailableTools();
+
+            // Filter out main-analysis-only tools for exploration mode
+            // These tools require PR context, planManager, or are semantically invalid
+            const allTools = toolExecutor.getAvailableTools();
+            const availableTools = allTools.filter(
+                (tool) =>
+                    !MAIN_ANALYSIS_ONLY_TOOLS.includes(
+                        tool.name as (typeof MAIN_ANALYSIS_ONLY_TOOLS)[number]
+                    )
+            );
+
             const systemPrompt =
                 this.deps.promptGenerator.generateExplorationSystemPrompt(
                     availableTools

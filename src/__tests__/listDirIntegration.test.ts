@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
-import { ConversationManager } from '../models/conversationManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ListDirTool } from '../tools/listDirTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
@@ -54,7 +53,6 @@ const mockCopilotModelManager = {
 
 describe('ListDirTool Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
-    let conversationManager: ConversationManager;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let listDirTool: ListDirTool;
@@ -70,7 +68,6 @@ describe('ListDirTool Integration Tests', () => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        conversationManager = new ConversationManager();
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
@@ -95,7 +92,6 @@ describe('ListDirTool Integration Tests', () => {
         promptGenerator = new PromptGenerator();
 
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
-            conversationManager,
             toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
@@ -186,20 +182,6 @@ describe('ListDirTool Integration Tests', () => {
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
-
-            // Verify conversation history includes tool call and response
-            const history = conversationManager.getHistory();
-            expect(history.length).toBeGreaterThan(2);
-
-            // Check that the tool response is in the history
-            const toolResponseMessage = history.find(
-                (msg) =>
-                    msg.role === 'tool' &&
-                    msg.content &&
-                    typeof msg.content === 'string' &&
-                    msg.content.includes('src/')
-            );
-            expect(toolResponseMessage).toBeDefined();
         });
 
         it('should handle recursive directory listing tool call', async () => {
@@ -309,17 +291,6 @@ describe('ListDirTool Integration Tests', () => {
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
-
-            // Verify error was passed to LLM
-            const history = conversationManager.getHistory();
-            const errorMessage = history.find(
-                (msg) =>
-                    msg.role === 'tool' &&
-                    msg.content &&
-                    typeof msg.content === 'string' &&
-                    msg.content.includes('Error listing directory')
-            );
-            expect(errorMessage).toBeDefined();
         });
 
         it('should handle directory traversal prevention', async () => {
@@ -367,17 +338,6 @@ describe('ListDirTool Integration Tests', () => {
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
-
-            // Verify security error was passed to LLM
-            const history = conversationManager.getHistory();
-            const securityMessage = history.find(
-                (msg) =>
-                    msg.role === 'tool' &&
-                    msg.content &&
-                    typeof msg.content === 'string' &&
-                    msg.content.includes('Directory traversal detected')
-            );
-            expect(securityMessage).toBeDefined();
         });
 
         it('should handle multiple tool calls including list directory', async () => {
@@ -433,10 +393,6 @@ describe('ListDirTool Integration Tests', () => {
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 2
             );
-
-            // Verify all tools were executed
-            const history = conversationManager.getHistory();
-            expect(history.length).toBeGreaterThan(2);
         });
     });
 

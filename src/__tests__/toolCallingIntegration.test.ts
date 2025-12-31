@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { ConversationManager } from '../models/conversationManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
@@ -41,7 +40,6 @@ const mockCopilotModelManager = {
 
 describe('Tool-Calling Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
-    let conversationManager: ConversationManager;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findSymbolTool: FindSymbolTool;
@@ -55,7 +53,7 @@ describe('Tool-Calling Integration Tests', () => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        conversationManager = new ConversationManager();
+        // Note: ConversationManager is now created internally per-analysis for concurrent-safety
 
         mockGitOperationsManager = {
             getRepository: vi.fn().mockReturnValue({
@@ -85,7 +83,6 @@ describe('Tool-Calling Integration Tests', () => {
 
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
-            conversationManager,
             toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
@@ -141,11 +138,9 @@ describe('Tool-Calling Integration Tests', () => {
                 1
             );
 
-            // Verify conversation history
-            const history = conversationManager.getHistory();
-            expect(history).toHaveLength(3); // User message + Assistant (with submit_review) + Tool response
-            expect(history[0].role).toBe('user');
-            expect(history[1].role).toBe('assistant');
+            // Verify tool call metadata
+            expect(result.toolCalls.totalCalls).toBe(1); // submit_review
+            expect(result.toolCalls.successfulCalls).toBe(1);
         });
 
         it('should handle single tool call workflow', async () => {
@@ -222,15 +217,11 @@ describe('Tool-Calling Integration Tests', () => {
                 2
             );
 
-            // Verify conversation flow
-            const history = conversationManager.getHistory();
-            expect(history).toHaveLength(5); // User + Assistant (with find_symbol) + Tool response + Assistant (with submit_review) + Tool response
-            expect(history[0].role).toBe('user');
-            expect(history[1].role).toBe('assistant');
-            expect(history[1].toolCalls).toHaveLength(1);
-            expect(history[2].role).toBe('tool');
-            expect(history[2].toolCallId).toBe('call_1');
-            expect(history[3].role).toBe('assistant');
+            // Verify tool call metadata: find_symbol (fails due to mock) + submit_review (succeeds)
+            expect(result.toolCalls.totalCalls).toBe(2);
+            expect(result.toolCalls.successfulCalls).toBe(1);
+            expect(result.toolCalls.failedCalls).toBe(1);
+            expect(result.toolCalls.analysisCompleted).toBe(true);
         });
 
         it('should handle multiple tool calls in parallel', async () => {
@@ -331,13 +322,11 @@ describe('Tool-Calling Integration Tests', () => {
                 2
             );
 
-            // Verify multiple tool responses in conversation
-            const history = conversationManager.getHistory();
-            expect(history).toHaveLength(6); // User + Assistant (with 2 tool calls) + 2 Tool responses + Assistant (submit_review) + Tool response
-            expect(history[2].role).toBe('tool');
-            expect(history[2].toolCallId).toBe('call_1');
-            expect(history[3].role).toBe('tool');
-            expect(history[3].toolCallId).toBe('call_2');
+            // Verify multiple tool calls in metadata: 2x find_symbol (fail) + submit_review (succeeds)
+            expect(result.toolCalls.totalCalls).toBe(3);
+            expect(result.toolCalls.successfulCalls).toBe(1);
+            expect(result.toolCalls.failedCalls).toBe(2);
+            expect(result.toolCalls.analysisCompleted).toBe(true);
         });
 
         it('should handle tool execution errors gracefully', async () => {
@@ -384,12 +373,11 @@ describe('Tool-Calling Integration Tests', () => {
 
             expect(result.analysis).toContain('I could not find the symbol');
 
-            // Verify tool error is captured in conversation
-            const history = conversationManager.getHistory();
-            const toolMessage = history.find((m) => m.role === 'tool');
-            expect(toolMessage?.content).toContain(
-                "Symbol 'NonExistentSymbol' not found"
-            );
+            // Verify tool failure is captured in metadata
+            expect(result.toolCalls.totalCalls).toBe(2); // find_symbol (failed) + submit_review
+            // One failed (find_symbol), one success (submit_review)
+            expect(result.toolCalls.failedCalls).toBe(1);
+            expect(result.toolCalls.successfulCalls).toBe(1);
         });
 
         it('should handle LLM errors during conversation', async () => {
@@ -445,7 +433,7 @@ describe('Tool-Calling Integration Tests', () => {
         it('should properly initialize all components', () => {
             expect(toolRegistry.getToolNames()).toContain('find_symbol');
             expect(toolRegistry.hasTool('find_symbol')).toBe(true);
-            expect(conversationManager.getMessageCount()).toBe(0);
+            // ConversationManager is now created internally per-analysis
         });
 
         it('should generate proper system prompt with tools', async () => {
@@ -520,9 +508,11 @@ describe('Tool-Calling Integration Tests', () => {
 
             expect(result.analysis).toContain('Handling the error gracefully');
 
-            // Should still complete despite malformed JSON
-            const history = conversationManager.getHistory();
-            expect(history.some((m) => m.role === 'tool')).toBe(true);
+            // Should still complete despite malformed JSON - verify via tool call records
+            expect(result.toolCalls.totalCalls).toBeGreaterThan(0);
+            expect(
+                result.toolCalls.calls.some((c) => c.toolName === 'find_symbol')
+            ).toBe(true);
         });
     });
 
@@ -530,7 +520,6 @@ describe('Tool-Calling Integration Tests', () => {
         it('should dispose all services properly', () => {
             expect(() => {
                 toolCallingAnalyzer.dispose();
-                conversationManager.dispose();
                 toolRegistry.dispose();
             }).not.toThrow();
         });

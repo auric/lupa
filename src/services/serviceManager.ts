@@ -186,9 +186,10 @@ export class ServiceManager implements vscode.Disposable {
         this.services.subagentSessionManager = new SubagentSessionManager(
             this.services.workspaceSettings!
         );
+        // Note: ToolCallingAnalysisProvider creates its own ConversationManager per-analysis
+        // for concurrent-safety. The shared conversationManager is kept for other uses.
         this.services.toolCallingAnalysisProvider =
             new ToolCallingAnalysisProvider(
-                this.services.conversationManager,
                 this.services.toolRegistry,
                 this.services.copilotModelManager!,
                 this.services.promptGenerator!,
