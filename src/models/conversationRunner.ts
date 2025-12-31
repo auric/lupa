@@ -207,6 +207,9 @@ export class ConversationRunner {
                 );
 
                 if (response.toolCalls && response.toolCalls.length > 0) {
+                    // Reset nudge counter - model is cooperating with tool calls
+                    completionNudgeCount = 0;
+
                     const result = await this.handleToolCalls(
                         response.toolCalls,
                         conversation,
