@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Concurrency Tests
+
+- **Concurrent analysis regression tests**: Added integration tests verifying that multiple analyses can run simultaneously without state interference. Tests validate that tool call records, iteration counts, and results remain isolated per-analysis.
+
 #### Plan Tool
 
 - **`update_plan` tool**: New tool allowing the LLM to create and update a structured review plan during analysis. The LLM can now maintain a markdown checklist to track which files have been reviewed, what findings were discovered, and what remains to investigate. This improves analysis coverage and helps ensure comprehensive reviews.

@@ -519,4 +519,210 @@ index 0000000..3333333
             expect(parsedDiff[1].hunks).toHaveLength(1);
         });
     });
+
+    describe('Concurrent Analysis', () => {
+        it('should handle concurrent analyses without state interference', async () => {
+            // Two distinct diffs with unique identifiers
+            const diff1 = `diff --git a/concurrent-test-file1.ts b/concurrent-test-file1.ts
+index 1111111..2222222 100644
+--- a/concurrent-test-file1.ts
++++ b/concurrent-test-file1.ts
+@@ -1,3 +1,3 @@
+-const old1 = 'value';
++const new1 = 'value';`;
+
+            const diff2 = `diff --git a/concurrent-test-file2.ts b/concurrent-test-file2.ts
+index 3333333..4444444 100644
+--- a/concurrent-test-file2.ts
++++ b/concurrent-test-file2.ts
+@@ -1,3 +1,3 @@
+-const old2 = 'value';
++const new2 = 'value';`;
+
+            // Mock LLM to return different responses based on diff content
+            mockCopilotModelManager.sendRequest.mockImplementation(
+                (request: {
+                    messages: Array<{ role: string; content: string }>;
+                }) => {
+                    const userMessage = request.messages.find(
+                        (m) => m.role === 'user'
+                    );
+                    const content = userMessage?.content || '';
+
+                    if (content.includes('concurrent-test-file1')) {
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    id: 'call_analysis_1',
+                                    function: {
+                                        name: 'submit_review',
+                                        arguments: JSON.stringify({
+                                            review_content:
+                                                'Concurrent analysis 1: Changes to file1 look good. The variable rename is appropriate. Adding padding to meet minimum character requirement.',
+                                        }),
+                                    },
+                                },
+                            ],
+                        });
+                    } else if (content.includes('concurrent-test-file2')) {
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    id: 'call_analysis_2',
+                                    function: {
+                                        name: 'submit_review',
+                                        arguments: JSON.stringify({
+                                            review_content:
+                                                'Concurrent analysis 2: Changes to file2 are acceptable. Variable naming is consistent. Adding padding to meet minimum character requirement.',
+                                        }),
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    return Promise.resolve({
+                        content: 'Unexpected call',
+                        toolCalls: [],
+                    });
+                }
+            );
+
+            // Create separate cancellation tokens for each analysis
+            const tokenSource1 = new vscode.CancellationTokenSource();
+            const tokenSource2 = new vscode.CancellationTokenSource();
+
+            // Run both analyses concurrently
+            const [result1, result2] = await Promise.all([
+                provider.analyze(diff1, tokenSource1.token),
+                provider.analyze(diff2, tokenSource2.token),
+            ]);
+
+            // Verify each analysis got its own distinct result
+            expect(result1.analysis).toContain('Concurrent analysis 1');
+            expect(result1.analysis).toContain('file1');
+            expect(result2.analysis).toContain('Concurrent analysis 2');
+            expect(result2.analysis).toContain('file2');
+
+            // Verify tool call records are separate for each analysis
+            expect(result1.toolCalls.calls).toHaveLength(1);
+            expect(result1.toolCalls.calls[0].id).toBe('call_analysis_1');
+            expect(result2.toolCalls.calls).toHaveLength(1);
+            expect(result2.toolCalls.calls[0].id).toBe('call_analysis_2');
+
+            // Verify both completed successfully
+            expect(result1.toolCalls.analysisCompleted).toBe(true);
+            expect(result2.toolCalls.analysisCompleted).toBe(true);
+
+            // Cleanup
+            tokenSource1.dispose();
+            tokenSource2.dispose();
+        });
+
+        it('should maintain separate iteration counts for concurrent analyses', async () => {
+            // Two diffs that will trigger different numbers of iterations
+            const simpleDiff = `diff --git a/simple.ts b/simple.ts
++const x = 1;`;
+
+            const complexDiff = `diff --git a/complex.ts b/complex.ts
++const complexLogic = () => { return 'needs investigation'; };`;
+
+            let simpleCallCount = 0;
+            let complexCallCount = 0;
+
+            mockCopilotModelManager.sendRequest.mockImplementation(
+                (request: {
+                    messages: Array<{ role: string; content: string }>;
+                }) => {
+                    const userMessage = request.messages.find(
+                        (m) => m.role === 'user'
+                    );
+                    const content = userMessage?.content || '';
+
+                    if (content.includes('simple.ts')) {
+                        simpleCallCount++;
+                        // Simple: submit immediately
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    id: `call_simple_${simpleCallCount}`,
+                                    function: {
+                                        name: 'submit_review',
+                                        arguments: JSON.stringify({
+                                            review_content:
+                                                'Simple change reviewed. Single iteration needed. Adding padding to meet minimum character requirement for review submission.',
+                                        }),
+                                    },
+                                },
+                            ],
+                        });
+                    } else if (content.includes('complex.ts')) {
+                        complexCallCount++;
+                        // Complex: first call uses tool, second submits
+                        if (complexCallCount === 1) {
+                            return Promise.resolve({
+                                content: 'Let me analyze this complex logic.',
+                                toolCalls: [
+                                    {
+                                        id: `call_complex_tool_${complexCallCount}`,
+                                        function: {
+                                            name: 'find_symbol',
+                                            arguments: JSON.stringify({
+                                                symbolName: 'complexLogic',
+                                            }),
+                                        },
+                                    },
+                                ],
+                            });
+                        } else {
+                            return Promise.resolve({
+                                content: null,
+                                toolCalls: [
+                                    {
+                                        id: `call_complex_submit_${complexCallCount}`,
+                                        function: {
+                                            name: 'submit_review',
+                                            arguments: JSON.stringify({
+                                                review_content:
+                                                    'Complex change reviewed after tool investigation. Two iterations needed. Padding for minimum characters.',
+                                            }),
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                    }
+                    return Promise.resolve({
+                        content: 'Unexpected',
+                        toolCalls: [],
+                    });
+                }
+            );
+
+            const tokenSource1 = new vscode.CancellationTokenSource();
+            const tokenSource2 = new vscode.CancellationTokenSource();
+
+            const [simpleResult, complexResult] = await Promise.all([
+                provider.analyze(simpleDiff, tokenSource1.token),
+                provider.analyze(complexDiff, tokenSource2.token),
+            ]);
+
+            // Simple analysis: 1 iteration (immediate submit)
+            expect(simpleResult.toolCalls.totalCalls).toBe(1);
+            expect(simpleResult.analysis).toContain('Single iteration');
+
+            // Complex analysis: 2 iterations (tool call + submit)
+            expect(complexResult.toolCalls.totalCalls).toBe(2);
+            expect(complexResult.analysis).toContain('Two iterations');
+
+            // Both completed independently
+            expect(simpleResult.toolCalls.analysisCompleted).toBe(true);
+            expect(complexResult.toolCalls.analysisCompleted).toBe(true);
+
+            tokenSource1.dispose();
+            tokenSource2.dispose();
+        });
+    });
 });
