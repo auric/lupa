@@ -273,7 +273,14 @@ index 1234567..abcdefg 100644
             // Zod schema adds default value for includeFullBody
             expect(executeSpy).toHaveBeenCalledWith(
                 { symbolName: 'validateToken', includeFullBody: true },
-                expect.anything() // ExecutionContext
+                // Verify ExecutionContext contains planManager with expected methods
+                // This confirms per-analysis isolation is working
+                expect.objectContaining({
+                    planManager: expect.objectContaining({
+                        updatePlan: expect.any(Function),
+                        getPlan: expect.any(Function),
+                    }),
+                })
             );
 
             // Verify final result
@@ -473,7 +480,13 @@ index 1234567..abcdefg 100644
             // Verify tool was called with empty object for malformed JSON
             expect(mockTool.execute).toHaveBeenCalledWith(
                 {}, // Empty object for malformed JSON
-                expect.anything() // ExecutionContext
+                // Verify ExecutionContext contains planManager for per-analysis isolation
+                expect.objectContaining({
+                    planManager: expect.objectContaining({
+                        updatePlan: expect.any(Function),
+                        getPlan: expect.any(Function),
+                    }),
+                })
             );
         });
 

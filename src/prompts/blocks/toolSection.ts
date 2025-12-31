@@ -1,5 +1,6 @@
 import * as z from 'zod';
 import { ITool } from '../../tools/ITool';
+import { Log } from '../../services/loggingService';
 
 /**
  * Generates the tool inventory section from available tools.
@@ -25,7 +26,7 @@ ${toolDescriptions}
 function formatToolDescription(tool: ITool): string {
     let description = `**${tool.name}**: ${tool.description}`;
 
-    const params = extractSchemaParams(tool.schema);
+    const params = extractSchemaParams(tool.schema, tool.name);
     if (params) {
         description += `\n  Parameters: ${params}`;
     }
@@ -36,7 +37,10 @@ function formatToolDescription(tool: ITool): string {
 /**
  * Extract parameter descriptions from a Zod object schema.
  */
-function extractSchemaParams(schema: z.ZodType): string | null {
+function extractSchemaParams(
+    schema: z.ZodType,
+    toolName?: string
+): string | null {
     try {
         if (schema instanceof z.ZodObject) {
             const shape = schema.shape;
@@ -55,7 +59,15 @@ function extractSchemaParams(schema: z.ZodType): string | null {
 
             return params.length > 0 ? params.join(', ') : null;
         }
-    } catch {
+        // Non-ZodObject schemas (e.g., ZodEffects, ZodPipeline) are not extracted
+        // This is acceptable - VS Code's tool infrastructure provides actual JSON schema
+        Log.debug(
+            `Tool schema not a ZodObject${toolName ? ` for ${toolName}` : ''}, skipping param extraction`
+        );
+    } catch (error) {
+        Log.debug(
+            `Failed to extract schema params${toolName ? ` for ${toolName}` : ''}: ${error}`
+        );
         return null;
     }
 
