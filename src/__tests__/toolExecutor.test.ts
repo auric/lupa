@@ -553,4 +553,79 @@ describe('ToolExecutor', () => {
             expect(result.result).toBe('Normal sized response content');
         });
     });
+
+    describe('ExecutionContext Propagation', () => {
+        it('should pass ExecutionContext to tool execute method', async () => {
+            let capturedContext: unknown = null;
+
+            const contextCaptureTool: ITool = {
+                name: 'context_capture_tool',
+                description: 'Captures ExecutionContext for testing',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'context_capture_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (_args, context): Promise<ToolResult> => {
+                    capturedContext = context;
+                    return toolSuccess('captured');
+                },
+            };
+
+            toolRegistry.registerTool(contextCaptureTool);
+
+            const mockExecutionContext = {
+                planManager: { someProp: 'testPlan' },
+                subagentSessionManager: { someProp: 'testSession' },
+                subagentExecutor: { someProp: 'testExecutor' },
+            };
+
+            const toolExecutorWithContext = new ToolExecutor(
+                toolRegistry,
+                mockSettings,
+                mockExecutionContext as any
+            );
+
+            await toolExecutorWithContext.executeTool(
+                'context_capture_tool',
+                {}
+            );
+
+            expect(capturedContext).toBe(mockExecutionContext);
+        });
+
+        it('should pass undefined context when ToolExecutor created without context', async () => {
+            let capturedContext: unknown = 'not-called';
+
+            const contextCaptureTool: ITool = {
+                name: 'context_check_tool',
+                description: 'Checks undefined context',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'context_check_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (_args, context): Promise<ToolResult> => {
+                    capturedContext = context;
+                    return toolSuccess('captured');
+                },
+            };
+
+            toolRegistry.registerTool(contextCaptureTool);
+
+            const toolExecutorWithoutContext = new ToolExecutor(
+                toolRegistry,
+                mockSettings
+            );
+
+            await toolExecutorWithoutContext.executeTool(
+                'context_check_tool',
+                {}
+            );
+
+            expect(capturedContext).toBeUndefined();
+        });
+    });
 });

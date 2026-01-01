@@ -13,6 +13,10 @@ import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { ChatContextManager } from '../models/chatContextManager';
 import { PromptGenerator } from '../models/promptGenerator';
 import { PlanSessionManager } from './planSessionManager';
+import { SubagentSessionManager } from './subagentSessionManager';
+import { SubagentExecutor } from './subagentExecutor';
+import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
+import { CopilotModelManager } from '../models/copilotModelManager';
 import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -35,6 +39,7 @@ export interface ChatParticipantDependencies {
     workspaceSettings: WorkspaceSettingsService;
     promptGenerator: PromptGenerator;
     gitOperations: GitOperationsManager;
+    copilotModelManager: CopilotModelManager;
 }
 
 /**
@@ -454,10 +459,22 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Create per-analysis instances for complete isolation
         const planManager = new PlanSessionManager();
+        const subagentSessionManager = new SubagentSessionManager(
+            this.deps!.workspaceSettings
+        );
+        const subagentExecutor = new SubagentExecutor(
+            this.deps!.copilotModelManager,
+            this.deps!.toolRegistry,
+            new SubagentPromptGenerator(),
+            this.deps!.workspaceSettings,
+            (msg) => stream.progress(msg)
+        );
+        subagentSessionManager.setParentCancellationToken(token);
+
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
             this.deps!.workspaceSettings,
-            { planManager }
+            { planManager, subagentSessionManager, subagentExecutor }
         );
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
@@ -493,42 +510,47 @@ export class ChatParticipantService implements vscode.Disposable {
         const debouncedHandler = new DebouncedStreamHandler(uiHandler);
         const adapter = new ToolCallStreamAdapter(debouncedHandler);
 
-        const analysisResult = await runner.run(
-            {
-                systemPrompt,
-                maxIterations: this.deps!.workspaceSettings.getMaxIterations(),
-                tools: availableTools,
-                label: `Chat /${scopeLabel}`,
-            },
-            conversation,
-            token,
-            adapter
-        );
+        try {
+            const analysisResult = await runner.run(
+                {
+                    systemPrompt,
+                    maxIterations:
+                        this.deps!.workspaceSettings.getMaxIterations(),
+                    tools: availableTools,
+                    label: `Chat /${scopeLabel}`,
+                    requiresExplicitCompletion: true,
+                },
+                conversation,
+                token,
+                adapter
+            );
 
-        debouncedHandler.flush();
+            debouncedHandler.flush();
 
-        if (analysisResult === CANCELLATION_MESSAGE) {
-            return this.handleCancellation(stream);
+            if (analysisResult === CANCELLATION_MESSAGE) {
+                return this.handleCancellation(stream);
+            }
+
+            streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
+
+            const contentAnalysis = this.analyzeResultContent(analysisResult);
+
+            return {
+                metadata: {
+                    command: request.command as 'branch' | 'changes',
+                    filesAnalyzed: parsedDiff.length,
+                    issuesFound: contentAnalysis.issuesFound,
+                    hasCriticalIssues: contentAnalysis.hasCriticalIssues,
+                    hasSecurityIssues: contentAnalysis.hasSecurityIssues,
+                    hasTestingSuggestions:
+                        contentAnalysis.hasTestingSuggestions,
+                    cancelled: false,
+                    analysisTimestamp: Date.now(),
+                } satisfies ChatAnalysisMetadata,
+            };
+        } finally {
+            subagentSessionManager.setParentCancellationToken(undefined);
         }
-
-        streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
-
-        const contentAnalysis = this.analyzeResultContent(analysisResult);
-
-        // No cleanup needed - toolExecutor and planManager are garbage collected
-
-        return {
-            metadata: {
-                command: request.command as 'branch' | 'changes',
-                filesAnalyzed: parsedDiff.length,
-                issuesFound: contentAnalysis.issuesFound,
-                hasCriticalIssues: contentAnalysis.hasCriticalIssues,
-                hasSecurityIssues: contentAnalysis.hasSecurityIssues,
-                hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
-                cancelled: false,
-                analysisTimestamp: Date.now(),
-            } satisfies ChatAnalysisMetadata,
-        };
     }
 
     /**

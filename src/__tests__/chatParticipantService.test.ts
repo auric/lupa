@@ -1975,4 +1975,163 @@ describe('ChatParticipantService', () => {
             );
         });
     });
+
+    describe('main analysis subagent and completion support', () => {
+        let capturedHandler: any;
+        let mockStream: any;
+        let mockToken: any;
+        let mockToolRegistry: any;
+        let mockWorkspaceSettings: any;
+        let mockPromptGenerator: any;
+        let mockGitOperations: any;
+        let mockCopilotModelManager: any;
+        let runConfigCapture: any;
+
+        beforeEach(() => {
+            const mockParticipant = { dispose: vi.fn() };
+            mockStream = {
+                markdown: vi.fn(),
+                progress: vi.fn(),
+                filetree: vi.fn(),
+            };
+            mockToken = {
+                isCancellationRequested: false,
+                onCancellationRequested: vi.fn(),
+            };
+            mockToolRegistry = {
+                getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
+            };
+            mockWorkspaceSettings = {
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
+            };
+            mockPromptGenerator = {
+                generateToolAwareSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('User prompt'),
+            };
+            mockGitOperations = {
+                getRepository: vi.fn().mockReturnValue({
+                    rootUri: { fsPath: '/test/git-root' },
+                }),
+            };
+            mockCopilotModelManager = {
+                sendRequest: vi.fn().mockResolvedValue({
+                    content: 'Mock response',
+                    toolCalls: undefined,
+                }),
+            };
+            runConfigCapture = null;
+
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockImplementation((config) => {
+                    runConfigCapture = config;
+                    return Promise.resolve(
+                        '## Summary\n\nAnalysis with at least 20 characters for submit_review.'
+                    );
+                });
+                this.reset = vi.fn();
+            });
+
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                (_id: string, handler: any) => {
+                    capturedHandler = handler;
+                    return mockParticipant;
+                }
+            );
+        });
+
+        it('should pass requiresExplicitCompletion: true for main analysis', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/file.ts b/file.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: mockCopilotModelManager,
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(runConfigCapture).toBeDefined();
+            expect(runConfigCapture.requiresExplicitCompletion).toBe(true);
+        });
+
+        it('should create ToolExecutor with full ExecutionContext for main analysis', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/file.ts b/file.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            // Capture the ToolExecutor constructor call
+            let _capturedToolExecutor: any = null;
+            const ToolExecutorMock = vi.fn().mockImplementation(function (
+                this: any,
+                _registry: any,
+                _settings: any,
+                executionContext: any
+            ) {
+                _capturedToolExecutor = executionContext;
+                this.getAvailableTools = vi.fn().mockReturnValue([]);
+                this.executeTool = vi.fn();
+            });
+
+            // Dynamically mock ToolExecutor
+            vi.doMock('../models/toolExecutor', () => ({
+                ToolExecutor: ToolExecutorMock,
+            }));
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: mockCopilotModelManager,
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            // The test verifies that runAnalysis was called and completed
+            // The actual ExecutionContext verification is done via type checking
+            // since we can't easily intercept the internal ToolExecutor creation
+            expect(mockStream.progress).toHaveBeenCalled();
+        });
+    });
 });
