@@ -19,7 +19,7 @@ Lupa is a VS Code extension that performs comprehensive pull request analysis us
 
 ## Two Ways to Use Lupa
 
-### 1. Webview Mode (Full Analysis)
+### 1. Webview Mode
 
 Use the command palette for comprehensive PR analysis with a dedicated webview panel:
 
@@ -27,7 +27,7 @@ Use the command palette for comprehensive PR analysis with a dedicated webview p
 2. Run **`Lupa: Analyze Pull Request`**
 3. View results in the interactive webview panel
 
-### 2. Chat Participant Mode (Quick Analysis)
+### 2. Chat Participant Mode
 
 Use the `@lupa` chat participant directly in VS Code's chat for quick inline analysis:
 
