@@ -209,6 +209,28 @@ Some text after that breaks JSON`;
             expect(result).toBeUndefined();
         });
 
+        it('should reject content between 20-50 chars even with valid patterns', () => {
+            // 35 chars with valid pattern - above submit_review min (20) but below extraction min (50)
+            const content =
+                '{"review_content": "## Summary\\n> TL;DR: Good PR."}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            // Should be rejected because extraction requires stricter validation (50+ chars)
+            expect(result).toBeUndefined();
+        });
+
+        it('should accept content at 50+ chars with valid patterns', () => {
+            // 51 chars with valid pattern - meets extraction threshold
+            const content =
+                '{"review_content": "## Summary\\n\\n> **TL;DR**: This PR is solid overall!"}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toBeDefined();
+            expect(result).toContain('## Summary');
+        });
+
         it('should reject content without review-like patterns', () => {
             const content =
                 '{"review_content": "This is just random text without any headings or review patterns that would indicate a real review document."}';
