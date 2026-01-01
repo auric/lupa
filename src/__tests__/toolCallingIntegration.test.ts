@@ -8,7 +8,6 @@ import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
@@ -46,7 +45,6 @@ describe('Tool-Calling Integration Tests', () => {
     let tokenSource: vscode.CancellationTokenSource;
     let mockGitOperationsManager: Mocked<GitOperationsManager>;
     let mockSymbolExtractor: Mocked<SymbolExtractor>;
-    let subagentSessionManager: SubagentSessionManager;
     let promptGenerator: PromptGenerator;
 
     beforeEach(() => {
@@ -75,10 +73,6 @@ describe('Tool-Calling Integration Tests', () => {
         toolRegistry.registerTool(findSymbolTool);
         toolRegistry.registerTool(new SubmitReviewTool());
 
-        subagentSessionManager = new SubagentSessionManager(
-            mockWorkspaceSettings
-        );
-
         promptGenerator = new PromptGenerator();
 
         // Initialize orchestrator
@@ -86,8 +80,7 @@ describe('Tool-Calling Integration Tests', () => {
             toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
-            mockWorkspaceSettings,
-            subagentSessionManager
+            mockWorkspaceSettings
         );
 
         // Clear all mocks

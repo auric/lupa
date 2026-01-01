@@ -3,7 +3,6 @@ import * as vscode from 'vscode';
 import { z } from 'zod';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { TokenConstants } from '../models/tokenConstants';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
@@ -48,7 +47,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         countTokens: Mock;
         maxInputTokens: number;
     };
-    let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -74,15 +72,11 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         };
 
         const mockWorkspaceSettings = createMockWorkspaceSettings();
-        subagentSessionManager = new SubagentSessionManager(
-            mockWorkspaceSettings
-        );
         analysisProvider = new ToolCallingAnalysisProvider(
             mockToolRegistry as any,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
-            mockWorkspaceSettings,
-            subagentSessionManager
+            mockWorkspaceSettings
         );
 
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (

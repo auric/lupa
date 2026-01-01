@@ -36,11 +36,6 @@ import { RunSubagentTool } from '../tools/runSubagentTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 
-// Subagent services
-import { SubagentExecutor } from './subagentExecutor';
-import { SubagentSessionManager } from './subagentSessionManager';
-import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
-
 import { Log } from './loggingService';
 
 /**
@@ -71,9 +66,8 @@ export interface IServiceRegistry {
     conversationManager: ConversationManager;
     toolCallingAnalysisProvider: ToolCallingAnalysisProvider;
 
-    // Subagent services
-    subagentExecutor: SubagentExecutor;
-    subagentSessionManager: SubagentSessionManager;
+    // Note: SubagentExecutor and SubagentSessionManager are created per-analysis
+    // in ToolCallingAnalysisProvider for concurrent-safety.
 
     // Language Model Tool Provider
     languageModelToolProvider: LanguageModelToolProvider;
@@ -183,9 +177,8 @@ export class ServiceManager implements vscode.Disposable {
             this.services.workspaceSettings!
         );
         this.services.conversationManager = new ConversationManager();
-        this.services.subagentSessionManager = new SubagentSessionManager(
-            this.services.workspaceSettings!
-        );
+        // Note: SubagentSessionManager and SubagentExecutor are created per-analysis
+        // in ToolCallingAnalysisProvider for concurrent-safety.
         // Note: ToolCallingAnalysisProvider creates its own ConversationManager per-analysis
         // for concurrent-safety. The shared conversationManager is kept for other uses.
         this.services.toolCallingAnalysisProvider =
@@ -193,21 +186,8 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.toolRegistry,
                 this.services.copilotModelManager!,
                 this.services.promptGenerator!,
-                this.services.workspaceSettings!,
-                this.services.subagentSessionManager
+                this.services.workspaceSettings!
             );
-
-        this.services.subagentExecutor = new SubagentExecutor(
-            this.services.copilotModelManager!,
-            this.services.toolRegistry,
-            new SubagentPromptGenerator(),
-            this.services.workspaceSettings!
-        );
-
-        // Wire up SubagentExecutor to ToolCallingAnalysisProvider for progress context sharing
-        this.services.toolCallingAnalysisProvider.setSubagentExecutor(
-            this.services.subagentExecutor
-        );
 
         // Register available tools
         this.initializeTools();
@@ -306,9 +286,9 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(new UpdatePlanTool());
 
             // Register the RunSubagentTool for delegating complex investigations
+            // Note: RunSubagentTool gets SubagentExecutor and SubagentSessionManager
+            // from ExecutionContext per-analysis for concurrent-safety
             const runSubagentTool = new RunSubagentTool(
-                this.services.subagentExecutor!,
-                this.services.subagentSessionManager!,
                 this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(runSubagentTool);

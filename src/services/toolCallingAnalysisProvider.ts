@@ -21,6 +21,7 @@ import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
+import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 
 /**
@@ -35,18 +36,8 @@ export class ToolCallingAnalysisProvider {
         private toolRegistry: ToolRegistry,
         private copilotModelManager: CopilotModelManager,
         private promptGenerator: PromptGenerator,
-        private workspaceSettings: WorkspaceSettingsService,
-        private subagentSessionManager: SubagentSessionManager,
-        private subagentExecutor: SubagentExecutor | undefined = undefined
+        private workspaceSettings: WorkspaceSettingsService
     ) {}
-
-    /**
-     * Set the subagent executor for progress context sharing.
-     * Called by ServiceManager after construction.
-     */
-    setSubagentExecutor(executor: SubagentExecutor): void {
-        this.subagentExecutor = executor;
-    }
 
     private get maxIterations(): number {
         return this.workspaceSettings.getMaxIterations();
@@ -73,13 +64,30 @@ export class ToolCallingAnalysisProvider {
         let currentIteration = 0;
         let currentMaxIterations = this.maxIterations;
 
+        // Create progress context that captures local variables
+        const progressContext: SubagentProgressContext = {
+            getCurrentIteration: () => currentIteration,
+            getMaxIterations: () => currentMaxIterations,
+        };
+
         // Create per-analysis instances for complete isolation
         const conversationManager = new ConversationManager();
         const planManager = new PlanSessionManager();
+        const subagentSessionManager = new SubagentSessionManager(
+            this.workspaceSettings
+        );
+        const subagentExecutor = new SubagentExecutor(
+            this.copilotModelManager,
+            this.toolRegistry,
+            new SubagentPromptGenerator(),
+            this.workspaceSettings,
+            progressCallback,
+            progressContext
+        );
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
             this.workspaceSettings,
-            { planManager }
+            { planManager, subagentSessionManager, subagentExecutor }
         );
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,
@@ -91,25 +99,10 @@ export class ToolCallingAnalysisProvider {
         let analysisText = '';
         let toolCallCount = 0;
 
-        // Create progress context that captures local variables
-        const progressContext: SubagentProgressContext = {
-            getCurrentIteration: () => currentIteration,
-            getMaxIterations: () => currentMaxIterations,
-        };
-
-        // Set up subagent progress callback with context
-        if (this.subagentExecutor && progressCallback) {
-            this.subagentExecutor.setProgressCallback(
-                progressCallback,
-                progressContext
-            );
-        }
-
         try {
             Log.info('Starting analysis with tool-calling support');
             progressCallback?.('Initializing analysis...', 0.5);
-            this.subagentSessionManager.reset();
-            this.subagentSessionManager.setParentCancellationToken(token);
+            subagentSessionManager.setParentCancellationToken(token);
 
             // Check diff size and handle truncation/tool availability
             progressCallback?.('Processing diff...', 0.5);
@@ -241,10 +234,9 @@ export class ToolCallingAnalysisProvider {
             Log.error(errorMessage);
             analysisText = errorMessage;
         } finally {
-            // Clear subagent progress callback
-            this.subagentExecutor?.setProgressCallback(undefined, undefined);
-            this.subagentSessionManager.setParentCancellationToken(undefined);
-            // No cleanup needed - all per-analysis instances are garbage collected
+            // Clear parent cancellation token to release references
+            subagentSessionManager.setParentCancellationToken(undefined);
+            // No other cleanup needed - all per-analysis instances are garbage collected
         }
 
         return this.buildAnalysisResult(

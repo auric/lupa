@@ -7,7 +7,6 @@ import { PromptGenerator } from '../models/promptGenerator';
 import { ITool } from '../tools/ITool';
 import { DiffUtils } from '../utils/diffUtils';
 import type { DiffHunk } from '../types/contextTypes';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
@@ -59,7 +58,6 @@ describe('ToolCallingAnalysisProvider Integration', () => {
     let mockCopilotModelManager: any;
     let mockPromptGenerator: PromptGenerator;
     let sampleDiff: string;
-    let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
@@ -128,16 +126,12 @@ index 1234567..abcdefg 100644
         mockPromptGenerator = new PromptGenerator();
 
         const mockWorkspaceSettings = createMockWorkspaceSettings();
-        subagentSessionManager = new SubagentSessionManager(
-            mockWorkspaceSettings
-        );
 
         provider = new ToolCallingAnalysisProvider(
             mockToolRegistry,
             mockCopilotModelManager,
             mockPromptGenerator,
-            mockWorkspaceSettings,
-            subagentSessionManager
+            mockWorkspaceSettings
         );
         // Use shared CancellationTokenSource mock from mockFactories
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (
@@ -720,6 +714,98 @@ index 3333333..4444444 100644
             // Both completed independently
             expect(simpleResult.toolCalls.analysisCompleted).toBe(true);
             expect(complexResult.toolCalls.analysisCompleted).toBe(true);
+
+            tokenSource1.dispose();
+            tokenSource2.dispose();
+        });
+
+        it('should isolate subagent session managers between concurrent analyses', async () => {
+            // This test verifies that each analysis has its own SubagentSessionManager
+            // so that subagent spawn counts don't interfere between analyses
+
+            // Two diffs that would both want to spawn subagents
+            const diff1 = `diff --git a/subagent-test-1.ts b/subagent-test-1.ts
++const module1 = require('./complex-module');`;
+
+            const diff2 = `diff --git a/subagent-test-2.ts b/subagent-test-2.ts
++const module2 = require('./another-complex-module');`;
+
+            // Track which analysis each call is from
+            const analysisCallCounts = { analysis1: 0, analysis2: 0 };
+
+            mockCopilotModelManager.sendRequest.mockImplementation(
+                (request: {
+                    messages: Array<{ role: string; content: string }>;
+                }) => {
+                    const userMessage = request.messages.find(
+                        (m) => m.role === 'user'
+                    );
+                    const content = userMessage?.content || '';
+
+                    if (content.includes('subagent-test-1')) {
+                        analysisCallCounts.analysis1++;
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    id: `call_1_${analysisCallCounts.analysis1}`,
+                                    function: {
+                                        name: 'submit_review',
+                                        arguments: JSON.stringify({
+                                            review_content:
+                                                'Analysis 1 completed. SubagentSessionManager isolated correctly. Padding for minimum chars.',
+                                        }),
+                                    },
+                                },
+                            ],
+                        });
+                    } else if (content.includes('subagent-test-2')) {
+                        analysisCallCounts.analysis2++;
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    id: `call_2_${analysisCallCounts.analysis2}`,
+                                    function: {
+                                        name: 'submit_review',
+                                        arguments: JSON.stringify({
+                                            review_content:
+                                                'Analysis 2 completed. SubagentSessionManager isolated correctly. Padding for minimum chars.',
+                                        }),
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    return Promise.resolve({
+                        content: 'Unexpected',
+                        toolCalls: [],
+                    });
+                }
+            );
+
+            const tokenSource1 = new vscode.CancellationTokenSource();
+            const tokenSource2 = new vscode.CancellationTokenSource();
+
+            // Run both analyses concurrently
+            const [result1, result2] = await Promise.all([
+                provider.analyze(diff1, tokenSource1.token),
+                provider.analyze(diff2, tokenSource2.token),
+            ]);
+
+            // Both should complete successfully without interfering
+            expect(result1.toolCalls.analysisCompleted).toBe(true);
+            expect(result2.toolCalls.analysisCompleted).toBe(true);
+            expect(result1.analysis).toContain(
+                'SubagentSessionManager isolated'
+            );
+            expect(result2.analysis).toContain(
+                'SubagentSessionManager isolated'
+            );
+
+            // Each analysis should have independent tool call records
+            expect(result1.toolCalls.calls[0].id).toContain('call_1_');
+            expect(result2.toolCalls.calls[0].id).toContain('call_2_');
 
             tokenSource1.dispose();
             tokenSource2.dispose();

@@ -107,6 +107,27 @@ describe('UpdatePlanTool', () => {
             expect(parseResult.success).toBe(true);
         });
 
+        it('should reject plan exceeding 5000 characters', () => {
+            const oversizedPlan = '## Plan\n' + 'x'.repeat(5000);
+            expect(oversizedPlan.length).toBeGreaterThan(5000);
+
+            const parseResult = tool.schema.safeParse({
+                plan: oversizedPlan,
+            });
+            expect(parseResult.success).toBe(false);
+        });
+
+        it('should accept plan at exactly 5000 characters', () => {
+            const headerLength = '## Plan\n'.length;
+            const maxPlan = '## Plan\n' + 'x'.repeat(5000 - headerLength);
+            expect(maxPlan.length).toBe(5000);
+
+            const parseResult = tool.schema.safeParse({
+                plan: maxPlan,
+            });
+            expect(parseResult.success).toBe(true);
+        });
+
         it('should reject missing plan parameter', () => {
             const parseResult = tool.schema.safeParse({});
             expect(parseResult.success).toBe(false);

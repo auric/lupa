@@ -1,4 +1,6 @@
 import { PlanSessionManager } from '../services/planSessionManager';
+import { SubagentSessionManager } from '../services/subagentSessionManager';
+import { SubagentExecutor } from '../services/subagentExecutor';
 
 /**
  * Context passed to tools during execution.
@@ -16,4 +18,18 @@ export interface ExecutionContext {
      * Undefined for subagent executions (they don't have plans).
      */
     planManager?: PlanSessionManager;
+
+    /**
+     * Subagent session manager for the current analysis.
+     * Tracks spawn counts, budget, and parent cancellation token.
+     * Created per-analysis for concurrency safety.
+     */
+    subagentSessionManager?: SubagentSessionManager;
+
+    /**
+     * Subagent executor for the current analysis.
+     * Handles subagent task execution with isolated conversation context.
+     * Created per-analysis with bound progress callback.
+     */
+    subagentExecutor?: SubagentExecutor;
 }

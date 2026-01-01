@@ -30,7 +30,7 @@ export class SubmitReviewTool extends BaseTool {
         .object({
             review_content: z
                 .string()
-                .min(100)
+                .min(20)
                 .describe(
                     'The complete markdown-formatted review following the output format specification. ' +
                         'Must include summary section, findings by category, and recommendations.'

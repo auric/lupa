@@ -101,19 +101,30 @@ const x = 1;
             expect(missing.success).toBe(false);
         });
 
-        it('should require review_content with minimum length', () => {
+        it('should reject review_content shorter than 20 characters', () => {
             const schema = tool.schema;
 
             const tooShort = schema.safeParse({
                 review_content: 'Too short',
             });
             expect(tooShort.success).toBe(false);
+        });
 
-            const valid = schema.safeParse({
-                review_content:
-                    'Test review content that meets minimum length requirements. This needs to be at least 100 characters long.',
+        it('should accept concise reviews of at least 20 characters', () => {
+            const schema = tool.schema;
+
+            // 25 chars - acceptable concise review
+            const conciseReview = schema.safeParse({
+                review_content: 'LGTM. No issues found.',
             });
-            expect(valid.success).toBe(true);
+            expect(conciseReview.success).toBe(true);
+
+            // Longer review also works
+            const detailedReview = schema.safeParse({
+                review_content:
+                    'Test review content that meets minimum length requirements. This is a detailed analysis.',
+            });
+            expect(detailedReview.success).toBe(true);
         });
 
         it('should reject extra properties (strict schema)', () => {
@@ -121,7 +132,7 @@ const x = 1;
 
             const withExtras = schema.safeParse({
                 review_content:
-                    'Test review content that meets minimum length requirements. This needs to be at least 100 characters long.',
+                    'Test review content that meets minimum length requirements.',
                 extra_property: 'not allowed',
             });
             expect(withExtras.success).toBe(false);

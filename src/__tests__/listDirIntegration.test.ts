@@ -6,7 +6,6 @@ import { ListDirTool } from '../tools/listDirTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
@@ -60,7 +59,6 @@ describe('ListDirTool Integration Tests', () => {
     let mockReadDirectory: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
-    let subagentSessionManager: SubagentSessionManager;
     let promptGenerator: PromptGenerator;
     let tokenSource: vscode.CancellationTokenSource;
 
@@ -85,18 +83,13 @@ describe('ListDirTool Integration Tests', () => {
         toolRegistry.registerTool(listDirTool);
         toolRegistry.registerTool(submitReviewTool);
 
-        subagentSessionManager = new SubagentSessionManager(
-            mockWorkspaceSettings
-        );
-
         promptGenerator = new PromptGenerator();
 
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
-            mockWorkspaceSettings,
-            subagentSessionManager
+            mockWorkspaceSettings
         );
 
         mockReadDirectory = vscode.workspace.fs.readDirectory as ReturnType<

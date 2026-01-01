@@ -5,7 +5,6 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
@@ -56,7 +55,6 @@ describe('FindUsages Integration Tests', () => {
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findUsagesTool: FindUsagesTool;
-    let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
     let promptGenerator: PromptGenerator;
 
@@ -72,18 +70,13 @@ describe('FindUsages Integration Tests', () => {
         toolRegistry.registerTool(findUsagesTool);
         toolRegistry.registerTool(new SubmitReviewTool());
 
-        subagentSessionManager = new SubagentSessionManager(
-            mockWorkspaceSettings
-        );
-
         promptGenerator = new PromptGenerator();
 
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
-            mockWorkspaceSettings,
-            subagentSessionManager
+            mockWorkspaceSettings
         );
 
         // Clear all mocks
