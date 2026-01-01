@@ -40,10 +40,26 @@ const createMockToolExecutor = (
         success: boolean;
         result?: string;
         error?: string;
+        metadata?: { isCompletion?: boolean };
     }> = []
 ) => {
     return {
-        executeTools: vi.fn().mockResolvedValue(results),
+        executeTools: vi
+            .fn()
+            .mockImplementation((requests: Array<{ name: string }>) => {
+                // Return matching results in the same order as requests
+                const matchedResults = requests.map((req) => {
+                    const match = results.find((r) => r.name === req.name);
+                    return (
+                        match || {
+                            name: req.name,
+                            success: true,
+                            result: 'Default response',
+                        }
+                    );
+                });
+                return Promise.resolve(matchedResults);
+            }),
         getAvailableTools: vi.fn().mockReturnValue([]),
     } as unknown as ToolExecutor;
 };
@@ -450,6 +466,209 @@ describe('ConversationRunner', () => {
 
             // Just verify reset doesn't throw
             expect(() => runner.reset()).not.toThrow();
+        });
+    });
+
+    describe('Explicit Completion and Nudging', () => {
+        it('should nudge model when requiresExplicitCompletion is true and no tool calls', async () => {
+            const modelManager = createMockModelManager([
+                // First response: no tool calls, should trigger nudge
+                {
+                    content: 'Here is my initial analysis...',
+                    toolCalls: undefined,
+                },
+                // Second response: model calls submit_review after nudge
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments:
+                                    '{"review_content":"Final review content"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'submit_review',
+                    success: true,
+                    result: 'Final review content',
+                    metadata: { isCompletion: true },
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Final review content');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+
+            // Verify nudge message was added to conversation
+            const history = conversation.getHistory();
+            const nudgeMessage = history.find(
+                (m) => m.role === 'user' && m.content?.includes('submit_review')
+            );
+            expect(nudgeMessage).toBeDefined();
+        });
+
+        it('should accept response after MAX_COMPLETION_NUDGES when model never calls submit_review', async () => {
+            // Model returns content without tool calls 3 times (exceeds MAX_COMPLETION_NUDGES=2)
+            const modelManager = createMockModelManager([
+                {
+                    content: 'First attempt without submit_review',
+                    toolCalls: undefined,
+                },
+                {
+                    content: 'Second attempt without submit_review',
+                    toolCalls: undefined,
+                },
+                {
+                    content: 'Third attempt - final content',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // After 2 nudges (3rd response), should accept the response
+            expect(result).toBe('Third attempt - final content');
+            // 3 calls: initial + 2 nudges
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
+
+        it('should reset nudge counter when model calls any tool', async () => {
+            const modelManager = createMockModelManager([
+                // First: no tool calls, nudge count = 1
+                { content: 'Let me think...', toolCalls: undefined },
+                // Second: model calls a tool, nudge count resets to 0
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"test"}',
+                            },
+                        },
+                    ],
+                },
+                // Third: no tool calls again, nudge count = 1 (not 2)
+                { content: 'Still thinking...', toolCalls: undefined },
+                // Fourth: finally submits
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'submit_review',
+                                arguments: '{"review_content":"Done"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found symbol' },
+                {
+                    name: 'submit_review',
+                    success: true,
+                    result: 'Done',
+                    metadata: { isCompletion: true },
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [
+                    createMockTool('find_symbol'),
+                    createMockTool('submit_review'),
+                ],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Done');
+            // All 4 requests should be made
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(4);
+        });
+
+        it('should not nudge when requiresExplicitCompletion is false', async () => {
+            const modelManager = createMockModelManager([
+                // First response with content but no tool calls
+                {
+                    content: 'Here is my analysis without submit_review',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: false, // Subagent/exploration behavior
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Should accept immediately without nudging
+            expect(result).toBe('Here is my analysis without submit_review');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+
+            // No nudge message should exist
+            const history = conversation.getHistory();
+            const nudgeMessage = history.find(
+                (m) => m.role === 'user' && m.content?.includes('submit_review')
+            );
+            expect(nudgeMessage).toBeUndefined();
         });
     });
 });

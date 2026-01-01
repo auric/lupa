@@ -9,6 +9,7 @@ import {
     SUBAGENT_LIMITS,
 } from '../models/workspaceSettingsSchema';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { TokenConstants } from '../models/tokenConstants';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
@@ -414,6 +415,142 @@ describe('ToolExecutor', () => {
     describe('Disposal', () => {
         it('should dispose without errors', () => {
             expect(() => toolExecutor.dispose()).not.toThrow();
+        });
+    });
+
+    describe('Schema Validation', () => {
+        it('should reject arguments that fail Zod schema validation', async () => {
+            // success_tool requires { message: string }
+            const result = await toolExecutor.executeTool('success_tool', {
+                wrong_field: 123, // Missing 'message', has wrong field
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Invalid arguments');
+            expect(result.error).toContain('message'); // Should mention the missing field
+        });
+
+        it('should reject arguments with wrong types', async () => {
+            const result = await toolExecutor.executeTool('success_tool', {
+                message: 123, // Should be string, not number
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Invalid arguments');
+        });
+
+        it('should accept valid arguments after schema validation', async () => {
+            const result = await toolExecutor.executeTool('success_tool', {
+                message: 'valid string',
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.result).toBe('Success: valid string');
+        });
+
+        it('should handle empty object when required fields are missing', async () => {
+            const result = await toolExecutor.executeTool('success_tool', {});
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Invalid arguments');
+            expect(result.error).toContain('message');
+        });
+    });
+
+    describe('Response Size Validation', () => {
+        it('should reject tool response exceeding MAX_TOOL_RESPONSE_CHARS', async () => {
+            const oversizedTool: ITool = {
+                name: 'oversized_tool',
+                description: 'Returns oversized response',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'oversized_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolSuccess(
+                        'x'.repeat(TokenConstants.MAX_TOOL_RESPONSE_CHARS + 1)
+                    ),
+            };
+
+            toolRegistry.registerTool(oversizedTool);
+            const result = await toolExecutor.executeTool('oversized_tool', {});
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Response too large');
+            expect(result.error).toContain('maximum allowed: 20000');
+        });
+
+        it('should allow tool response at exactly MAX_TOOL_RESPONSE_CHARS', async () => {
+            const maxSizeTool: ITool = {
+                name: 'maxsize_tool',
+                description: 'Returns max-sized response',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'maxsize_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolSuccess(
+                        'x'.repeat(TokenConstants.MAX_TOOL_RESPONSE_CHARS)
+                    ),
+            };
+
+            toolRegistry.registerTool(maxSizeTool);
+            const result = await toolExecutor.executeTool('maxsize_tool', {});
+
+            expect(result.success).toBe(true);
+            expect(result.result).toHaveLength(
+                TokenConstants.MAX_TOOL_RESPONSE_CHARS
+            );
+        });
+
+        it('should skip size validation for failed tool results', async () => {
+            // toolError() returns don't have data, so size check is skipped
+            const failingTool: ITool = {
+                name: 'failing_tool',
+                description: 'Returns error',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'failing_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolError('Some error message'),
+            };
+
+            toolRegistry.registerTool(failingTool);
+            const result = await toolExecutor.executeTool('failing_tool', {});
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('Some error message');
+            // Should not contain size-related error
+            expect(result.error).not.toContain('Response too large');
+        });
+
+        it('should allow normal-sized tool responses', async () => {
+            // Create a tool that returns a normal-sized response
+            const normalTool: ITool = {
+                name: 'normal_tool',
+                description: 'Returns normal response',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'normal_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> =>
+                    toolSuccess('Normal sized response content'),
+            };
+
+            toolRegistry.registerTool(normalTool);
+            const result = await toolExecutor.executeTool('normal_tool', {});
+
+            expect(result.success).toBe(true);
+            expect(result.result).toBe('Normal sized response content');
         });
     });
 });

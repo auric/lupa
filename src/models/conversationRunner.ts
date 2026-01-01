@@ -421,11 +421,7 @@ export class ConversationRunner {
             // result.result (the tool's data output), not from metadata itself.
             // This separation allows tools to signal completion while keeping content
             // in the standard result.result location for consistency.
-            if (
-                result.success &&
-                result.metadata?.isCompletion &&
-                result.result
-            ) {
+            if (result.success && result.metadata?.isCompletion) {
                 finalReview = result.result;
             }
 

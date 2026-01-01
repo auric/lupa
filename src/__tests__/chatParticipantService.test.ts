@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { ChatParticipantService } from '../services/chatParticipantService';
 import { GitService } from '../services/gitService';
 import { ConversationRunner } from '../models/conversationRunner';
+import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -1837,6 +1838,141 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata.command).toBe('exploration');
             expect(result.metadata.cancelled).toBe(false);
+        });
+
+        it('should filter out MAIN_ANALYSIS_ONLY_TOOLS in exploration mode', async () => {
+            // Create mock tools - some main-only, some allowed in exploration
+            const mockMainOnlyTool = {
+                name: 'update_plan',
+                description: 'Update the review plan',
+            };
+            const mockMainOnlyTool2 = {
+                name: 'submit_review',
+                description: 'Submit the review',
+            };
+            const mockExplorationTool = {
+                name: 'read_file',
+                description: 'Read file content',
+            };
+            const mockExplorationTool2 = {
+                name: 'find_symbol',
+                description: 'Find symbol definitions',
+            };
+
+            // Return tools including main-only tools
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockMainOnlyTool,
+                mockMainOnlyTool2,
+                mockExplorationTool,
+                mockExplorationTool2,
+            ]);
+
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockResolvedValue('Exploration response');
+                this.reset = vi.fn();
+            });
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+            });
+
+            await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'Explain the code',
+                    model: { id: 'test-model' },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            // Verify exploration prompt receives filtered tools
+            expect(
+                mockPromptGenerator.generateExplorationSystemPrompt
+            ).toHaveBeenCalledWith(expect.any(Array));
+
+            // Get the tools passed to generateExplorationSystemPrompt
+            const passedTools =
+                mockPromptGenerator.generateExplorationSystemPrompt.mock
+                    .calls[0][0];
+
+            // Should include exploration-safe tools
+            expect(passedTools).toContainEqual(
+                expect.objectContaining({ name: 'read_file' })
+            );
+            expect(passedTools).toContainEqual(
+                expect.objectContaining({ name: 'find_symbol' })
+            );
+
+            // Should NOT include main-analysis-only tools
+            expect(passedTools).not.toContainEqual(
+                expect.objectContaining({ name: 'update_plan' })
+            );
+            expect(passedTools).not.toContainEqual(
+                expect.objectContaining({ name: 'submit_review' })
+            );
+        });
+
+        it('should filter all MAIN_ANALYSIS_ONLY_TOOLS from exploration mode', async () => {
+            // Create a mock tool for each main-only tool to verify they're all filtered
+            const mockTools = [
+                ...MAIN_ANALYSIS_ONLY_TOOLS.map((name) => ({
+                    name,
+                    description: `${name} tool`,
+                })),
+                { name: 'read_file', description: 'Safe tool' },
+            ];
+
+            mockToolRegistry.getAllTools.mockReturnValue(mockTools);
+
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockResolvedValue('Response');
+                this.reset = vi.fn();
+            });
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+            });
+
+            await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'Question',
+                    model: { id: 'test-model' },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            const passedTools =
+                mockPromptGenerator.generateExplorationSystemPrompt.mock
+                    .calls[0][0];
+
+            // Verify ALL main-only tools are filtered out
+            for (const toolName of MAIN_ANALYSIS_ONLY_TOOLS) {
+                expect(passedTools).not.toContainEqual(
+                    expect.objectContaining({ name: toolName })
+                );
+            }
+
+            // But read_file should still be there
+            expect(passedTools).toContainEqual(
+                expect.objectContaining({ name: 'read_file' })
+            );
         });
     });
 });
