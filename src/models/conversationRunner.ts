@@ -9,6 +9,7 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
 import { CANCELLATION_MESSAGE } from '../config/constants';
+import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUtils';
 
 /**
  * Configuration for running a conversation loop.
@@ -238,6 +239,19 @@ export class ConversationRunner {
                         Log.warn(
                             `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
                         );
+
+                        // Try to extract review content from malformed tool call attempts
+                        const extractedReview =
+                            extractReviewFromMalformedToolCall(
+                                response.content
+                            );
+                        if (extractedReview) {
+                            Log.info(
+                                `${logPrefix} Extracted review content from malformed tool call`
+                            );
+                            return extractedReview;
+                        }
+
                         return (
                             response.content ||
                             'Analysis completed but model did not use submit_review tool.'

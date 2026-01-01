@@ -670,5 +670,44 @@ describe('ConversationRunner', () => {
             );
             expect(nudgeMessage).toBeUndefined();
         });
+
+        it('should extract review from malformed tool call when nudges exhausted', async () => {
+            // Model outputs JSON-formatted tool call in text instead of actual tool call
+            const malformedContent = `Calling submit_review with the final review.
+
+\`\`\`json
+{
+  "review_content": "## Summary\\n> **TL;DR**: Extracted review content."
+}
+\`\`\``;
+
+            const modelManager = createMockModelManager([
+                { content: 'First attempt', toolCalls: undefined },
+                { content: 'Second attempt', toolCalls: undefined },
+                { content: malformedContent, toolCalls: undefined },
+            ]);
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Should extract the review_content from the malformed JSON
+            expect(result).toBe(
+                '## Summary\n> **TL;DR**: Extracted review content.'
+            );
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
     });
 });
