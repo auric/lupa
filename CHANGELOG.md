@@ -15,11 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Per-analysis subagent services**: `SubagentExecutor` and `SubagentSessionManager` are now created per-analysis instead of as shared singletons. Previously, mutable state (progress callbacks, spawn counts, cancellation tokens) could be overwritten when concurrent analyses ran, causing race conditions. These services are now instantiated within `ToolCallingAnalysisProvider.analyze()` and passed to tools via `ExecutionContext`.
 
+- **Per-request ToolExecutor in ToolTestingWebview**: Fixed concurrency issue where `ToolTestingWebviewService` used a shared `ToolExecutor` singleton. Now creates per-request executor instances to ensure isolation from concurrent analysis sessions.
+
+- **Review extraction for unclosed code blocks**: Improved `extractReviewFromMalformedToolCall()` to handle cases where the LLM outputs JSON in an unclosed code block (forgets closing triple backticks). Added logging for debugging failed extractions.
+
 #### Exploration Mode Tool Filtering
 
 - **Main-only tools excluded from exploration**: Chat participant exploration mode now correctly filters out tools that require PR context (`submit_review`, `update_plan`, `think_about_completion`, `think_about_context`, `think_about_task`). Previously all 14 tools were exposed in exploration mode, causing confusing behavior when users invoked PR-specific tools outside of a review.
 
 ### Added
+
+#### Subagent Support in Exploration Mode
+
+- **`run_subagent` now available in exploration mode**: Users can now delegate complex multi-module questions to focused investigation agents when using Lupa without a slash command. Previously, subagent delegation was only available during PR analysis.
+
+- **Exploration subagent guidance**: Added `generateExplorationSubagentGuidance()` prompt block - a simpler version without diff-related warnings since exploration mode has no diff context.
+
+- **Exploration tool guide updated**: Added `run_subagent` to the exploration mode tool selection table with guidance on when to delegate complexity.
 
 #### Concurrency Tests
 
@@ -59,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PlanSessionManager` service for tracking review plan state across tool calls
 - `PromptBuilder` class with fluent interface for composing prompts
 - Pre-configured builders: `createPRReviewPromptBuilder()`, `createExplorationPromptBuilder()`
+- `ToolTestingWebviewService` accepts `WorkspaceSettingsService` instead of `ToolExecutor`, creates per-request executors
+- `ChatParticipantService.handleExplorationMode()` creates subagent infrastructure for exploration mode
+- Extracted `createSubagentContext()` and `createStreamAdapter()` helpers in `ChatParticipantService` to reduce duplication
+- `PromptBuilder.addExplorationSubagentGuidance()` method for exploration mode prompts
 
 ## [0.1.5] - 2025-12-29
 
