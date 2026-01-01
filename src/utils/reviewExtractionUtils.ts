@@ -27,12 +27,81 @@ function isValidReviewContent(content: string): boolean {
     if (content.length < MIN_REVIEW_LENGTH) {
         return false;
     }
-    // Check for common review patterns (headings, structured content)
     const hasReviewPattern =
         /\*\*|##|###|TL;DR|Summary|Critical|High|Medium|Low|Issues?|Findings?|Recommendations?/i.test(
             content
         );
     return hasReviewPattern;
+}
+
+/**
+ * Extracts JSON object content from a fenced code block.
+ * Returns the raw string between the opening fence and closing fence.
+ */
+function extractCodeBlockContent(content: string): string | undefined {
+    const fenceStart = content.match(/```(?:json)?\s*\n/);
+    if (!fenceStart) {
+        return undefined;
+    }
+
+    const startIdx = fenceStart.index! + fenceStart[0].length;
+    const endIdx = content.indexOf('```', startIdx);
+
+    if (endIdx === -1) {
+        // Unclosed code block - take everything after the fence
+        return content.substring(startIdx).trim();
+    }
+
+    return content.substring(startIdx, endIdx).trim();
+}
+
+/**
+ * Extracts a balanced JSON object starting from the given index.
+ * Properly handles nested braces inside string literals.
+ */
+function extractBalancedJsonObject(
+    content: string,
+    startIdx: number
+): string | undefined {
+    if (content[startIdx] !== '{') {
+        return undefined;
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = startIdx; i < content.length; i++) {
+        const char = content[i]!;
+
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+
+        if (char === '\\' && inString) {
+            escaped = true;
+            continue;
+        }
+
+        if (char === '"') {
+            inString = !inString;
+            continue;
+        }
+
+        if (!inString) {
+            if (char === '{') {
+                depth++;
+            } else if (char === '}') {
+                depth--;
+                if (depth === 0) {
+                    return content.substring(startIdx, i + 1);
+                }
+            }
+        }
+    }
+
+    return undefined;
 }
 
 /**
@@ -55,64 +124,46 @@ export function extractReviewFromMalformedToolCall(
         return undefined;
     }
 
-    // Try JSON code block first (most explicit pattern - properly closed)
-    const codeBlockMatch = content.match(
-        /```(?:json)?\s*\n?\s*\{[\s\S]*?"review_content"\s*:\s*"([\s\S]*?)"\s*\}[\s\S]*?```/
-    );
-    if (codeBlockMatch) {
-        const extracted = unescapeJsonString(codeBlockMatch[1]!);
-        if (isValidReviewContent(extracted)) {
-            Log.info('Extracted review from closed JSON code block');
-            return extracted;
-        }
-        Log.debug('Closed code block matched but content validation failed');
-    }
-
-    // Try unclosed code block (model forgot to close the triple backticks)
-    // This captures the JSON object inside a code block that was never closed
-    const unclosedBlockMatch = content.match(
-        /```(?:json)?\s*\n?\s*(\{[\s\S]*?"review_content"[\s\S]*?\})\s*$/
-    );
-    if (unclosedBlockMatch) {
-        const extracted = tryParseJsonReviewContent(unclosedBlockMatch[1]!);
+    // Strategy 1: Extract code block content and parse as JSON
+    const codeBlockContent = extractCodeBlockContent(content);
+    if (codeBlockContent) {
+        const extracted = tryParseJsonReviewContent(codeBlockContent);
         if (extracted && isValidReviewContent(extracted)) {
-            Log.info('Extracted review from unclosed JSON code block');
+            Log.info('Extracted review from JSON code block');
             return extracted;
         }
-        Log.debug('Unclosed code block matched but extraction failed');
+        Log.debug('Code block found but JSON parsing/validation failed');
     }
 
-    // Try raw JSON object with review_content
-    const jsonMatch = content.match(
-        /\{\s*"review_content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/
-    );
-    if (jsonMatch) {
-        const extracted = unescapeJsonString(jsonMatch[1]!);
-        if (isValidReviewContent(extracted)) {
-            Log.info('Extracted review from raw JSON object');
-            return extracted;
+    // Strategy 2: Find JSON object with brace-depth scanning
+    const reviewContentIdx = content.indexOf('"review_content"');
+    if (reviewContentIdx !== -1) {
+        // Find the opening brace before "review_content"
+        const braceIdx = content.lastIndexOf('{', reviewContentIdx);
+        if (braceIdx !== -1) {
+            const jsonObject = extractBalancedJsonObject(content, braceIdx);
+            if (jsonObject) {
+                const extracted = tryParseJsonReviewContent(jsonObject);
+                if (extracted && isValidReviewContent(extracted)) {
+                    Log.info('Extracted review from balanced JSON object');
+                    return extracted;
+                }
+                Log.debug('Balanced JSON extraction failed parsing/validation');
+            }
         }
-        Log.debug('Raw JSON matched but content validation failed');
     }
 
-    // Try to find and parse a complete JSON object containing review_content
-    const jsonObjectMatch = content.match(
-        /\{[\s\S]*?"review_content"[\s\S]*?\}/
-    );
-    if (jsonObjectMatch) {
-        const extracted = tryParseJsonReviewContent(jsonObjectMatch[0]);
-        if (extracted && isValidReviewContent(extracted)) {
-            Log.info('Extracted review from parsed JSON object');
-            return extracted;
-        }
-        Log.debug('JSON object matched but parsing/validation failed');
+    // Strategy 3: Recovery from malformed JSON
+    const recovered = tryRecoverMalformedJson(content);
+    if (recovered && isValidReviewContent(recovered)) {
+        Log.info('Recovered review from malformed JSON');
+        return recovered;
     }
 
-    // Log when we have review_content in content but couldn't extract it
     if (content.includes('review_content')) {
         Log.warn(
             'Content contains "review_content" but extraction failed',
-            `Content length: ${content.length}, preview: ${content.substring(0, 200)}...`
+            `Content length: ${content.length}, ending: ...${content.slice(-100)}`
         );
     }
 

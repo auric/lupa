@@ -260,8 +260,14 @@ export class ConversationRunner {
 
                     const contentPreview =
                         response.content?.substring(0, 150) || '(empty)';
+                    const contentEnding =
+                        response.content && response.content.length > 100
+                            ? response.content.slice(-100)
+                            : '';
                     Log.info(
-                        `${logPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). Content preview: "${contentPreview}...". Nudging to use submit_review.`
+                        `${logPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                            `Content preview: "${contentPreview}...". ` +
+                            `Ending: "...${contentEnding}". Nudging to use submit_review.`
                     );
                     conversation.addUserMessage(
                         'To complete your review, call the `submit_review` tool with your full review content. ' +

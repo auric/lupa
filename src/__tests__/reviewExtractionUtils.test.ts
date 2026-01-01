@@ -271,5 +271,37 @@ Some text after that breaks JSON`;
             expect(result).toContain('**TL;DR**');
             expect(result).toContain('SubagentSessionManager');
         });
+
+        it('should extract from JSON with nested quotes in content', () => {
+            const content = `Calling submit_review with the final review.
+\`\`\`json
+{
+  "review_content": "## Summary\\n> **TL;DR**: This PR makes tool-calling analysis concurrency-safe.\\n\\n**Risk Level:** Medium\\n**Recommendation:** Approve with suggestions\\n\\n## Critical Issues\\n🔴 **None blocking.** The concurrency changes are well-designed.\\n\\n## Suggestions by Category\\n**Security**\\n- 🟠 Ensure consistent path/input sanitization.\\n\\n**Performance & Reliability**\\n- 🟡 Consider exposing the nudging limit via settings.\\n- 🟡 Confirm all tools that require ExecutionContext handle missing context gracefully.\\n\\n## What's Good\\n- Per-analysis state and per-request executors are cleanly implemented."
+}
+\`\`\``;
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toBeDefined();
+            expect(result).toContain('## Summary');
+            expect(result).toContain('**Risk Level:**');
+            expect(result).toContain('🔴 **None blocking.**');
+            expect(result).toContain("## What's Good");
+        });
+
+        it('should handle complex review with markdown special chars', () => {
+            const content = `\`\`\`json
+{
+  "review_content": "## Summary\\n> **TL;DR**: Changes look good.\\n\\n## Suggestions\\n- 🟡 Filter or label MAIN_ANALYSIS_ONLY_TOOLS.\\n- 🟡 Document rationale: SubmitReviewTool accepts ≥20 chars but extraction requires ≥50 chars.\\n\\n## What's Good\\n- Subagent design isolates tools and prevents recursion."
+}
+\`\`\``;
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toBeDefined();
+            expect(result).toContain('≥20');
+            expect(result).toContain('≥50');
+            expect(result).toContain('🟡');
+        });
     });
 });
