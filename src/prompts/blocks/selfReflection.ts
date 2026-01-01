@@ -39,15 +39,17 @@ Static checklists ("Did I do X?") are less effective than explicit articulation:
 }
 
 /**
- * Generate guidance for exploration mode (simpler, one tool).
+ * Generate guidance for exploration mode.
+ * Uses think_about_investigation since exploration has no diff context.
  */
 export function generateExplorationReflectionGuidance(): string {
     return `<self_reflection>
 ## Self-Reflection
 
-Use \`think_about_context\` after gathering information. Articulate:
-- **files_examined**: What did you look at?
-- **key_findings**: What did you learn?
-- **remaining_gaps**: What's still unclear?
+Use \`think_about_investigation\` after gathering information. Articulate:
+- **assigned_task**: What question are you investigating?
+- **questions_answered**: What did you learn?
+- **questions_remaining**: What's still unclear?
+- **evidence_gathered**: What code/files support your findings?
 </self_reflection>`;
 }

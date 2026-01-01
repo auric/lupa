@@ -7,7 +7,16 @@
 
 import { Log } from '../services/loggingService';
 
-/** Minimum length for extracted review content to be considered valid. */
+/**
+ * Minimum length for extracted review content to be considered valid.
+ *
+ * Higher than SubmitReviewTool's 20-char minimum because extraction is
+ * "suspicious" - the model didn't call the tool properly. We need:
+ * - Stricter validation to avoid false positives from arbitrary JSON
+ * - Additional pattern matching (headings, review keywords) as secondary check
+ *
+ * When the model explicitly calls submit_review, we trust its intent more.
+ */
 const MIN_REVIEW_LENGTH = 50;
 
 /**

@@ -315,6 +315,24 @@ interface ExecutionContext {
 }
 ```
 
+#### Tool ExecutionContext Requirements
+
+| Tool            | Required Fields                              | Notes                            |
+| --------------- | -------------------------------------------- | -------------------------------- |
+| `run_subagent`  | `subagentExecutor`, `subagentSessionManager` | Returns error if missing         |
+| `update_plan`   | `planManager`                                | Returns error if missing         |
+| All other tools | None                                         | Can run without ExecutionContext |
+
+#### Context Creation by Mode
+
+| Mode        | planManager | subagentSessionManager | subagentExecutor |
+| ----------- | ----------- | ---------------------- | ---------------- |
+| PR Analysis | ✅          | ✅                     | ✅               |
+| Exploration | ❌          | ✅                     | ✅               |
+| Subagent    | ❌          | ❌                     | ❌               |
+
+**Key design principle:** Tools that require specific context fields are filtered from modes that don't provide them (see `MAIN_ANALYSIS_ONLY_TOOLS` in `toolConstants.ts`).
+
 The `RunSubagentTool` retrieves its executor from this context rather than via constructor injection.
 
 ---

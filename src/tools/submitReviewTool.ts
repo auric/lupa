@@ -18,14 +18,16 @@ import { ExecutionContext } from '../types/executionContext';
  * already includes summary, risk level, and recommendation.
  */
 export class SubmitReviewTool extends BaseTool {
-    /** Tool name recognized by ConversationRunner for completion detection */
-    static readonly TOOL_NAME = 'submit_review';
-
-    name = SubmitReviewTool.TOOL_NAME;
+    name = 'submit_review';
     description =
         'Submit your final PR review. Call this as the FINAL step when all analysis is complete. ' +
         'The review content should follow the output format with summary, findings, and recommendations.';
 
+    /**
+     * Minimum 20 chars is intentionally lower than reviewExtractionUtils' 50-char
+     * threshold. When the model explicitly calls this tool, we trust its intent.
+     * Extraction requires stricter validation because the model didn't call properly.
+     */
     schema = z
         .object({
             review_content: z
