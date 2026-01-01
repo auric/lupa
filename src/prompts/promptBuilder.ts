@@ -6,6 +6,7 @@ import {
     generateToolSelectionGuide,
     generateExplorationToolGuide,
     generateSubagentGuidance,
+    generateExplorationSubagentGuidance,
     generateAnalysisMethodology,
     generateOutputFormat,
     generateExplorationOutputFormat,
@@ -79,6 +80,14 @@ export class PromptBuilder {
      */
     addSubagentGuidance(): this {
         this.sections.push(generateSubagentGuidance());
+        return this;
+    }
+
+    /**
+     * Add subagent delegation guidance for exploration mode.
+     */
+    addExplorationSubagentGuidance(): this {
+        this.sections.push(generateExplorationSubagentGuidance());
         return this;
     }
 
@@ -170,6 +179,7 @@ export function createExplorationPromptBuilder(tools: ITool[]): PromptBuilder {
         .addExplorerRole()
         .addToolInventory(tools)
         .addExplorationToolGuide()
+        .addExplorationSubagentGuidance()
         .addExplorationReflection()
         .addExplorationOutputFormat();
 }

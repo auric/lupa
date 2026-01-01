@@ -76,7 +76,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
         if (!executor || !sessionManager) {
             return toolError(
-                'Subagent execution requires ExecutionContext with subagentExecutor and subagentSessionManager'
+                'Subagent execution requires ExecutionContext with subagentExecutor and subagentSessionManager. This is an internal error.'
             );
         }
 

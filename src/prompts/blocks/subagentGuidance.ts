@@ -61,3 +61,41 @@ context: "Reviewing authentication changes - need to verify security patterns"
 Subagent findings are about current code—correlate with your diff to determine relevance.
 </subagent_guidance>`;
 }
+
+/**
+ * Generate subagent guidance for exploration mode.
+ * Simpler version without diff-related warnings since there's no diff context.
+ */
+export function generateExplorationSubagentGuidance(): string {
+    return `<subagent_guidance>
+## Subagent Delegation
+
+\`run_subagent\` spawns an isolated agent for deep investigation when your question requires understanding multiple interconnected modules.
+
+### When to Spawn
+
+| Trigger | Action |
+|---------|--------|
+| Question spans 3+ files/modules | Spawn subagent for each module |
+| Complex dependency investigation | Dependency-tracing subagent |
+| Security architecture question | Dedicated security subagent |
+
+### Task Format
+
+\`\`\`
+task: "Investigate [module] for [concern].
+Questions:
+1. [Specific question]
+2. [Specific question]
+Examine: [function1], [function2]"
+
+context: "[User's original question or what you need to understand]"
+\`\`\`
+
+### Tips
+
+- ONE module per subagent—spawn multiple for multiple modules
+- Be specific about which functions/classes to examine
+- Subagents have full tool access but work independently
+</subagent_guidance>`;
+}

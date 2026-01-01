@@ -218,10 +218,15 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
-            // Create per-request ToolExecutor for isolation (no planManager for exploration)
+            // Create per-request subagent infrastructure
+            const { subagentSessionManager, subagentExecutor } =
+                this.createSubagentContext(stream, token);
+
+            // Create per-request ToolExecutor with subagent context
             const toolExecutor = new ToolExecutor(
                 this.deps.toolRegistry,
-                this.deps.workspaceSettings
+                this.deps.workspaceSettings,
+                { subagentSessionManager, subagentExecutor }
             );
 
             const timeoutMs =
@@ -276,9 +281,8 @@ export class ChatParticipantService implements vscode.Disposable {
 
             conversation.addUserMessage(request.prompt);
 
-            const uiHandler = createChatStreamHandler(stream);
-            const debouncedHandler = new DebouncedStreamHandler(uiHandler);
-            const adapter = new ToolCallStreamAdapter(debouncedHandler);
+            const { debouncedHandler, adapter } =
+                this.createStreamAdapter(stream);
 
             const result = await runner.run(
                 {
@@ -459,17 +463,8 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Create per-analysis instances for complete isolation
         const planManager = new PlanSessionManager();
-        const subagentSessionManager = new SubagentSessionManager(
-            this.deps!.workspaceSettings
-        );
-        const subagentExecutor = new SubagentExecutor(
-            this.deps!.copilotModelManager,
-            this.deps!.toolRegistry,
-            new SubagentPromptGenerator(),
-            this.deps!.workspaceSettings,
-            (msg) => stream.progress(msg)
-        );
-        subagentSessionManager.setParentCancellationToken(token);
+        const { subagentSessionManager, subagentExecutor } =
+            this.createSubagentContext(stream, token);
 
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
@@ -506,9 +501,7 @@ export class ChatParticipantService implements vscode.Disposable {
             );
         conversation.addUserMessage(userPrompt);
 
-        const uiHandler = createChatStreamHandler(stream);
-        const debouncedHandler = new DebouncedStreamHandler(uiHandler);
-        const adapter = new ToolCallStreamAdapter(debouncedHandler);
+        const { debouncedHandler, adapter } = this.createStreamAdapter(stream);
 
         try {
             const analysisResult = await runner.run(
@@ -596,6 +589,45 @@ export class ChatParticipantService implements vscode.Disposable {
                 responseIsIncomplete: true,
             },
         };
+    }
+
+    /**
+     * Create per-request subagent infrastructure.
+     * Extracted to avoid duplication between exploration and analysis modes.
+     */
+    private createSubagentContext(
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): {
+        subagentSessionManager: SubagentSessionManager;
+        subagentExecutor: SubagentExecutor;
+    } {
+        const subagentSessionManager = new SubagentSessionManager(
+            this.deps!.workspaceSettings
+        );
+        const subagentExecutor = new SubagentExecutor(
+            this.deps!.copilotModelManager,
+            this.deps!.toolRegistry,
+            new SubagentPromptGenerator(),
+            this.deps!.workspaceSettings,
+            (msg) => stream.progress(msg)
+        );
+        subagentSessionManager.setParentCancellationToken(token);
+        return { subagentSessionManager, subagentExecutor };
+    }
+
+    /**
+     * Create stream adapter pipeline for tool-calling UI feedback.
+     * Extracted to avoid duplication between exploration and analysis modes.
+     */
+    private createStreamAdapter(stream: vscode.ChatResponseStream): {
+        debouncedHandler: DebouncedStreamHandler;
+        adapter: ToolCallStreamAdapter;
+    } {
+        const uiHandler = createChatStreamHandler(stream);
+        const debouncedHandler = new DebouncedStreamHandler(uiHandler);
+        const adapter = new ToolCallStreamAdapter(debouncedHandler);
+        return { debouncedHandler, adapter };
     }
 
     /**

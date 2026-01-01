@@ -60,6 +60,7 @@ export function generateExplorationToolGuide(): string {
 | List directory | \`list_directory\` | \`path\` |
 | Find files | \`find_files_by_pattern\` | \`pattern\` |
 | Read config/docs | \`read_file\` | \`path\`, \`start_line\`, \`end_line\` |
+| Deep investigation | \`run_subagent\` | \`task\`, \`context\` |
 
 ### Principles
 
@@ -67,6 +68,7 @@ export function generateExplorationToolGuide(): string {
 2. **Symbols over text**: Use \`find_symbol\` for code entities
 3. **Parallelize**: Call independent tools together
 4. **Build incrementally**: Start with overview, then drill down
+5. **Delegate complexity**: Use \`run_subagent\` for multi-module questions
 
 ### Anti-Patterns
 

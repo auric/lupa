@@ -11,7 +11,10 @@ export {
     generateToolSelectionGuide,
     generateExplorationToolGuide,
 } from './toolSelectionGuide';
-export { generateSubagentGuidance } from './subagentGuidance';
+export {
+    generateSubagentGuidance,
+    generateExplorationSubagentGuidance,
+} from './subagentGuidance';
 export { generateAnalysisMethodology } from './analysisMethodology';
 export {
     generateOutputFormat,

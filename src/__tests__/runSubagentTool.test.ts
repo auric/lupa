@@ -240,6 +240,37 @@ describe('RunSubagentTool', () => {
     });
 
     describe('Error Handling', () => {
+        it('should return internal error when ExecutionContext is missing', async () => {
+            const tool = new RunSubagentTool(workspaceSettings);
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                undefined
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('internal error');
+        });
+
+        it('should return internal error when subagentExecutor is missing', async () => {
+            const tool = new RunSubagentTool(workspaceSettings);
+            const partialContext = {
+                subagentSessionManager: sessionManager,
+            } as ExecutionContext;
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                partialContext
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('internal error');
+        });
+
         it('should handle executor errors gracefully', async () => {
             const mockExecutor = {
                 execute: vi.fn().mockRejectedValue(new Error('Internal error')),
