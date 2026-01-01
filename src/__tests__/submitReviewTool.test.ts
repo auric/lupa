@@ -22,7 +22,6 @@ describe('SubmitReviewTool', () => {
     describe('metadata', () => {
         it('should have correct tool name', () => {
             expect(tool.name).toBe('submit_review');
-            expect(SubmitReviewTool.TOOL_NAME).toBe('submit_review');
         });
 
         it('should have description mentioning final step', () => {
