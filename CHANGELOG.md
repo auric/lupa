@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Thread-safe ToolCallingAnalysisProvider**: Refactored `ToolCallingAnalysisProvider` to support concurrent analyses from the chat participant. Previously, instance-level state (`tokenValidator`, `toolCallRecords`, `currentIteration`, etc.) would be corrupted if multiple analyses ran simultaneously. Now all per-analysis state is created locally within the `analyze()` method, enabling safe concurrent execution.
 
+- **Per-analysis subagent services**: `SubagentExecutor` and `SubagentSessionManager` are now created per-analysis instead of as shared singletons. Previously, mutable state (progress callbacks, spawn counts, cancellation tokens) could be overwritten when concurrent analyses ran, causing race conditions. These services are now instantiated within `ToolCallingAnalysisProvider.analyze()` and passed to tools via `ExecutionContext`.
+
 #### Exploration Mode Tool Filtering
 
 - **Main-only tools excluded from exploration**: Chat participant exploration mode now correctly filters out tools that require PR context (`submit_review`, `update_plan`, `think_about_completion`, `think_about_context`, `think_about_task`). Previously all 14 tools were exposed in exploration mode, causing confusing behavior when users invoked PR-specific tools outside of a review.
@@ -22,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Concurrency Tests
 
 - **Concurrent analysis regression tests**: Added integration tests verifying that multiple analyses can run simultaneously without state interference. Tests validate that tool call records, iteration counts, and results remain isolated per-analysis.
+
+- **Subagent isolation tests**: Added test verifying `SubagentSessionManager` instances are isolated between concurrent analyses, with independent spawn counts and cancellation tokens.
 
 #### Plan Tool
 
@@ -40,12 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Relaxed submit_review minimum length**: Changed from 100 to 20 characters minimum. The previous limit could cause infinite retry loops when the LLM correctly identified "LGTM" scenarios with minimal issues to report.
+
 - **Condensed subagent instructions**: Reduced subagent delegation guidance from ~1500 tokens to ~300 tokens while preserving critical information. Uses table format for mandatory triggers and constraint summary.
 - **Simplified user prompt**: Removed redundant tool instructions from user prompt (now in system prompt only). User prompt focuses on diff content and workflow reminder.
 - **Improved prompt maintainability**: Each prompt block is now a separate file, making it easier to update individual sections without modifying a 600-line monolithic generator.
 
 ### Internal
 
+- `ExecutionContext` extended with optional `subagentSessionManager` and `subagentExecutor` fields
+- `SubagentExecutor` constructor accepts `progressCallback` parameter (immutable vs previous mutable setter)
+- `RunSubagentTool` retrieves executor and session manager from `ExecutionContext` instead of constructor injection
+- `ServiceManager` no longer creates singleton subagent services
 - `PlanSessionManager` service for tracking review plan state across tool calls
 - `PromptBuilder` class with fluent interface for composing prompts
 - Pre-configured builders: `createPRReviewPromptBuilder()`, `createExplorationPromptBuilder()`

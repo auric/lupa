@@ -24,9 +24,6 @@
 | `ChatParticipantService`      | `chatParticipantService.ts`      | `@lupa` chat participant                   |
 | `GitOperationsManager`        | `gitOperationsManager.ts`        | High-level Git operations                  |
 | `GitService`                  | `gitService.ts`                  | Low-level Git commands                     |
-| `SubagentExecutor`            | `subagentExecutor.ts`            | Isolated subagent execution                |
-| `SubagentSessionManager`      | `subagentSessionManager.ts`      | Subagent lifecycle and limits              |
-| `PlanSessionManager`          | `planSessionManager.ts`          | Review plan state for current analysis     |
 | `UIManager`                   | `uiManager.ts`                   | Webview panel management                   |
 | `WorkspaceSettingsService`    | `workspaceSettingsService.ts`    | Settings persistence (`.vscode/lupa.json`) |
 | `LoggingService`              | `loggingService.ts`              | Centralized logging with levels            |
@@ -35,6 +32,16 @@
 | `LanguageModelToolProvider`   | `languageModelToolProvider.ts`   | Agent Mode tool registration               |
 | `RipgrepSearchService`        | `ripgrepSearchService.ts`        | VS Code ripgrep integration                |
 | `ToolTestingWebviewService`   | `toolTestingWebview.ts`          | Tool testing UI (development)              |
+
+### Per-Analysis Components
+
+These components are created fresh for each analysis session, not managed by ServiceManager:
+
+| Component                | File                        | Description                                    |
+| ------------------------ | --------------------------- | ---------------------------------------------- |
+| `SubagentExecutor`       | `subagentExecutor.ts`       | Isolated subagent execution for one analysis   |
+| `SubagentSessionManager` | `subagentSessionManager.ts` | Subagent lifecycle and limits for one analysis |
+| `PlanSessionManager`     | `planSessionManager.ts`     | Review plan state for current analysis         |
 
 ---
 

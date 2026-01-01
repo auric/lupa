@@ -112,11 +112,21 @@ Core business logic implementing specific capabilities.
 | `ToolCallingAnalysisProvider` | Main analysis loop with tool-calling      |
 | `GitOperationsManager`        | Git repository and diff operations        |
 | `ChatParticipantService`      | `@lupa` chat participant for Copilot Chat |
-| `SubagentExecutor`            | Isolated subagent investigations          |
 | `UIManager`                   | Webview panel management                  |
 | `WorkspaceSettingsService`    | Persisted settings (`.vscode/lupa.json`)  |
 | `LoggingService`              | Centralized logging with levels           |
 | `StatusBarService`            | Status bar item management                |
+
+### Per-Analysis Components
+
+These components are created fresh for each analysis, not managed as singletons:
+
+| Component                 | Responsibility                           |
+| ------------------------- | ---------------------------------------- |
+| `SubagentExecutor`        | Isolated subagent investigations         |
+| `SubagentSessionManager`  | Subagent spawn count and limits          |
+| `PlanSessionManager`      | Review plan state for current analysis   |
+| `TokenValidator` instance | Context window tracking for one analysis |
 
 ### Layer 3: Models (`src/models/`)
 
@@ -223,9 +233,7 @@ SymbolExtractor;
 ToolRegistry;
 ToolExecutor;
 ConversationManager;
-SubagentSessionManager;
-ToolCallingAnalysisProvider;
-SubagentExecutor;
+ToolCallingAnalysisProvider; // Creates per-analysis: SubagentExecutor, SubagentSessionManager, PlanSessionManager
 ChatParticipantService;
 LanguageModelToolProvider;
 // + All tools registered
@@ -248,6 +256,7 @@ User triggers analysis
             ▼
 ┌───────────────────────────────┐
 │  ToolCallingAnalysisProvider  │
+│  - Creates per-analysis state │
 │  - Generates prompts          │
 │  - Manages conversation       │
 └───────────────┬───────────────┘
@@ -278,6 +287,35 @@ User triggers analysis
 └──────────┘       │ - Rate limit  │      tool results)
                    └───────────────┘
 ```
+
+### Concurrency Model
+
+`ToolCallingAnalysisProvider` supports concurrent analysis sessions. Each call to `analyze()` creates isolated per-analysis state:
+
+| Component                | Scope        | Purpose                              |
+| ------------------------ | ------------ | ------------------------------------ |
+| `TokenValidator`         | Per-analysis | Context window tracking for this run |
+| `toolCallRecords`        | Per-analysis | Tool execution history               |
+| `currentIteration`       | Per-analysis | Iteration counter                    |
+| `SubagentSessionManager` | Per-analysis | Tracks subagent count and limits     |
+| `SubagentExecutor`       | Per-analysis | Executes subagent investigations     |
+| `PlanSessionManager`     | Per-analysis | Review plan state                    |
+
+This ensures multiple concurrent analyses don't share or corrupt state.
+
+### ExecutionContext
+
+Tools receive an `ExecutionContext` containing per-analysis dependencies:
+
+```typescript
+interface ExecutionContext {
+    planManager?: PlanSessionManager;
+    subagentSessionManager?: SubagentSessionManager;
+    subagentExecutor?: SubagentExecutor;
+}
+```
+
+The `RunSubagentTool` retrieves its executor from this context rather than via constructor injection.
 
 ---
 
@@ -324,11 +362,17 @@ toolError(message: string): ToolResult
 
 ## Subagent Architecture
 
-Subagents enable delegated investigations with isolated context:
+Subagents enable delegated investigations with isolated context. Each analysis creates its own `SubagentExecutor` and `SubagentSessionManager` for concurrency safety:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Main Analysis                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ Per-analysis state:                                     ││
+│  │ - SubagentSessionManager (tracks spawn count)           ││
+│  │ - SubagentExecutor (passed via ExecutionContext)        ││
+│  └─────────────────────────────────────────────────────────┘│
+│                           │                                  │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │ LLM: "This security pattern needs deeper investigation" ││
 │  │ → Calls RunSubagentTool                                 ││
@@ -336,7 +380,7 @@ Subagents enable delegated investigations with isolated context:
 │                           │                                  │
 │                           ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │                   SubagentExecutor                       ││
+│  │            SubagentExecutor (from context)               ││
 │  │  - Creates isolated ConversationManager                  ││
 │  │  - Filters tools (no recursive subagents)                ││
 │  │  - Runs ConversationRunner with own context              ││
