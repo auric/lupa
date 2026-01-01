@@ -86,6 +86,9 @@ export class SubagentExecutor {
             const conversation = new ConversationManager();
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
+
+            // No ExecutionContext passed intentionally - SubagentLimits.DISALLOWED_TOOLS
+            // filters out all tools that require context (run_subagent, update_plan, etc.)
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
                 this.workspaceSettings

@@ -38,6 +38,17 @@ Use the `@lupa` chat participant directly in VS Code's chat for quick inline ana
 
 Type `@lupa` in the chat and use one of the available slash commands.
 
+### Exploration Mode
+
+You can also use `@lupa` without a slash command to ask general questions about your codebase:
+
+```
+@lupa How is authentication handled in this project?
+@lupa What's the architecture of the API layer?
+```
+
+In exploration mode, Lupa uses the same tools (file reading, symbol lookup, grep search) to investigate your codebase but without PR-specific context. Subagents are enabled for complex investigations that require parallel research.
+
 ## Model Selection
 
 Lupa works with any language model available in your VS Code Copilot installation.
