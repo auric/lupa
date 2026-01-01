@@ -200,13 +200,14 @@ export class ServiceManager implements vscode.Disposable {
         // Note: PlanSessionManager is created per-analysis in ToolCallingAnalysisProvider
 
         // Initialize tool testing webview service
+        // Passes workspaceSettings instead of toolExecutor so webview can create per-request executors
         const gitRootPath =
             this.services.gitOperations!.getRepository()?.rootUri.fsPath || '';
         this.services.toolTestingWebview = new ToolTestingWebviewService(
             this.context,
             gitRootPath,
             this.services.toolRegistry,
-            this.services.toolExecutor
+            this.services.workspaceSettings!
         );
 
         this.services.chatParticipantService =

@@ -5,6 +5,8 @@
  * in its text response, this utility extracts the intended content.
  */
 
+import { Log } from '../services/loggingService';
+
 /** Minimum length for extracted review content to be considered valid. */
 const MIN_REVIEW_LENGTH = 50;
 
@@ -30,6 +32,7 @@ function isValidReviewContent(content: string): boolean {
  *
  * Handles patterns like:
  * - JSON code block: ```json\n{"review_content": "..."}\n```
+ * - Unclosed code block: ```json\n{"review_content": "..."} (no closing ```)
  * - Raw JSON: {"review_content": "..."}
  * - Partial pattern: "review_content": "..."
  *
@@ -43,15 +46,31 @@ export function extractReviewFromMalformedToolCall(
         return undefined;
     }
 
-    // Try JSON code block first (most explicit pattern)
+    // Try JSON code block first (most explicit pattern - properly closed)
     const codeBlockMatch = content.match(
         /```(?:json)?\s*\n?\s*\{[\s\S]*?"review_content"\s*:\s*"([\s\S]*?)"\s*\}[\s\S]*?```/
     );
     if (codeBlockMatch) {
         const extracted = unescapeJsonString(codeBlockMatch[1]!);
         if (isValidReviewContent(extracted)) {
+            Log.info('Extracted review from closed JSON code block');
             return extracted;
         }
+        Log.debug('Closed code block matched but content validation failed');
+    }
+
+    // Try unclosed code block (model forgot to close the triple backticks)
+    // This captures the JSON object inside a code block that was never closed
+    const unclosedBlockMatch = content.match(
+        /```(?:json)?\s*\n?\s*(\{[\s\S]*?"review_content"[\s\S]*?\})\s*$/
+    );
+    if (unclosedBlockMatch) {
+        const extracted = tryParseJsonReviewContent(unclosedBlockMatch[1]!);
+        if (extracted && isValidReviewContent(extracted)) {
+            Log.info('Extracted review from unclosed JSON code block');
+            return extracted;
+        }
+        Log.debug('Unclosed code block matched but extraction failed');
     }
 
     // Try raw JSON object with review_content
@@ -61,8 +80,10 @@ export function extractReviewFromMalformedToolCall(
     if (jsonMatch) {
         const extracted = unescapeJsonString(jsonMatch[1]!);
         if (isValidReviewContent(extracted)) {
+            Log.info('Extracted review from raw JSON object');
             return extracted;
         }
+        Log.debug('Raw JSON matched but content validation failed');
     }
 
     // Try to find and parse a complete JSON object containing review_content
@@ -72,8 +93,18 @@ export function extractReviewFromMalformedToolCall(
     if (jsonObjectMatch) {
         const extracted = tryParseJsonReviewContent(jsonObjectMatch[0]);
         if (extracted && isValidReviewContent(extracted)) {
+            Log.info('Extracted review from parsed JSON object');
             return extracted;
         }
+        Log.debug('JSON object matched but parsing/validation failed');
+    }
+
+    // Log when we have review_content in content but couldn't extract it
+    if (content.includes('review_content')) {
+        Log.warn(
+            'Content contains "review_content" but extraction failed',
+            `Content length: ${content.length}, preview: ${content.substring(0, 200)}...`
+        );
     }
 
     return undefined;

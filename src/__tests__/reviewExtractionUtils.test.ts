@@ -32,6 +32,34 @@ describe('extractReviewFromMalformedToolCall', () => {
                 '## Summary\n\nThe code looks good with no **Critical** issues found in this implementation.'
             );
         });
+
+        it('should extract from unclosed code block', () => {
+            // Model forgot to close the code block - common LLM failure mode
+            const content = `I called submit_review with the final review.
+
+\`\`\`json
+{
+  "review_content": "## Summary\\n\\n> **TL;DR**: v0.1.6 makes tool-calling analysis concurrency-safe.\\n\\n### Key Changes\\n- Added per-analysis instances\\n- Fixed race conditions"
+}`;
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toContain('## Summary');
+            expect(result).toContain('**TL;DR**');
+            expect(result).toContain('Key Changes');
+        });
+
+        it('should extract from unclosed code block without json tag', () => {
+            const content = `Here is the review:
+
+\`\`\`
+{"review_content": "## Analysis\\n\\nFound **Critical** issues that need addressing immediately."}`;
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toContain('## Analysis');
+            expect(result).toContain('**Critical**');
+        });
     });
 
     describe('raw JSON extraction', () => {
