@@ -4,6 +4,7 @@ import { ChatParticipantService } from '../services/chatParticipantService';
 import { GitService } from '../services/gitService';
 import { ConversationRunner } from '../models/conversationRunner';
 import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
+import { createMockCopilotModelManager } from './testUtils/mockFactories';
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -206,6 +207,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -242,6 +244,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -276,6 +279,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -321,6 +325,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -353,6 +358,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -442,6 +448,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -478,6 +485,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -510,6 +518,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -542,6 +551,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -581,6 +591,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -613,6 +624,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -649,6 +661,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -686,6 +699,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -730,6 +744,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -776,6 +791,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -896,6 +912,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -938,6 +955,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -991,6 +1009,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1045,6 +1064,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 await capturedHandler(
@@ -1086,6 +1106,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1129,6 +1150,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1173,6 +1195,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1218,6 +1241,7 @@ describe('ChatParticipantService', () => {
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const branchMockStream = {
@@ -1320,6 +1344,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1359,6 +1384,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1392,6 +1418,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -1445,6 +1472,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1481,6 +1509,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1519,6 +1548,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1558,6 +1588,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1594,6 +1625,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1625,6 +1657,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -1657,6 +1690,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             // Create mock history with proper structure
@@ -1717,6 +1751,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const mockHistory = [
@@ -1765,6 +1800,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const mockHistory = [
@@ -1803,6 +1839,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             // Create a model that throws on countTokens
@@ -1880,6 +1917,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -1945,6 +1983,7 @@ describe('ChatParticipantService', () => {
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(

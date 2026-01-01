@@ -8,14 +8,14 @@ describe('extractReviewFromMalformedToolCall', () => {
 
 \`\`\`json
 {
-  "review_content": "## Summary\\n> **TL;DR**: This PR improves performance."
+  "review_content": "## Summary\\n> **TL;DR**: This PR improves performance and fixes critical bugs in the authentication flow."
 }
 \`\`\``;
 
             const result = extractReviewFromMalformedToolCall(content);
 
             expect(result).toBe(
-                '## Summary\n> **TL;DR**: This PR improves performance.'
+                '## Summary\n> **TL;DR**: This PR improves performance and fixes critical bugs in the authentication flow.'
             );
         });
 
@@ -23,77 +23,96 @@ describe('extractReviewFromMalformedToolCall', () => {
             const content = `Here is my review:
 
 \`\`\`
-{"review_content": "The code looks good."}
+{"review_content": "## Summary\\n\\nThe code looks good with no **Critical** issues found in this implementation."}
 \`\`\``;
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('The code looks good.');
+            expect(result).toBe(
+                '## Summary\n\nThe code looks good with no **Critical** issues found in this implementation.'
+            );
         });
     });
 
     describe('raw JSON extraction', () => {
         it('should extract from inline JSON object', () => {
             const content =
-                'I will call submit_review: {"review_content": "Great PR!"}';
+                'I will call submit_review: {"review_content": "## Summary\\n\\n**TL;DR**: Great PR with solid implementation!"}';
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('Great PR!');
+            expect(result).toBe(
+                '## Summary\n\n**TL;DR**: Great PR with solid implementation!'
+            );
         });
 
         it('should handle JSON with whitespace', () => {
             const content = `{
-                "review_content": "Multiline review content here."
+                "review_content": "## Findings\\n\\nMultiline review content here with detailed analysis."
             }`;
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('Multiline review content here.');
+            expect(result).toBe(
+                '## Findings\n\nMultiline review content here with detailed analysis.'
+            );
         });
     });
 
     describe('escape sequence handling', () => {
         it('should unescape newlines', () => {
-            const content = '{"review_content": "Line 1\\nLine 2\\nLine 3"}';
+            const content =
+                '{"review_content": "## Summary\\nLine 1\\nLine 2\\nLine 3\\n\\nWith detailed **Critical** findings."}';
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('Line 1\nLine 2\nLine 3');
+            expect(result).toBe(
+                '## Summary\nLine 1\nLine 2\nLine 3\n\nWith detailed **Critical** findings.'
+            );
         });
 
         it('should unescape tabs', () => {
-            const content = '{"review_content": "Col1\\tCol2\\tCol3"}';
+            const content =
+                '{"review_content": "## Summary\\n\\nCol1\\tCol2\\tCol3 with detailed analysis and **findings**."}';
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('Col1\tCol2\tCol3');
+            expect(result).toBe(
+                '## Summary\n\nCol1\tCol2\tCol3 with detailed analysis and **findings**.'
+            );
         });
 
         it('should unescape quotes', () => {
             const content =
-                '{"review_content": "He said \\"hello\\" to them."}';
+                '{"review_content": "## Summary\\n\\nHe said \\"hello\\" to them. This is a detailed analysis with **Issues**."}';
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('He said "hello" to them.');
+            expect(result).toBe(
+                '## Summary\n\nHe said "hello" to them. This is a detailed analysis with **Issues**.'
+            );
         });
 
         it('should unescape backslashes', () => {
-            const content = '{"review_content": "Path: C:\\\\Users\\\\file"}';
+            const content =
+                '{"review_content": "## Summary\\n\\nPath: C:\\\\Users\\\\file has some **Critical** issues to address."}';
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('Path: C:\\Users\\file');
+            expect(result).toBe(
+                '## Summary\n\nPath: C:\\Users\\file has some **Critical** issues to address.'
+            );
         });
 
         it('should handle mixed escape sequences', () => {
             const content =
-                '{"review_content": "## Summary\\n> Quote: \\"Nice\\"\\n\\nDone."}';
+                '{"review_content": "## Summary\\n> Quote: \\"Nice\\"\\n\\nDone with detailed findings and **recommendations**."}';
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('## Summary\n> Quote: "Nice"\n\nDone.');
+            expect(result).toBe(
+                '## Summary\n> Quote: "Nice"\n\nDone with detailed findings and **recommendations**.'
+            );
         });
     });
 
@@ -109,12 +128,14 @@ describe('extractReviewFromMalformedToolCall', () => {
 
         it('should recover from valid content in malformed wrapper', () => {
             const content = `Some text before
-{"review_content": "Extracted content"}
+{"review_content": "## Summary\\n\\nExtracted content with detailed **Issues** found in the analysis."}
 Some text after that breaks JSON`;
 
             const result = extractReviewFromMalformedToolCall(content);
 
-            expect(result).toBe('Extracted content');
+            expect(result).toBe(
+                '## Summary\n\nExtracted content with detailed **Issues** found in the analysis.'
+            );
         });
     });
 
@@ -148,6 +169,61 @@ Some text after that breaks JSON`;
             const result = extractReviewFromMalformedToolCall(content);
 
             expect(result).toBeUndefined();
+        });
+    });
+
+    describe('content validation', () => {
+        it('should reject content that is too short', () => {
+            const content = '{"review_content": "Too short"}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toBeUndefined();
+        });
+
+        it('should reject content without review-like patterns', () => {
+            const content =
+                '{"review_content": "This is just random text without any headings or review patterns that would indicate a real review document."}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toBeUndefined();
+        });
+
+        it('should accept content with markdown headings', () => {
+            const content =
+                '{"review_content": "## Analysis\\n\\nThis section contains detailed findings about the code under review."}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toContain('## Analysis');
+        });
+
+        it('should accept content with TL;DR pattern', () => {
+            const content =
+                '{"review_content": "> TL;DR: This PR improves the architecture significantly with clean abstractions."}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toContain('TL;DR');
+        });
+
+        it('should accept content with severity indicators', () => {
+            const content =
+                '{"review_content": "Found 2 Critical issues and 3 Medium issues in the authentication module."}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toContain('Critical');
+        });
+
+        it('should accept content with bold markdown', () => {
+            const content =
+                '{"review_content": "The changes are **solid** and follow best practices with detailed implementation."}';
+
+            const result = extractReviewFromMalformedToolCall(content);
+
+            expect(result).toContain('**solid**');
         });
     });
 

@@ -5,6 +5,25 @@
  * in its text response, this utility extracts the intended content.
  */
 
+/** Minimum length for extracted review content to be considered valid. */
+const MIN_REVIEW_LENGTH = 50;
+
+/**
+ * Validates that extracted content looks like a legitimate review.
+ * Prevents accepting arbitrary JSON that happened to have a review_content field.
+ */
+function isValidReviewContent(content: string): boolean {
+    if (content.length < MIN_REVIEW_LENGTH) {
+        return false;
+    }
+    // Check for common review patterns (headings, structured content)
+    const hasReviewPattern =
+        /\*\*|##|###|TL;DR|Summary|Critical|High|Medium|Low|Issues?|Findings?|Recommendations?/i.test(
+            content
+        );
+    return hasReviewPattern;
+}
+
 /**
  * Attempts to extract review content from a model response that contains
  * an embedded (but not properly invoked) submit_review tool call.
@@ -15,6 +34,7 @@
  * - Partial pattern: "review_content": "..."
  *
  * @returns The extracted review content, or undefined if no pattern matched
+ *          or content fails validation
  */
 export function extractReviewFromMalformedToolCall(
     content: string | null | undefined
@@ -28,7 +48,10 @@ export function extractReviewFromMalformedToolCall(
         /```(?:json)?\s*\n?\s*\{[\s\S]*?"review_content"\s*:\s*"([\s\S]*?)"\s*\}[\s\S]*?```/
     );
     if (codeBlockMatch) {
-        return unescapeJsonString(codeBlockMatch[1]!);
+        const extracted = unescapeJsonString(codeBlockMatch[1]!);
+        if (isValidReviewContent(extracted)) {
+            return extracted;
+        }
     }
 
     // Try raw JSON object with review_content
@@ -36,7 +59,10 @@ export function extractReviewFromMalformedToolCall(
         /\{\s*"review_content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/
     );
     if (jsonMatch) {
-        return unescapeJsonString(jsonMatch[1]!);
+        const extracted = unescapeJsonString(jsonMatch[1]!);
+        if (isValidReviewContent(extracted)) {
+            return extracted;
+        }
     }
 
     // Try to find and parse a complete JSON object containing review_content
@@ -45,7 +71,7 @@ export function extractReviewFromMalformedToolCall(
     );
     if (jsonObjectMatch) {
         const extracted = tryParseJsonReviewContent(jsonObjectMatch[0]);
-        if (extracted) {
+        if (extracted && isValidReviewContent(extracted)) {
             return extracted;
         }
     }

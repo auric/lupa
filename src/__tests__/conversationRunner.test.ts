@@ -677,7 +677,7 @@ describe('ConversationRunner', () => {
 
 \`\`\`json
 {
-  "review_content": "## Summary\\n> **TL;DR**: Extracted review content."
+  "review_content": "## Summary\\n> **TL;DR**: Extracted review content with detailed findings and recommendations."
 }
 \`\`\``;
 
@@ -705,7 +705,7 @@ describe('ConversationRunner', () => {
 
             // Should extract the review_content from the malformed JSON
             expect(result).toBe(
-                '## Summary\n> **TL;DR**: Extracted review content.'
+                '## Summary\n> **TL;DR**: Extracted review content with detailed findings and recommendations.'
             );
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
         });

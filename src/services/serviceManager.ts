@@ -172,6 +172,11 @@ export class ServiceManager implements vscode.Disposable {
     private async initializeHighLevelServices(): Promise<void> {
         // Initialize tool-calling services
         this.services.toolRegistry = new ToolRegistry();
+
+        // NOTE: This singleton ToolExecutor is for utility purposes only (e.g., tool testing webview).
+        // For actual analysis sessions, ToolCallingAnalysisProvider and ChatParticipantService
+        // create per-analysis ToolExecutor instances with proper ExecutionContext to ensure
+        // concurrent-safety and per-session state isolation.
         this.services.toolExecutor = new ToolExecutor(
             this.services.toolRegistry,
             this.services.workspaceSettings!
