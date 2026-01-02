@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Model logging at analysis start**: The selected model name, vendor, ID, and token limit are now logged at the start of each analysis for easier debugging.
 
+- **GitHub Copilot Chat dependency declared**: Added `GitHub.copilot-chat` to `extensionDependencies` in package.json. VS Code now ensures Copilot Chat is installed and enabled before Lupa activates, providing a clear error if it's missing.
+
 ### Changed
 
 #### README Improvements

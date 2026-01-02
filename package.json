@@ -12,16 +12,19 @@
         "node": ">=20"
     },
     "categories": [
+        "AI",
         "Linters",
-        "Machine Learning",
-        "SCM Providers"
+        "Chat",
+        "Programming Languages",
+        "Machine Learning"
     ],
     "activationEvents": [
         "onStartupFinished"
     ],
     "main": "./dist/extension.js",
     "extensionDependencies": [
-        "vscode.git"
+        "vscode.git",
+        "GitHub.copilot-chat"
     ],
     "contributes": {
         "commands": [
