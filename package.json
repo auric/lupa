@@ -4,14 +4,17 @@
     "publisher": "auric",
     "repository": "https://github.com/auric/lupa",
     "license": "AGPL-3.0-or-later",
-    "description": "A VS Code extension for comprehensive pull request analysis using GitHub Copilot models",
+    "description": "Deeply reviews your code changes using Copilot. Explores the codebase to understand context before giving feedback.",
     "version": "0.1.8",
+    "icon": "resources/icon.png",
     "engines": {
         "vscode": "^1.107.0",
         "node": ">=20"
     },
     "categories": [
-        "Other"
+        "Linters",
+        "Machine Learning",
+        "SCM Providers"
     ],
     "activationEvents": [
         "onStartupFinished"
