@@ -51,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CopilotApiError wrapping restored**: Fatal API errors are now properly wrapped in `CopilotApiError` with appropriate error codes, ensuring consistent error type checking across the codebase.
 
+- **Model identifier normalization**: Vendor-less identifiers (e.g., `gpt-4.1`) are now normalized to canonical `vendor/id` form (`copilot/gpt-4.1`) when saved, ensuring consistent settings storage.
+
 ## [0.1.7] - 2026-01-02
 
 ### Fixed

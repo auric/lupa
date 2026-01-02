@@ -170,9 +170,13 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             const model = models[0]!;
             this.currentModel = model;
 
-            // Save preference
+            // Save preference in canonical vendor/id form
             if (options?.identifier) {
-                this.settings.setPreferredModelIdentifier(options.identifier);
+                const parsed = this.parseModelIdentifier(options.identifier);
+                if (parsed) {
+                    const canonical = `${parsed.vendor}/${parsed.id}`;
+                    this.settings.setPreferredModelIdentifier(canonical);
+                }
             }
 
             return model;
