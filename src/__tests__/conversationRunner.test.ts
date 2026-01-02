@@ -522,9 +522,9 @@ describe('ConversationRunner', () => {
         });
 
         it('should stop on model_not_supported in raw error message', async () => {
-            // Raw error format (not wrapped in CopilotApiError)
+            // Real API error format with nested error object
             const rawError = new Error(
-                '{"code":"model_not_supported","message":"The model xyz is not supported"}'
+                '400 {"error":{"code":"model_not_supported","message":"The model xyz is not supported"}}'
             );
 
             const modelManager = {

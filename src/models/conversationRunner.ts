@@ -342,76 +342,73 @@ export class ConversationRunner {
     /**
      * Detect fatal API errors that should stop the conversation immediately.
      * Returns a user-friendly message and error code, or null if not a fatal error.
-     *
-     * Error detection order:
-     * 1. Check for CopilotApiError instances (backward compatibility)
-     * 2. Check for invalid_request_error type (always fatal)
-     *    - Then customize message based on content (Anthropic BYOK vs generic)
-     * 3. Check for model_not_supported code
      */
     private detectFatalError(
         error: unknown
     ): { message: string; code: string } | null {
-        // Check for existing CopilotApiError (backward compatibility)
         if (error instanceof CopilotApiError) {
             return { message: error.message, code: error.code };
         }
 
-        // Parse raw error message for API error codes
         const errorMsg = error instanceof Error ? error.message : String(error);
 
-        // Check for invalid_request_error type in the inner error object
-        // Error format: 400 {"type":"error","error":{"type":"invalid_request_error","message":"..."},...}
-        // ANY invalid_request_error is FATAL, then we customize the message based on content
-        const invalidRequestMatch = errorMsg.match(
-            /"error"\s*:\s*\{[^}]*"type"\s*:\s*"invalid_request_error"/
-        );
-        if (invalidRequestMatch) {
-            // Extract the specific message from the error
-            const messageMatch = errorMsg.match(/"message"\s*:\s*"([^"]+)"/);
-            const specificMessage = messageMatch?.[1] || 'Invalid request';
+        // Extract and parse JSON from error message (e.g., "400 {...}" or "{...}")
+        // Example: 400 {"error":{"message":"Model is not supported for this request.","param":"model","code":"model_not_supported","type":"invalid_request_error"}}
+        const jsonMatch = errorMsg.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            return null;
+        }
 
-            // Check if this is the Anthropic BYOK empty system prompt issue
-            if (
-                specificMessage.includes(
-                    'text content blocks must be non-empty'
-                ) ||
-                specificMessage.includes('system: text content blocks')
-            ) {
+        try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            const apiError = parsed.error;
+
+            if (!apiError || typeof apiError !== 'object') {
+                return null;
+            }
+
+            const { code, type, message } = apiError;
+
+            if (code === 'model_not_supported') {
                 return {
                     message:
-                        `This model requires a system prompt, but the VS Code Language Model API ` +
-                        `does not support setting system prompts for third-party models. ` +
-                        `This is a known limitation with Anthropic models configured via BYOK (Bring Your Own Key). ` +
-                        `Please use a Copilot-provided model instead. ` +
-                        `See https://github.com/microsoft/vscode/issues/255286 for details.`,
+                        'The selected model is not supported. ' +
+                        'Please choose a different model.',
+                    code: 'model_not_supported',
+                };
+            }
+
+            if (type === 'invalid_request_error') {
+                // Anthropic BYOK: empty system prompt not supported
+                if (
+                    message?.includes(
+                        'system: text content blocks must be non-empty'
+                    )
+                ) {
+                    return {
+                        message:
+                            'This model requires a system prompt, but the VS Code Language Model API ' +
+                            'does not support setting system prompts for third-party models. ' +
+                            'This is a known limitation with Anthropic models configured via BYOK. ' +
+                            'Please use a Copilot-provided model instead. ' +
+                            'See https://github.com/microsoft/vscode/issues/255286 for details.',
+                        code: 'invalid_request_error',
+                    };
+                }
+
+                return {
+                    message:
+                        `The model returned an API error: ${message || 'Invalid request'}. ` +
+                        'This may be a compatibility issue with the selected model. ' +
+                        'Please try using a different model.',
                     code: 'invalid_request_error',
                 };
             }
 
-            // Generic invalid_request_error
-            return {
-                message:
-                    `The model returned an API error: ${specificMessage}. ` +
-                    `This may be a compatibility issue with the selected model. ` +
-                    `Please try using a different model.`,
-                code: 'invalid_request_error',
-            };
+            return null;
+        } catch {
+            return null;
         }
-
-        // Check for model_not_supported code in raw error message
-        const codeMatch = errorMsg.match(/"code"\s*:\s*"([^"]+)"/);
-        if (codeMatch) {
-            const code = codeMatch[1];
-            if (code === 'model_not_supported') {
-                return {
-                    message: `The selected model is not supported. Please choose a different model in Lupa settings.`,
-                    code: 'model_not_supported',
-                };
-            }
-        }
-
-        return null;
     }
 
     /**
