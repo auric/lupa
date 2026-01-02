@@ -107,6 +107,11 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 schema.safeParse({ name_path: 'MyClass/file.spec' }).success
             ).toBe(true);
 
+            // Test leading dot edge case (e.g., ".method" -> ["method"])
+            expect(schema.safeParse({ name_path: '.method' }).success).toBe(
+                true
+            );
+
             // Test validation (empty string rejection)
             expect(schema.safeParse({ name_path: '' }).success).toBe(false);
         });
