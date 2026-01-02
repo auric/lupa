@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Flexible name_path separator**: The `find_symbol` tool now accepts both `/` and `.` as path separators. LLMs sometimes use `ChatParticipantService.handleExplorationRequest` instead of `ChatParticipantService/handleExplorationRequest`, and both now work correctly.
 
+- **Dot-preserving path parsing**: When `/` is present in the name_path, dots are preserved in symbol names. For example, `MyClass/file.spec` correctly parses as `['MyClass', 'file.spec']` instead of incorrectly splitting on the dot.
+
+- **Removed undocumented absolute path claim**: The schema documentation previously claimed `/MyClass/method` would find method in "top-level MyClass only", but this feature was never implemented. The misleading documentation has been removed.
+
 #### Analysis Progress
 
 - **Non-intrusive progress indicator**: Changed analysis progress from a notification toast to the status bar window indicator. The progress is now shown in the status bar instead of a popup notification, providing a cleaner UX without blocking the UI.
