@@ -207,37 +207,3 @@ export function createMockCopilotModelManager() {
         }),
     };
 }
-
-/**
- * Standard mock for PromptGenerator.
- */
-export function createMockPromptGenerator(
-    overrides: Partial<{
-        systemPrompt: string;
-        toolInformation: string;
-    }> = {}
-) {
-    return {
-        getSystemPrompt: vi
-            .fn()
-            .mockReturnValue(
-                overrides.systemPrompt ?? 'You are an expert code reviewer.'
-            ),
-        getToolInformation: vi
-            .fn()
-            .mockReturnValue(
-                overrides.toolInformation ?? '\n\nYou have access to tools.'
-            ),
-        generateToolAwareSystemPrompt: vi
-            .fn()
-            .mockReturnValue(
-                overrides.systemPrompt ??
-                    'You are an expert code reviewer with access to tools.'
-            ),
-        generateToolCallingUserPrompt: vi
-            .fn()
-            .mockReturnValue(
-                '<files_to_review>Sample diff content</files_to_review>'
-            ),
-    };
-}

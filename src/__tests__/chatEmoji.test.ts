@@ -14,6 +14,18 @@ describe('chatEmoji', () => {
             expect(SEVERITY.critical).toBe('🔴');
         });
 
+        it('should define high as orange circle', () => {
+            expect(SEVERITY.high).toBe('🟠');
+        });
+
+        it('should define medium as yellow circle', () => {
+            expect(SEVERITY.medium).toBe('🟡');
+        });
+
+        it('should define low as green circle', () => {
+            expect(SEVERITY.low).toBe('🟢');
+        });
+
         it('should define suggestion as yellow circle', () => {
             expect(SEVERITY.suggestion).toBe('🟡');
         });
@@ -26,8 +38,8 @@ describe('chatEmoji', () => {
             expect(SEVERITY.warning).toBe('⚠️');
         });
 
-        it('should have exactly 4 severity entries', () => {
-            expect(Object.keys(SEVERITY)).toHaveLength(4);
+        it('should have exactly 7 severity entries', () => {
+            expect(Object.keys(SEVERITY)).toHaveLength(7);
         });
     });
 

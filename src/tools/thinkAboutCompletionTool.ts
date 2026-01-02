@@ -1,62 +1,129 @@
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
+import { SEVERITY } from '../config/chatEmoji';
+
+const CompletionDecision = z.enum(['needs_work', 'ready_to_submit']);
+
+const Recommendation = z.enum([
+    'approve',
+    'approve_with_suggestions',
+    'request_changes',
+    'block_merge',
+]);
 
 /**
  * Self-reflection tool for main agent: verifies analysis completeness.
- * Call when ready to provide final review to ensure nothing important was missed
- * and the feedback is well-structured and actionable.
+ *
+ * Forces explicit articulation of the review state rather than passive checklists.
+ * Per prompt engineering best practices: "articulation > checklists" -
+ * writing explicit statements is more rigorous than checking boxes.
  */
 export class ThinkAboutCompletionTool extends BaseTool {
     name = 'think_about_completion';
     description =
-        'Call this when you believe you are done to verify the analysis is complete. ' +
-        'Helps ensure nothing important was missed before providing the final review.';
+        'Articulate your review completeness before submitting. ' +
+        'Forces you to draft a summary, count issues, and confirm all files were analyzed.';
 
-    schema = z.object({}).strict();
+    schema = z
+        .object({
+            summary_draft: z
+                .string()
+                .min(20)
+                .describe(
+                    'Draft 2-3 sentence summary of what this PR does and your overall assessment'
+                ),
+            critical_issues_count: z
+                .number()
+                .int()
+                .min(0)
+                .describe('Number of critical/blocking issues found'),
+            high_issues_count: z
+                .number()
+                .int()
+                .min(0)
+                .describe('Number of high-severity issues found'),
+            files_analyzed: z
+                .array(z.string())
+                .min(1)
+                .describe('List of files you analyzed from the diff'),
+            files_in_diff: z
+                .number()
+                .int()
+                .min(1)
+                .describe('Total number of files in the diff'),
+            recommendation: Recommendation.describe(
+                'Your recommendation: approve, approve_with_suggestions, request_changes, or block_merge'
+            ),
+            decision: CompletionDecision.describe(
+                'Your decision: needs_work (address gaps first) or ready_to_submit'
+            ),
+        })
+        .strict();
 
-    async execute(): Promise<ToolResult> {
-        return toolSuccess(`## Completion Verification
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
+        const {
+            summary_draft,
+            critical_issues_count,
+            high_issues_count,
+            files_analyzed,
+            files_in_diff,
+            recommendation,
+            decision,
+        } = args;
 
-### Structure Check
-My review includes:
-□ Summary - 2-3 sentence TL;DR of the PR and key findings
-□ Risk Assessment - Overall risk level of merging this PR
-□ Critical Issues - Blocking problems (if any)
-□ Suggestions - Organized by category with severity
-□ Positive Observations - What was done well
-□ Questions - Clarifications needed (if any)
+        const coveragePercent = Math.round(
+            (files_analyzed.length / files_in_diff) * 100
+        );
+        const hasCritical = critical_issues_count > 0;
+        const hasHigh = high_issues_count > 0;
 
-### Quality Check
-□ Every finding has a specific markdown file link
-□ Code examples provided where helpful
-□ Severity levels are justified and consistent
-□ Recommendations are specific and actionable
-□ No claims made without tool verification
+        let guidance = '## Completion Reflection\n\n';
 
-### Completeness Check
-□ All files in the diff were considered
-□ Security implications were evaluated
-□ Performance implications were considered
-□ Breaking changes were identified (if any)
-□ Test coverage implications noted
+        guidance += `### Summary Draft\n> ${summary_draft}\n\n`;
 
-### Tone Check
-□ Review is constructive and professional
-□ Good practices are acknowledged
-□ Criticism is specific, not personal
-□ Provides clear path forward
+        guidance += `### Issue Count\n`;
+        guidance += `- ${SEVERITY.critical} Critical: ${critical_issues_count}\n`;
+        guidance += `- ${SEVERITY.high} High: ${high_issues_count}\n\n`;
 
-### Format Check
-□ Using Markdown (not XML tags)
-□ Severity indicators: 🔴 Critical, 🟠 High, 🟡 Medium, 🟢 Low
-□ File references in \`backticks\`
-□ Code in fenced blocks with language
+        guidance += `### Coverage\n`;
+        guidance += `- Files analyzed: ${files_analyzed.length}/${files_in_diff} (${coveragePercent}%)\n`;
+        if (coveragePercent < 100) {
+            guidance += `- ⚠️ Not all files analyzed\n`;
+        }
+        guidance += '\n';
 
-### Decision
-- [ ] All checks pass → Submit final review
-- [ ] Issues found → Fix before submitting
+        guidance += `### Recommendation: ${recommendation.replace(/_/g, ' ').toUpperCase()}\n`;
+        if (hasCritical) {
+            guidance += `⚠️ Critical issues found - recommend \`block_merge\` or \`request_changes\`\n`;
+        } else if (hasHigh) {
+            guidance += `⚠️ High-severity issues found - consider \`request_changes\`\n`;
+        }
+        guidance += '\n';
 
-Ready to submit.`);
+        guidance += `### Decision: ${decision.replace(/_/g, ' ').toUpperCase()}\n\n`;
+
+        // Provide guidance based on decision
+        if (decision === 'needs_work') {
+            guidance += '**Action**: Address gaps before submitting.\n';
+            if (coveragePercent < 100) {
+                guidance += `- Analyze remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
+            }
+            guidance += '- Ensure all plan items are complete\n';
+            guidance += '- Verify all findings have evidence\n';
+        } else {
+            guidance +=
+                '**Action**: Call the `submit_review` tool now with your complete review.\n';
+            guidance += '- Use the summary draft as your opening\n';
+            guidance += '- Organize findings by severity\n';
+            guidance += '- Include positive observations\n';
+            guidance += '- Ensure proper Markdown formatting with file links\n';
+        }
+
+        return toolSuccess(guidance);
     }
 }

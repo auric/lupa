@@ -14,6 +14,7 @@ import { readGitignore } from '../utils/gitUtils';
 import { withTimeout } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 import ignore from 'ignore';
 
 // Timeout constants
@@ -93,7 +94,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             ),
     });
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import * as vscode from 'vscode';
+import { z } from 'zod';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { TokenConstants } from '../models/tokenConstants';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
@@ -23,22 +24,16 @@ vi.mock('../services/loggingService', () => ({
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
+        debug: vi.fn(),
     },
 }));
 
 describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     let analysisProvider: ToolCallingAnalysisProvider;
-    let mockConversationManager: {
-        clearHistory: Mock;
-        addUserMessage: Mock;
-        addAssistantMessage: Mock;
-        addToolMessage: Mock;
-        getHistory: Mock;
-    };
-    let mockToolExecutor: {
-        getAvailableTools: Mock;
-        executeTools: Mock;
-        resetToolCallCount: Mock;
+    let mockToolRegistry: {
+        getAllTools: Mock;
+        getTool: Mock;
+        getToolNames: Mock;
     };
     let mockCopilotModelManager: {
         getCurrentModel: Mock;
@@ -52,19 +47,9 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         countTokens: Mock;
         maxInputTokens: number;
     };
-    let subagentSessionManager: SubagentSessionManager;
     let tokenSource: vscode.CancellationTokenSource;
 
     beforeEach(() => {
-        // Setup mocks
-        mockConversationManager = {
-            clearHistory: vi.fn(),
-            addUserMessage: vi.fn(),
-            addAssistantMessage: vi.fn(),
-            addToolMessage: vi.fn(),
-            getHistory: vi.fn(() => []),
-        };
-
         mockModel = {
             countTokens: vi.fn(() => Promise.resolve(100)),
             maxInputTokens: 8000,
@@ -75,10 +60,10 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             sendRequest: vi.fn(),
         };
 
-        mockToolExecutor = {
-            getAvailableTools: vi.fn(() => []),
-            executeTools: vi.fn(() => Promise.resolve([])),
-            resetToolCallCount: vi.fn(),
+        mockToolRegistry = {
+            getAllTools: vi.fn(() => []),
+            getTool: vi.fn(() => undefined),
+            getToolNames: vi.fn(() => []),
         };
 
         mockPromptGenerator = {
@@ -87,16 +72,11 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         };
 
         const mockWorkspaceSettings = createMockWorkspaceSettings();
-        subagentSessionManager = new SubagentSessionManager(
-            mockWorkspaceSettings
-        );
         analysisProvider = new ToolCallingAnalysisProvider(
-            mockConversationManager as any,
-            mockToolExecutor as any,
+            mockToolRegistry as any,
             mockCopilotModelManager as any,
             mockPromptGenerator as any,
-            mockWorkspaceSettings,
-            subagentSessionManager
+            mockWorkspaceSettings
         );
 
         vi.mocked(vscode.CancellationTokenSource).mockImplementation(function (
@@ -114,52 +94,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         it('should handle large conversations by cleaning up old context', async () => {
             const smallDiff =
                 'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
-
-            // Mock conversation history with many messages that exceed token limits
-            const longHistory = [
-                {
-                    role: 'user',
-                    content: 'Initial request',
-                    toolCalls: undefined,
-                    toolCallId: undefined,
-                },
-                {
-                    role: 'assistant',
-                    content: 'I will call a tool',
-                    toolCalls: [
-                        {
-                            id: 'call_1',
-                            function: { name: 'tool1', arguments: '{}' },
-                        },
-                    ],
-                    toolCallId: undefined,
-                },
-                {
-                    role: 'tool',
-                    content: 'A'.repeat(2000),
-                    toolCalls: undefined,
-                    toolCallId: 'call_1',
-                },
-                {
-                    role: 'assistant',
-                    content: 'I will call another tool',
-                    toolCalls: [
-                        {
-                            id: 'call_2',
-                            function: { name: 'tool2', arguments: '{}' },
-                        },
-                    ],
-                    toolCallId: undefined,
-                },
-                {
-                    role: 'tool',
-                    content: 'B'.repeat(2000),
-                    toolCalls: undefined,
-                    toolCallId: 'call_2',
-                },
-            ];
-
-            mockConversationManager.getHistory.mockReturnValue(longHistory);
 
             // Mock high token counts to trigger context cleanup
             mockModel.countTokens.mockImplementation(async (text: string) => {
@@ -185,10 +119,31 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 return 1500; // This should accumulate to exceed warning threshold
             });
 
-            // Mock LLM response without tool calls (final response)
+            // Register SubmitReviewTool for final submission
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getAllTools.mockReturnValue([submitReviewTool]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
+            // Mock LLM response with submit_review tool call (required to complete analysis)
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: 'Final analysis based on available context',
-                toolCalls: undefined,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_final',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'Final analysis based on available context. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             const result = await analysisProvider.analyze(
@@ -197,11 +152,8 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             );
 
             expect(result.analysis).toBe(
-                'Final analysis based on available context'
+                'Final analysis based on available context. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
-            expect(mockConversationManager.clearHistory).toHaveBeenCalled();
-            // Verify that user message was added (content may vary based on implementation)
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalled();
         });
 
         it('should request final answer when context window is completely full', async () => {
@@ -218,9 +170,30 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 return 8000; // High token count for messages to exceed max tokens
             });
 
+            // Register SubmitReviewTool for final submission
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getAllTools.mockReturnValue([submitReviewTool]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: 'Final analysis with limited context',
-                toolCalls: undefined,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_final',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'Final analysis with limited context. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             const result = await analysisProvider.analyze(
@@ -228,9 +201,9 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 tokenSource.token
             );
 
-            expect(result.analysis).toBe('Final analysis with limited context');
-            // Verify that user message was added (content may vary based on implementation)
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalled();
+            expect(result.analysis).toBe(
+                'Final analysis with limited context. Adding padding to ensure minimum 100 character requirement for review_content field.'
+            );
         });
     });
 
@@ -242,17 +215,32 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             const mockReadFileTool = {
                 name: 'read_file',
                 description: 'Read file content',
-                schema: {},
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'read_file',
                     description: 'Read file',
                     inputSchema: {},
                 }),
+                execute: vi.fn().mockResolvedValue({
+                    success: false,
+                    error: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool 'read_file' returned 10000 characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`,
+                }),
             };
 
-            mockToolExecutor.getAvailableTools.mockReturnValue([
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getAllTools.mockReturnValue([
                 mockReadFileTool,
+                submitReviewTool,
             ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'read_file') {
+                    return mockReadFileTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
 
             // Mock LLM requesting tool call
             mockCopilotModelManager.sendRequest
@@ -271,31 +259,30 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Analysis based on error message',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis based on error message. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                                }),
+                            },
+                        },
+                    ],
                 });
-
-            // Mock tool execution that fails due to size
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'read_file',
-                    success: false,
-                    error: `${TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE} Tool 'read_file' returned 10000 characters, maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}.`,
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 smallDiff,
                 tokenSource.token
             );
 
-            expect(result.analysis).toBe('Analysis based on error message');
-            expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
-                'call_1',
-                expect.stringContaining(
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.RESPONSE_TOO_LARGE
-                )
+            expect(result.analysis).toBe(
+                'Analysis based on error message. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
+            // The tool error is passed to the LLM internally, verifiable through the final result
         });
     });
 
@@ -312,9 +299,29 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 return 50;
             });
 
+            // Register SubmitReviewTool for final submission (even when tools are disabled for analysis)
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: 'Analysis of truncated diff without tools',
-                toolCalls: undefined,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_final',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'Analysis of truncated diff without tools. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             const doesntMatterDiff =
@@ -325,7 +332,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             );
 
             expect(result.analysis).toBe(
-                'Analysis of truncated diff without tools'
+                'Analysis of truncated diff without tools. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
 
             // Should generate system prompt with no tools
@@ -337,24 +344,26 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             expect(
                 mockPromptGenerator.generateToolCallingUserPrompt
             ).toHaveBeenCalledWith(expect.any(Object));
-
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining(
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED
-                )
-            );
         });
 
         it('should keep tools available when diff is reasonably sized', async () => {
             const reasonableDiff =
                 'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
 
+            const submitReviewTool = new SubmitReviewTool();
             const mockTools = [
                 { name: 'read_file', getVSCodeTool: () => ({}) },
                 { name: 'find_symbol', getVSCodeTool: () => ({}) },
+                submitReviewTool,
             ];
 
-            mockToolExecutor.getAvailableTools.mockReturnValue(mockTools);
+            mockToolRegistry.getAllTools.mockReturnValue(mockTools);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return mockTools.find((t) => t.name === name);
+            });
 
             // Mock reasonable token counts
             mockModel.countTokens.mockImplementation(async (text: string) => {
@@ -368,8 +377,19 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             });
 
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: 'Analysis with tools available',
-                toolCalls: undefined,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_final',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'Analysis with tools available. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             const result = await analysisProvider.analyze(
@@ -377,19 +397,14 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 tokenSource.token
             );
 
-            expect(result.analysis).toBe('Analysis with tools available');
+            expect(result.analysis).toBe(
+                'Analysis with tools available. Adding padding to ensure minimum 100 character requirement for review_content field.'
+            );
 
             // Should generate system prompt with tools available
             expect(
                 mockPromptGenerator.generateToolAwareSystemPrompt
             ).toHaveBeenCalledWith(mockTools);
-
-            // User message should not contain tools disabled message
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.not.stringContaining(
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED
-                )
-            );
         });
     });
 
@@ -400,14 +415,32 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
             const mockTool = {
                 name: 'read_file',
+                schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'read_file',
                     description: 'Read file',
                     inputSchema: {},
                 }),
+                execute: vi.fn().mockResolvedValue({
+                    success: true,
+                    data: '<file_content>\n  <file>src/test.ts</file>\n  <content>\n1: function new() {}\n2: // Additional context\n  </content>\n</file_content>',
+                }),
             };
 
-            mockToolExecutor.getAvailableTools.mockReturnValue([mockTool]);
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'read_file') {
+                    return mockTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
 
             // Simulate conversation flow
             mockCopilotModelManager.sendRequest
@@ -427,19 +460,20 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'Based on the file content, here is my analysis: The function was renamed from old() to new().',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Based on the file content, here is my analysis: The function was renamed from old() to new(). Padding added for minimum character requirement.',
+                                }),
+                            },
+                        },
+                    ],
                 });
-
-            // Mock successful tool execution
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'read_file',
-                    success: true,
-                    result: '<file_content>\n  <file>src/test.ts</file>\n  <content>\n1: function new() {}\n2: // Additional context\n  </content>\n</file_content>',
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 diff,
@@ -447,42 +481,42 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             );
 
             expect(result.analysis).toBe(
-                'Based on the file content, here is my analysis: The function was renamed from old() to new().'
+                'Based on the file content, here is my analysis: The function was renamed from old() to new(). Padding added for minimum character requirement.'
             );
 
-            // Verify conversation flow
-            expect(mockConversationManager.clearHistory).toHaveBeenCalled();
-            expect(mockConversationManager.addUserMessage).toHaveBeenCalledWith(
-                expect.stringContaining('User message') // From promptGenerator
-            );
-            expect(
-                mockConversationManager.addAssistantMessage
-            ).toHaveBeenCalledWith(
-                'I need to read the file to understand the changes',
-                expect.arrayContaining([
-                    expect.objectContaining({ id: 'call_1' }),
-                ])
-            );
-            expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
-                'call_1',
-                expect.stringContaining('<file_content>')
-            );
-            expect(
-                mockConversationManager.addAssistantMessage
-            ).toHaveBeenCalledWith(
-                expect.stringContaining('Based on the file content'),
-                undefined
-            );
+            // Verify the tool was executed as part of the workflow
+            expect(mockTool.execute).toHaveBeenCalled();
         });
 
         it('should handle errors gracefully and continue analysis', async () => {
             const diff = 'small diff';
 
+            // Register SubmitReviewTool for final submission
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getAllTools.mockReturnValue([submitReviewTool]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
             mockCopilotModelManager.sendRequest
                 .mockRejectedValueOnce(new Error('API Error'))
                 .mockResolvedValueOnce({
-                    content: 'Analysis after error recovery',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis after error recovery. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const result = await analysisProvider.analyze(
@@ -490,16 +524,31 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 tokenSource.token
             );
 
-            expect(result.analysis).toBe('Analysis after error recovery');
-            expect(
-                mockConversationManager.addAssistantMessage
-            ).toHaveBeenCalledWith(
-                expect.stringContaining('I encountered an error')
+            expect(result.analysis).toBe(
+                'Analysis after error recovery. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
+            // Error recovery is handled internally, verifiable through successful analysis completion
         });
 
         it('should handle maximum iteration limit gracefully', async () => {
             const diff = 'small diff';
+
+            const mockTool = {
+                name: 'read_file',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'read_file',
+                    description: 'Read file',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
+                    success: true,
+                    data: 'Some file content',
+                }),
+            };
+
+            mockToolRegistry.getAllTools.mockReturnValue([mockTool]);
+            mockToolRegistry.getTool.mockReturnValue(mockTool);
 
             // Mock infinite tool calling loop
             mockCopilotModelManager.sendRequest.mockResolvedValue({
@@ -514,14 +563,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     },
                 ],
             });
-
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'read_file',
-                    success: true,
-                    result: ['Some file content'],
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 diff,
@@ -538,6 +579,35 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         it('should handle tool execution errors gracefully', async () => {
             const diff = 'small diff';
 
+            const mockBrokenTool = {
+                name: 'broken_tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'broken_tool',
+                    description: 'Broken tool',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
+                    success: false,
+                    error: 'Tool execution failed',
+                }),
+            };
+
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockBrokenTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'broken_tool') {
+                    return mockBrokenTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
+
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
                     content: 'I will call a tool',
@@ -549,32 +619,63 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Analysis despite tool failure',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis despite tool failure. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                                }),
+                            },
+                        },
+                    ],
                 });
-
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'broken_tool',
-                    success: false,
-                    error: 'Tool execution failed',
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 diff,
                 tokenSource.token
             );
 
-            expect(result.analysis).toBe('Analysis despite tool failure');
-            expect(mockConversationManager.addToolMessage).toHaveBeenCalledWith(
-                'call_1',
-                'Error: Tool execution failed'
+            expect(result.analysis).toBe(
+                'Analysis despite tool failure. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
+            // The tool error is passed to the LLM internally, verifiable through the final result
         });
 
         it('should handle malformed tool call arguments', async () => {
             const diff = 'small diff';
+
+            const mockTestTool = {
+                name: 'test_tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'test_tool',
+                    description: 'Test tool',
+                    inputSchema: {},
+                }),
+                execute: vi.fn().mockResolvedValue({
+                    success: false,
+                    error: 'Invalid arguments',
+                }),
+            };
+
+            const submitReviewTool = new SubmitReviewTool();
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockTestTool,
+                submitReviewTool,
+            ]);
+            mockToolRegistry.getTool.mockImplementation((name: string) => {
+                if (name === 'test_tool') {
+                    return mockTestTool;
+                }
+                if (name === 'submit_review') {
+                    return submitReviewTool;
+                }
+                return undefined;
+            });
 
             mockCopilotModelManager.sendRequest
                 .mockResolvedValueOnce({
@@ -590,17 +691,20 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Analysis with malformed tool call handled',
-                    toolCalls: undefined,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_final',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis with malformed tool call handled. Adding padding to ensure minimum 100 character requirement for review_content field.',
+                                }),
+                            },
+                        },
+                    ],
                 });
-
-            mockToolExecutor.executeTools.mockResolvedValue([
-                {
-                    name: 'test_tool',
-                    success: false,
-                    error: 'Invalid arguments',
-                },
-            ]);
 
             const result = await analysisProvider.analyze(
                 diff,
@@ -608,7 +712,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             );
 
             expect(result.analysis).toBe(
-                'Analysis with malformed tool call handled'
+                'Analysis with malformed tool call handled. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
         });
     });

@@ -1,17 +1,19 @@
 import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
-import { SubagentExecutor } from '../services/subagentExecutor';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import type { SubagentResult } from '../types/modelTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 /**
  * Tool that spawns isolated subagent investigations.
  * Delegates execution to SubagentExecutor, tracks usage via SubagentSessionManager.
+ *
+ * Both SubagentExecutor and SubagentSessionManager are obtained from ExecutionContext
+ * (created per-analysis) for concurrency safety.
  */
 export class RunSubagentTool extends BaseTool {
     name = 'run_subagent';
@@ -39,11 +41,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
     private cancellationTokenSource: vscode.CancellationTokenSource | null =
         null;
 
-    constructor(
-        private readonly executor: SubagentExecutor,
-        private readonly sessionManager: SubagentSessionManager,
-        private readonly workspaceSettings: WorkspaceSettingsService
-    ) {
+    constructor(private readonly workspaceSettings: WorkspaceSettingsService) {
         super();
 
         this.schema = z.object({
@@ -68,7 +66,20 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         });
     }
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        context?: ExecutionContext
+    ): Promise<ToolResult> {
+        // Get per-analysis dependencies from ExecutionContext
+        const executor = context?.subagentExecutor;
+        const sessionManager = context?.subagentSessionManager;
+
+        if (!executor || !sessionManager) {
+            return toolError(
+                'Subagent execution requires ExecutionContext with subagentExecutor and subagentSessionManager. This is an internal error.'
+            );
+        }
+
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(
@@ -76,27 +87,27 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             );
         }
 
-        const { task, context } = validationResult.data;
+        const { task, context: taskContext } = validationResult.data;
         const maxSubagents = this.workspaceSettings.getMaxSubagentsPerSession();
         const timeoutMs =
             this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
-        if (!this.sessionManager.canSpawn()) {
+        if (!sessionManager.canSpawn()) {
             Log.warn(
                 `Subagent spawn rejected: session limit reached (${maxSubagents})`
             );
             return toolError(SubagentErrors.maxExceeded(maxSubagents));
         }
 
-        const subagentId = this.sessionManager.recordSpawn();
-        const remaining = this.sessionManager.getRemainingBudget();
+        const subagentId = sessionManager.recordSpawn();
+        const remaining = sessionManager.getRemainingBudget();
         Log.info(
-            `Subagent #${subagentId} spawned (${this.sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
+            `Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );
 
         this.cancellationTokenSource = new vscode.CancellationTokenSource();
         const parentCancellationDisposable =
-            this.sessionManager.registerSubagentCancellation(
+            sessionManager.registerSubagentCancellation(
                 this.cancellationTokenSource
             );
         let cancelledByTimeout = false;
@@ -106,10 +117,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         }, timeoutMs);
 
         try {
-            const result = await this.executor.execute(
+            const result = await executor.execute(
                 {
                     task,
-                    context,
+                    context: taskContext,
                 },
                 this.cancellationTokenSource.token,
                 subagentId

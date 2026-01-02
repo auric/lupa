@@ -109,6 +109,9 @@ src/
 │   ├── getSymbolsOverviewTool.ts # Hierarchical symbols
 │   ├── searchForPatternTool.ts   # Text/regex search
 │   │
+│   │ # Planning Tool
+│   ├── updatePlanTool.ts         # Create and track review plan
+│   │
 │   │ # Structured Thinking Tools
 │   ├── thinkAboutContextTool.ts  # Context reasoning
 │   ├── thinkAboutTaskTool.ts     # Task decomposition
@@ -118,6 +121,9 @@ src/
 │   │ # Subagent Tool
 │   ├── runSubagentTool.ts        # Delegate investigations
 │   │
+│   │ # Completion Tool
+│   ├── submitReviewTool.ts       # Explicit completion signal
+│   │
 │   │ # Utilities
 │   ├── definitionFormatter.ts    # Format symbol definitions
 │   ├── usageFormatter.ts         # Format usage results
@@ -125,8 +131,18 @@ src/
 │   └── symbolRangeExpander.ts    # Expand symbol ranges
 │
 ├── 📁 prompts/                    # Prompt generation
+│   ├── promptBuilder.ts          # Fluent builder for composing prompts
 │   ├── toolAwareSystemPromptGenerator.ts # Main system prompt
-│   └── subagentPromptGenerator.ts # Subagent prompts
+│   ├── subagentPromptGenerator.ts # Subagent prompts
+│   └── 📁 blocks/                 # Modular prompt blocks
+│       ├── promptBlocks.ts       # Re-exports all block generators
+│       ├── roleDefinitions.ts    # Role definitions (PR reviewer, explorer)
+│       ├── analysisMethodology.ts # Analysis process and plan tracking
+│       ├── outputFormat.ts       # Output structure requirements
+│       ├── selfReflection.ts     # Self-reflection checkpoint guidance
+│       ├── toolSection.ts        # Tool inventory and descriptions
+│       ├── toolSelectionGuide.ts # Tool selection guidance
+│       └── subagentGuidance.ts   # Subagent delegation rules
 │
 ├── 📁 types/                      # TypeScript type definitions
 │   ├── types.ts                  # Common types

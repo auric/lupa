@@ -2,18 +2,17 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { ToolCallingAnalysisProvider } from '../services/toolCallingAnalysisProvider';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { ConversationManager } from '../models/conversationManager';
-import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindSymbolTool } from '../tools/findSymbolTool';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
-import { SubagentSessionManager } from '../services/subagentSessionManager';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
 } from './testUtils/mockFactories';
+import { PromptGenerator } from '../models/promptGenerator';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -38,43 +37,21 @@ const mockCopilotModelManager = {
     sendRequest: vi.fn(),
 };
 
-const mockPromptGenerator = {
-    getSystemPrompt: vi
-        .fn()
-        .mockReturnValue('You are an expert code reviewer.'),
-    getToolInformation: vi
-        .fn()
-        .mockReturnValue('\n\nYou have access to tools: find_symbol'),
-    generateToolAwareSystemPrompt: vi
-        .fn()
-        .mockReturnValue(
-            'You are an expert code reviewer with access to tools: find_symbol'
-        ),
-    generateToolCallingUserPrompt: vi
-        .fn()
-        .mockReturnValue(
-            '<files_to_review>Sample diff content</files_to_review>'
-        ),
-};
-
 describe('Tool-Calling Integration Tests', () => {
     let toolCallingAnalyzer: ToolCallingAnalysisProvider;
-    let conversationManager: ConversationManager;
-    let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
     let mockWorkspaceSettings: WorkspaceSettingsService;
     let findSymbolTool: FindSymbolTool;
     let tokenSource: vscode.CancellationTokenSource;
     let mockGitOperationsManager: Mocked<GitOperationsManager>;
     let mockSymbolExtractor: Mocked<SymbolExtractor>;
-    let subagentSessionManager: SubagentSessionManager;
+    let promptGenerator: PromptGenerator;
 
     beforeEach(() => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
-        conversationManager = new ConversationManager();
+        // Note: ConversationManager is now created internally per-analysis for concurrent-safety
 
         mockGitOperationsManager = {
             getRepository: vi.fn().mockReturnValue({
@@ -94,19 +71,16 @@ describe('Tool-Calling Integration Tests', () => {
             mockSymbolExtractor
         );
         toolRegistry.registerTool(findSymbolTool);
+        toolRegistry.registerTool(new SubmitReviewTool());
 
-        subagentSessionManager = new SubagentSessionManager(
-            mockWorkspaceSettings
-        );
+        promptGenerator = new PromptGenerator();
 
         // Initialize orchestrator
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
-            conversationManager,
-            toolExecutor,
+            toolRegistry,
             mockCopilotModelManager as any,
-            mockPromptGenerator as any,
-            mockWorkspaceSettings,
-            subagentSessionManager
+            promptGenerator,
+            mockWorkspaceSettings
         );
 
         // Clear all mocks
@@ -126,11 +100,21 @@ describe('Tool-Calling Integration Tests', () => {
 
     describe('End-to-End Tool-Calling Workflow', () => {
         it('should complete full analysis without tool calls', async () => {
-            // Mock LLM response without tool calls
+            // Mock LLM response that immediately submits review
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content:
-                    'This is a straightforward analysis without tool calls.',
-                toolCalls: null,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_submit',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'This is a straightforward analysis without tool calls. The code changes look good and follow best practices. Adding padding to meet 100 char minimum.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             const diff =
@@ -141,17 +125,15 @@ describe('Tool-Calling Integration Tests', () => {
             );
 
             expect(result.analysis).toBe(
-                'This is a straightforward analysis without tool calls.'
+                'This is a straightforward analysis without tool calls. The code changes look good and follow best practices. Adding padding to meet 100 char minimum.'
             );
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
                 1
             );
 
-            // Verify conversation history
-            const history = conversationManager.getHistory();
-            expect(history).toHaveLength(2); // User message + Assistant response
-            expect(history[0].role).toBe('user');
-            expect(history[1].role).toBe('assistant');
+            // Verify tool call metadata
+            expect(result.toolCalls.totalCalls).toBe(1); // submit_review
+            expect(result.toolCalls.successfulCalls).toBe(1);
         });
 
         it('should handle single tool call workflow', async () => {
@@ -201,9 +183,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'Based on the symbol definition, this is a class with a constructor.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Based on the symbol definition, this is a class with a constructor. The implementation looks correct. Adding padding to meet 100 char minimum.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -218,15 +210,11 @@ describe('Tool-Calling Integration Tests', () => {
                 2
             );
 
-            // Verify conversation flow
-            const history = conversationManager.getHistory();
-            expect(history).toHaveLength(4); // User + Assistant (with tool call) + Tool response + Final assistant
-            expect(history[0].role).toBe('user');
-            expect(history[1].role).toBe('assistant');
-            expect(history[1].toolCalls).toHaveLength(1);
-            expect(history[2].role).toBe('tool');
-            expect(history[2].toolCallId).toBe('call_1');
-            expect(history[3].role).toBe('assistant');
+            // Verify tool call metadata: find_symbol (fails due to mock) + submit_review (succeeds)
+            expect(result.toolCalls.totalCalls).toBe(2);
+            expect(result.toolCalls.successfulCalls).toBe(1);
+            expect(result.toolCalls.failedCalls).toBe(1);
+            expect(result.toolCalls.analysisCompleted).toBe(true);
         });
 
         it('should handle multiple tool calls in parallel', async () => {
@@ -298,8 +286,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Analysis complete based on both definitions.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Analysis complete based on both definitions. The code correctly uses both MyClass and myFunction. Adding padding to meet 100 char minimum.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff =
@@ -316,13 +315,11 @@ describe('Tool-Calling Integration Tests', () => {
                 2
             );
 
-            // Verify multiple tool responses in conversation
-            const history = conversationManager.getHistory();
-            expect(history).toHaveLength(5); // User + Assistant + 2 Tool responses + Final assistant
-            expect(history[2].role).toBe('tool');
-            expect(history[2].toolCallId).toBe('call_1');
-            expect(history[3].role).toBe('tool');
-            expect(history[3].toolCallId).toBe('call_2');
+            // Verify multiple tool calls in metadata: 2x find_symbol (fail) + submit_review (succeeds)
+            expect(result.toolCalls.totalCalls).toBe(3);
+            expect(result.toolCalls.successfulCalls).toBe(1);
+            expect(result.toolCalls.failedCalls).toBe(2);
+            expect(result.toolCalls.analysisCompleted).toBe(true);
         });
 
         it('should handle tool execution errors gracefully', async () => {
@@ -343,9 +340,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content:
-                        'I could not find the symbol, but I can still provide analysis.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'I could not find the symbol, but I can still provide analysis. The code changes appear reasonable. Adding padding to meet 100 char minimum.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             // Mock empty VS Code environment
@@ -359,12 +366,11 @@ describe('Tool-Calling Integration Tests', () => {
 
             expect(result.analysis).toContain('I could not find the symbol');
 
-            // Verify tool error is captured in conversation
-            const history = conversationManager.getHistory();
-            const toolMessage = history.find((m) => m.role === 'tool');
-            expect(toolMessage?.content).toContain(
-                "Symbol 'NonExistentSymbol' not found"
-            );
+            // Verify tool failure is captured in metadata
+            expect(result.toolCalls.totalCalls).toBe(2); // find_symbol (failed) + submit_review
+            // One failed (find_symbol), one success (submit_review)
+            expect(result.toolCalls.failedCalls).toBe(1);
+            expect(result.toolCalls.successfulCalls).toBe(1);
         });
 
         it('should handle LLM errors during conversation', async () => {
@@ -419,14 +425,25 @@ describe('Tool-Calling Integration Tests', () => {
     describe('System Integration', () => {
         it('should properly initialize all components', () => {
             expect(toolRegistry.getToolNames()).toContain('find_symbol');
-            expect(toolExecutor.isToolAvailable('find_symbol')).toBe(true);
-            expect(conversationManager.getMessageCount()).toBe(0);
+            expect(toolRegistry.hasTool('find_symbol')).toBe(true);
+            // ConversationManager is now created internally per-analysis
         });
 
         it('should generate proper system prompt with tools', async () => {
             mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: 'Analysis complete',
-                toolCalls: null,
+                content: null,
+                toolCalls: [
+                    {
+                        id: 'call_submit',
+                        function: {
+                            name: 'submit_review',
+                            arguments: JSON.stringify({
+                                review_content:
+                                    'Analysis complete. The code changes look good and follow best practices for this codebase. Adding padding to meet 100 char minimum.',
+                            }),
+                        },
+                    },
+                ],
             });
 
             await toolCallingAnalyzer.analyze('test diff', tokenSource.token);
@@ -437,8 +454,13 @@ describe('Tool-Calling Integration Tests', () => {
             expect(sendRequestCall.messages[0].content).toContain(
                 'find_symbol'
             );
-            expect(sendRequestCall.tools).toHaveLength(1);
-            expect(sendRequestCall.tools[0].name).toBe('find_symbol');
+            expect(sendRequestCall.tools).toHaveLength(2);
+            expect(sendRequestCall.tools.map((t: any) => t.name)).toContain(
+                'find_symbol'
+            );
+            expect(sendRequestCall.tools.map((t: any) => t.name)).toContain(
+                'submit_review'
+            );
         });
 
         it('should handle malformed tool call arguments', async () => {
@@ -456,8 +478,19 @@ describe('Tool-Calling Integration Tests', () => {
                     ],
                 })
                 .mockResolvedValueOnce({
-                    content: 'Handling the error gracefully.',
-                    toolCalls: null,
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: JSON.stringify({
+                                    review_content:
+                                        'Handling the error gracefully. Despite the tool issue, the code changes appear acceptable. Adding padding to meet 100 char minimum.',
+                                }),
+                            },
+                        },
+                    ],
                 });
 
             const diff = 'diff --git a/test.js b/test.js\n+// test';
@@ -468,9 +501,11 @@ describe('Tool-Calling Integration Tests', () => {
 
             expect(result.analysis).toContain('Handling the error gracefully');
 
-            // Should still complete despite malformed JSON
-            const history = conversationManager.getHistory();
-            expect(history.some((m) => m.role === 'tool')).toBe(true);
+            // Should still complete despite malformed JSON - verify via tool call records
+            expect(result.toolCalls.totalCalls).toBeGreaterThan(0);
+            expect(
+                result.toolCalls.calls.some((c) => c.toolName === 'find_symbol')
+            ).toBe(true);
         });
     });
 
@@ -478,8 +513,6 @@ describe('Tool-Calling Integration Tests', () => {
         it('should dispose all services properly', () => {
             expect(() => {
                 toolCallingAnalyzer.dispose();
-                conversationManager.dispose();
-                toolExecutor.dispose();
                 toolRegistry.dispose();
             }).not.toThrow();
         });

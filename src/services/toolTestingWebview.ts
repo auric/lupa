@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { Log } from './loggingService';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
+import type { WorkspaceSettingsService } from './workspaceSettingsService';
 import type {
     OpenFilePayload,
     ThemeUpdatePayload,
@@ -10,14 +11,15 @@ import type { ToolInfo } from '../webview/types/toolTestingTypes';
 import { safeJsonStringify } from '../utils/safeJson';
 
 /**
- * ToolTestingWebviewService handles the tool testing webview functionality
+ * ToolTestingWebviewService handles the tool testing webview functionality.
+ * Creates per-request ToolExecutor instances to ensure isolation from analysis sessions.
  */
 export class ToolTestingWebviewService {
     constructor(
         private readonly extensionContext: vscode.ExtensionContext,
         private readonly gitRepositoryRoot: string,
         private readonly toolRegistry: ToolRegistry,
-        private readonly toolExecutor: ToolExecutor
+        private readonly workspaceSettings: WorkspaceSettingsService
     ) {}
 
     /**
@@ -266,7 +268,8 @@ export class ToolTestingWebviewService {
     }
 
     /**
-     * Handle tool execution request
+     * Handle tool execution request.
+     * Creates a per-request ToolExecutor to ensure isolation from analysis sessions.
      */
     private async handleExecuteTool(
         payload: any,
@@ -280,8 +283,13 @@ export class ToolTestingWebviewService {
                 parameters
             );
 
-            // Execute the actual tool
-            const results = await this.toolExecutor.executeTools([
+            // Create per-request executor for isolation from concurrent analyses
+            const executor = new ToolExecutor(
+                this.toolRegistry,
+                this.workspaceSettings
+            );
+
+            const results = await executor.executeTools([
                 {
                     name: toolName,
                     args: parameters,
@@ -297,7 +305,7 @@ export class ToolTestingWebviewService {
                         id: `result-${Date.now()}-${Math.random()}`,
                         data: result,
                     })),
-                    executionTime: Date.now(), // This could be more accurate with timing
+                    executionTime: Date.now(),
                 },
             });
         } catch (error) {

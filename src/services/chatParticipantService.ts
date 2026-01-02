@@ -12,10 +12,16 @@ import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { ChatContextManager } from '../models/chatContextManager';
 import { PromptGenerator } from '../models/promptGenerator';
+import { PlanSessionManager } from './planSessionManager';
+import { SubagentSessionManager } from './subagentSessionManager';
+import { SubagentExecutor } from './subagentExecutor';
+import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
+import { CopilotModelManager } from '../models/copilotModelManager';
+import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
-import { ACTIVITY } from '../config/chatEmoji';
+import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
 import type {
@@ -29,11 +35,11 @@ import { createFollowupProvider } from './chatFollowupProvider';
  * Injected after construction via setDependencies().
  */
 export interface ChatParticipantDependencies {
-    toolExecutor: ToolExecutor;
     toolRegistry: ToolRegistry;
     workspaceSettings: WorkspaceSettingsService;
     promptGenerator: PromptGenerator;
     gitOperations: GitOperationsManager;
+    copilotModelManager: CopilotModelManager;
 }
 
 /**
@@ -212,15 +218,33 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
+            // Create per-request subagent infrastructure
+            const { subagentSessionManager, subagentExecutor } =
+                this.createSubagentContext(stream, token);
+
+            // Create per-request ToolExecutor with subagent context
+            const toolExecutor = new ToolExecutor(
+                this.deps.toolRegistry,
+                this.deps.workspaceSettings,
+                { subagentSessionManager, subagentExecutor }
+            );
+
             const timeoutMs =
                 this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
             const client = new ChatLLMClient(request.model, timeoutMs);
-            const runner = new ConversationRunner(
-                client,
-                this.deps.toolExecutor
-            );
+            const runner = new ConversationRunner(client, toolExecutor);
             const conversation = new ConversationManager();
-            const availableTools = this.deps.toolExecutor.getAvailableTools();
+
+            // Filter out main-analysis-only tools for exploration mode
+            // These tools require PR context, planManager, or are semantically invalid
+            const allTools = toolExecutor.getAvailableTools();
+            const availableTools = allTools.filter(
+                (tool) =>
+                    !MAIN_ANALYSIS_ONLY_TOOLS.includes(
+                        tool.name as (typeof MAIN_ANALYSIS_ONLY_TOOLS)[number]
+                    )
+            );
+
             const systemPrompt =
                 this.deps.promptGenerator.generateExplorationSystemPrompt(
                     availableTools
@@ -257,9 +281,8 @@ export class ChatParticipantService implements vscode.Disposable {
 
             conversation.addUserMessage(request.prompt);
 
-            const uiHandler = createChatStreamHandler(stream);
-            const debouncedHandler = new DebouncedStreamHandler(uiHandler);
-            const adapter = new ToolCallStreamAdapter(debouncedHandler);
+            const { debouncedHandler, adapter } =
+                this.createStreamAdapter(stream);
 
             const result = await runner.run(
                 {
@@ -438,15 +461,26 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
+        // Create per-analysis instances for complete isolation
+        const planManager = new PlanSessionManager();
+        const { subagentSessionManager, subagentExecutor } =
+            this.createSubagentContext(stream, token);
+
+        const toolExecutor = new ToolExecutor(
+            this.deps!.toolRegistry,
+            this.deps!.workspaceSettings,
+            { planManager, subagentSessionManager, subagentExecutor }
+        );
+
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
 
         const timeoutMs =
             this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
         const client = new ChatLLMClient(request.model, timeoutMs);
-        const runner = new ConversationRunner(client, this.deps!.toolExecutor);
+        const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
-        const availableTools = this.deps!.toolExecutor.getAvailableTools();
+        const availableTools = toolExecutor.getAvailableTools();
         const systemPrompt =
             this.deps!.promptGenerator.generateToolAwareSystemPrompt(
                 availableTools
@@ -467,44 +501,49 @@ export class ChatParticipantService implements vscode.Disposable {
             );
         conversation.addUserMessage(userPrompt);
 
-        const uiHandler = createChatStreamHandler(stream);
-        const debouncedHandler = new DebouncedStreamHandler(uiHandler);
-        const adapter = new ToolCallStreamAdapter(debouncedHandler);
+        const { debouncedHandler, adapter } = this.createStreamAdapter(stream);
 
-        const analysisResult = await runner.run(
-            {
-                systemPrompt,
-                maxIterations: this.deps!.workspaceSettings.getMaxIterations(),
-                tools: availableTools,
-                label: `Chat /${scopeLabel}`,
-            },
-            conversation,
-            token,
-            adapter
-        );
+        try {
+            const analysisResult = await runner.run(
+                {
+                    systemPrompt,
+                    maxIterations:
+                        this.deps!.workspaceSettings.getMaxIterations(),
+                    tools: availableTools,
+                    label: `Chat /${scopeLabel}`,
+                    requiresExplicitCompletion: true,
+                },
+                conversation,
+                token,
+                adapter
+            );
 
-        debouncedHandler.flush();
+            debouncedHandler.flush();
 
-        if (analysisResult === CANCELLATION_MESSAGE) {
-            return this.handleCancellation(stream);
+            if (analysisResult === CANCELLATION_MESSAGE) {
+                return this.handleCancellation(stream);
+            }
+
+            streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
+
+            const contentAnalysis = this.analyzeResultContent(analysisResult);
+
+            return {
+                metadata: {
+                    command: request.command as 'branch' | 'changes',
+                    filesAnalyzed: parsedDiff.length,
+                    issuesFound: contentAnalysis.issuesFound,
+                    hasCriticalIssues: contentAnalysis.hasCriticalIssues,
+                    hasSecurityIssues: contentAnalysis.hasSecurityIssues,
+                    hasTestingSuggestions:
+                        contentAnalysis.hasTestingSuggestions,
+                    cancelled: false,
+                    analysisTimestamp: Date.now(),
+                } satisfies ChatAnalysisMetadata,
+            };
+        } finally {
+            subagentSessionManager.setParentCancellationToken(undefined);
         }
-
-        streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
-
-        const contentAnalysis = this.analyzeResultContent(analysisResult);
-
-        return {
-            metadata: {
-                command: request.command as 'branch' | 'changes',
-                filesAnalyzed: parsedDiff.length,
-                issuesFound: contentAnalysis.issuesFound,
-                hasCriticalIssues: contentAnalysis.hasCriticalIssues,
-                hasSecurityIssues: contentAnalysis.hasSecurityIssues,
-                hasTestingSuggestions: contentAnalysis.hasTestingSuggestions,
-                cancelled: false,
-                analysisTimestamp: Date.now(),
-            } satisfies ChatAnalysisMetadata,
-        };
     }
 
     /**
@@ -519,10 +558,10 @@ export class ChatParticipantService implements vscode.Disposable {
     } {
         return {
             issuesFound:
-                analysisResult.includes('🔴') ||
-                analysisResult.includes('🟠') ||
-                analysisResult.includes('🟡'),
-            hasCriticalIssues: analysisResult.includes('🔴'),
+                analysisResult.includes(SEVERITY.critical) ||
+                analysisResult.includes(SEVERITY.high) ||
+                analysisResult.includes(SEVERITY.medium),
+            hasCriticalIssues: analysisResult.includes(SEVERITY.critical),
             hasSecurityIssues: analysisResult.includes('🔒'),
             hasTestingSuggestions: analysisResult.includes('🧪'),
         };
@@ -550,6 +589,45 @@ export class ChatParticipantService implements vscode.Disposable {
                 responseIsIncomplete: true,
             },
         };
+    }
+
+    /**
+     * Create per-request subagent infrastructure.
+     * Extracted to avoid duplication between exploration and analysis modes.
+     */
+    private createSubagentContext(
+        stream: vscode.ChatResponseStream,
+        token: vscode.CancellationToken
+    ): {
+        subagentSessionManager: SubagentSessionManager;
+        subagentExecutor: SubagentExecutor;
+    } {
+        const subagentSessionManager = new SubagentSessionManager(
+            this.deps!.workspaceSettings
+        );
+        const subagentExecutor = new SubagentExecutor(
+            this.deps!.copilotModelManager,
+            this.deps!.toolRegistry,
+            new SubagentPromptGenerator(),
+            this.deps!.workspaceSettings,
+            (msg) => stream.progress(msg)
+        );
+        subagentSessionManager.setParentCancellationToken(token);
+        return { subagentSessionManager, subagentExecutor };
+    }
+
+    /**
+     * Create stream adapter pipeline for tool-calling UI feedback.
+     * Extracted to avoid duplication between exploration and analysis modes.
+     */
+    private createStreamAdapter(stream: vscode.ChatResponseStream): {
+        debouncedHandler: DebouncedStreamHandler;
+        adapter: ToolCallStreamAdapter;
+    } {
+        const uiHandler = createChatStreamHandler(stream);
+        const debouncedHandler = new DebouncedStreamHandler(uiHandler);
+        const adapter = new ToolCallStreamAdapter(debouncedHandler);
+        return { debouncedHandler, adapter };
     }
 
     /**

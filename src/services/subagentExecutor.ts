@@ -20,33 +20,23 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  * Executes subagent investigations with isolated context.
  * Thin wrapper that delegates to ConversationRunner - no loop duplication.
  *
+ * Created per-analysis for concurrency safety. Progress callback is bound
+ * at construction time, eliminating mutable state.
+ *
  * Responsibilities:
  * - Create isolated conversation context per investigation
  * - Filter tools to prevent infinite recursion
  * - Return raw response for parent LLM to interpret
  */
 export class SubagentExecutor {
-    private progressCallback: AnalysisProgressCallback | undefined;
-    private progressContext: SubagentProgressContext | undefined;
-
     constructor(
         private readonly modelManager: CopilotModelManager,
         private readonly toolRegistry: ToolRegistry,
         private readonly promptGenerator: SubagentPromptGenerator,
-        private readonly workspaceSettings: WorkspaceSettingsService
+        private readonly workspaceSettings: WorkspaceSettingsService,
+        private readonly progressCallback?: AnalysisProgressCallback,
+        private readonly progressContext?: SubagentProgressContext
     ) {}
-
-    /**
-     * Set progress callback for subagent iteration reporting.
-     * Call before starting analysis, clear after completion.
-     */
-    setProgressCallback(
-        callback: AnalysisProgressCallback | undefined,
-        context: SubagentProgressContext | undefined
-    ): void {
-        this.progressCallback = callback;
-        this.progressContext = context;
-    }
 
     /**
      * Report progress with main analysis context prefix.
@@ -96,6 +86,9 @@ export class SubagentExecutor {
             const conversation = new ConversationManager();
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
+
+            // No ExecutionContext passed intentionally - SubagentLimits.DISALLOWED_TOOLS
+            // filters out all tools that require context (run_subagent, update_plan, etc.)
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
                 this.workspaceSettings

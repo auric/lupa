@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { ChatAnalysisMetadata } from '../types/chatTypes';
 import { Log } from './loggingService';
+import { SEVERITY } from '../config/chatEmoji';
 
 const MAX_FOLLOWUPS = 4;
 
@@ -65,7 +66,7 @@ function buildContextualFollowups(
     if (metadata?.hasCriticalIssues) {
         followups.push({
             prompt: 'Focus on critical issues only',
-            label: '🔴 Critical Focus',
+            label: `${SEVERITY.critical} Critical Focus`,
             command: '', // Exploration mode, not re-run analysis
         });
     }

@@ -7,6 +7,7 @@ import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 import { OutputFormatter, FileContentOptions } from '../utils/outputFormatter';
 
 const FILE_OPERATION_TIMEOUT = 15000; // 30 seconds for file operations
@@ -62,7 +63,10 @@ export class ReadFileTool extends BaseTool {
         super();
     }
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         try {
             const { file_path, start_line, end_line, line_count } = args;
 

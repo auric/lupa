@@ -112,11 +112,21 @@ Core business logic implementing specific capabilities.
 | `ToolCallingAnalysisProvider` | Main analysis loop with tool-calling      |
 | `GitOperationsManager`        | Git repository and diff operations        |
 | `ChatParticipantService`      | `@lupa` chat participant for Copilot Chat |
-| `SubagentExecutor`            | Isolated subagent investigations          |
 | `UIManager`                   | Webview panel management                  |
 | `WorkspaceSettingsService`    | Persisted settings (`.vscode/lupa.json`)  |
 | `LoggingService`              | Centralized logging with levels           |
 | `StatusBarService`            | Status bar item management                |
+
+### Per-Analysis Components
+
+These components are created fresh for each analysis, not managed as singletons:
+
+| Component                 | Responsibility                           |
+| ------------------------- | ---------------------------------------- |
+| `SubagentExecutor`        | Isolated subagent investigations         |
+| `SubagentSessionManager`  | Subagent spawn count and limits          |
+| `PlanSessionManager`      | Review plan state for current analysis   |
+| `TokenValidator` instance | Context window tracking for one analysis |
 
 ### Layer 3: Models (`src/models/`)
 
@@ -145,17 +155,47 @@ LLM-callable tools extending `BaseTool` with Zod schemas.
 | `FindFilesByPatternTool` | Glob-based file search                        |
 | `GetSymbolsOverviewTool` | Hierarchical symbol structure                 |
 | `SearchForPatternTool`   | Ripgrep-based text search                     |
+| `UpdatePlanTool`         | Create and track review plan with checklist   |
 | `RunSubagentTool`        | Delegate investigations to subagents          |
+| `SubmitReviewTool`       | Explicit completion signal for PR review      |
 | `ThinkAbout*Tools`       | Structured reasoning tools                    |
 
 ### Layer 5: Prompts (`src/prompts/`)
 
-System prompt generators for different modes.
+System prompt generators using a modular block-based architecture.
 
-| Generator                        | Purpose                        |
-| -------------------------------- | ------------------------------ |
-| `ToolAwareSystemPromptGenerator` | Main analysis system prompt    |
-| `SubagentPromptGenerator`        | Subagent investigation prompts |
+| Generator                        | Purpose                              |
+| -------------------------------- | ------------------------------------ |
+| `ToolAwareSystemPromptGenerator` | Main analysis system prompt          |
+| `SubagentPromptGenerator`        | Subagent investigation prompts       |
+| `PromptBuilder`                  | Fluent builder for composing prompts |
+
+#### Modular Prompt Blocks (`src/prompts/blocks/`)
+
+The prompt system uses composable blocks that can be mixed and matched for different analysis modes:
+
+| Block                    | Purpose                                         |
+| ------------------------ | ----------------------------------------------- |
+| `roleDefinitions.ts`     | Role definitions (PR reviewer, explorer)        |
+| `analysisMethodology.ts` | Step-by-step analysis process and plan tracking |
+| `outputFormat.ts`        | Output structure requirements                   |
+| `selfReflection.ts`      | Self-reflection checkpoint guidance             |
+| `toolSection.ts`         | Tool inventory and descriptions                 |
+| `toolSelectionGuide.ts`  | When to use each tool                           |
+| `subagentGuidance.ts`    | Subagent delegation rules                       |
+| `promptBlocks.ts`        | Re-exports all block generators                 |
+
+The `PromptBuilder` uses a fluent interface to compose these blocks:
+
+```typescript
+new PromptBuilder()
+    .addPRReviewerRole()
+    .addToolInventory(tools)
+    .addToolSelectionGuide('pr-review')
+    .addAnalysisMethodology()
+    .addOutputFormat()
+    .build();
+```
 
 ### Layer 6: Webview (`src/webview/`)
 
@@ -193,9 +233,7 @@ SymbolExtractor;
 ToolRegistry;
 ToolExecutor;
 ConversationManager;
-SubagentSessionManager;
-ToolCallingAnalysisProvider;
-SubagentExecutor;
+ToolCallingAnalysisProvider; // Creates per-analysis: SubagentExecutor, SubagentSessionManager, PlanSessionManager
 ChatParticipantService;
 LanguageModelToolProvider;
 // + All tools registered
@@ -218,6 +256,7 @@ User triggers analysis
             ▼
 ┌───────────────────────────────┐
 │  ToolCallingAnalysisProvider  │
+│  - Creates per-analysis state │
 │  - Generates prompts          │
 │  - Manages conversation       │
 └───────────────┬───────────────┘
@@ -248,6 +287,53 @@ User triggers analysis
 └──────────┘       │ - Rate limit  │      tool results)
                    └───────────────┘
 ```
+
+### Concurrency Model
+
+`ToolCallingAnalysisProvider` supports concurrent analysis sessions. Each call to `analyze()` creates isolated per-analysis state:
+
+| Component                | Scope        | Purpose                              |
+| ------------------------ | ------------ | ------------------------------------ |
+| `TokenValidator`         | Per-analysis | Context window tracking for this run |
+| `toolCallRecords`        | Per-analysis | Tool execution history               |
+| `currentIteration`       | Per-analysis | Iteration counter                    |
+| `SubagentSessionManager` | Per-analysis | Tracks subagent count and limits     |
+| `SubagentExecutor`       | Per-analysis | Executes subagent investigations     |
+| `PlanSessionManager`     | Per-analysis | Review plan state                    |
+
+This ensures multiple concurrent analyses don't share or corrupt state.
+
+### ExecutionContext
+
+Tools receive an `ExecutionContext` containing per-analysis dependencies:
+
+```typescript
+interface ExecutionContext {
+    planManager?: PlanSessionManager;
+    subagentSessionManager?: SubagentSessionManager;
+    subagentExecutor?: SubagentExecutor;
+}
+```
+
+#### Tool ExecutionContext Requirements
+
+| Tool            | Required Fields                              | Notes                            |
+| --------------- | -------------------------------------------- | -------------------------------- |
+| `run_subagent`  | `subagentExecutor`, `subagentSessionManager` | Returns error if missing         |
+| `update_plan`   | `planManager`                                | Returns error if missing         |
+| All other tools | None                                         | Can run without ExecutionContext |
+
+#### Context Creation by Mode
+
+| Mode        | planManager | subagentSessionManager | subagentExecutor |
+| ----------- | ----------- | ---------------------- | ---------------- |
+| PR Analysis | ✅          | ✅                     | ✅               |
+| Exploration | ❌          | ✅                     | ✅               |
+| Subagent    | ❌          | ❌                     | ❌               |
+
+**Key design principle:** Tools that require specific context fields are filtered from modes that don't provide them (see `MAIN_ANALYSIS_ONLY_TOOLS` in `toolConstants.ts`).
+
+The `RunSubagentTool` retrieves its executor from this context rather than via constructor injection.
 
 ---
 
@@ -294,11 +380,17 @@ toolError(message: string): ToolResult
 
 ## Subagent Architecture
 
-Subagents enable delegated investigations with isolated context:
+Subagents enable delegated investigations with isolated context. Each analysis creates its own `SubagentExecutor` and `SubagentSessionManager` for concurrency safety:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Main Analysis                             │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ Per-analysis state:                                     ││
+│  │ - SubagentSessionManager (tracks spawn count)           ││
+│  │ - SubagentExecutor (passed via ExecutionContext)        ││
+│  └─────────────────────────────────────────────────────────┘│
+│                           │                                  │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │ LLM: "This security pattern needs deeper investigation" ││
 │  │ → Calls RunSubagentTool                                 ││
@@ -306,7 +398,7 @@ Subagents enable delegated investigations with isolated context:
 │                           │                                  │
 │                           ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │                   SubagentExecutor                       ││
+│  │            SubagentExecutor (from context)               ││
 │  │  - Creates isolated ConversationManager                  ││
 │  │  - Filters tools (no recursive subagents)                ││
 │  │  - Runs ConversationRunner with own context              ││

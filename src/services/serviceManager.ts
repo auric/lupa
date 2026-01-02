@@ -33,11 +33,8 @@ import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
 import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
 import { RunSubagentTool } from '../tools/runSubagentTool';
-
-// Subagent services
-import { SubagentExecutor } from './subagentExecutor';
-import { SubagentSessionManager } from './subagentSessionManager';
-import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
+import { UpdatePlanTool } from '../tools/updatePlanTool';
+import { SubmitReviewTool } from '../tools/submitReviewTool';
 
 import { Log } from './loggingService';
 
@@ -69,9 +66,8 @@ export interface IServiceRegistry {
     conversationManager: ConversationManager;
     toolCallingAnalysisProvider: ToolCallingAnalysisProvider;
 
-    // Subagent services
-    subagentExecutor: SubagentExecutor;
-    subagentSessionManager: SubagentSessionManager;
+    // Note: SubagentExecutor and SubagentSessionManager are created per-analysis
+    // in ToolCallingAnalysisProvider for concurrent-safety.
 
     // Language Model Tool Provider
     languageModelToolProvider: LanguageModelToolProvider;
@@ -176,57 +172,52 @@ export class ServiceManager implements vscode.Disposable {
     private async initializeHighLevelServices(): Promise<void> {
         // Initialize tool-calling services
         this.services.toolRegistry = new ToolRegistry();
+
+        // NOTE: This singleton ToolExecutor is for utility purposes only (e.g., tool testing webview).
+        // For actual analysis sessions, ToolCallingAnalysisProvider and ChatParticipantService
+        // create per-analysis ToolExecutor instances with proper ExecutionContext to ensure
+        // concurrent-safety and per-session state isolation.
         this.services.toolExecutor = new ToolExecutor(
             this.services.toolRegistry,
             this.services.workspaceSettings!
         );
         this.services.conversationManager = new ConversationManager();
-        this.services.subagentSessionManager = new SubagentSessionManager(
-            this.services.workspaceSettings!
-        );
+        // Note: SubagentSessionManager and SubagentExecutor are created per-analysis
+        // in ToolCallingAnalysisProvider for concurrent-safety.
+        // Note: ToolCallingAnalysisProvider creates its own ConversationManager per-analysis
+        // for concurrent-safety. The shared conversationManager is kept for other uses.
         this.services.toolCallingAnalysisProvider =
             new ToolCallingAnalysisProvider(
-                this.services.conversationManager,
-                this.services.toolExecutor,
+                this.services.toolRegistry,
                 this.services.copilotModelManager!,
                 this.services.promptGenerator!,
-                this.services.workspaceSettings!,
-                this.services.subagentSessionManager
+                this.services.workspaceSettings!
             );
-
-        this.services.subagentExecutor = new SubagentExecutor(
-            this.services.copilotModelManager!,
-            this.services.toolRegistry,
-            new SubagentPromptGenerator(),
-            this.services.workspaceSettings!
-        );
-
-        // Wire up SubagentExecutor to ToolCallingAnalysisProvider for progress context sharing
-        this.services.toolCallingAnalysisProvider.setSubagentExecutor(
-            this.services.subagentExecutor
-        );
 
         // Register available tools
         this.initializeTools();
 
+        // Note: PlanSessionManager is created per-analysis in ToolCallingAnalysisProvider
+
         // Initialize tool testing webview service
+        // Passes workspaceSettings instead of toolExecutor so webview can create per-request executors
         const gitRootPath =
             this.services.gitOperations!.getRepository()?.rootUri.fsPath || '';
         this.services.toolTestingWebview = new ToolTestingWebviewService(
             this.context,
             gitRootPath,
             this.services.toolRegistry,
-            this.services.toolExecutor
+            this.services.workspaceSettings!
         );
 
         this.services.chatParticipantService =
             ChatParticipantService.getInstance();
         this.services.chatParticipantService.setDependencies({
-            toolExecutor: this.services.toolExecutor!,
             toolRegistry: this.services.toolRegistry!,
             workspaceSettings: this.services.workspaceSettings!,
             promptGenerator: this.services.promptGenerator!,
             gitOperations: this.services.gitOperations!,
+            copilotModelManager: this.services.copilotModelManager!,
         });
 
         // Register language model tools for Agent Mode
@@ -297,13 +288,20 @@ export class ServiceManager implements vscode.Disposable {
                 new ThinkAboutInvestigationTool()
             );
 
+            // Register the UpdatePlanTool for tracking review progress
+            // Note: UpdatePlanTool gets PlanSessionManager from ExecutionContext per-analysis
+            this.services.toolRegistry!.registerTool(new UpdatePlanTool());
+
             // Register the RunSubagentTool for delegating complex investigations
+            // Note: RunSubagentTool gets SubagentExecutor and SubagentSessionManager
+            // from ExecutionContext per-analysis for concurrent-safety
             const runSubagentTool = new RunSubagentTool(
-                this.services.subagentExecutor!,
-                this.services.subagentSessionManager!,
                 this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(runSubagentTool);
+
+            // Register the SubmitReviewTool for explicit completion signaling
+            this.services.toolRegistry!.registerTool(new SubmitReviewTool());
 
             Log.info(
                 `Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`

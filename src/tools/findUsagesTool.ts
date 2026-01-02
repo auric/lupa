@@ -6,6 +6,7 @@ import { UsageFormatter } from './usageFormatter';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 
 const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
@@ -59,7 +60,10 @@ Requires file_path where the symbol is defined as starting point.`;
             ),
     });
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
+    async execute(
+        args: z.infer<typeof this.schema>,
+        _context?: ExecutionContext
+    ): Promise<ToolResult> {
         try {
             const {
                 symbol_name,

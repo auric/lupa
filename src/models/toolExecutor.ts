@@ -4,6 +4,7 @@ import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ToolResultMetadata } from '../types/toolResultTypes';
+import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 
 /**
@@ -30,13 +31,27 @@ export interface ToolExecutionResult {
  * Service responsible for executing tools registered in the ToolRegistry.
  * Supports both single tool execution and parallel execution of multiple tools.
  * Includes rate limiting to prevent excessive tool call loops.
+ *
+ * IMPORTANT: Create a new ToolExecutor instance for each analysis.
+ * This ensures proper isolation of tool call counts and execution context
+ * between parallel analyses. Do NOT reuse a singleton ToolExecutor across
+ * multiple concurrent analyses.
  */
 export class ToolExecutor {
     private toolCallCount = 0;
 
+    /**
+     * @param toolRegistry Registry containing available tools
+     * @param workspaceSettings Settings for rate limits etc.
+     * @param executionContext Optional context for tools that need it.
+     *   - Main analysis: Provides planManager for update_plan tool
+     *   - Subagents: Typically undefined (subagents can't use plan tools)
+     *   - Tools check for required context and return toolError if missing
+     */
     constructor(
         private toolRegistry: ToolRegistry,
-        private workspaceSettings: WorkspaceSettingsService
+        private workspaceSettings: WorkspaceSettingsService,
+        private executionContext?: ExecutionContext
     ) {}
 
     private get maxToolCalls(): number {
@@ -70,6 +85,10 @@ export class ToolExecutor {
      */
     async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
         const startTime = Date.now();
+
+        // Count BEFORE validation intentionally - rate limit protects against attempts,
+        // not just successful executions. A model making many invalid calls is broken
+        // and should be stopped. Like password lockout, we count all attempts.
         this.toolCallCount++;
 
         Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
@@ -102,7 +121,32 @@ export class ToolExecutor {
                 };
             }
 
-            const toolResult = await tool.execute(args);
+            // Validate args with Zod schema before execution
+            // VS Code's LM API should validate via JSON Schema, but some models bypass it
+            const parseResult = tool.schema.safeParse(args);
+            if (!parseResult.success) {
+                const zodError = parseResult.error;
+                const errorDetails = zodError.issues
+                    .map(
+                        (issue) =>
+                            `${issue.path.map(String).join('.')}: ${issue.message}`
+                    )
+                    .join(', ');
+                Log.warn(
+                    `Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}`
+                );
+                return {
+                    name,
+                    success: false,
+                    error: `Invalid arguments: ${errorDetails}`,
+                };
+            }
+
+            const validatedArgs = parseResult.data;
+            const toolResult = await tool.execute(
+                validatedArgs,
+                this.executionContext
+            );
             const elapsed = Date.now() - startTime;
 
             // Validate response size only for successful results with data
@@ -195,44 +239,6 @@ export class ToolExecutor {
                 `Unexpected error during parallel tool execution: ${error instanceof Error ? error.message : String(error)}`
             );
         }
-    }
-
-    /**
-     * Execute multiple tools sequentially (one after another).
-     * Useful when tool execution order matters or to avoid overwhelming the system.
-     * @param requests Array of tool execution requests
-     * @returns Promise resolving to an array of tool execution results
-     */
-    async executeToolsSequentially(
-        requests: ToolExecutionRequest[]
-    ): Promise<ToolExecutionResult[]> {
-        if (requests.length === 0) {
-            return [];
-        }
-
-        const toolNames = requests.map((r) => r.name).join(', ');
-        Log.debug(
-            `Executing ${requests.length} tools sequentially: ${toolNames}`
-        );
-        const startTime = Date.now();
-        const results: ToolExecutionResult[] = [];
-
-        for (const request of requests) {
-            const result = await this.executeTool(request.name, request.args);
-            results.push(result);
-
-            // If a tool fails and it's critical, you could break here
-            // For now, we continue execution regardless of individual failures
-        }
-
-        const elapsed = Date.now() - startTime;
-        const succeeded = results.filter((r) => r.success).length;
-        const failed = results.length - succeeded;
-        Log.info(
-            `Sequential execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`
-        );
-
-        return results;
     }
 
     /**

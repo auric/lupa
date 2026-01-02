@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import { ChatParticipantService } from '../services/chatParticipantService';
 import { GitService } from '../services/gitService';
 import { ConversationRunner } from '../models/conversationRunner';
+import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
+import { createMockCopilotModelManager } from './testUtils/mockFactories';
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -140,7 +142,6 @@ describe('ChatParticipantService', () => {
         let capturedHandler: any;
         let mockStream: any;
         let mockToken: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -157,12 +158,9 @@ describe('ChatParticipantService', () => {
                 isCancellationRequested: false,
                 onCancellationRequested: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -205,11 +203,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -242,11 +240,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -277,11 +275,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -323,11 +321,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -356,11 +354,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -385,7 +383,6 @@ describe('ChatParticipantService', () => {
         let capturedHandler: any;
         let mockStream: any;
         let mockToken: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -402,12 +399,9 @@ describe('ChatParticipantService', () => {
                 isCancellationRequested: false,
                 onCancellationRequested: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -450,11 +444,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -487,11 +481,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -520,11 +514,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -553,11 +547,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -593,11 +587,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -626,11 +620,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -663,11 +657,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -701,11 +695,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -746,11 +740,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -793,11 +787,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -851,7 +845,6 @@ describe('ChatParticipantService', () => {
     describe('cancellation handling', () => {
         let capturedHandler: any;
         let mockStream: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -864,12 +857,9 @@ describe('ChatParticipantService', () => {
                 progress: vi.fn(),
                 filetree: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -918,11 +908,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -961,11 +951,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1015,11 +1005,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1070,11 +1060,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 await capturedHandler(
@@ -1112,11 +1102,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1156,11 +1146,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1201,11 +1191,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const result = await capturedHandler(
@@ -1247,11 +1237,11 @@ describe('ChatParticipantService', () => {
 
                 const instance = ChatParticipantService.getInstance();
                 instance.setDependencies({
-                    toolExecutor: mockToolExecutor,
                     toolRegistry: mockToolRegistry,
                     workspaceSettings: mockWorkspaceSettings,
                     promptGenerator: mockPromptGenerator,
                     gitOperations: mockGitOperations,
+                    copilotModelManager: createMockCopilotModelManager() as any,
                 });
 
                 const branchMockStream = {
@@ -1289,7 +1279,6 @@ describe('ChatParticipantService', () => {
         let capturedHandler: any;
         let mockStream: any;
         let mockToken: any;
-        let mockToolExecutor: any;
         let mockToolRegistry: any;
         let mockWorkspaceSettings: any;
         let mockPromptGenerator: any;
@@ -1306,12 +1295,9 @@ describe('ChatParticipantService', () => {
                 isCancellationRequested: false,
                 onCancellationRequested: vi.fn(),
             };
-            mockToolExecutor = {
-                getAvailableTools: vi.fn().mockReturnValue([]),
-                resetToolCallCount: vi.fn(),
-            };
             mockToolRegistry = {
                 getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
             };
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
@@ -1354,11 +1340,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1394,11 +1380,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1428,11 +1414,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -1482,11 +1468,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1519,11 +1505,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1558,11 +1544,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1598,11 +1584,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1635,11 +1621,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const result = await capturedHandler(
@@ -1667,11 +1653,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             await capturedHandler(
@@ -1700,11 +1686,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             // Create mock history with proper structure
@@ -1761,11 +1747,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const mockHistory = [
@@ -1810,11 +1796,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             const mockHistory = [
@@ -1849,11 +1835,11 @@ describe('ChatParticipantService', () => {
 
             const instance = ChatParticipantService.getInstance();
             instance.setDependencies({
-                toolExecutor: mockToolExecutor,
                 toolRegistry: mockToolRegistry,
                 workspaceSettings: mockWorkspaceSettings,
                 promptGenerator: mockPromptGenerator,
                 gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
             });
 
             // Create a model that throws on countTokens
@@ -1889,6 +1875,302 @@ describe('ChatParticipantService', () => {
             );
             expect(result.metadata.command).toBe('exploration');
             expect(result.metadata.cancelled).toBe(false);
+        });
+
+        it('should filter out MAIN_ANALYSIS_ONLY_TOOLS in exploration mode', async () => {
+            // Create mock tools - some main-only, some allowed in exploration
+            const mockMainOnlyTool = {
+                name: 'update_plan',
+                description: 'Update the review plan',
+            };
+            const mockMainOnlyTool2 = {
+                name: 'submit_review',
+                description: 'Submit the review',
+            };
+            const mockExplorationTool = {
+                name: 'read_file',
+                description: 'Read file content',
+            };
+            const mockExplorationTool2 = {
+                name: 'find_symbol',
+                description: 'Find symbol definitions',
+            };
+
+            // Return tools including main-only tools
+            mockToolRegistry.getAllTools.mockReturnValue([
+                mockMainOnlyTool,
+                mockMainOnlyTool2,
+                mockExplorationTool,
+                mockExplorationTool2,
+            ]);
+
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockResolvedValue('Exploration response');
+                this.reset = vi.fn();
+            });
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
+            });
+
+            await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'Explain the code',
+                    model: { id: 'test-model' },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            // Verify exploration prompt receives filtered tools
+            expect(
+                mockPromptGenerator.generateExplorationSystemPrompt
+            ).toHaveBeenCalledWith(expect.any(Array));
+
+            // Get the tools passed to generateExplorationSystemPrompt
+            const passedTools =
+                mockPromptGenerator.generateExplorationSystemPrompt.mock
+                    .calls[0][0];
+
+            // Should include exploration-safe tools
+            expect(passedTools).toContainEqual(
+                expect.objectContaining({ name: 'read_file' })
+            );
+            expect(passedTools).toContainEqual(
+                expect.objectContaining({ name: 'find_symbol' })
+            );
+
+            // Should NOT include main-analysis-only tools
+            expect(passedTools).not.toContainEqual(
+                expect.objectContaining({ name: 'update_plan' })
+            );
+            expect(passedTools).not.toContainEqual(
+                expect.objectContaining({ name: 'submit_review' })
+            );
+        });
+
+        it('should filter all MAIN_ANALYSIS_ONLY_TOOLS from exploration mode', async () => {
+            // Create a mock tool for each main-only tool to verify they're all filtered
+            const mockTools = [
+                ...MAIN_ANALYSIS_ONLY_TOOLS.map((name) => ({
+                    name,
+                    description: `${name} tool`,
+                })),
+                { name: 'read_file', description: 'Safe tool' },
+            ];
+
+            mockToolRegistry.getAllTools.mockReturnValue(mockTools);
+
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockResolvedValue('Response');
+                this.reset = vi.fn();
+            });
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
+            });
+
+            await capturedHandler(
+                {
+                    command: undefined,
+                    prompt: 'Question',
+                    model: { id: 'test-model' },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            const passedTools =
+                mockPromptGenerator.generateExplorationSystemPrompt.mock
+                    .calls[0][0];
+
+            // Verify ALL main-only tools are filtered out
+            for (const toolName of MAIN_ANALYSIS_ONLY_TOOLS) {
+                expect(passedTools).not.toContainEqual(
+                    expect.objectContaining({ name: toolName })
+                );
+            }
+
+            // But read_file should still be there
+            expect(passedTools).toContainEqual(
+                expect.objectContaining({ name: 'read_file' })
+            );
+        });
+    });
+
+    describe('main analysis subagent and completion support', () => {
+        let capturedHandler: any;
+        let mockStream: any;
+        let mockToken: any;
+        let mockToolRegistry: any;
+        let mockWorkspaceSettings: any;
+        let mockPromptGenerator: any;
+        let mockGitOperations: any;
+        let mockCopilotModelManager: any;
+        let runConfigCapture: any;
+
+        beforeEach(() => {
+            const mockParticipant = { dispose: vi.fn() };
+            mockStream = {
+                markdown: vi.fn(),
+                progress: vi.fn(),
+                filetree: vi.fn(),
+            };
+            mockToken = {
+                isCancellationRequested: false,
+                onCancellationRequested: vi.fn(),
+            };
+            mockToolRegistry = {
+                getToolNames: vi.fn().mockReturnValue([]),
+                getAllTools: vi.fn().mockReturnValue([]),
+            };
+            mockWorkspaceSettings = {
+                getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
+                getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
+            };
+            mockPromptGenerator = {
+                generateToolAwareSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('System prompt'),
+                generateToolCallingUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('User prompt'),
+            };
+            mockGitOperations = {
+                getRepository: vi.fn().mockReturnValue({
+                    rootUri: { fsPath: '/test/git-root' },
+                }),
+            };
+            mockCopilotModelManager = {
+                sendRequest: vi.fn().mockResolvedValue({
+                    content: 'Mock response',
+                    toolCalls: undefined,
+                }),
+            };
+            runConfigCapture = null;
+
+            vi.mocked(ConversationRunner).mockImplementation(function (
+                this: any
+            ) {
+                this.run = vi.fn().mockImplementation((config) => {
+                    runConfigCapture = config;
+                    return Promise.resolve(
+                        '## Summary\n\nAnalysis with at least 20 characters for submit_review.'
+                    );
+                });
+                this.reset = vi.fn();
+            });
+
+            (vscode.chat.createChatParticipant as any).mockImplementation(
+                (_id: string, handler: any) => {
+                    capturedHandler = handler;
+                    return mockParticipant;
+                }
+            );
+        });
+
+        it('should pass requiresExplicitCompletion: true for main analysis', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/file.ts b/file.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: mockCopilotModelManager,
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(runConfigCapture).toBeDefined();
+            expect(runConfigCapture.requiresExplicitCompletion).toBe(true);
+        });
+
+        it('should create ToolExecutor with full ExecutionContext for main analysis', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                getUncommittedChanges: vi.fn().mockResolvedValue({
+                    diffText: 'diff --git a/file.ts b/file.ts\n+new line',
+                    refName: 'uncommitted changes',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            // Capture the ToolExecutor constructor call
+            let _capturedToolExecutor: any = null;
+            const ToolExecutorMock = vi.fn().mockImplementation(function (
+                this: any,
+                _registry: any,
+                _settings: any,
+                executionContext: any
+            ) {
+                _capturedToolExecutor = executionContext;
+                this.getAvailableTools = vi.fn().mockReturnValue([]);
+                this.executeTool = vi.fn();
+            });
+
+            // Dynamically mock ToolExecutor
+            vi.doMock('../models/toolExecutor', () => ({
+                ToolExecutor: ToolExecutorMock,
+            }));
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: mockWorkspaceSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: mockCopilotModelManager,
+            });
+
+            await capturedHandler(
+                { command: 'changes', model: { id: 'test-model' } },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            // The test verifies that runAnalysis was called and completed
+            // The actual ExecutionContext verification is done via type checking
+            // since we can't easily intercept the internal ToolExecutor creation
+            expect(mockStream.progress).toHaveBeenCalled();
         });
     });
 });

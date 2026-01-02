@@ -69,6 +69,9 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
         args: Record<string, unknown>
     ): string {
         switch (toolName) {
+            case 'update_plan':
+                return `📝 Updating analysis plan...`;
+
             case 'read_file':
                 return `${ACTIVITY.reading} Reading ${args.file_path || 'file'}...`;
 
@@ -104,6 +107,9 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
             case 'think_about_completion':
                 return `🧠 Verifying analysis completeness...`;
+
+            case 'submit_review':
+                return `🚀 Submitting code review...`;
 
             default:
                 return `🔧 Running ${toolName}...`;

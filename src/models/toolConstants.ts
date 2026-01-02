@@ -44,12 +44,29 @@ export const SubagentLimits = {
     /** Tools that subagents cannot access */
     DISALLOWED_TOOLS: [
         'run_subagent', // Prevent sub-subagent recursion
+        'update_plan', // Main agent only - subagents don't track review progress
+        'submit_review', // Main agent only - explicit completion signal
         'think_about_completion', // Main agent only - for final review verification
         'think_about_context', // Main agent only - references diff coverage
         'think_about_task', // Main agent only - references PR review scope
-        // Subagent uses only: think_about_investigation
+        // NOTE: think_about_investigation is intentionally ALLOWED for subagents.
+        // It's the only think tool designed for focused investigations without
+        // needing diff context or PR-level review state that subagents don't have.
     ] as const,
 } as const;
+
+/**
+ * Tools that are only available during main analysis mode (not exploration mode).
+ * Exploration mode (no slash command) doesn't have PR context or a review plan,
+ * so these tools would either fail or return nonsensical guidance.
+ */
+export const MAIN_ANALYSIS_ONLY_TOOLS = [
+    'update_plan', // Requires planManager from ExecutionContext
+    'submit_review', // Semantically for completing PR analysis
+    'think_about_completion', // References PR analysis completion criteria
+    'think_about_context', // References diff coverage and PR-level context
+    'think_about_task', // References PR review scope and task structure
+] as const;
 
 /**
  * Error messages for subagent execution failures.

@@ -9,6 +9,7 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
 import { CANCELLATION_MESSAGE } from '../config/constants';
+import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUtils';
 
 /**
  * Configuration for running a conversation loop.
@@ -22,6 +23,15 @@ export interface ConversationRunnerConfig {
     tools: ITool[];
     /** Optional label for logging context (e.g., "Main Analysis", "Subagent #1: Security") */
     label?: string;
+    /**
+     * If true, the conversation must complete via a tool with isCompletion metadata
+     * (e.g., submit_review). The runner will nudge the LLM to call the completion tool
+     * if it tries to respond without tool calls.
+     *
+     * Use for main PR analysis where structured completion is required.
+     * Subagents and exploration modes can complete with direct responses.
+     */
+    requiresExplicitCompletion?: boolean;
 }
 
 /**
@@ -57,6 +67,14 @@ export interface ToolCallHandler {
 }
 
 /**
+ * Result from handling tool calls.
+ */
+interface HandleToolCallsResult {
+    /** If submit_review was called, contains the final review content */
+    finalReview?: string;
+}
+
+/**
  * Runs a tool-calling conversation loop.
  * Extracted for reuse by both main analysis and subagents.
  *
@@ -85,6 +103,8 @@ export class ConversationRunner {
         handler?: ToolCallHandler
     ): Promise<string> {
         let iteration = 0;
+        let completionNudgeCount = 0;
+        const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
 
         while (iteration < config.maxIterations) {
@@ -188,15 +208,75 @@ export class ConversationRunner {
                 );
 
                 if (response.toolCalls && response.toolCalls.length > 0) {
-                    await this.handleToolCalls(
+                    // Reset nudge counter - model is cooperating with tool calls
+                    completionNudgeCount = 0;
+
+                    const result = await this.handleToolCalls(
                         response.toolCalls,
                         conversation,
                         handler,
                         logPrefix
                     );
+
+                    // If submit_review was called, return its content as the final review
+                    if (result.finalReview) {
+                        Log.info(
+                            `${logPrefix} Completed via submit_review tool`
+                        );
+                        return result.finalReview;
+                    }
+
                     continue;
                 }
 
+                // No tool calls - check if explicit completion is required
+                // Main analysis requires submit_review; subagents/exploration can complete directly
+                if (config.requiresExplicitCompletion) {
+                    completionNudgeCount++;
+
+                    // After MAX_COMPLETION_NUDGES attempts, accept the response to prevent infinite loops
+                    if (completionNudgeCount > MAX_COMPLETION_NUDGES) {
+                        Log.warn(
+                            `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
+                        );
+
+                        // Try to extract review content from malformed tool call attempts
+                        const extractedReview =
+                            extractReviewFromMalformedToolCall(
+                                response.content
+                            );
+                        if (extractedReview) {
+                            Log.info(
+                                `${logPrefix} Extracted review content from malformed tool call`
+                            );
+                            return extractedReview;
+                        }
+
+                        return (
+                            response.content ||
+                            'Analysis completed but model did not use submit_review tool.'
+                        );
+                    }
+
+                    const contentPreview =
+                        response.content?.substring(0, 150) || '(empty)';
+                    const contentEnding =
+                        response.content && response.content.length > 100
+                            ? response.content.slice(-100)
+                            : '';
+                    Log.info(
+                        `${logPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                            `Content preview: "${contentPreview}...". ` +
+                            `Ending: "...${contentEnding}". Nudging to use submit_review.`
+                    );
+                    conversation.addUserMessage(
+                        'To complete your review, call the `submit_review` tool with your full review content. ' +
+                            'If you still have analysis to do, continue using the available tools.'
+                    );
+                    continue;
+                }
+
+                // For subagents and other contexts, accept the response as final
                 Log.info(`${logPrefix} Completed successfully`);
                 return (
                     response.content ||
@@ -290,13 +370,14 @@ export class ConversationRunner {
 
     /**
      * Execute tool calls and add results to conversation.
+     * @returns Object with finalReview if submit_review was called
      */
     private async handleToolCalls(
         toolCalls: ToolCall[],
         conversation: ConversationManager,
         handler?: ToolCallHandler,
         logPrefix = '[Conversation]'
-    ): Promise<void> {
+    ): Promise<HandleToolCallsResult> {
         // Log which tools are being called
         const toolNames = toolCalls.map((tc) => tc.function.name).join(', ');
         Log.info(
@@ -342,6 +423,8 @@ export class ConversationRunner {
                 ? Math.floor((endTime - startTime) / results.length)
                 : 0;
 
+        let finalReview: string | undefined;
+
         for (let i = 0; i < results.length; i++) {
             const result = results[i]!;
             const toolCall = toolCalls[i]!;
@@ -352,6 +435,15 @@ export class ConversationRunner {
                 result.success && result.result
                     ? result.result
                     : `Error: ${result.error || 'Unknown error'}`;
+
+            // Check if this tool signals completion via metadata flag.
+            // Design: isCompletion is a boolean signal; the actual content comes from
+            // result.result (the tool's data output), not from metadata itself.
+            // This separation allows tools to signal completion while keeping content
+            // in the standard result.result location for consistency.
+            if (result.success && result.metadata?.isCompletion) {
+                finalReview = result.result;
+            }
 
             // Get context status suffix if handler provides it
             const contextStatus = handler?.getContextStatusSuffix
@@ -373,6 +465,8 @@ export class ConversationRunner {
 
             conversation.addToolMessage(toolCallId, content);
         }
+
+        return { finalReview };
     }
 
     /**
