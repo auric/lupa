@@ -5,6 +5,68 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-01-02
+
+### Added
+
+#### Multi-Vendor Model Support
+
+- **All model vendors now supported**: Lupa can now use language models from any vendor configured in GitHub Copilot, not just the built-in Copilot models. This includes models added via third-party API keys (OpenAI, etc.).
+
+- **Vendor shown in model picker**: The model selection dialog now displays the vendor name alongside each model (e.g., "copilot · 128K tokens"), making it easier to distinguish between models with similar names from different providers. Copilot models are listed first, with the current/default model at the top.
+
+- **New `preferredModelIdentifier` setting**: Model preferences are now stored using a unique `vendor/id` format (e.g., `copilot/gpt-4.1`), which correctly identifies models even when multiple vendors provide models with similar names or versions.
+
+#### Improved Error Handling
+
+- **Centralized API error detection**: All API error handling is now centralized in `ConversationRunner.detectFatalError()`, ensuring consistent behavior across both command palette and chat participant paths.
+
+- **Anthropic BYOK error handling**: When using Anthropic models configured via "bring your own key", Lupa now shows a clear error message explaining that these models don't work due to VS Code Language Model API limitations (no system prompt support). See [vscode#255286](https://github.com/microsoft/vscode/issues/255286).
+
+- **Invalid request errors**: API errors with `invalid_request_error` type are now detected as fatal errors and show user-friendly messages explaining the issue.
+
+#### Developer Experience
+
+- **Model logging at analysis start**: The selected model name, vendor, ID, and token limit are now logged at the start of each analysis for easier debugging.
+
+- **GitHub Copilot Chat dependency declared**: Added `GitHub.copilot-chat` to `extensionDependencies` in package.json. VS Code now ensures Copilot Chat is installed and enabled before Lupa activates, providing a clear error if it's missing.
+
+### Changed
+
+#### README Improvements
+
+- **Clearer credit consumption warning**: Added prominent warning at the top of the README explaining that Lupa makes 50-100+ tool calls per analysis, which can quickly consume premium request quotas.
+
+- **"Why Lupa?" section**: Added explanation of the name (Spanish for "magnifying glass") and the metaphor behind the extension.
+
+- **GPT-4.1 guidance clarified**: Updated documentation to reflect that GPT-4.1 works reasonably well for small to medium PRs, but struggles with large code changes.
+
+- **Model cost comparison table**: Replaced bullet list with a table showing cost and notes for recommended free models.
+
+- **Anthropic BYOK limitation documented**: Added note that Anthropic models configured via "bring your own key" do not work due to VS Code Language Model API not supporting system prompts ([vscode#255286](https://github.com/microsoft/vscode/issues/255286)).
+
+#### Architecture Improvements
+
+- **Simplified CopilotModelManager.sendRequest()**: Error handling removed from `CopilotModelManager` and `ChatLLMClient`. Both now delegate directly to `ModelRequestHandler`, with error detection handled centrally in `ConversationRunner`.
+
+### Fixed
+
+- **Model identifier validation**: The model identifier parser now validates input format, rejecting malformed identifiers (empty strings, missing vendor/id parts) and falling back to the default model gracefully.
+
+- **Fatal error detection**: Fixed `detectFatalError()` to treat all `invalid_request_error` type errors as fatal. The function checks for `model_not_supported` codes first, then detects `invalid_request_error` types with specialized messages for system-prompt-related failures.
+
+- **CopilotApiError wrapping restored**: Fatal API errors are now properly wrapped in `CopilotApiError` with appropriate error codes, ensuring consistent error type checking across the codebase.
+
+- **Model identifier normalization**: Vendor-less identifiers (e.g., `gpt-4.1`) are now normalized to canonical `vendor/id` form (`copilot/gpt-4.1`) when saved, ensuring consistent settings storage.
+
+- **Default model selector now includes vendor**: When falling back to the default model, the selector now explicitly specifies `vendor: 'copilot'` to prevent ambiguous matches if other vendors provide models with the same ID.
+
+- **Invalid identifiers cleared from settings**: When a malformed model identifier is detected, it's now cleared from settings to prevent repeated fallback warnings on every analysis.
+
+- **Vendor casing normalized**: Model vendor names are now normalized to lowercase for consistent comparison and storage (e.g., `CoPilot/gpt-4.1` becomes `copilot/gpt-4.1`).
+
+- **Binary files filtered from diffs**: Binary file diffs (images, compiled files, etc.) are now automatically filtered out before being sent to the LLM. This prevents wasting tokens on non-reviewable content and avoids confusing the model with binary markers. Comprehensive test coverage added for all git binary diff formats.
+
 ## [0.1.7] - 2026-01-02
 
 ### Fixed
@@ -239,6 +301,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.8]: https://github.com/auric/lupa/releases/tag/v0.1.8
 [0.1.7]: https://github.com/auric/lupa/releases/tag/v0.1.7
 [0.1.6]: https://github.com/auric/lupa/releases/tag/v0.1.6
 [0.1.5]: https://github.com/auric/lupa/releases/tag/v0.1.5

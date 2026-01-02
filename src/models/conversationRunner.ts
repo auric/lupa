@@ -295,14 +295,16 @@ export class ConversationRunner {
                     return CANCELLATION_MESSAGE;
                 }
 
-                if (this.isFatalModelError(error)) {
-                    const errorMsg =
-                        error instanceof Error ? error.message : String(error);
+                const fatalError = this.detectFatalError(error);
+                if (fatalError) {
                     Log.error(
-                        `${logPrefix} Fatal model error encountered: ${errorMsg}`
+                        `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`
                     );
-                    vscode.window.showErrorMessage(errorMsg);
-                    throw error instanceof Error ? error : new Error(errorMsg);
+                    vscode.window.showErrorMessage(fatalError.message);
+                    throw new CopilotApiError(
+                        fatalError.message,
+                        fatalError.code
+                    );
                 }
 
                 const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
@@ -333,10 +335,80 @@ export class ConversationRunner {
     }
 
     private isFatalModelError(error: unknown): boolean {
-        return (
-            error instanceof CopilotApiError &&
-            error.code === 'model_not_supported'
-        );
+        const result = this.detectFatalError(error);
+        return result !== null;
+    }
+
+    /**
+     * Detect fatal API errors that should stop the conversation immediately.
+     * Returns a user-friendly message and error code, or null if not a fatal error.
+     */
+    private detectFatalError(
+        error: unknown
+    ): { message: string; code: string } | null {
+        if (error instanceof CopilotApiError) {
+            return { message: error.message, code: error.code };
+        }
+
+        const errorMsg = error instanceof Error ? error.message : String(error);
+
+        // Extract and parse JSON from error message (e.g., "400 {...}" or "{...}")
+        // Example: 400 {"error":{"message":"Model is not supported for this request.","param":"model","code":"model_not_supported","type":"invalid_request_error"}}
+        const jsonMatch = errorMsg.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+            return null;
+        }
+
+        try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            const apiError = parsed.error;
+
+            if (!apiError || typeof apiError !== 'object') {
+                return null;
+            }
+
+            const { code, type, message } = apiError;
+
+            if (code === 'model_not_supported') {
+                return {
+                    message:
+                        'The selected model is not supported. ' +
+                        'Please choose a different model.',
+                    code: 'model_not_supported',
+                };
+            }
+
+            if (type === 'invalid_request_error') {
+                // Anthropic BYOK: empty system prompt not supported
+                if (
+                    message?.includes(
+                        'system: text content blocks must be non-empty'
+                    )
+                ) {
+                    return {
+                        message:
+                            'This model requires a system prompt, but the VS Code Language Model API ' +
+                            'does not support setting system prompts for third-party models. ' +
+                            'This is a known limitation with Anthropic models configured via BYOK. ' +
+                            'Please use a Copilot-provided model instead. ' +
+                            'See https://github.com/microsoft/vscode/issues/255286 for details.',
+                        code: 'invalid_request_error',
+                    };
+                }
+
+                return {
+                    message:
+                        `The model returned an API error: ${message || 'Invalid request'}. ` +
+                        'This may be a compatibility issue with the selected model. ' +
+                        'Please try using a different model.',
+                    code: 'invalid_request_error',
+                };
+            }
+
+            return null;
+        } catch {
+            return null;
+        }
     }
 
     /**

@@ -12,7 +12,8 @@ export const SUBAGENT_LIMITS = {
 
 export const WorkspaceSettingsSchema = z.looseObject({
     selectedRepositoryPath: z.string().optional(),
-    preferredModelVersion: z.string().optional(),
+    /** Model identifier in format 'vendor/id' (e.g., 'copilot/gpt-4.1') */
+    preferredModelIdentifier: z.string().optional(),
     maxIterations: z
         .number()
         .min(ANALYSIS_LIMITS.maxIterations.min)

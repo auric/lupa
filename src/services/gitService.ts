@@ -24,6 +24,8 @@ export interface GitDiffResult {
     diffText: string;
     refName: string;
     error?: string;
+    /** Binary files that were excluded from the diff */
+    binaryFiles?: string[];
 }
 
 /**
@@ -32,6 +34,74 @@ export interface GitDiffResult {
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
     repository: Repository;
     isSubmodule: boolean;
+}
+
+/**
+ * Patterns that identify binary file diffs in git diff output
+ */
+const BINARY_DIFF_PATTERNS = [
+    // "Binary files a/path and b/path differ" (default git diff output)
+    /^Binary files .+ and .+ differ$/m,
+    // "GIT binary patch" header (used with --binary flag)
+    /^GIT binary patch$/m,
+];
+
+/**
+ * Split a unified diff into individual file diffs
+ */
+export function splitDiffByFile(diffText: string): string[] {
+    if (!diffText || !diffText.trim()) {
+        return [];
+    }
+
+    // Split at each "diff --git" boundary, keeping the delimiter
+    const parts = diffText.split(/(?=^diff --git )/m);
+    return parts.filter((part) => part.startsWith('diff --git'));
+}
+
+/**
+ * Check if a single file diff entry is a binary diff
+ */
+export function isBinaryFileDiff(fileDiff: string): boolean {
+    return BINARY_DIFF_PATTERNS.some((pattern) => pattern.test(fileDiff));
+}
+
+/**
+ * Extract the file path from a diff --git line
+ */
+export function extractFilePath(fileDiff: string): string | null {
+    // Match "diff --git a/path b/path" and extract the b/ path
+    const match = /^diff --git a\/.+ b\/(.+)$/m.exec(fileDiff);
+    return match?.[1] ?? null;
+}
+
+/**
+ * Filter out binary file diffs from a unified diff string.
+ * Binary files are wasteful to send to LLMs and may cause confusion.
+ */
+export function filterBinaryDiffs(diffText: string): {
+    filteredDiff: string;
+    binaryFiles: string[];
+} {
+    const fileDiffs = splitDiffByFile(diffText);
+    const textDiffs: string[] = [];
+    const binaryFiles: string[] = [];
+
+    for (const fileDiff of fileDiffs) {
+        if (isBinaryFileDiff(fileDiff)) {
+            const path = extractFilePath(fileDiff);
+            if (path) {
+                binaryFiles.push(path);
+            }
+        } else {
+            textDiffs.push(fileDiff);
+        }
+    }
+
+    return {
+        filteredDiff: textDiffs.join(''),
+        binaryFiles,
+    };
 }
 
 /**
@@ -579,14 +649,24 @@ export class GitService {
             }
 
             // Use Git command directly for three-dot diff format
-            const diffText = await this.executeGitCommand([
+            const rawDiff = await this.executeGitCommand([
                 'diff',
                 `${base}...${compare}`,
             ]);
 
+            // Filter out binary file diffs (wasteful to send to LLM)
+            const { filteredDiff, binaryFiles } = filterBinaryDiffs(rawDiff);
+
+            if (binaryFiles.length > 0) {
+                Log.info(
+                    `Filtered ${binaryFiles.length} binary file(s) from diff: ${binaryFiles.join(', ')}`
+                );
+            }
+
             return {
-                diffText,
+                diffText: filteredDiff,
                 refName: compare,
+                binaryFiles: binaryFiles.length > 0 ? binaryFiles : undefined,
             };
         } catch (error) {
             Log.error('Error comparing branches:', error);
@@ -627,12 +707,22 @@ export class GitService {
             const unstagedDiff = await this.repository.diff(false);
 
             // Combine them
-            const diffText =
+            const rawDiff =
                 `${stagedDiff ? `Staged changes:\n${stagedDiff}\n\n` : ''}${unstagedDiff ? `Unstaged changes:\n${unstagedDiff}` : ''}`.trim();
 
+            // Filter out binary file diffs (wasteful to send to LLM)
+            const { filteredDiff, binaryFiles } = filterBinaryDiffs(rawDiff);
+
+            if (binaryFiles.length > 0) {
+                Log.info(
+                    `Filtered ${binaryFiles.length} binary file(s) from uncommitted changes: ${binaryFiles.join(', ')}`
+                );
+            }
+
             return {
-                diffText,
+                diffText: filteredDiff,
                 refName: 'uncommitted changes',
+                binaryFiles: binaryFiles.length > 0 ? binaryFiles : undefined,
             };
         } catch (error) {
             Log.error('Error getting uncommitted changes:', error);

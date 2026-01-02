@@ -456,6 +456,101 @@ describe('ConversationRunner', () => {
 
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
         });
+
+        it('should stop on Anthropic BYOK system prompt error', async () => {
+            // This is the raw error format from Anthropic API via VS Code LM API
+            const anthropicError = new Error(
+                '400 {"type":"error","error":{"type":"invalid_request_error","message":"system: text content blocks must be non-empty"},"request_id":"req_123"}'
+            );
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(anthropicError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'anthropic-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            await expect(
+                runner.run(config, conversation, createCancellationToken())
+            ).rejects.toThrow(/VS Code Language Model API/i);
+
+            // Should stop after first attempt - fatal error
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('should stop on invalid_request_error from API', async () => {
+            // Generic invalid_request_error (not specifically the system prompt issue)
+            const apiError = new Error(
+                '400 {"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: must be less than 8192"}}'
+            );
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(apiError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'some-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            await expect(
+                runner.run(config, conversation, createCancellationToken())
+            ).rejects.toThrow(/max_tokens/i);
+
+            // Should stop after first attempt - fatal error
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('should stop on model_not_supported in raw error message', async () => {
+            // Real API error format with nested error object
+            const rawError = new Error(
+                '400 {"error":{"code":"model_not_supported","message":"The model xyz is not supported"}}'
+            );
+
+            const modelManager = {
+                sendRequest: vi.fn().mockRejectedValue(rawError),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'xyz-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            await expect(
+                runner.run(config, conversation, createCancellationToken())
+            ).rejects.toThrow(/not supported/i);
+
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
     });
 
     describe('Reset', () => {

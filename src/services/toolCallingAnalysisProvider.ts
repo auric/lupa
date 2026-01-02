@@ -135,6 +135,9 @@ export class ToolCallingAnalysisProvider {
 
             // Create token validator for this analysis
             const model = await this.copilotModelManager.getCurrentModel();
+            Log.info(
+                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
+            );
             const tokenValidator = new TokenValidator(model);
 
             // Create context status function that captures local state

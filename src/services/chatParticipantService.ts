@@ -139,6 +139,10 @@ export class ChatParticipantService implements vscode.Disposable {
         stream: vscode.ChatResponseStream,
         token: vscode.CancellationToken
     ): Promise<vscode.ChatResult> {
+        const model = request.model;
+        Log.info(
+            `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
+        );
         if (request.command === 'branch') {
             return this.handleBranchCommand(request, stream, token);
         }

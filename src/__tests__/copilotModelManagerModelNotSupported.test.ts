@@ -6,8 +6,8 @@ import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 function createMockSettings(timeoutSeconds: number): WorkspaceSettingsService {
     return {
-        getPreferredModelVersion: vi.fn().mockReturnValue(undefined),
-        setPreferredModelVersion: vi.fn(),
+        getPreferredModelIdentifier: vi.fn().mockReturnValue(undefined),
+        setPreferredModelIdentifier: vi.fn(),
         getRequestTimeoutSeconds: vi.fn().mockReturnValue(timeoutSeconds),
         getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
     } as unknown as WorkspaceSettingsService;
@@ -42,7 +42,9 @@ describe('CopilotModelManager model not supported handling', () => {
         vi.clearAllMocks();
     });
 
-    it('surfaces a friendly error when the selected model is not supported', async () => {
+    it('passes through raw model_not_supported error for ConversationRunner to handle', async () => {
+        // CopilotModelManager now just delegates to ModelRequestHandler.
+        // Error handling is centralized in ConversationRunner.detectFatalError()
         const unsupportedError = new Error(
             'Request Failed: 400 {"error":{"message":"The requested model is not supported.","code":"model_not_supported","param":"model","type":"invalid_request_error"}}'
         );
@@ -53,8 +55,9 @@ describe('CopilotModelManager model not supported handling', () => {
             tools: [],
         };
 
+        // The raw error should propagate - ConversationRunner will detect and handle it
         await expect(
             modelManager.sendRequest(request, cancellationTokenSource.token)
-        ).rejects.toThrow(/not supported/i);
+        ).rejects.toThrow('model_not_supported');
     });
 });

@@ -265,18 +265,18 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the preferred language model version
+     * Get the preferred model identifier in 'vendor/id' format.
      */
-    public getPreferredModelVersion(): string | undefined {
-        return this.settings.preferredModelVersion;
+    public getPreferredModelIdentifier(): string | undefined {
+        return this.settings.preferredModelIdentifier;
     }
 
     /**
-     * Set the preferred language model version
-     * @param version The model version to set as preferred
+     * Set the preferred model identifier.
+     * @param identifier Model identifier in 'vendor/id' format (e.g., 'copilot/gpt-4.1')
      */
-    public setPreferredModelVersion(version: string | undefined): void {
-        this.settings.preferredModelVersion = version;
+    public setPreferredModelIdentifier(identifier: string | undefined): void {
+        this.settings.preferredModelIdentifier = identifier;
         this.debouncedSaveSettings();
     }
 
@@ -317,13 +317,13 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Clear all workspace settings (except for selected models and repository)
      */
     public clearWorkspaceSettings(): void {
-        const preferredModelVersion = this.settings.preferredModelVersion;
+        const preferredModelIdentifier = this.settings.preferredModelIdentifier;
         const selectedRepositoryPath = this.settings.selectedRepositoryPath;
 
         this.settings = getDefaultSettings();
 
-        if (preferredModelVersion) {
-            this.settings.preferredModelVersion = preferredModelVersion;
+        if (preferredModelIdentifier) {
+            this.settings.preferredModelIdentifier = preferredModelIdentifier;
         }
 
         if (selectedRepositoryPath) {
