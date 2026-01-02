@@ -116,8 +116,8 @@ export class AnalysisOrchestrator implements vscode.Disposable {
     ): Promise<void> {
         await vscode.window.withProgress(
             {
-                location: vscode.ProgressLocation.Notification,
-                title: 'Analyzing PR (Esc to hide)',
+                location: vscode.ProgressLocation.Window,
+                title: 'Analyzing PR',
                 cancellable: true,
             },
             async (progress, token) => {

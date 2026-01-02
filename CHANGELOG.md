@@ -5,6 +5,24 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-01-02
+
+### Fixed
+
+#### File Link Parsing
+
+- **GitHub-style line references**: Added support for GitHub-style `#L` line references in file links. Links like `[file.cpp:79-85](path/file.cpp#L79-L85)` and `[file.cpp](file.cpp#L42)` now work correctly in both the webview and chat participant. Previously, only colon-based formats (`:79`, `:79-85`) were recognized.
+
+- **Mixed line range formats**: Support for mixed GitHub-style formats like `#L79-85` (L prefix only on start line) in addition to `#L79-L85`.
+
+#### Symbol Tool Improvements
+
+- **Flexible name_path separator**: The `find_symbol` tool now accepts both `/` and `.` as path separators. LLMs sometimes use `ChatParticipantService.handleExplorationRequest` instead of `ChatParticipantService/handleExplorationRequest`, and both now work correctly.
+
+#### Analysis Progress
+
+- **Non-intrusive progress indicator**: Changed analysis progress from a notification toast to the status bar window indicator. The progress is now shown in the status bar instead of a popup notification, providing a cleaner UX without blocking the UI.
+
 ## [0.1.6] - 2026-01-02
 
 ### Fixed
@@ -217,6 +235,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.7]: https://github.com/auric/lupa/releases/tag/v0.1.7
 [0.1.6]: https://github.com/auric/lupa/releases/tag/v0.1.6
 [0.1.5]: https://github.com/auric/lupa/releases/tag/v0.1.5
 [0.1.4]: https://github.com/auric/lupa/releases/tag/v0.1.4

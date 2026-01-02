@@ -90,6 +90,17 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 true
             );
 
+            // Test dot separator (LLM sometimes uses . instead of /)
+            expect(
+                schema.safeParse({ name_path: 'MyClass.method' }).success
+            ).toBe(true);
+            expect(
+                schema.safeParse({
+                    name_path:
+                        'ChatParticipantService.handleExplorationRequest',
+                }).success
+            ).toBe(true);
+
             // Test validation (empty string rejection)
             expect(schema.safeParse({ name_path: '' }).success).toBe(false);
         });

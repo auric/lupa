@@ -413,6 +413,58 @@ describe('pathUtils', () => {
                 column: undefined,
             });
         });
+
+        it('should handle GitHub-style line format with L prefix', () => {
+            const result = parseFilePathFromUrl('src/file.ts#L42');
+            expect(result).toEqual({
+                filePath: 'src/file.ts',
+                line: 42,
+                endLine: undefined,
+                column: undefined,
+            });
+        });
+
+        it('should handle GitHub-style line range with L prefix', () => {
+            const result = parseFilePathFromUrl('src/file.cpp#L79-L85');
+            expect(result).toEqual({
+                filePath: 'src/file.cpp',
+                line: 79,
+                endLine: 85,
+                column: undefined,
+            });
+        });
+
+        it('should handle GitHub-style mixed format (L only on first)', () => {
+            const result = parseFilePathFromUrl(
+                'src/Plugin/Source/File.cpp#L79-85'
+            );
+            expect(result).toEqual({
+                filePath: 'src/Plugin/Source/File.cpp',
+                line: 79,
+                endLine: 85,
+                column: undefined,
+            });
+        });
+
+        it('should handle GitHub-style links with Windows paths', () => {
+            const result = parseFilePathFromUrl('C:\\src\\file.ts#L100');
+            expect(result).toEqual({
+                filePath: 'C:\\src\\file.ts',
+                line: 100,
+                endLine: undefined,
+                column: undefined,
+            });
+        });
+
+        it('should handle GitHub-style links for root-level files', () => {
+            const result = parseFilePathFromUrl('README.md#L15');
+            expect(result).toEqual({
+                filePath: 'README.md',
+                line: 15,
+                endLine: undefined,
+                column: undefined,
+            });
+        });
     });
 
     describe('parseMarkdownFileLinks', () => {
@@ -552,6 +604,57 @@ describe('pathUtils', () => {
             expect(result[2]).toEqual({
                 type: 'text',
                 content: '\n\n```ts\nconst x = 1;\n```',
+            });
+        });
+
+        it('should handle GitHub-style links with L prefix', () => {
+            const markdown =
+                'See [SolvePoWChallange.cpp:79-85](src/SampleApp/Plugins/Plugin/Source/Accounts/Private/SolvePoWChallange.cpp#L79-L85)';
+            const result = parseMarkdownFileLinks(markdown);
+            expect(result).toHaveLength(2);
+            expect(result[0]).toEqual({ type: 'text', content: 'See ' });
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content:
+                    '[SolvePoWChallange.cpp:79-85](src/SampleApp/Plugins/Plugin/Source/Accounts/Private/SolvePoWChallange.cpp#L79-L85)',
+                filePath:
+                    'src/SampleApp/Plugins/Plugin/Source/Accounts/Private/SolvePoWChallange.cpp',
+                line: 79,
+                endLine: 85,
+                column: undefined,
+                title: 'SolvePoWChallange.cpp:79-85',
+            });
+        });
+
+        it('should handle GitHub-style links with mixed L prefix format', () => {
+            const result = parseMarkdownFileLinks(
+                'Check [file.cpp](src/file.cpp#L42-50)'
+            );
+            expect(result).toHaveLength(2);
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content: '[file.cpp](src/file.cpp#L42-50)',
+                filePath: 'src/file.cpp',
+                line: 42,
+                endLine: 50,
+                column: undefined,
+                title: 'file.cpp',
+            });
+        });
+
+        it('should handle root-level file links without directory', () => {
+            const result = parseMarkdownFileLinks(
+                'See [README.md](README.md:15) for details'
+            );
+            expect(result).toHaveLength(3);
+            expect(result[1]).toEqual({
+                type: 'fileLink',
+                content: '[README.md](README.md:15)',
+                filePath: 'README.md',
+                line: 15,
+                endLine: undefined,
+                column: undefined,
+                title: 'README.md',
             });
         });
     });
