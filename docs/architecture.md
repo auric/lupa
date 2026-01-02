@@ -553,7 +553,7 @@ VS Code API mocked via `__mocks__/vscode.js`:
     "maxIterations": 25,
     "requestTimeoutSeconds": 180,
     "maxSubagentsPerSession": 3,
-    "preferredModelVersion": "gpt-4.1"
+    "preferredModelIdentifier": "copilot/gpt-4.1"
 }
 ```
 

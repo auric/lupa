@@ -27,7 +27,7 @@ describe('WorkspaceSettingsSchema', () => {
 
         it('should accept all valid properties and preserve them', () => {
             const validSettings = {
-                preferredModelVersion: '0613',
+                preferredModelIdentifier: 'copilot/gpt-4.1',
                 maxIterations: 20,
                 requestTimeoutSeconds: 120,
                 maxSubagentsPerSession: 15,
