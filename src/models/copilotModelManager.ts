@@ -223,66 +223,19 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
      * Send a request to the language model with tool-calling support.
      *
      * Delegates to ModelRequestHandler for message conversion and request execution.
-     * Preserves error handling for CopilotApiError (model_not_supported) detection.
+     * Error handling is centralized in ConversationRunner.isFatalModelError().
      */
     async sendRequest(
         request: ToolCallRequest,
         token: vscode.CancellationToken
     ): Promise<ToolCallResponse> {
-        try {
-            const model = await this.getCurrentModel();
-            return await ModelRequestHandler.sendRequest(
-                model,
-                request,
-                token,
-                this.requestTimeoutMs
-            );
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-
-            // Check for Anthropic empty system prompt error
-            if (
-                msg.includes('text content blocks must be non-empty') ||
-                msg.includes('system: text content blocks')
-            ) {
-                const modelName =
-                    this.currentModel?.name ||
-                    this.currentModel?.id ||
-                    'selected model';
-                const friendlyMessage =
-                    `The model "${modelName}" requires a system prompt, but the VS Code Language Model API ` +
-                    `does not support setting system prompts for third-party models. ` +
-                    `This is a known limitation with Anthropic models configured via BYOK. ` +
-                    `Please use a Copilot-provided model instead. ` +
-                    `See https://github.com/microsoft/vscode/issues/255286 for details.`;
-                Log.error(
-                    `Anthropic system prompt error for model ${modelName}: ${msg}`
-                );
-                throw new CopilotApiError(
-                    friendlyMessage,
-                    'anthropic_system_prompt_required'
-                );
-            }
-
-            // Check for model_not_supported error
-            const codeMatch = msg.match(/"code"\s*:\s*"([^"]+)"/);
-            if (codeMatch) {
-                const code = codeMatch[1];
-                if (code === 'model_not_supported') {
-                    const modelName =
-                        this.currentModel?.name ||
-                        this.currentModel?.id ||
-                        'selected model';
-                    const friendlyMessage = `The selected Copilot model ${modelName} is not supported. Please choose another Copilot model in Lupa settings.`;
-                    Log.error(
-                        `Copilot model not supported: ${modelName}. API response: ${msg.replace(/\\"/g, '"').replace(/\n/g, '')}`
-                    );
-                    throw new CopilotApiError(friendlyMessage, code);
-                }
-            }
-            Log.error('Error in sendRequest:', error);
-            throw error;
-        }
+        const model = await this.getCurrentModel();
+        return ModelRequestHandler.sendRequest(
+            model,
+            request,
+            token,
+            this.requestTimeoutMs
+        );
     }
 
     /**

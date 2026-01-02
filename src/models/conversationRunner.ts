@@ -295,14 +295,13 @@ export class ConversationRunner {
                     return CANCELLATION_MESSAGE;
                 }
 
-                if (this.isFatalModelError(error)) {
-                    const errorMsg =
-                        error instanceof Error ? error.message : String(error);
+                const fatalError = this.detectFatalError(error);
+                if (fatalError) {
                     Log.error(
-                        `${logPrefix} Fatal model error encountered: ${errorMsg}`
+                        `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`
                     );
-                    vscode.window.showErrorMessage(errorMsg);
-                    throw error instanceof Error ? error : new Error(errorMsg);
+                    vscode.window.showErrorMessage(fatalError.message);
+                    throw new Error(fatalError.message);
                 }
 
                 const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
@@ -333,10 +332,79 @@ export class ConversationRunner {
     }
 
     private isFatalModelError(error: unknown): boolean {
-        return (
+        const result = this.detectFatalError(error);
+        return result !== null;
+    }
+
+    /**
+     * Detect fatal API errors that should stop the conversation immediately.
+     * Returns a user-friendly message and error code, or null if not a fatal error.
+     */
+    private detectFatalError(
+        error: unknown
+    ): { message: string; code: string } | null {
+        // Check for existing CopilotApiError (backward compatibility)
+        if (
             error instanceof CopilotApiError &&
             error.code === 'model_not_supported'
+        ) {
+            return { message: error.message, code: error.code };
+        }
+
+        // Parse raw error message for API error codes
+        const errorMsg = error instanceof Error ? error.message : String(error);
+
+        // Check for Anthropic BYOK empty system prompt error
+        // Error format: 400 {"type":"error","error":{"type":"invalid_request_error","message":"system: text content blocks must be non-empty"},...}
+        if (
+            errorMsg.includes('text content blocks must be non-empty') ||
+            errorMsg.includes('system: text content blocks')
+        ) {
+            return {
+                message:
+                    `This model requires a system prompt, but the VS Code Language Model API ` +
+                    `does not support setting system prompts for third-party models. ` +
+                    `This is a known limitation with Anthropic models configured via BYOK (Bring Your Own Key). ` +
+                    `Please use a Copilot-provided model instead. ` +
+                    `See https://github.com/microsoft/vscode/issues/255286 for details.`,
+                code: 'anthropic_system_prompt_error',
+            };
+        }
+
+        // Check for invalid_request_error (general Anthropic API errors)
+        // Error format: {"type":"error","error":{"type":"invalid_request_error","message":"..."}}
+        // We need to match the inner error.type, not the outer type
+        const invalidRequestMatch = errorMsg.match(
+            /"error"\s*:\s*\{[^}]*"type"\s*:\s*"invalid_request_error"/
         );
+        if (invalidRequestMatch) {
+            // Extract the specific message if available
+            const messageMatch = errorMsg.match(/"message"\s*:\s*"([^"]+)"/);
+            const specificMessage = messageMatch
+                ? messageMatch[1]
+                : 'Invalid request';
+            return {
+                message:
+                    `The model returned an API error: ${specificMessage}. ` +
+                    `This may be a compatibility issue with the selected model. ` +
+                    `Please try using a different model.`,
+                code: 'invalid_request_error',
+            };
+        }
+
+        // Check for model_not_supported in raw error message
+        const codeMatch = errorMsg.match(/"code"\s*:\s*"([^"]+)"/);
+        if (codeMatch) {
+            const code = codeMatch[1];
+            if (code === 'model_not_supported') {
+                return {
+                    message: `The selected model is not supported. Please choose a different model in Lupa settings.`,
+                    code: 'model_not_supported',
+                };
+            }
+        }
+
+        return null;
     }
 
     /**

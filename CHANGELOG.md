@@ -17,7 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **New `preferredModelIdentifier` setting**: Model preferences are now stored using a unique `vendor/id` format (e.g., `copilot/gpt-4.1`), which correctly identifies models even when multiple vendors provide models with similar names or versions.
 
+#### Improved Error Handling
+
+- **Centralized API error detection**: All API error handling is now centralized in `ConversationRunner.detectFatalError()`, ensuring consistent behavior across both command palette and chat participant paths.
+
 - **Anthropic BYOK error handling**: When using Anthropic models configured via "bring your own key", Lupa now shows a clear error message explaining that these models don't work due to VS Code Language Model API limitations (no system prompt support). See [vscode#255286](https://github.com/microsoft/vscode/issues/255286).
+
+- **Invalid request errors**: API errors with `invalid_request_error` type are now detected as fatal errors and show user-friendly messages explaining the issue.
 
 ### Changed
 
@@ -32,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model cost comparison table**: Replaced bullet list with a table showing cost and notes for recommended free models.
 
 - **Anthropic BYOK limitation documented**: Added note that Anthropic models configured via "bring your own key" do not work due to VS Code Language Model API not supporting system prompts ([vscode#255286](https://github.com/microsoft/vscode/issues/255286)).
+
+#### Architecture Improvements
+
+- **Simplified CopilotModelManager.sendRequest()**: Error handling removed from `CopilotModelManager` and `ChatLLMClient`. Both now delegate directly to `ModelRequestHandler`, with error detection handled centrally in `ConversationRunner`.
 
 ### Fixed
 
