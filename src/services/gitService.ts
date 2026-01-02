@@ -49,7 +49,7 @@ const BINARY_DIFF_PATTERNS = [
 /**
  * Split a unified diff into individual file diffs
  */
-function splitDiffByFile(diffText: string): string[] {
+export function splitDiffByFile(diffText: string): string[] {
     if (!diffText || !diffText.trim()) {
         return [];
     }
@@ -62,14 +62,14 @@ function splitDiffByFile(diffText: string): string[] {
 /**
  * Check if a single file diff entry is a binary diff
  */
-function isBinaryFileDiff(fileDiff: string): boolean {
+export function isBinaryFileDiff(fileDiff: string): boolean {
     return BINARY_DIFF_PATTERNS.some((pattern) => pattern.test(fileDiff));
 }
 
 /**
  * Extract the file path from a diff --git line
  */
-function extractFilePath(fileDiff: string): string | null {
+export function extractFilePath(fileDiff: string): string | null {
     // Match "diff --git a/path b/path" and extract the b/ path
     const match = /^diff --git a\/.+ b\/(.+)$/m.exec(fileDiff);
     return match?.[1] ?? null;
@@ -79,7 +79,7 @@ function extractFilePath(fileDiff: string): string | null {
  * Filter out binary file diffs from a unified diff string.
  * Binary files are wasteful to send to LLMs and may cause confusion.
  */
-function filterBinaryDiffs(diffText: string): {
+export function filterBinaryDiffs(diffText: string): {
     filteredDiff: string;
     binaryFiles: string[];
 } {

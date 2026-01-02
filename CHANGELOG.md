@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Invalid request errors**: API errors with `invalid_request_error` type are now detected as fatal errors and show user-friendly messages explaining the issue.
 
+#### Developer Experience
+
+- **Model logging at analysis start**: The selected model name, vendor, ID, and token limit are now logged at the start of each analysis for easier debugging.
+
 ### Changed
 
 #### README Improvements
@@ -59,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Vendor casing normalized**: Model vendor names are now normalized to lowercase for consistent comparison and storage (e.g., `CoPilot/gpt-4.1` becomes `copilot/gpt-4.1`).
 
-- **Binary files filtered from diffs**: Binary file diffs (images, compiled files, etc.) are now automatically filtered out before being sent to the LLM. This prevents wasting tokens on non-reviewable content and avoids confusing the model with binary markers.
+- **Binary files filtered from diffs**: Binary file diffs (images, compiled files, etc.) are now automatically filtered out before being sent to the LLM. This prevents wasting tokens on non-reviewable content and avoids confusing the model with binary markers. Comprehensive test coverage added for all git binary diff formats.
 
 ## [0.1.7] - 2026-01-02
 
