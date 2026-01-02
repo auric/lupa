@@ -47,11 +47,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Model identifier validation**: The model identifier parser now validates input format, rejecting malformed identifiers (empty strings, missing vendor/id parts) and falling back to the default model gracefully.
 
-- **Correct error detection order**: Fixed `detectFatalError()` to check for `invalid_request_error` type first (making it fatal), then customize the error message based on content. Previously checked message content before type, which could miss some error cases.
+- **Fatal error detection**: Fixed `detectFatalError()` to treat all `invalid_request_error` type errors as fatal. The function checks for `model_not_supported` codes first, then detects `invalid_request_error` types with specialized messages for system-prompt-related failures.
 
 - **CopilotApiError wrapping restored**: Fatal API errors are now properly wrapped in `CopilotApiError` with appropriate error codes, ensuring consistent error type checking across the codebase.
 
 - **Model identifier normalization**: Vendor-less identifiers (e.g., `gpt-4.1`) are now normalized to canonical `vendor/id` form (`copilot/gpt-4.1`) when saved, ensuring consistent settings storage.
+
+- **Default model selector now includes vendor**: When falling back to the default model, the selector now explicitly specifies `vendor: 'copilot'` to prevent ambiguous matches if other vendors provide models with the same ID.
+
+- **Invalid identifiers cleared from settings**: When a malformed model identifier is detected, it's now cleared from settings to prevent repeated fallback warnings on every analysis.
+
+- **Vendor casing normalized**: Model vendor names are now normalized to lowercase for consistent comparison and storage (e.g., `CoPilot/gpt-4.1` becomes `copilot/gpt-4.1`).
+
+- **Binary files filtered from diffs**: Binary file diffs (images, compiled files, etc.) are now automatically filtered out before being sent to the LLM. This prevents wasting tokens on non-reviewable content and avoids confusing the model with binary markers.
 
 ## [0.1.7] - 2026-01-02
 

@@ -110,7 +110,8 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             return id ? { vendor: 'copilot', id } : null;
         }
 
-        const vendor = identifier.substring(0, slashIndex).trim();
+        // Normalize vendor to lowercase for consistent comparison/storage
+        const vendor = identifier.substring(0, slashIndex).trim().toLowerCase();
         const id = identifier.substring(slashIndex + 1).trim();
 
         // Both parts must be non-empty
@@ -151,11 +152,13 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
                     Log.warn(
                         `Invalid model identifier format: ${options.identifier}, using default`
                     );
-                    selector = { id: this.DEFAULT_MODEL_ID };
+                    // Clear invalid identifier so we don't repeatedly fall back
+                    this.settings.setPreferredModelIdentifier('');
+                    selector = { vendor: 'copilot', id: this.DEFAULT_MODEL_ID };
                 }
             } else {
                 // Default model: GPT-4.1
-                selector = { id: this.DEFAULT_MODEL_ID };
+                selector = { vendor: 'copilot', id: this.DEFAULT_MODEL_ID };
             }
 
             const models = await vscode.lm.selectChatModels(selector);
