@@ -108,7 +108,11 @@ function isValidFilePath(path: string): boolean {
  * - src/file.ts:42
  * - src/file.ts:42:10 (line:column)
  * - src/file.ts:104-115 (line range)
+ * - src/file.ts#L42 (GitHub-style single line)
+ * - src/file.ts#L42-L50 (GitHub-style line range)
+ * - src/file.ts#L42-50 (GitHub-style mixed format)
  * - src/file.ts
+ * - README.md (root-level files without directory prefix)
  * - .gitignore, .env (dot files)
  * - C:\src\file.ts:42 (Windows absolute paths)
  * - D:\project\main.ts:10:5
@@ -128,16 +132,33 @@ export function parseFilePathFromUrl(url: string): {
         return null;
     }
 
-    // Match file paths with optional line info:
+    // Try GitHub-style line format first: file.ts#L42 or file.ts#L42-L50 or file.ts#L42-50
+    const githubMatch = url.match(
+        /^((?:[a-zA-Z]:[/\\])?[^#]+)#L(\d+)(?:-L?(\d+))?$/
+    );
+    if (githubMatch && githubMatch[1]) {
+        const filePath = githubMatch[1];
+        const line = parseInt(githubMatch[2]!, 10);
+        const endLine = githubMatch[3]
+            ? parseInt(githubMatch[3], 10)
+            : undefined;
+
+        if (isValidFilePath(filePath)) {
+            return { filePath, line, endLine, column: undefined };
+        }
+    }
+
+    // Match file paths with optional line info (colon-based format):
     // - :line (single line)
     // - :line-endLine (line range)
     // - :line:column (line and column)
     // Supports:
     // - Paths with extensions: src/file.ts, C:\file.ts
+    // - Root-level files: README.md, package.json
     // - Dot files: .gitignore, src/.env
     // - Both forward and backslash separators (Windows and Unix)
     const match = url.match(
-        /^((?:[a-zA-Z]:[/\\])?(?:[^:]*[/\\])?(?:\.[^:/\\]+|[^:]+\.[a-zA-Z0-9]+))(?::(\d+)(?:-(\d+)|:(\d+))?)?$/
+        /^((?:[a-zA-Z]:[/\\])?(?:[^:]*[/\\])?(?:\.[^:/\\]+|[^:/\\]+\.[a-zA-Z0-9]+))(?::(\d+)(?:-(\d+)|:(\d+))?)?$/
     );
     if (!match || !match[1]) {
         return null;
@@ -145,8 +166,8 @@ export function parseFilePathFromUrl(url: string): {
 
     const filePath = match[1];
     const line = match[2] ? parseInt(match[2], 10) : undefined;
-    const endLine = match[3] ? parseInt(match[3], 10) : undefined; // For :line-endLine format
-    const column = match[4] ? parseInt(match[4], 10) : undefined; // For :line:column format
+    const endLine = match[3] ? parseInt(match[3], 10) : undefined;
+    const column = match[4] ? parseInt(match[4], 10) : undefined;
 
     if (!isValidFilePath(filePath)) {
         return null;

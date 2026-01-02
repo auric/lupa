@@ -90,6 +90,28 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 true
             );
 
+            // Test dot separator (LLM sometimes uses . instead of /)
+            expect(
+                schema.safeParse({ name_path: 'MyClass.method' }).success
+            ).toBe(true);
+            expect(
+                schema.safeParse({
+                    name_path:
+                        'ChatParticipantService.handleExplorationRequest',
+                }).success
+            ).toBe(true);
+
+            // Test mixed: when / is present, dots should be preserved in symbol names
+            // This allows "MyClass/file.spec" to work correctly
+            expect(
+                schema.safeParse({ name_path: 'MyClass/file.spec' }).success
+            ).toBe(true);
+
+            // Test leading dot edge case (e.g., ".method" -> ["method"])
+            expect(schema.safeParse({ name_path: '.method' }).success).toBe(
+                true
+            );
+
             // Test validation (empty string rejection)
             expect(schema.safeParse({ name_path: '' }).success).toBe(false);
         });

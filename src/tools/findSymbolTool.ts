@@ -56,7 +56,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             .describe(
                 'Symbol identifier path (NOT full signature). Use only the name without parameters, return types, or templates. ' +
                     'Examples: "MyClass" (not "MyClass<T>"), "calculate" (not "calculate(int, string)"), "Shutdown" (not "Shutdown(const FString&)"). ' +
-                    'Hierarchical paths: "MyClass/method" finds method inside MyClass; "/MyClass/method" finds method in top-level MyClass only.'
+                    'Hierarchical paths: "MyClass/method" or "MyClass.method" finds method inside MyClass.'
             ),
         relative_path: z
             .string()
@@ -167,7 +167,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     }
 
     /**
-     * Parse hierarchical symbol path supporting absolute, relative, and simple paths
+     * Parse hierarchical symbol path into segments.
+     * Prefers "/" as separator when present; falls back to "." if no slashes found.
+     * This preserves dots in symbol names (e.g., "MyClass/file.spec" → ["MyClass", "file.spec"]).
      */
     private parseNamePath(namePath: string): string[] {
         const cleaned = namePath.trim();
@@ -175,9 +177,14 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             return [];
         }
 
-        const segments = cleaned
-            .split('/')
-            .filter((segment) => segment.length > 0);
+        let segments: string[];
+        if (cleaned.includes('/')) {
+            segments = cleaned.split('/').filter((s) => s.length > 0);
+        } else if (cleaned.includes('.')) {
+            segments = cleaned.split('.').filter((s) => s.length > 0);
+        } else {
+            segments = [cleaned];
+        }
 
         return segments;
     }

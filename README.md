@@ -3,7 +3,7 @@
 **Intelligent Pull Request Analysis for VS Code using GitHub Copilot**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.6-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.7-green.svg)](./CHANGELOG.md)
 
 > ⚠️ **Credits Warning**: Lupa uses AI models that may consume your GitHub Copilot premium requests. See [Model Selection](#model-selection) for free alternatives.
 
