@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { Log } from '../services/loggingService';
-import { TokenConstants } from './tokenConstants';
 import { ToolCallRequest, ToolCallResponse } from '../types/modelTypes';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { ILLMClient } from './ILLMClient';
@@ -24,14 +23,18 @@ export interface ModelDetail {
     name: string;
     family: string;
     version: string;
+    vendor: string;
     maxInputTokens: number;
+    /** Unique identifier in format 'vendor/id' */
+    identifier: string;
 }
 
 /**
  * Model selection options
  */
 export interface ModelSelectionOptions {
-    version?: string;
+    /** Model identifier in 'vendor/id' format */
+    identifier?: string;
 }
 
 /**
@@ -39,16 +42,14 @@ export interface ModelSelectionOptions {
  */
 export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     private readonly DEFAULT_MODEL_ID = 'gpt-4.1';
+    private readonly DEFAULT_MODEL_IDENTIFIER = `copilot/${this.DEFAULT_MODEL_ID}`;
     private currentModel: vscode.LanguageModelChat | null = null;
-    private modelCache: ModelDetail[] | null = null;
-    private lastModelRefresh: number = 0;
-    private readonly cacheLifetimeMs = TokenConstants.DEFAULT_CACHE_LIFETIME_MS;
 
     constructor(private readonly settings: WorkspaceSettingsService) {
         // Watch for model changes
         vscode.lm.onDidChangeChatModels(() => {
-            // Clear cache when available models change
-            this.modelCache = null;
+            // Clear current model when available models change
+            this.currentModel = null;
         });
     }
 
@@ -57,35 +58,32 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     }
 
     /**
-     * Get all available Copilot models with version information
+     * Get the effective model identifier (saved preference or default)
+     */
+    getEffectiveModelIdentifier(): string {
+        return (
+            this.settings.getPreferredModelIdentifier() ||
+            this.DEFAULT_MODEL_IDENTIFIER
+        );
+    }
+
+    /**
+     * Get all available language models with version information
      */
     async listAvailableModels(): Promise<ModelDetail[]> {
         try {
-            // Try to use cached models if they're recent enough
-            const now = Date.now();
-            if (
-                this.modelCache &&
-                now - this.lastModelRefresh < this.cacheLifetimeMs
-            ) {
-                return this.modelCache;
-            }
-
-            // Get all Copilot models
-            const allModels = await vscode.lm.selectChatModels({
-                vendor: 'copilot',
-            });
+            // Get all available models (not just copilot vendor)
+            const allModels = await vscode.lm.selectChatModels({});
 
             const modelDetails = allModels.map((model) => ({
                 id: model.id,
                 name: model.name,
                 family: model.family,
                 version: model.version || 'default',
+                vendor: model.vendor,
                 maxInputTokens: model.maxInputTokens,
+                identifier: `${model.vendor}/${model.id}`,
             }));
-
-            // Update the cache
-            this.modelCache = modelDetails;
-            this.lastModelRefresh = now;
 
             return modelDetails;
         } catch (err) {
@@ -95,7 +93,25 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     }
 
     /**
-     * Select a specific model by family and version
+     * Parse a model identifier into vendor and id components
+     */
+    private parseModelIdentifier(identifier: string): {
+        vendor: string;
+        id: string;
+    } {
+        const slashIndex = identifier.indexOf('/');
+        if (slashIndex === -1) {
+            // No vendor prefix, assume copilot
+            return { vendor: 'copilot', id: identifier };
+        }
+        return {
+            vendor: identifier.substring(0, slashIndex),
+            id: identifier.substring(slashIndex + 1),
+        };
+    }
+
+    /**
+     * Select a specific model by identifier
      */
     async selectModel(
         options?: ModelSelectionOptions
@@ -103,29 +119,32 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
         try {
             // Check if we should load model preferences from settings
             if (!options) {
-                const savedVersion = this.settings.getPreferredModelVersion();
+                const savedIdentifier =
+                    this.settings.getPreferredModelIdentifier();
 
-                if (savedVersion) {
+                if (savedIdentifier) {
                     options = {
-                        version: savedVersion,
+                        identifier: savedIdentifier,
                     };
                 }
             }
 
-            const selector: vscode.LanguageModelChatSelector = {
-                vendor: 'copilot',
-                ...options,
-            };
+            let selector: vscode.LanguageModelChatSelector = {};
 
-            if (!options) {
-                selector.id = this.DEFAULT_MODEL_ID;
+            if (options?.identifier) {
+                // Format: vendor/id
+                const parsed = this.parseModelIdentifier(options.identifier);
+                selector = { vendor: parsed.vendor, id: parsed.id };
+            } else {
+                // Default model: GPT-4.1
+                selector = { id: this.DEFAULT_MODEL_ID };
             }
 
             const models = await vscode.lm.selectChatModels(selector);
 
             if (models.length === 0) {
                 Log.info(
-                    `Model ${options?.version || 'any'} not available, using fallback`
+                    `Model ${options?.identifier || 'default'} not available, using fallback`
                 );
                 return this.selectFallbackModel();
             }
@@ -133,13 +152,17 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             const model = models[0]!;
             this.currentModel = model;
 
-            if (options?.version) {
-                this.settings.setPreferredModelVersion(options.version);
+            // Save preference
+            if (options?.identifier) {
+                this.settings.setPreferredModelIdentifier(options.identifier);
             }
 
             return model;
         } catch (err) {
-            Log.error(`Failed to select model ${options?.version || ''}:`, err);
+            Log.error(
+                `Failed to select model ${options?.identifier || ''}:`,
+                err
+            );
             return this.selectFallbackModel();
         }
     }
@@ -222,9 +245,6 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
      * Dispose of resources
      */
     public dispose(): void {
-        // Clear cached data
-        this.modelCache = null;
         this.currentModel = null;
-        this.lastModelRefresh = 0;
     }
 }

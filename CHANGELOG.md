@@ -5,6 +5,34 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-01-02
+
+### Added
+
+#### Multi-Vendor Model Support
+
+- **All model vendors now supported**: Lupa can now use language models from any vendor configured in GitHub Copilot, not just the built-in Copilot models. This includes models added via third-party API keys (OpenAI, etc.).
+
+- **Vendor shown in model picker**: The model selection dialog now displays the vendor name alongside each model (e.g., "copilot · 128K tokens"), making it easier to distinguish between models with similar names from different providers. Copilot models are listed first.
+
+- **Current model indicator**: The model picker now shows a checkmark (✓) next to the currently selected model and places it at the top of the list.
+
+- **New `preferredModelIdentifier` setting**: Model preferences are now stored using a unique `vendor/id` format (e.g., `copilot/gpt-4.1`), which correctly identifies models even when multiple vendors provide models with similar names or versions.
+
+### Changed
+
+#### README Improvements
+
+- **Clearer credit consumption warning**: Added prominent warning at the top of the README explaining that Lupa makes 50-100+ tool calls per analysis, which can quickly consume premium request quotas.
+
+- **"Why Lupa?" section**: Added explanation of the name (Spanish for "magnifying glass") and the metaphor behind the extension.
+
+- **GPT-4.1 guidance clarified**: Updated documentation to reflect that GPT-4.1 works reasonably well for small to medium PRs, but struggles with large code changes.
+
+- **Model cost comparison table**: Replaced bullet list with a table showing cost and notes for recommended free models.
+
+- **Anthropic BYOK limitation documented**: Added note that Anthropic models configured via "bring your own key" do not work due to VS Code Language Model API not supporting system prompts ([vscode#255286](https://github.com/microsoft/vscode/issues/255286)).
+
 ## [0.1.7] - 2026-01-02
 
 ### Fixed
@@ -239,6 +267,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.8]: https://github.com/auric/lupa/releases/tag/v0.1.8
 [0.1.7]: https://github.com/auric/lupa/releases/tag/v0.1.7
 [0.1.6]: https://github.com/auric/lupa/releases/tag/v0.1.6
 [0.1.5]: https://github.com/auric/lupa/releases/tag/v0.1.5

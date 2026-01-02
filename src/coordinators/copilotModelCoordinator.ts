@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import { IServiceRegistry } from '../services/serviceManager';
 
+interface ModelQuickPickItem extends vscode.QuickPickItem {
+    identifier: string;
+    name: string;
+    vendor: string;
+}
+
 /**
  * CopilotModelCoordinator manages GitHub Copilot language model operations
  * Handles selection and configuration of Copilot language models for analysis
@@ -27,6 +33,10 @@ export class CopilotModelCoordinator implements vscode.Disposable {
                 return;
             }
 
+            // Get effective model identifier (saved or default)
+            const currentIdentifier =
+                this.services.copilotModelManager.getEffectiveModelIdentifier();
+
             const formatTokens = (tokens: number): string => {
                 if (tokens >= 1000000) {
                     return `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 1)}M`;
@@ -37,12 +47,37 @@ export class CopilotModelCoordinator implements vscode.Disposable {
                 return tokens.toString();
             };
 
-            const options = models.map((model) => ({
+            // Build options with vendor info
+            const options: ModelQuickPickItem[] = models.map((model) => ({
                 label: model.name,
-                description: `${formatTokens(model.maxInputTokens)} tokens`,
+                description: `${model.vendor} · ${formatTokens(model.maxInputTokens)} tokens`,
                 detail: model.id,
-                model,
+                identifier: model.identifier,
+                name: model.name,
+                vendor: model.vendor,
             }));
+
+            // Sort: current/default model first, then copilot vendor, then alphabetically
+            options.sort((a, b) => {
+                const aIsCurrent = a.identifier === currentIdentifier;
+                const bIsCurrent = b.identifier === currentIdentifier;
+                if (aIsCurrent && !bIsCurrent) {
+                    return -1;
+                }
+                if (!aIsCurrent && bIsCurrent) {
+                    return 1;
+                }
+                // Copilot vendor comes first
+                const aIsCopilot = a.vendor === 'copilot';
+                const bIsCopilot = b.vendor === 'copilot';
+                if (aIsCopilot && !bIsCopilot) {
+                    return -1;
+                }
+                if (!aIsCopilot && bIsCopilot) {
+                    return 1;
+                }
+                return a.name.localeCompare(b.name);
+            });
 
             const selectedModelOption = await vscode.window.showQuickPick(
                 options,
@@ -57,17 +92,15 @@ export class CopilotModelCoordinator implements vscode.Disposable {
                 return;
             }
 
-            const selectedModel = selectedModelOption.model;
-
-            this.services.workspaceSettings.setPreferredModelVersion(
-                selectedModel.version
+            this.services.workspaceSettings.setPreferredModelIdentifier(
+                selectedModelOption.identifier
             );
             vscode.window.showInformationMessage(
-                `Language model set to ${selectedModel.name} (version: ${selectedModel.version})`
+                `Language model set to ${selectedModelOption.name}`
             );
 
             await this.services.copilotModelManager.selectModel({
-                version: selectedModel.version,
+                identifier: selectedModelOption.identifier,
             });
         } catch (error) {
             const errorMessage =

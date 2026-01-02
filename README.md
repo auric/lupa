@@ -1,21 +1,33 @@
-# Lupa
+# 🔍 Lupa
 
-**Intelligent Pull Request Analysis for VS Code using GitHub Copilot**
+**Magnify your code intelligence**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.7-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.8-green.svg)](./CHANGELOG.md)
 
-> ⚠️ **Credits Warning**: Lupa uses AI models that may consume your GitHub Copilot premium requests. See [Model Selection](#model-selection) for free alternatives.
+> ⚠️ **Important: Read before using!**
+>
+> Lupa makes **many tool calls per analysis** (often 50–100+). Each tool call counts against your GitHub Copilot premium request quota. **Avoid expensive models** like Claude Opus 4.5 (3x credits) or Claude Sonnet 4.5 (1x credits) unless you have credits to spare.
+>
+> See [Model Selection](#model-selection) for free and low-cost alternatives.
 
-Lupa is a VS Code extension that performs comprehensive pull request analysis using GitHub Copilot models. It uses a tool-calling architecture where the LLM dynamically requests context via LSP-based tools, enabling deep code understanding without pre-loading entire codebases.
+---
+
+## Why "Lupa"?
+
+**Lupa** (pronounced _LOO-pah_) means "magnifying glass" in Spanish — the perfect metaphor for what this extension does. Just as a magnifying glass reveals fine details that would otherwise be missed, Lupa examines your code changes with precision and clarity, uncovering context and relationships that traditional diff viewers simply can't provide.
+
+---
+
+Lupa is a VS Code extension for pull request analysis using GitHub Copilot models. It uses a tool-calling architecture where the LLM dynamically requests context via LSP-based tools, enabling deep code understanding without pre-loading entire codebases.
 
 ## Features
 
-- 🔍 **Deep Code Analysis** - LLM-driven analysis with dynamic context gathering
-- 🛠️ **14 Specialized Tools** - Symbol lookup, file reading, grep search, usage finding, plan tracking, and more
-- 🤖 **Subagent Delegation** - Complex investigations handled by autonomous sub-agents
-- 📊 **Rich Webview UI** - Interactive results with Markdown rendering and syntax highlighting
-- 💬 **Chat Integration** - Native VS Code chat participant for quick analysis
+- 🔍 **Deep Code Analysis** — LLM-driven analysis with dynamic context gathering
+- 🛠️ **14 Specialized Tools** — Symbol lookup, file reading, grep search, usage finding, plan tracking, and more
+- 🤖 **Subagent Delegation** — Complex investigations handled by autonomous sub-agents
+- 📊 **Rich Webview UI** — Interactive results with Markdown rendering and syntax highlighting
+- 💬 **Chat Integration** — Native VS Code chat participant for quick analysis
 
 ## Two Ways to Use Lupa
 
@@ -51,38 +63,49 @@ In exploration mode, Lupa uses the same tools (file reading, symbol lookup, grep
 
 ## Model Selection
 
-Lupa works with any language model available in your VS Code Copilot installation.
+Lupa works with any language model available in your VS Code Copilot installation, including models from third-party providers you've configured.
 
 ### Selecting a Model
 
 1. Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
 2. Run **`Lupa: Select Language Model`**
-3. Choose from available models
+3. Choose from available models (vendor shown in description)
 
 The selected model is saved in `.vscode/lupa.json` and persists across sessions.
 
 ### Default Model
 
-Lupa uses **GPT-4.1** as the default because it's free. However, **GPT-4.1 performs poorly with tool calling**—it often fails to use tools.
+Lupa uses **GPT-4.1** as the default because it's free. GPT-4.1 works reasonably well for small to medium PRs, but **struggles with large code changes** — it may fail to use tools correctly or produce incomplete analysis when there's too much context.
 
-### ⚠️ Important: Premium Models Are Expensive
+For larger PRs, consider using a more capable model.
 
-> **Premium models consume your GitHub Copilot premium requests!**
->
-> Lupa is heavy on tool calling, which means each analysis may use many premium requests. Avoid models with 1x or 3x credit multipliers (like Claude Opus 4.5) unless you have credits to spare. Monitor your usage in your GitHub account settings.
+### ⚠️ Premium Models Are Expensive
+
+Lupa is heavy on tool calling (50–100+ calls per analysis is normal). Each call counts against your premium request quota.
+
+**Cost examples for a typical analysis:**
+
+- Claude Opus 4.5 (3x credits): 150–300 premium requests consumed
+- Claude Sonnet 4.5 (1x credits): 50–100 premium requests consumed
+- GPT-4.1 (free): No credits consumed
+
+Monitor your usage in your GitHub account settings.
 
 ### 💡 Free and Low-Cost Models
 
-The following models are recommended for Lupa:
+Recommended for Lupa:
 
-- **GPT-4.1** (default) - Free, but poor at tool calling
-- **Grok Code Fast 1** - Free, reasonable quality (recommended)
-- **Raptor Mini** - Free alternative (recommended for larger PRs)
-- **Claude Haiku 4.5** - 0.33x credits, good quality
+| Model                 | Cost | Notes                                             |
+| --------------------- | ---- | ------------------------------------------------- |
+| **GPT-4.1** (default) | Free | Works for small PRs, struggles with large changes |
+| **Grok Code Fast 1**  | Free | Good balance of speed and quality                 |
+| **Raptor Mini**       | Free | Good for larger PRs                               |
 
 ### 💰 Using Your Own API Key
 
-You can configure alternative model providers in GitHub Copilot with your own API key to avoid credit consumption. These models are available only in Chat Participant mode and will not work in Webview mode.
+You can configure alternative model providers in GitHub Copilot with your own API key. This bypasses credit consumption entirely. These models appear in the model picker alongside Copilot models.
+
+> ⚠️ **Note:** Anthropic models configured via BYOK do not work with Lupa. The VS Code Language Model API doesn't support setting system prompts, which Anthropic models require. See [vscode#255286](https://github.com/microsoft/vscode/issues/255286) for details.
 
 ## Requirements
 
@@ -103,7 +126,7 @@ Settings are stored in `.vscode/lupa.json`:
 
 ```json
 {
-    "preferredModelVersion": "gpt-4.1",
+    "preferredModelIdentifier": "copilot/gpt-4.1",
     "maxIterations": 100,
     "requestTimeoutSeconds": 300,
     "maxSubagentsPerSession": 10,
@@ -128,3 +151,11 @@ Pre-commit hooks for linting and formatting are installed automatically when you
 ## License
 
 See [LICENSE](./LICENSE) for details.
+
+---
+
+<div align="center">
+
+**Made with ❤️ from developers, for developers**
+
+</div>
