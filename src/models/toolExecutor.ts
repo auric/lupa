@@ -85,6 +85,10 @@ export class ToolExecutor {
      */
     async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
         const startTime = Date.now();
+
+        // Count BEFORE validation intentionally - rate limit protects against attempts,
+        // not just successful executions. A model making many invalid calls is broken
+        // and should be stopped. Like password lockout, we count all attempts.
         this.toolCallCount++;
 
         Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
