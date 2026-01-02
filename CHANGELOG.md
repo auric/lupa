@@ -47,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Model identifier validation**: The model identifier parser now validates input format, rejecting malformed identifiers (empty strings, missing vendor/id parts) and falling back to the default model gracefully.
 
+- **Correct error detection order**: Fixed `detectFatalError()` to check for `invalid_request_error` type first (making it fatal), then customize the error message based on content. Previously checked message content before type, which could miss some error cases.
+
+- **CopilotApiError wrapping restored**: Fatal API errors are now properly wrapped in `CopilotApiError` with appropriate error codes, ensuring consistent error type checking across the codebase.
+
 ## [0.1.7] - 2026-01-02
 
 ### Fixed

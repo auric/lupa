@@ -222,8 +222,11 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     /**
      * Send a request to the language model with tool-calling support.
      *
+     * This method is required by the ILLMClient interface and IS actively used
+     * by ConversationRunner for all analysis operations (command palette and chat).
+     *
      * Delegates to ModelRequestHandler for message conversion and request execution.
-     * Error handling is centralized in ConversationRunner.isFatalModelError().
+     * Error handling is centralized in ConversationRunner.detectFatalError().
      */
     async sendRequest(
         request: ToolCallRequest,
