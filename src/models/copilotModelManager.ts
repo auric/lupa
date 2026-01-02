@@ -93,21 +93,32 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     }
 
     /**
-     * Parse a model identifier into vendor and id components
+     * Parse a model identifier into vendor and id components.
+     * Returns null if the identifier is malformed.
      */
-    private parseModelIdentifier(identifier: string): {
-        vendor: string;
-        id: string;
-    } {
+    private parseModelIdentifier(
+        identifier: string
+    ): { vendor: string; id: string } | null {
+        if (!identifier || identifier.trim() === '') {
+            return null;
+        }
+
         const slashIndex = identifier.indexOf('/');
         if (slashIndex === -1) {
             // No vendor prefix, assume copilot
-            return { vendor: 'copilot', id: identifier };
+            const id = identifier.trim();
+            return id ? { vendor: 'copilot', id } : null;
         }
-        return {
-            vendor: identifier.substring(0, slashIndex),
-            id: identifier.substring(slashIndex + 1),
-        };
+
+        const vendor = identifier.substring(0, slashIndex).trim();
+        const id = identifier.substring(slashIndex + 1).trim();
+
+        // Both parts must be non-empty
+        if (!vendor || !id) {
+            return null;
+        }
+
+        return { vendor, id };
     }
 
     /**
@@ -134,7 +145,14 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             if (options?.identifier) {
                 // Format: vendor/id
                 const parsed = this.parseModelIdentifier(options.identifier);
-                selector = { vendor: parsed.vendor, id: parsed.id };
+                if (parsed) {
+                    selector = { vendor: parsed.vendor, id: parsed.id };
+                } else {
+                    Log.warn(
+                        `Invalid model identifier format: ${options.identifier}, using default`
+                    );
+                    selector = { id: this.DEFAULT_MODEL_ID };
+                }
             } else {
                 // Default model: GPT-4.1
                 selector = { id: this.DEFAULT_MODEL_ID };
@@ -221,6 +239,32 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
             );
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
+
+            // Check for Anthropic empty system prompt error
+            if (
+                msg.includes('text content blocks must be non-empty') ||
+                msg.includes('system: text content blocks')
+            ) {
+                const modelName =
+                    this.currentModel?.name ||
+                    this.currentModel?.id ||
+                    'selected model';
+                const friendlyMessage =
+                    `The model "${modelName}" requires a system prompt, but the VS Code Language Model API ` +
+                    `does not support setting system prompts for third-party models. ` +
+                    `This is a known limitation with Anthropic models configured via BYOK. ` +
+                    `Please use a Copilot-provided model instead. ` +
+                    `See https://github.com/microsoft/vscode/issues/255286 for details.`;
+                Log.error(
+                    `Anthropic system prompt error for model ${modelName}: ${msg}`
+                );
+                throw new CopilotApiError(
+                    friendlyMessage,
+                    'anthropic_system_prompt_required'
+                );
+            }
+
+            // Check for model_not_supported error
             const codeMatch = msg.match(/"code"\s*:\s*"([^"]+)"/);
             if (codeMatch) {
                 const code = codeMatch[1];

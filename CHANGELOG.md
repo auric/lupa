@@ -13,11 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **All model vendors now supported**: Lupa can now use language models from any vendor configured in GitHub Copilot, not just the built-in Copilot models. This includes models added via third-party API keys (OpenAI, etc.).
 
-- **Vendor shown in model picker**: The model selection dialog now displays the vendor name alongside each model (e.g., "copilot · 128K tokens"), making it easier to distinguish between models with similar names from different providers. Copilot models are listed first.
-
-- **Current model indicator**: The model picker now shows a checkmark (✓) next to the currently selected model and places it at the top of the list.
+- **Vendor shown in model picker**: The model selection dialog now displays the vendor name alongside each model (e.g., "copilot · 128K tokens"), making it easier to distinguish between models with similar names from different providers. Copilot models are listed first, with the current/default model at the top.
 
 - **New `preferredModelIdentifier` setting**: Model preferences are now stored using a unique `vendor/id` format (e.g., `copilot/gpt-4.1`), which correctly identifies models even when multiple vendors provide models with similar names or versions.
+
+- **Anthropic BYOK error handling**: When using Anthropic models configured via "bring your own key", Lupa now shows a clear error message explaining that these models don't work due to VS Code Language Model API limitations (no system prompt support). See [vscode#255286](https://github.com/microsoft/vscode/issues/255286).
 
 ### Changed
 
@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Model cost comparison table**: Replaced bullet list with a table showing cost and notes for recommended free models.
 
 - **Anthropic BYOK limitation documented**: Added note that Anthropic models configured via "bring your own key" do not work due to VS Code Language Model API not supporting system prompts ([vscode#255286](https://github.com/microsoft/vscode/issues/255286)).
+
+### Fixed
+
+- **Model identifier validation**: The model identifier parser now validates input format, rejecting malformed identifiers (empty strings, missing vendor/id parts) and falling back to the default model gracefully.
 
 ## [0.1.7] - 2026-01-02
 
