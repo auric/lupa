@@ -198,60 +198,6 @@ describe('ToolExecutor', () => {
         });
     });
 
-    describe('Sequential Tool Execution', () => {
-        it('should execute tools sequentially', async () => {
-            const requests: ToolExecutionRequest[] = [
-                { name: 'success_tool', args: { message: 'first' } },
-                { name: 'success_tool', args: { message: 'second' } },
-            ];
-
-            const results =
-                await toolExecutor.executeToolsSequentially(requests);
-
-            expect(results).toHaveLength(2);
-            expect(results[0].success).toBe(true);
-            expect(results[0].result).toBe('Success: first');
-            expect(results[1].success).toBe(true);
-            expect(results[1].result).toBe('Success: second');
-        });
-
-        it('should continue execution even when one tool fails', async () => {
-            const requests: ToolExecutionRequest[] = [
-                { name: 'success_tool', args: { message: 'test' } },
-                { name: 'error_tool', args: { input: 'test' } },
-                { name: 'success_tool', args: { message: 'after_error' } },
-            ];
-
-            const results =
-                await toolExecutor.executeToolsSequentially(requests);
-
-            expect(results).toHaveLength(3);
-            expect(results[0].success).toBe(true);
-            expect(results[1].success).toBe(false);
-            expect(results[2].success).toBe(true);
-            expect(results[2].result).toBe('Success: after_error');
-        });
-
-        it('should execute tools truly sequentially', async () => {
-            const startTime = Date.now();
-            const requests: ToolExecutionRequest[] = [
-                { name: 'delay_tool', args: { delay: 50 } },
-                { name: 'delay_tool', args: { delay: 50 } },
-                { name: 'delay_tool', args: { delay: 50 } },
-            ];
-
-            const results =
-                await toolExecutor.executeToolsSequentially(requests);
-            const endTime = Date.now();
-            const totalTime = endTime - startTime;
-
-            expect(results).toHaveLength(3);
-            expect(results.every((r) => r.success)).toBe(true);
-            // If truly sequential, should take ~150ms
-            expect(totalTime).toBeGreaterThan(120);
-        });
-    });
-
     describe('Tool Availability', () => {
         it('should return available tools', () => {
             const tools = toolExecutor.getAvailableTools();

@@ -238,44 +238,6 @@ export class ToolExecutor {
     }
 
     /**
-     * Execute multiple tools sequentially (one after another).
-     * Useful when tool execution order matters or to avoid overwhelming the system.
-     * @param requests Array of tool execution requests
-     * @returns Promise resolving to an array of tool execution results
-     */
-    async executeToolsSequentially(
-        requests: ToolExecutionRequest[]
-    ): Promise<ToolExecutionResult[]> {
-        if (requests.length === 0) {
-            return [];
-        }
-
-        const toolNames = requests.map((r) => r.name).join(', ');
-        Log.debug(
-            `Executing ${requests.length} tools sequentially: ${toolNames}`
-        );
-        const startTime = Date.now();
-        const results: ToolExecutionResult[] = [];
-
-        for (const request of requests) {
-            const result = await this.executeTool(request.name, request.args);
-            results.push(result);
-
-            // If a tool fails and it's critical, you could break here
-            // For now, we continue execution regardless of individual failures
-        }
-
-        const elapsed = Date.now() - startTime;
-        const succeeded = results.filter((r) => r.success).length;
-        const failed = results.length - succeeded;
-        Log.info(
-            `Sequential execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`
-        );
-
-        return results;
-    }
-
-    /**
      * Get all available tools from the registry.
      * @returns Array of available tool instances
      */
