@@ -12,6 +12,10 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
  * 2. DebouncedStreamHandler → rate limiting (NFR-002)
  * 3. ToolCallStreamAdapter (this class) → interface bridge
  *
+ * Key UX features:
+ * - Emits progress messages for tool execution
+ * - Emits clickable file references for file-based tools (read_file, list_directory, etc.)
+ *
  * @see docs/architecture.md - Architecture Decision 10: Streaming Debounce Pattern
  */
 export class ToolCallStreamAdapter implements ToolCallHandler {
@@ -30,6 +34,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     /**
      * Called when a tool execution starts.
      * Forwards formatted progress message based on tool type and args.
+     * Emits file references for file-based tools (creates clickable anchors in chat).
      */
     onToolCallStart(
         toolName: string,
@@ -40,6 +45,12 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
         const message = this.formatToolStartMessage(toolName, args);
         this.chatHandler.onProgress(message);
         this.chatHandler.onToolStart(toolName, args);
+
+        // Emit file reference for clickable anchor in chat UI
+        const filePath = this.extractFilePath(toolName, args);
+        if (filePath) {
+            this.chatHandler.onFileReference(filePath);
+        }
     }
 
     /**
@@ -58,6 +69,25 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     ): void {
         const summary = success ? 'completed' : error || 'failed';
         this.chatHandler.onToolComplete(toolName, success, summary);
+    }
+
+    /**
+     * Extracts the primary file path from tool arguments for file-based tools.
+     * Used to create clickable file anchors in the chat UI.
+     */
+    private extractFilePath(
+        toolName: string,
+        args: Record<string, unknown>
+    ): string | undefined {
+        switch (toolName) {
+            case 'read_file':
+                return args.file_path as string | undefined;
+            case 'list_directory':
+            case 'get_symbols_overview':
+                return args.path as string | undefined;
+            default:
+                return undefined;
+        }
     }
 
     /**

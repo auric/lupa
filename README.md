@@ -3,7 +3,7 @@
 **Magnify your code intelligence**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.8-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.9-green.svg)](./CHANGELOG.md)
 
 > ⚠️ **Important: Read before using!**
 >
@@ -48,7 +48,7 @@ Use the `@lupa` chat participant directly in VS Code's chat for quick inline ana
 @lupa /changes     # Analyze unstaged changes
 ```
 
-Type `@lupa` in the chat and use one of the available slash commands. The chat interface provides a clean, conversational experience with streamlined progress updates.
+Type `@lupa` in the chat and use one of the available slash commands. The chat interface provides a clean, conversational experience with streamlined progress updates and clickable file references.
 
 ### Exploration Mode
 

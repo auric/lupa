@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { Log } from './loggingService';
 import { GitService } from './gitService';
@@ -46,17 +47,42 @@ export interface ChatParticipantDependencies {
  * Creates a ChatToolCallHandler that bridges ConversationRunner events to ChatResponseStream.
  * Extracted for DRY usage across exploration and analysis modes.
  *
+ * Key UX features:
+ * - `onProgress`: Shows spinner with progress text
+ * - `onFileReference`: Creates clickable file anchors for file-based tools
+ * - `onMarkdown`: Streams rich markdown content
+ *
  * @param stream The VS Code chat response stream for output
+ * @param gitRootUri Optional Git repository root for resolving file paths
  * @returns ChatToolCallHandler implementation
  */
 function createChatStreamHandler(
-    stream: vscode.ChatResponseStream
+    stream: vscode.ChatResponseStream,
+    gitRootUri?: vscode.Uri
 ): ChatToolCallHandler {
     return {
         onProgress: (msg) => stream.progress(msg),
         onToolStart: () => {},
         onToolComplete: () => {},
-        onFileReference: () => {},
+        onFileReference: (filePath, range) => {
+            // Resolve relative paths to absolute URIs
+            let fileUri: vscode.Uri;
+            if (path.isAbsolute(filePath)) {
+                fileUri = vscode.Uri.file(filePath);
+            } else if (gitRootUri) {
+                fileUri = vscode.Uri.joinPath(gitRootUri, filePath);
+            } else {
+                // Can't resolve relative path without git root - skip anchor
+                return;
+            }
+
+            // Create clickable anchor with optional line range
+            if (range) {
+                stream.anchor(new vscode.Location(fileUri, range), filePath);
+            } else {
+                stream.anchor(fileUri, filePath);
+            }
+        },
         onThinking: (thought) =>
             stream.progress(`${ACTIVITY.thinking} ${thought}`),
         onMarkdown: (content) => stream.markdown(content),
@@ -285,8 +311,11 @@ export class ChatParticipantService implements vscode.Disposable {
 
             conversation.addUserMessage(request.prompt);
 
-            const { debouncedHandler, adapter } =
-                this.createStreamAdapter(stream);
+            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
+            const { debouncedHandler, adapter } = this.createStreamAdapter(
+                stream,
+                gitRootUri
+            );
 
             const result = await runner.run(
                 {
@@ -307,7 +336,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
-            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
             streamMarkdownWithAnchors(stream, result, gitRootUri);
 
             return {
@@ -505,7 +533,10 @@ export class ChatParticipantService implements vscode.Disposable {
             );
         conversation.addUserMessage(userPrompt);
 
-        const { debouncedHandler, adapter } = this.createStreamAdapter(stream);
+        const { debouncedHandler, adapter } = this.createStreamAdapter(
+            stream,
+            gitRootUri
+        );
 
         try {
             const analysisResult = await runner.run(
@@ -627,12 +658,18 @@ export class ChatParticipantService implements vscode.Disposable {
     /**
      * Create stream adapter pipeline for tool-calling UI feedback.
      * Extracted to avoid duplication between exploration and analysis modes.
+     *
+     * @param stream The VS Code chat response stream
+     * @param gitRootUri Optional Git root for resolving file paths in anchors
      */
-    private createStreamAdapter(stream: vscode.ChatResponseStream): {
+    private createStreamAdapter(
+        stream: vscode.ChatResponseStream,
+        gitRootUri?: vscode.Uri
+    ): {
         debouncedHandler: DebouncedStreamHandler;
         adapter: ToolCallStreamAdapter;
     } {
-        const uiHandler = createChatStreamHandler(stream);
+        const uiHandler = createChatStreamHandler(stream, gitRootUri);
         const debouncedHandler = new DebouncedStreamHandler(uiHandler);
         const adapter = new ToolCallStreamAdapter(debouncedHandler);
         return { debouncedHandler, adapter };

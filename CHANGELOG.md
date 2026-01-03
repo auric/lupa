@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Aligned with VS Code best practices**: Chat progress reporting now follows VS Code's recommended patterns for long-running operations, showing task-level updates rather than low-level iteration counters.
 
+### Added
+
+#### Clickable File References
+
+- **Interactive file anchors**: When Lupa reads files or analyzes directories in chat, file paths now appear as clickable links. Clicking a file reference opens it in the editor, similar to how GitHub Copilot displays file operations.
+
+- **Supported tools**: Clickable anchors are generated for `read_file`, `list_directory`, and `get_symbols_overview` tool invocations. Both absolute and relative paths are resolved correctly using the Git repository root.
+
 ## [0.1.8] - 2026-01-02
 
 ### Added
