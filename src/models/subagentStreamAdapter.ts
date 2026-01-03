@@ -34,7 +34,9 @@ export class SubagentStreamAdapter implements ToolCallHandler {
     }
 
     /**
-     * Creates a wrapped ChatToolCallHandler that prefixes progress messages.
+     * Creates a wrapped ChatToolCallHandler that prefixes progress and markdown messages.
+     * For file-based tools, the prefix is added to markdown content (the first fragment).
+     * For other tools, the prefix is added to progress messages.
      */
     private createPrefixedHandler(
         baseHandler: ChatToolCallHandler
@@ -51,8 +53,27 @@ export class SubagentStreamAdapter implements ToolCallHandler {
                 // Prefix thinking messages too
                 baseHandler.onThinking(`${this.prefix}${thought}`);
             },
-            onMarkdown: baseHandler.onMarkdown.bind(baseHandler),
+            onMarkdown: (content) => {
+                // Prefix markdown messages that start with an emoji (tool message start)
+                // Don't prefix suffix fragments like "...\n\n"
+                if (this.isToolMessageStart(content)) {
+                    baseHandler.onMarkdown(`${this.prefix}${content}`);
+                } else {
+                    baseHandler.onMarkdown(content);
+                }
+            },
         };
+    }
+
+    /**
+     * Checks if content is the start of a tool message (begins with emoji).
+     * Used to determine when to add the subagent prefix.
+     */
+    private isToolMessageStart(content: string): boolean {
+        // Tool messages start with emoji like 📂, 🔍, etc.
+        // The suffix ("...\n\n") doesn't start with emoji
+        const emojiPattern = /^[\p{Emoji_Presentation}\p{Emoji}\u{FE0F}]/u;
+        return emojiPattern.test(content);
     }
 
     // Delegate all ToolCallHandler methods to the inner adapter

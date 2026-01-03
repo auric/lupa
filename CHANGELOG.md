@@ -29,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed. Command palette analysis flow retains full progress details.
 
+### Fixed
+
+- **Fixed `list_directory` progress message**: The chat progress message now correctly displays the directory path (e.g., "📂 Listing src/utils...") instead of showing a generic "Listing directory..." message. The tool uses `relative_path` as its parameter name, which was previously not matched correctly.
+
+- **Fixed file tool messages not appearing alongside anchors**: File-based tool messages (read_file, list_directory, get_symbols_overview) now properly display both the descriptive message AND the clickable file anchor together. Previously, the transient progress message was being replaced by the anchor. Now the message is emitted as markdown content with the anchor embedded inline: "📂 Reading [src/index.ts](...)".
+
+### Testing
+
+- **SubagentStreamAdapter test suite**: New comprehensive test file covering message prefixing, visual distinction, iteration suppression, markdown prefix detection, and proper delegation to the inner adapter.
+
+- **File reference extraction tests**: Added test coverage for `extractFilePath` and `onFileReference` behavior, including edge cases like missing parameters and incorrect parameter names.
+
 ## [0.1.8] - 2026-01-02
 
 ### Added

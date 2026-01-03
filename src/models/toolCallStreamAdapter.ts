@@ -34,7 +34,8 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     /**
      * Called when a tool execution starts.
      * Forwards formatted progress message based on tool type and args.
-     * Emits file references for file-based tools (creates clickable anchors in chat).
+     * For file-based tools, emits markdown with inline clickable anchor.
+     * For other tools, emits progress message.
      */
     onToolCallStart(
         toolName: string,
@@ -42,15 +43,44 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
         _toolIndex: number,
         _totalTools: number
     ): void {
-        const message = this.formatToolStartMessage(toolName, args);
-        this.chatHandler.onProgress(message);
         this.chatHandler.onToolStart(toolName, args);
 
-        // Emit file reference for clickable anchor in chat UI
+        // For file-based tools, emit markdown with inline anchor
         const filePath = this.extractFilePath(toolName, args);
         if (filePath) {
+            const prefix = this.getFileToolPrefix(toolName);
+            const suffix = this.getFileToolSuffix(toolName);
+            this.chatHandler.onMarkdown(prefix);
             this.chatHandler.onFileReference(filePath);
+            this.chatHandler.onMarkdown(suffix);
+        } else {
+            // For non-file tools, use progress message
+            const message = this.formatToolStartMessage(toolName, args);
+            this.chatHandler.onProgress(message);
         }
+    }
+
+    /**
+     * Gets the prefix text for file-based tool messages (before the file anchor).
+     */
+    private getFileToolPrefix(toolName: string): string {
+        switch (toolName) {
+            case 'read_file':
+                return `${ACTIVITY.reading} Reading `;
+            case 'list_directory':
+                return `${ACTIVITY.reading} Listing `;
+            case 'get_symbols_overview':
+                return `${ACTIVITY.analyzing} Getting symbols in `;
+            default:
+                return `🔧 Processing `;
+        }
+    }
+
+    /**
+     * Gets the suffix text for file-based tool messages (after the file anchor).
+     */
+    private getFileToolSuffix(_toolName: string): string {
+        return `...\n\n`;
     }
 
     /**
@@ -83,6 +113,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'read_file':
                 return args.file_path as string | undefined;
             case 'list_directory':
+                return args.relative_path as string | undefined;
             case 'get_symbols_overview':
                 return args.path as string | undefined;
             default:
@@ -112,7 +143,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
                 return `${ACTIVITY.analyzing} Finding usages of \`${args.symbol_name || 'symbol'}\`...`;
 
             case 'list_directory':
-                return `${ACTIVITY.reading} Listing ${args.path || 'directory'}...`;
+                return `${ACTIVITY.reading} Listing ${args.relative_path || 'directory'}...`;
 
             case 'find_files_by_pattern':
                 return `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`;
