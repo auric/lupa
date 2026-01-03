@@ -598,6 +598,10 @@ export class ChatParticipantService implements vscode.Disposable {
     /**
      * Create per-request subagent infrastructure.
      * Extracted to avoid duplication between exploration and analysis modes.
+     *
+     * Note: SubagentExecutor receives undefined progress callback in chat context
+     * to suppress turn-by-turn iteration messages. Tool-level progress (e.g.,
+     * "🤖 Spawning subagent investigation...") still displays via ToolExecutor.
      */
     private createSubagentContext(
         stream: vscode.ChatResponseStream,
@@ -614,7 +618,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.toolRegistry,
             new SubagentPromptGenerator(),
             this.deps!.workspaceSettings,
-            (msg) => stream.progress(msg)
+            undefined // Suppress subagent iteration messages in chat UI
         );
         subagentSessionManager.setParentCancellationToken(token);
         return { subagentSessionManager, subagentExecutor };

@@ -5,6 +5,16 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-01-03
+
+### Changed
+
+#### Chat Participant UI
+
+- **Cleaner progress reporting**: Subagent turn-by-turn iteration messages ("Sub-analysis (1/100)...", etc.) are no longer shown in the chat participant interface. Users now see only high-level tool actions ("🤖 Spawning subagent investigation...") without verbose iteration counts, resulting in a cleaner, more conversational experience. Command palette analysis flow remains unchanged with full progress details.
+
+- **Aligned with VS Code best practices**: Chat progress reporting now follows VS Code's recommended patterns for long-running operations, showing task-level updates rather than low-level iteration counters.
+
 ## [0.1.8] - 2026-01-02
 
 ### Added
