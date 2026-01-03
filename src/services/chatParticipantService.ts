@@ -248,9 +248,16 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
-            // Create per-request subagent infrastructure
+            // Create stream adapter first - needed for subagent tool streaming
+            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
+            const { debouncedHandler, adapter } = this.createStreamAdapter(
+                stream,
+                gitRootUri
+            );
+
+            // Create per-request subagent infrastructure with chat handler
             const { subagentSessionManager, subagentExecutor } =
-                this.createSubagentContext(stream, token);
+                this.createSubagentContext(token, debouncedHandler);
 
             // Create per-request ToolExecutor with subagent context
             const toolExecutor = new ToolExecutor(
@@ -310,12 +317,6 @@ export class ChatParticipantService implements vscode.Disposable {
             }
 
             conversation.addUserMessage(request.prompt);
-
-            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
-            const { debouncedHandler, adapter } = this.createStreamAdapter(
-                stream,
-                gitRootUri
-            );
 
             const result = await runner.run(
                 {
@@ -493,10 +494,19 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
+        const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
+        const gitRootUri = this.deps!.gitOperations.getRepository()?.rootUri;
+
+        // Create stream adapter first - needed for subagent tool streaming
+        const { debouncedHandler, adapter } = this.createStreamAdapter(
+            stream,
+            gitRootUri
+        );
+
         // Create per-analysis instances for complete isolation
         const planManager = new PlanSessionManager();
         const { subagentSessionManager, subagentExecutor } =
-            this.createSubagentContext(stream, token);
+            this.createSubagentContext(token, debouncedHandler);
 
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
@@ -518,9 +528,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 availableTools
             );
 
-        const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
-
-        const gitRootUri = this.deps!.gitOperations.getRepository()?.rootUri;
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);
             stream.filetree(fileTree, gitRootUri);
@@ -532,11 +539,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 request.prompt || undefined
             );
         conversation.addUserMessage(userPrompt);
-
-        const { debouncedHandler, adapter } = this.createStreamAdapter(
-            stream,
-            gitRootUri
-        );
 
         try {
             const analysisResult = await runner.run(
@@ -630,13 +632,15 @@ export class ChatParticipantService implements vscode.Disposable {
      * Create per-request subagent infrastructure.
      * Extracted to avoid duplication between exploration and analysis modes.
      *
-     * Note: SubagentExecutor receives undefined progress callback in chat context
-     * to suppress turn-by-turn iteration messages. Tool-level progress (e.g.,
-     * "🤖 Spawning subagent investigation...") still displays via ToolExecutor.
+     * Subagent tool calls are streamed to chat UI with prefixed messages
+     * (e.g., "🔹 #1: Reading src/auth.ts...") for visual distinction.
+     *
+     * @param token Cancellation token for the request
+     * @param chatHandler Optional handler for streaming subagent tool calls to chat UI
      */
     private createSubagentContext(
-        stream: vscode.ChatResponseStream,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        chatHandler?: ChatToolCallHandler
     ): {
         subagentSessionManager: SubagentSessionManager;
         subagentExecutor: SubagentExecutor;
@@ -649,7 +653,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.toolRegistry,
             new SubagentPromptGenerator(),
             this.deps!.workspaceSettings,
-            undefined // Suppress subagent iteration messages in chat UI
+            chatHandler // Pass handler for subagent tool streaming
         );
         subagentSessionManager.setParentCancellationToken(token);
         return { subagentSessionManager, subagentExecutor };

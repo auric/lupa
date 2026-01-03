@@ -48,7 +48,10 @@ Use the `@lupa` chat participant directly in VS Code's chat for quick inline ana
 @lupa /changes     # Analyze unstaged changes
 ```
 
-Type `@lupa` in the chat and use one of the available slash commands. The chat interface provides a clean, conversational experience with streamlined progress updates and clickable file references.
+Type `@lupa` in the chat and use one of the available slash commands. The chat interface provides a clean, conversational experience with:
+
+- **Clickable file references** - File paths appear as links you can click to open
+- **Visible subagent work** - When subagents investigate, their tool calls show with a "🔹 #N:" prefix
 
 ### Exploration Mode
 

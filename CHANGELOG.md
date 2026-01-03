@@ -7,21 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.9] - 2026-01-03
 
-### Changed
-
-#### Chat Participant UI
-
-- **Cleaner progress reporting**: Subagent turn-by-turn iteration messages ("Sub-analysis (1/100)...", etc.) are no longer shown in the chat participant interface. Users now see only high-level tool actions ("🤖 Spawning subagent investigation...") without verbose iteration counts, resulting in a cleaner, more conversational experience. Command palette analysis flow remains unchanged with full progress details.
-
-- **Aligned with VS Code best practices**: Chat progress reporting now follows VS Code's recommended patterns for long-running operations, showing task-level updates rather than low-level iteration counters.
-
 ### Added
+
+#### Subagent Tool Visibility
+
+- **See what subagents are doing**: When a subagent is spawned in chat, you now see its tool invocations with a distinctive prefix. For example: "🔹 #1: Reading src/auth.ts..." clearly indicates which subagent is performing which action.
+
+- **Visual distinction**: Main agent actions appear normally (e.g., "📂 Reading file...") while subagent actions are prefixed with "🔹 #N:" to distinguish them from the parent analysis.
+
+- **Clean architecture**: New `SubagentStreamAdapter` class bridges subagent tool calls to the chat UI with proper message prefixing.
 
 #### Clickable File References
 
 - **Interactive file anchors**: When Lupa reads files or analyzes directories in chat, file paths now appear as clickable links. Clicking a file reference opens it in the editor, similar to how GitHub Copilot displays file operations.
 
 - **Supported tools**: Clickable anchors are generated for `read_file`, `list_directory`, and `get_symbols_overview` tool invocations. Both absolute and relative paths are resolved correctly using the Git repository root.
+
+### Changed
+
+#### Chat Participant UI
+
+- **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed. Command palette analysis flow retains full progress details.
 
 ## [0.1.8] - 2026-01-02
 
