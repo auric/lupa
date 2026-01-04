@@ -65,7 +65,7 @@ describe('ToolCallStreamAdapter', () => {
             expect(mockChatHandler.onFileReference).toHaveBeenCalledWith(
                 'src/index.ts'
             );
-            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith('...\n\n');
+            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith('\n\n');
             expect(mockChatHandler.onProgress).not.toHaveBeenCalled();
         });
 
@@ -96,7 +96,7 @@ describe('ToolCallStreamAdapter', () => {
             expect(mockChatHandler.onFileReference).toHaveBeenCalledWith(
                 'src/utils'
             );
-            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith('...\n\n');
+            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith('\n\n');
             expect(mockChatHandler.onProgress).not.toHaveBeenCalled();
         });
 
@@ -127,7 +127,7 @@ describe('ToolCallStreamAdapter', () => {
             expect(mockChatHandler.onFileReference).toHaveBeenCalledWith(
                 'src/service.ts'
             );
-            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith('...\n\n');
+            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith('\n\n');
             expect(mockChatHandler.onProgress).not.toHaveBeenCalled();
         });
 
@@ -227,7 +227,7 @@ describe('ToolCallStreamAdapter', () => {
             );
             expect(mockChatHandler.onMarkdown).toHaveBeenNthCalledWith(
                 2,
-                '...\n\n'
+                '\n\n'
             );
         });
 

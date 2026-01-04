@@ -29,11 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed. Command palette analysis flow retains full progress details.
 
+- **Cleaner file anchor display**: Removed trailing "..." from file tool messages. Previously showed "📂 Reading [file.ts](...)" which was noisy; now shows "📂 Reading [file.ts]" for cleaner UI.
+
+#### Architecture Improvements
+
+- **Simplified ToolCallStreamAdapter**: Consolidated 4 separate methods (`getFileToolPrefix`, `getFileToolSuffix`, `extractFilePath`, `formatToolStartMessage`) into a single `formatToolMessage()` method that returns a unified `ToolMessage` type. This reduces code complexity and follows Single Responsibility Principle - one method handles all tool formatting logic.
+
 ### Fixed
 
 - **Fixed `list_directory` progress message**: The chat progress message now correctly displays the directory path (e.g., "📂 Listing src/utils...") instead of showing a generic "Listing directory..." message. The tool uses `relative_path` as its parameter name, which was previously not matched correctly.
 
-- **Fixed file tool messages not appearing alongside anchors**: File-based tool messages (read_file, list_directory, get_symbols_overview) now properly display both the descriptive message AND the clickable file anchor together. Previously, the transient progress message was being replaced by the anchor. Now the message is emitted as markdown content with the anchor embedded inline: "📂 Reading [src/index.ts](...)".
+- **Fixed file tool messages not appearing alongside anchors**: File-based tool messages (read_file, list_directory, get_symbols_overview) now properly display both the descriptive message AND the clickable file anchor together. Previously, the transient progress message was being replaced by the anchor. Now the message is emitted as markdown content with the anchor embedded inline.
 
 ### Testing
 

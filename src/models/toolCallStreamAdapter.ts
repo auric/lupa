@@ -4,17 +4,29 @@ import { ACTIVITY } from '../config/chatEmoji';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 
 /**
+ * Formatted tool message with optional inline anchor.
+ * Unifies text formatting and file path extraction into a single structure.
+ */
+interface ToolMessage {
+    /** Full text for progress display (fallback when no anchor) */
+    text: string;
+    /** If present, render as markdown with inline clickable anchor */
+    anchor?: {
+        /** Text before the anchor (e.g., "📂 Reading ") */
+        prefix: string;
+        /** File path to make clickable */
+        path: string;
+    };
+}
+
+/**
  * Adapts ConversationRunner's ToolCallHandler to ChatToolCallHandler for UI streaming.
- * Bridges the internal conversation events to external chat UI updates.
+ * Bridges internal conversation events to external chat UI updates.
  *
- * Part of the Three-Layer Streaming Architecture:
- * 1. UI Handler (ChatToolCallHandler) → stream.* calls
- * 2. DebouncedStreamHandler → rate limiting (NFR-002)
- * 3. ToolCallStreamAdapter (this class) → interface bridge
- *
- * Key UX features:
- * - Emits progress messages for tool execution
- * - Emits clickable file references for file-based tools (read_file, list_directory, etc.)
+ * Architecture:
+ * - Uses ToolMessage to unify formatting and file extraction
+ * - File-based tools render as markdown with inline clickable anchors
+ * - Other tools render as transient progress messages
  *
  * @see docs/architecture.md - Architecture Decision 10: Streaming Debounce Pattern
  */
@@ -23,19 +35,13 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
     /**
      * Called when a conversation iteration starts.
-     * Intentionally does NOT show turn indicators - they're noise.
-     * Users care about tool actions, not iteration counts.
+     * No-op: turn indicators are noise. Users care about tool actions.
      */
-    onIterationStart(_current: number, _max: number): void {
-        // No-op: Turn indicators removed per UX decision.
-        // Tool-specific messages provide sufficient progress feedback.
-    }
+    onIterationStart(_current: number, _max: number): void {}
 
     /**
      * Called when a tool execution starts.
-     * Forwards formatted progress message based on tool type and args.
-     * For file-based tools, emits markdown with inline clickable anchor.
-     * For other tools, emits progress message.
+     * Emits either markdown with inline anchor (file tools) or progress message.
      */
     onToolCallStart(
         toolName: string,
@@ -45,47 +51,21 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     ): void {
         this.chatHandler.onToolStart(toolName, args);
 
-        // For file-based tools, emit markdown with inline anchor
-        const filePath = this.extractFilePath(toolName, args);
-        if (filePath) {
-            const prefix = this.getFileToolPrefix(toolName);
-            const suffix = this.getFileToolSuffix(toolName);
-            this.chatHandler.onMarkdown(prefix);
-            this.chatHandler.onFileReference(filePath);
-            this.chatHandler.onMarkdown(suffix);
+        const msg = this.formatToolMessage(toolName, args);
+
+        if (msg.anchor) {
+            // File-based tool: emit markdown with inline anchor
+            this.chatHandler.onMarkdown(msg.anchor.prefix);
+            this.chatHandler.onFileReference(msg.anchor.path);
+            this.chatHandler.onMarkdown('\n\n');
         } else {
-            // For non-file tools, use progress message
-            const message = this.formatToolStartMessage(toolName, args);
-            this.chatHandler.onProgress(message);
+            // Non-file tool: emit transient progress
+            this.chatHandler.onProgress(msg.text);
         }
-    }
-
-    /**
-     * Gets the prefix text for file-based tool messages (before the file anchor).
-     */
-    private getFileToolPrefix(toolName: string): string {
-        switch (toolName) {
-            case 'read_file':
-                return `${ACTIVITY.reading} Reading `;
-            case 'list_directory':
-                return `${ACTIVITY.reading} Listing `;
-            case 'get_symbols_overview':
-                return `${ACTIVITY.analyzing} Getting symbols in `;
-            default:
-                return `🔧 Processing `;
-        }
-    }
-
-    /**
-     * Gets the suffix text for file-based tool messages (after the file anchor).
-     */
-    private getFileToolSuffix(_toolName: string): string {
-        return `...\n\n`;
     }
 
     /**
      * Called after each tool call completes.
-     * Forwards to onToolComplete with success/failure summary.
      */
     onToolCallComplete(
         _toolCallId: string,
@@ -102,78 +82,101 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     }
 
     /**
-     * Extracts the primary file path from tool arguments for file-based tools.
-     * Used to create clickable file anchors in the chat UI.
+     * Formats a tool invocation into a displayable message.
+     * Returns structured data with optional anchor for file-based tools.
      */
-    private extractFilePath(
+    private formatToolMessage(
         toolName: string,
         args: Record<string, unknown>
-    ): string | undefined {
+    ): ToolMessage {
         switch (toolName) {
-            case 'read_file':
-                return args.file_path as string | undefined;
-            case 'list_directory':
-                return args.relative_path as string | undefined;
-            case 'get_symbols_overview':
-                return args.path as string | undefined;
-            default:
-                return undefined;
-        }
-    }
+            // File-based tools: return anchor info for clickable paths
+            case 'read_file': {
+                const path = args.file_path as string | undefined;
+                if (path) {
+                    return {
+                        text: `${ACTIVITY.reading} Reading ${path}`,
+                        anchor: {
+                            prefix: `${ACTIVITY.reading} Reading `,
+                            path,
+                        },
+                    };
+                }
+                return { text: `${ACTIVITY.reading} Reading file...` };
+            }
 
-    /**
-     * Formats a human-readable progress message for tool execution.
-     * Uses tool-specific templates with argument interpolation.
-     */
-    private formatToolStartMessage(
-        toolName: string,
-        args: Record<string, unknown>
-    ): string {
-        switch (toolName) {
+            case 'list_directory': {
+                const path = args.relative_path as string | undefined;
+                if (path) {
+                    return {
+                        text: `${ACTIVITY.reading} Listing ${path}`,
+                        anchor: {
+                            prefix: `${ACTIVITY.reading} Listing `,
+                            path,
+                        },
+                    };
+                }
+                return { text: `${ACTIVITY.reading} Listing directory...` };
+            }
+
+            case 'get_symbols_overview': {
+                const path = args.path as string | undefined;
+                if (path) {
+                    return {
+                        text: `${ACTIVITY.analyzing} Getting symbols in ${path}`,
+                        anchor: {
+                            prefix: `${ACTIVITY.analyzing} Getting symbols in `,
+                            path,
+                        },
+                    };
+                }
+                return { text: `${ACTIVITY.analyzing} Getting symbols...` };
+            }
+
+            // Non-file tools: return text only
             case 'update_plan':
-                return `📝 Updating analysis plan...`;
-
-            case 'read_file':
-                return `${ACTIVITY.reading} Reading ${args.file_path || 'file'}...`;
+                return { text: '📝 Updating analysis plan...' };
 
             case 'find_symbol':
-                return `${ACTIVITY.searching} Finding symbol \`${args.name_path || 'symbol'}\`...`;
+                return {
+                    text: `${ACTIVITY.searching} Finding symbol \`${args.name_path || 'symbol'}\`...`,
+                };
 
             case 'find_usages':
-                return `${ACTIVITY.analyzing} Finding usages of \`${args.symbol_name || 'symbol'}\`...`;
-
-            case 'list_directory':
-                return `${ACTIVITY.reading} Listing ${args.relative_path || 'directory'}...`;
+                return {
+                    text: `${ACTIVITY.analyzing} Finding usages of \`${args.symbol_name || 'symbol'}\`...`,
+                };
 
             case 'find_files_by_pattern':
-                return `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`;
-
-            case 'get_symbols_overview':
-                return `${ACTIVITY.analyzing} Getting symbols in ${args.path || 'file'}...`;
+                return {
+                    text: `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`,
+                };
 
             case 'search_for_pattern':
-                return `${ACTIVITY.searching} Searching for \`${args.pattern || 'pattern'}\`...`;
+                return {
+                    text: `${ACTIVITY.searching} Searching for \`${args.pattern || 'pattern'}\`...`,
+                };
 
             case 'run_subagent':
-                return `🤖 Spawning subagent investigation...`;
+                return { text: '🤖 Spawning subagent investigation...' };
 
             case 'think_about_context':
-                return `🧠 Reflecting on context...`;
+                return { text: '🧠 Reflecting on context...' };
 
             case 'think_about_investigation':
-                return `🧠 Checking investigation progress...`;
+                return { text: '🧠 Checking investigation progress...' };
 
             case 'think_about_task':
-                return `🧠 Verifying task alignment...`;
+                return { text: '🧠 Verifying task alignment...' };
 
             case 'think_about_completion':
-                return `🧠 Verifying analysis completeness...`;
+                return { text: '🧠 Verifying analysis completeness...' };
 
             case 'submit_review':
-                return `🚀 Submitting code review...`;
+                return { text: '🚀 Submitting code review...' };
 
             default:
-                return `🔧 Running ${toolName}...`;
+                return { text: `🔧 Running ${toolName}...` };
         }
     }
 }
