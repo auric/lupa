@@ -39,7 +39,7 @@ describe('SubagentStreamAdapter', () => {
 
             // All tools use progress now (no markdown/anchors)
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #1: ${ACTIVITY.reading} Read src/auth.ts`
+                `🔹 #1: ${ACTIVITY.reading} Read \`src/auth.ts\``
             );
         });
 
@@ -79,7 +79,7 @@ describe('SubagentStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #3: ${ACTIVITY.reading} Listed src`
+                `🔹 #3: ${ACTIVITY.reading} Listed \`src\``
             );
         });
 
@@ -187,7 +187,7 @@ describe('SubagentStreamAdapter', () => {
             expect(calls).toHaveLength(3);
             expect(calls[0][0]).toMatch(/^🔹 #1: .* Found symbol `MyClass`$/);
             expect(calls[1][0]).toMatch(
-                /^🔹 #1: .* Found usages of `login` in src\/auth\.ts$/
+                /^🔹 #1: .* Found usages of `login` in `src\/auth\.ts`$/
             );
             expect(calls[2][0]).toMatch(/^🔹 #1: .* Searched for `TODO`$/);
         });

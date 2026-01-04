@@ -66,13 +66,13 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
         switch (toolName) {
             // Quick actions - past tense
             case 'read_file':
-                return `${ACTIVITY.reading} Read ${args.file_path || 'file'}`;
+                return `${ACTIVITY.reading} Read \`${args.file_path || 'file'}\``;
 
             case 'list_directory':
-                return `${ACTIVITY.reading} Listed ${args.relative_path || 'directory'}`;
+                return `${ACTIVITY.reading} Listed \`${args.relative_path || 'directory'}\``;
 
             case 'get_symbols_overview':
-                return `${ACTIVITY.analyzing} Analyzed symbols in ${args.path || 'file'}`;
+                return `${ACTIVITY.analyzing} Analyzed symbols in \`${args.path || 'file'}\``;
 
             case 'update_plan':
                 return '📝 Updated analysis plan';
@@ -82,7 +82,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
             case 'find_usages': {
                 const symbol = args.symbol_name || 'symbol';
-                const file = args.file_path ? ` in ${args.file_path}` : '';
+                const file = args.file_path ? ` in \`${args.file_path}\`` : '';
                 return `${ACTIVITY.analyzing} Found usages of \`${symbol}\`${file}`;
             }
 

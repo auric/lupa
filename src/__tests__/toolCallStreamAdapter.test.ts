@@ -62,7 +62,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Read src/index.ts`
+                `${ACTIVITY.reading} Read \`src/index.ts\``
             );
             // Progress-only: no markdown or anchors
             expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Found usages of \`processData\` in src/handler.ts`
+                `${ACTIVITY.analyzing} Found usages of \`processData\` in \`src/handler.ts\``
             );
         });
 
@@ -104,7 +104,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Listed src/utils`
+                `${ACTIVITY.reading} Listed \`src/utils\``
             );
             expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
             expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Analyzed symbols in src/service.ts`
+                `${ACTIVITY.analyzing} Analyzed symbols in \`src/service.ts\``
             );
             expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
             expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
@@ -208,7 +208,7 @@ describe('ToolCallStreamAdapter', () => {
             adapter.onToolCallStart('read_file', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Read file`
+                `${ACTIVITY.reading} Read \`file\``
             );
         });
     });
