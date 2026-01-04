@@ -3,7 +3,8 @@
 **Magnify your code intelligence**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.9-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.10-green.svg)](./CHANGELOG.md)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](./LICENSE)
 
 > ⚠️ **Important: Read before using!**
 >
@@ -153,12 +154,14 @@ Pre-commit hooks for linting and formatting are installed automatically when you
 
 ## License
 
-See [LICENSE](./LICENSE) for details.
+This project is licensed under the [GNU Affero General Public License v3.0](./LICENSE) (AGPL-3.0).
+
+Copyright © 2025-2026 [Ihor Lifanov](https://github.com/auric)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ from developers, for developers**
+**Made with ❤️ by [Ihor Lifanov](https://github.com/auric)**
 
 </div>

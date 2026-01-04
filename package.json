@@ -2,10 +2,14 @@
     "name": "lupa",
     "displayName": "🔍 Lupa",
     "publisher": "auric",
+    "author": {
+        "name": "Ihor Lifanov",
+        "url": "https://github.com/auric"
+    },
     "repository": "https://github.com/auric/lupa",
     "license": "AGPL-3.0-or-later",
     "description": "Deeply reviews your code changes using Copilot. Explores the codebase to understand context before giving feedback.",
-    "version": "0.1.9",
+    "version": "0.1.10",
     "icon": "resources/icon.png",
     "engines": {
         "vscode": "^1.107.0",
