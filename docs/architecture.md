@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.0 | **Generated**: December 26, 2025 | **Type**: VS Code Extension
+> **Version**: 0.1.9 | **Generated**: January 4, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
@@ -15,6 +15,8 @@
 | Dual Build Strategy           | Vite builds both Node.js extension and browser-based webview                 |
 | React 19 with Compiler        | Automatic memoization reduces UI performance overhead                        |
 | Zod Schema Validation         | Type-safe tool parameter validation with automatic JSON schema generation    |
+| Progress-Only Tool Streaming  | Uses `stream.progress()` for transient tool feedback; clears on completion   |
+| Parallel Tool Execution       | `ToolExecutor` uses `Promise.all` for concurrent tool calls                  |
 
 ---
 
@@ -136,7 +138,7 @@ Token management, conversation state, and tool execution infrastructure.
 | --------------------- | ------------------------------------------------------------- |
 | `ConversationManager` | Maintains conversation history (user/assistant/tool messages) |
 | `ConversationRunner`  | Executes multi-turn conversation loop                         |
-| `ToolExecutor`        | Executes tools with rate limiting                             |
+| `ToolExecutor`        | Executes tools in parallel (Promise.all) with rate limiting   |
 | `ToolRegistry`        | Stores and retrieves tool instances                           |
 | `CopilotModelManager` | Language model selection and API interface                    |
 | `PromptGenerator`     | System and user prompt generation                             |
