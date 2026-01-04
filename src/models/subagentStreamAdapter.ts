@@ -8,8 +8,8 @@ import { ToolCallStreamAdapter } from './toolCallStreamAdapter';
  * Wraps a ChatToolCallHandler and prefixes progress/thinking messages with subagent indicator.
  *
  * UX Design:
- * - Main agent: "📂 Reading src/index.ts..."
- * - Subagent:   "🔹 #1: 📂 Reading src/auth.ts..."
+ * - Main agent: "📂 Read src/index.ts"
+ * - Subagent:   "🔹 #1: 📂 Read src/auth.ts"
  *
  * This provides clear visual distinction between main and subagent work.
  */

@@ -15,6 +15,7 @@ import type {
 } from '../types/toolCallTypes';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
+import type { ToolResultMetadata } from '@/types/toolResultTypes';
 import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
@@ -132,7 +133,7 @@ export class SubagentExecutor {
                 {
                     onIterationStart: (current, max) => {
                         // Report to VS Code progress bar (command palette flow).
-                        // Chat UI iteration is suppressed by SubagentStreamAdapter not implementing onIterationStart.
+                        // Chat UI iteration is suppressed by SubagentStreamAdapter's no-op onIterationStart.
                         this.reportProgress(
                             `Sub-analysis (${current}/${max})...`,
                             0.1
@@ -159,7 +160,8 @@ export class SubagentExecutor {
                         result: string,
                         success: boolean,
                         error?: string,
-                        durationMs?: number
+                        durationMs?: number,
+                        metadata?: ToolResultMetadata
                     ) => {
                         toolCallsMade++;
                         toolCalls.push({
@@ -181,7 +183,7 @@ export class SubagentExecutor {
                             success,
                             error,
                             durationMs,
-                            undefined
+                            metadata
                         );
                     },
                 }

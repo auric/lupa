@@ -237,7 +237,7 @@ describe('ToolCallStreamAdapter', () => {
             adapter.onToolCallComplete(
                 'call_456',
                 'read_file',
-                { path: '/test' },
+                { file_path: '/test' },
                 '',
                 false,
                 'File not found',
