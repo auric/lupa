@@ -23,11 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Progress-only tool feedback**: Tool invocations use `stream.progress()` for all status messages. Progress messages are transient and clear automatically when the final response appears, providing clean UX without noisy copy/paste output.
 
-- **Past-tense progress messages**: All tool progress messages now use past tense (e.g., "Read src/file.ts" instead of "Reading src/file.ts...") since by the time the user sees the message, the action has completed.
+- **Improved progress message wording**: Quick actions use past tense ("Read file.ts", "Listed directory"). Search actions use neutral wording that doesn't imply success ("Looked up symbol", "Searched usages"). Long-running actions use present continuous ("Analyzing context...").
+
+- **Input sanitization**: Tool arguments are sanitized before display to prevent markdown injection (backticks escaped, whitespace trimmed).
 
 - **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed.
 
-- **Enhanced find_usages progress**: Now shows both the symbol name AND the file path context (e.g., "Found usages of `login` in src/auth.ts") for more informative feedback.
+- **Enhanced find_usages progress**: Now shows both the symbol name AND the file path context (e.g., "Searched usages of `login` in src/auth.ts") for more informative feedback.
 
 #### Architecture Improvements
 

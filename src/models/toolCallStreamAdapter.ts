@@ -4,6 +4,19 @@ import { ACTIVITY } from '../config/chatEmoji';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 
 /**
+ * Sanitizes a value for safe interpolation in markdown progress messages.
+ * - Trims whitespace
+ * - Escapes backticks (replaces with single quotes)
+ * - Returns fallback if empty or non-string
+ */
+function sanitizeForMarkdown(value: unknown, fallback: string): string {
+    if (typeof value !== 'string' || !value.trim()) {
+        return fallback;
+    }
+    return value.trim().replace(/`/g, "'");
+}
+
+/**
  * Adapts ConversationRunner's ToolCallHandler to ChatToolCallHandler for UI streaming.
  * Bridges internal conversation events to external chat UI updates.
  *
@@ -11,6 +24,7 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
  * - Uses stream.progress() for all tool feedback (transient, clears on completion)
  * - formatToolMessage() returns plain strings for simplicity
  * - No anchors/markdown - progress messages provide clean UX that clears for final output
+ * - Messages are activity indicators, not success confirmations (tool may still fail)
  *
  * @see docs/architecture.md - Architecture Decision 10: Streaming Debounce Pattern
  */
@@ -56,41 +70,48 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
     /**
      * Formats a tool invocation into a displayable progress message.
-     * - Quick actions (file reads, searches): Past tense - completed by render time
+     * - Quick actions (file reads): Past tense - completed by render time
+     * - Search actions: Neutral "looked up"/"searched" - doesn't imply success
      * - Long-running actions (thinking, subagents): Present continuous - still in progress
+     *
+     * Note: These are activity indicators, not success confirmations. The tool
+     * may still fail after this message is shown.
      */
     private formatToolMessage(
         toolName: string,
         args: Record<string, unknown>
     ): string {
         switch (toolName) {
-            // Quick actions - past tense
+            // Quick actions - past tense (file I/O completes quickly)
             case 'read_file':
-                return `${ACTIVITY.reading} Read \`${args.file_path || 'file'}\``;
+                return `${ACTIVITY.reading} Read \`${sanitizeForMarkdown(args.file_path, 'file')}\``;
 
             case 'list_directory':
-                return `${ACTIVITY.reading} Listed \`${args.relative_path || 'directory'}\``;
+                return `${ACTIVITY.reading} Listed \`${sanitizeForMarkdown(args.relative_path, 'directory')}\``;
 
             case 'get_symbols_overview':
-                return `${ACTIVITY.analyzing} Analyzed symbols in \`${args.path || 'file'}\``;
+                return `${ACTIVITY.analyzing} Analyzed symbols in \`${sanitizeForMarkdown(args.path, 'file')}\``;
 
             case 'update_plan':
                 return '📝 Updated analysis plan';
 
+            // Search actions - neutral wording (doesn't imply success)
             case 'find_symbol':
-                return `${ACTIVITY.searching} Found symbol \`${args.name_path || 'symbol'}\``;
+                return `${ACTIVITY.searching} Looked up symbol \`${sanitizeForMarkdown(args.name_path, 'symbol')}\``;
 
             case 'find_usages': {
-                const symbol = args.symbol_name || 'symbol';
-                const file = args.file_path ? ` in \`${args.file_path}\`` : '';
-                return `${ACTIVITY.analyzing} Found usages of \`${symbol}\`${file}`;
+                const symbol = sanitizeForMarkdown(args.symbol_name, 'symbol');
+                const file = args.file_path
+                    ? ` in \`${sanitizeForMarkdown(args.file_path, 'file')}\``
+                    : '';
+                return `${ACTIVITY.analyzing} Searched usages of \`${symbol}\`${file}`;
             }
 
             case 'find_files_by_pattern':
-                return `${ACTIVITY.searching} Found files matching \`${args.pattern || 'pattern'}\``;
+                return `${ACTIVITY.searching} Searched files matching \`${sanitizeForMarkdown(args.pattern, 'pattern')}\``;
 
             case 'search_for_pattern':
-                return `${ACTIVITY.searching} Searched for \`${args.pattern || 'pattern'}\``;
+                return `${ACTIVITY.searching} Searched for \`${sanitizeForMarkdown(args.pattern, 'pattern')}\``;
 
             case 'submit_review':
                 return '🚀 Submitted code review';
@@ -112,7 +133,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
                 return '🧠 Verifying analysis completeness...';
 
             default:
-                return `🔧 Executed ${toolName}`;
+                return `🔧 Ran \`${sanitizeForMarkdown(toolName, 'tool')}\``;
         }
     }
 }

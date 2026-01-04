@@ -42,7 +42,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Found symbol \`MyClass\``
+                `${ACTIVITY.searching} Looked up symbol \`MyClass\``
             );
             expect(mockChatHandler.onToolStart).toHaveBeenCalledWith(
                 'find_symbol',
@@ -78,7 +78,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Found usages of \`processData\` in \`src/handler.ts\``
+                `${ACTIVITY.analyzing} Searched usages of \`processData\` in \`src/handler.ts\``
             );
         });
 
@@ -91,7 +91,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Found usages of \`processData\``
+                `${ACTIVITY.analyzing} Searched usages of \`processData\``
             );
         });
 
@@ -119,7 +119,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Found files matching \`*.test.ts\``
+                `${ACTIVITY.searching} Searched files matching \`*.test.ts\``
             );
         });
 
@@ -200,7 +200,7 @@ describe('ToolCallStreamAdapter', () => {
             adapter.onToolCallStart('custom_tool', { foo: 'bar' }, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🔧 Executed custom_tool'
+                '🔧 Ran `custom_tool`'
             );
         });
 
@@ -209,6 +209,40 @@ describe('ToolCallStreamAdapter', () => {
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 `${ACTIVITY.reading} Read \`file\``
+            );
+        });
+
+        it('should escape backticks in file paths to prevent markdown injection', () => {
+            adapter.onToolCallStart(
+                'read_file',
+                { file_path: 'src/`test`.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read \`src/'test'.ts\``
+            );
+        });
+
+        it('should handle empty string values with fallback', () => {
+            adapter.onToolCallStart('find_symbol', { name_path: '' }, 0, 1);
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Looked up symbol \`symbol\``
+            );
+        });
+
+        it('should trim whitespace from values', () => {
+            adapter.onToolCallStart(
+                'read_file',
+                { file_path: '  src/index.ts  ' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read \`src/index.ts\``
             );
         });
     });

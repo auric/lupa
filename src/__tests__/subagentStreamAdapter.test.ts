@@ -52,7 +52,7 @@ describe('SubagentStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #1: ${ACTIVITY.searching} Found symbol \`login\``
+                `🔹 #1: ${ACTIVITY.searching} Looked up symbol \`login\``
             );
         });
 
@@ -68,7 +68,7 @@ describe('SubagentStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #2: ${ACTIVITY.searching} Found symbol \`login\``
+                `🔹 #2: ${ACTIVITY.searching} Looked up symbol \`login\``
             );
 
             adapter3.onToolCallStart(
@@ -185,9 +185,11 @@ describe('SubagentStreamAdapter', () => {
                 mockChatHandler.onProgress as ReturnType<typeof vi.fn>
             ).mock.calls;
             expect(calls).toHaveLength(3);
-            expect(calls[0][0]).toMatch(/^🔹 #1: .* Found symbol `MyClass`$/);
+            expect(calls[0][0]).toMatch(
+                /^🔹 #1: .* Looked up symbol `MyClass`$/
+            );
             expect(calls[1][0]).toMatch(
-                /^🔹 #1: .* Found usages of `login` in `src\/auth\.ts`$/
+                /^🔹 #1: .* Searched usages of `login` in `src\/auth\.ts`$/
             );
             expect(calls[2][0]).toMatch(/^🔹 #1: .* Searched for `TODO`$/);
         });
