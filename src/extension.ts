@@ -1,3 +1,9 @@
+/**
+ * Lupa - Pull Request Analysis Extension for VS Code
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (c) 2026 Ihor Lifanov
+ */
+
 import * as vscode from 'vscode';
 import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
