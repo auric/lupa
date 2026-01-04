@@ -131,7 +131,8 @@ export class SubagentExecutor {
                 token,
                 {
                     onIterationStart: (current, max) => {
-                        // Suppress iteration messages - SubagentStreamAdapter handles this
+                        // Report to VS Code progress bar (command palette flow).
+                        // Chat UI iteration is suppressed by SubagentStreamAdapter not implementing onIterationStart.
                         this.reportProgress(
                             `Sub-analysis (${current}/${max})...`,
                             0.1

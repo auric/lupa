@@ -31,8 +31,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Simplified ToolCallStreamAdapter**: The `formatToolMessage()` method returns a plain string. Consolidated from 4 separate methods into one, following Single Responsibility Principle.
 
-- **Simplified SubagentStreamAdapter**: Removed emoji detection logic. With progress-only output, the onMarkdown handler is a simple pass-through.
-
 ### Fixed
 
 - **Subagent tool completions surfaced to chat UI**: `SubagentExecutor` now forwards `onToolCallComplete` events to the subagent stream adapter.
