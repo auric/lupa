@@ -5,47 +5,49 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.9] - 2026-01-03
+## [0.1.9] - 2026-01-04
 
 ### Added
 
 #### Subagent Tool Visibility
 
-- **See what subagents are doing**: When a subagent is spawned in chat, you now see its tool invocations with a distinctive prefix. For example: "🔹 #1: Reading src/auth.ts..." clearly indicates which subagent is performing which action.
+- **See what subagents are doing**: When a subagent is spawned in chat, you now see its tool invocations with a distinctive prefix. For example: "🔹 #1: 📂 Reading src/auth.ts..." clearly indicates which subagent is performing which action.
 
 - **Visual distinction**: Main agent actions appear normally (e.g., "📂 Reading file...") while subagent actions are prefixed with "🔹 #N:" to distinguish them from the parent analysis.
 
 - **Clean architecture**: New `SubagentStreamAdapter` class bridges subagent tool calls to the chat UI with proper message prefixing.
 
-#### Clickable File References
-
-- **Interactive file anchors**: When Lupa reads files or analyzes directories in chat, file paths now appear as clickable links. Clicking a file reference opens it in the editor, similar to how GitHub Copilot displays file operations.
-
-- **Supported tools**: Clickable anchors are generated for `read_file`, `list_directory`, and `get_symbols_overview` tool invocations. Both absolute and relative paths are resolved correctly using the Git repository root.
-
 ### Changed
 
 #### Chat Participant UI
 
-- **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed. Command palette analysis flow retains full progress details.
+- **Progress-only tool feedback**: Tool invocations use `stream.progress()` for all status messages. Progress messages are transient and clear automatically when the final response appears, providing clean UX without noisy copy/paste output.
 
-- **Cleaner file anchor display**: Removed trailing "..." from file tool messages. Previously showed "📂 Reading [file.ts](...)" which was noisy; now shows "📂 Reading [file.ts]" for cleaner UI.
+- **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed.
+
+- **Enhanced find_usages progress**: Now shows both the symbol name AND the file path context (e.g., "Finding usages of `login` in src/auth.ts...") for more informative feedback.
 
 #### Architecture Improvements
 
-- **Simplified ToolCallStreamAdapter**: Consolidated 4 separate methods (`getFileToolPrefix`, `getFileToolSuffix`, `extractFilePath`, `formatToolStartMessage`) into a single `formatToolMessage()` method that returns a unified `ToolMessage` type. This reduces code complexity and follows Single Responsibility Principle - one method handles all tool formatting logic.
+- **Simplified ToolCallStreamAdapter**: The `formatToolMessage()` method returns a plain string. Consolidated from 4 separate methods into one, following Single Responsibility Principle.
+
+- **Simplified SubagentStreamAdapter**: Removed emoji detection logic. With progress-only output, the onMarkdown handler is a simple pass-through.
 
 ### Fixed
 
-- **Fixed `list_directory` progress message**: The chat progress message now correctly displays the directory path (e.g., "📂 Listing src/utils...") instead of showing a generic "Listing directory..." message. The tool uses `relative_path` as its parameter name, which was previously not matched correctly.
+- **Subagent tool completions surfaced to chat UI**: `SubagentExecutor` now forwards `onToolCallComplete` events to the subagent stream adapter.
 
-- **Fixed file tool messages not appearing alongside anchors**: File-based tool messages (read_file, list_directory, get_symbols_overview) now properly display both the descriptive message AND the clickable file anchor together. Previously, the transient progress message was being replaced by the anchor. Now the message is emitted as markdown content with the anchor embedded inline.
+- **Consistent anchor behavior for unresolved paths**: `streamMarkdownWithAnchors` no longer emits anchors for relative file paths when workspace root is unavailable. Now emits plain text instead.
+
+- **Fixed `list_directory` progress message**: Now correctly displays the directory path (e.g., "📂 Listing src/utils...") instead of generic "Listing directory..." message.
 
 ### Testing
 
-- **SubagentStreamAdapter test suite**: New comprehensive test file covering message prefixing, visual distinction, iteration suppression, markdown prefix detection, and proper delegation to the inner adapter.
+- **SubagentStreamAdapter test suite**: Comprehensive tests covering message prefixing, visual distinction, iteration suppression, and proper delegation.
 
-- **File reference extraction tests**: Added test coverage for `extractFilePath` and `onFileReference` behavior, including edge cases like missing parameters and incorrect parameter names.
+- **ToolCallStreamAdapter tests**: Updated to expect progress-only output.
+
+- **chatMarkdownStreamer tests**: Added test for plain text output when workspace root is undefined.
 
 ## [0.1.8] - 2026-01-02
 

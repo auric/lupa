@@ -171,6 +171,17 @@ export class SubagentExecutor {
                             durationMs,
                             timestamp: Date.now(),
                         });
+                        // Forward to subagent adapter for chat UI completion feedback
+                        subagentAdapter?.onToolCallComplete(
+                            toolCallId,
+                            toolName,
+                            args,
+                            result,
+                            success,
+                            error,
+                            durationMs,
+                            undefined
+                        );
                     },
                 }
             );

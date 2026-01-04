@@ -29,7 +29,7 @@ describe('SubagentStreamAdapter', () => {
     });
 
     describe('onToolCallStart', () => {
-        it('should prefix markdown messages with subagent indicator for file tools', () => {
+        it('should prefix progress messages with subagent indicator', () => {
             adapter.onToolCallStart(
                 'read_file',
                 { file_path: 'src/auth.ts' },
@@ -37,16 +37,13 @@ describe('SubagentStreamAdapter', () => {
                 1
             );
 
-            // File-based tools use markdown with prefix
-            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith(
-                `🔹 #1: ${ACTIVITY.reading} Reading `
-            );
-            expect(mockChatHandler.onFileReference).toHaveBeenCalledWith(
-                'src/auth.ts'
+            // All tools use progress now (no markdown/anchors)
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `🔹 #1: ${ACTIVITY.reading} Reading src/auth.ts...`
             );
         });
 
-        it('should prefix progress messages with subagent indicator for non-file tools', () => {
+        it('should prefix non-file tools progress messages with subagent indicator', () => {
             adapter.onToolCallStart(
                 'find_symbol',
                 { name_path: 'login' },
@@ -63,7 +60,6 @@ describe('SubagentStreamAdapter', () => {
             const adapter2 = new SubagentStreamAdapter(mockChatHandler, 2);
             const adapter3 = new SubagentStreamAdapter(mockChatHandler, 3);
 
-            // Non-file tool uses progress
             adapter2.onToolCallStart(
                 'find_symbol',
                 { name_path: 'login' },
@@ -75,7 +71,6 @@ describe('SubagentStreamAdapter', () => {
                 `🔹 #2: ${ACTIVITY.searching} Finding symbol \`login\`...`
             );
 
-            // File tool uses markdown
             adapter3.onToolCallStart(
                 'list_directory',
                 { relative_path: 'src' },
@@ -83,12 +78,12 @@ describe('SubagentStreamAdapter', () => {
                 1
             );
 
-            expect(mockChatHandler.onMarkdown).toHaveBeenCalledWith(
-                `🔹 #3: ${ACTIVITY.reading} Listing `
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `🔹 #3: ${ACTIVITY.reading} Listing src...`
             );
         });
 
-        it('should still emit file references for file-based tools', () => {
+        it('should NOT emit file references (progress-only approach)', () => {
             adapter.onToolCallStart(
                 'read_file',
                 { file_path: 'src/index.ts' },
@@ -96,9 +91,8 @@ describe('SubagentStreamAdapter', () => {
                 1
             );
 
-            expect(mockChatHandler.onFileReference).toHaveBeenCalledWith(
-                'src/index.ts'
-            );
+            expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
+            expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
         });
 
         it('should delegate onToolStart without modification', () => {
@@ -151,9 +145,9 @@ describe('SubagentStreamAdapter', () => {
     });
 
     describe('visual distinction', () => {
-        it('should provide clear visual distinction for file-based tools via markdown', () => {
-            // Main agent would show: "📂 Reading " + [anchor] + "..."
-            // Subagent should show: "🔹 #1: 📂 Reading " + [anchor] + "..."
+        it('should provide clear visual distinction via prefixed progress', () => {
+            // Main agent would show: "📂 Reading src/index.ts..."
+            // Subagent shows:       "🔹 #1: 📂 Reading src/index.ts..."
             adapter.onToolCallStart(
                 'read_file',
                 { file_path: 'src/index.ts' },
@@ -161,22 +155,13 @@ describe('SubagentStreamAdapter', () => {
                 1
             );
 
-            const markdownCall = (
-                mockChatHandler.onMarkdown as ReturnType<typeof vi.fn>
-            ).mock.calls[0][0];
-            expect(markdownCall).toMatch(/^🔹 #\d+: /);
-        });
-
-        it('should provide clear visual distinction for non-file tools via progress', () => {
-            adapter.onToolCallStart('think_about_context', {}, 0, 1);
-
             const progressCall = (
                 mockChatHandler.onProgress as ReturnType<typeof vi.fn>
             ).mock.calls[0][0];
             expect(progressCall).toMatch(/^🔹 #\d+: /);
         });
 
-        it('should format non-file tool types with subagent prefix', () => {
+        it('should format all tool types with subagent prefix', () => {
             adapter.onToolCallStart(
                 'find_symbol',
                 { name_path: 'MyClass' },
@@ -185,7 +170,7 @@ describe('SubagentStreamAdapter', () => {
             );
             adapter.onToolCallStart(
                 'find_usages',
-                { symbol_name: 'login' },
+                { symbol_name: 'login', file_path: 'src/auth.ts' },
                 1,
                 2
             );
@@ -204,7 +189,7 @@ describe('SubagentStreamAdapter', () => {
                 /^🔹 #1: .* Finding symbol `MyClass`\.\.\.$/
             );
             expect(calls[1][0]).toMatch(
-                /^🔹 #1: .* Finding usages of `login`\.\.\.$/
+                /^🔹 #1: .* Finding usages of `login` in src\/auth\.ts\.\.\.$/
             );
             expect(calls[2][0]).toMatch(
                 /^🔹 #1: .* Searching for `TODO`\.\.\.$/

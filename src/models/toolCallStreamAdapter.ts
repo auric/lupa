@@ -4,29 +4,13 @@ import { ACTIVITY } from '../config/chatEmoji';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 
 /**
- * Formatted tool message with optional inline anchor.
- * Unifies text formatting and file path extraction into a single structure.
- */
-interface ToolMessage {
-    /** Full text for progress display (fallback when no anchor) */
-    text: string;
-    /** If present, render as markdown with inline clickable anchor */
-    anchor?: {
-        /** Text before the anchor (e.g., "📂 Reading ") */
-        prefix: string;
-        /** File path to make clickable */
-        path: string;
-    };
-}
-
-/**
  * Adapts ConversationRunner's ToolCallHandler to ChatToolCallHandler for UI streaming.
  * Bridges internal conversation events to external chat UI updates.
  *
  * Architecture:
- * - Uses ToolMessage to unify formatting and file extraction
- * - File-based tools render as markdown with inline clickable anchors
- * - Other tools render as transient progress messages
+ * - Uses stream.progress() for all tool feedback (transient, clears on completion)
+ * - formatToolMessage() returns plain strings for simplicity
+ * - No anchors/markdown - progress messages provide clean UX that clears for final output
  *
  * @see docs/architecture.md - Architecture Decision 10: Streaming Debounce Pattern
  */
@@ -41,7 +25,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
     /**
      * Called when a tool execution starts.
-     * Emits either markdown with inline anchor (file tools) or progress message.
+     * Emits transient progress message showing current tool activity.
      */
     onToolCallStart(
         toolName: string,
@@ -50,18 +34,7 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
         _totalTools: number
     ): void {
         this.chatHandler.onToolStart(toolName, args);
-
-        const msg = this.formatToolMessage(toolName, args);
-
-        if (msg.anchor) {
-            // File-based tool: emit markdown with inline anchor
-            this.chatHandler.onMarkdown(msg.anchor.prefix);
-            this.chatHandler.onFileReference(msg.anchor.path);
-            this.chatHandler.onMarkdown('\n\n');
-        } else {
-            // Non-file tool: emit transient progress
-            this.chatHandler.onProgress(msg.text);
-        }
+        this.chatHandler.onProgress(this.formatToolMessage(toolName, args));
     }
 
     /**
@@ -82,101 +55,60 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     }
 
     /**
-     * Formats a tool invocation into a displayable message.
-     * Returns structured data with optional anchor for file-based tools.
+     * Formats a tool invocation into a displayable progress message.
      */
     private formatToolMessage(
         toolName: string,
         args: Record<string, unknown>
-    ): ToolMessage {
+    ): string {
         switch (toolName) {
-            // File-based tools: return anchor info for clickable paths
-            case 'read_file': {
-                const path = args.file_path as string | undefined;
-                if (path) {
-                    return {
-                        text: `${ACTIVITY.reading} Reading ${path}`,
-                        anchor: {
-                            prefix: `${ACTIVITY.reading} Reading `,
-                            path,
-                        },
-                    };
-                }
-                return { text: `${ACTIVITY.reading} Reading file...` };
-            }
+            case 'read_file':
+                return `${ACTIVITY.reading} Reading ${args.file_path || 'file'}...`;
 
-            case 'list_directory': {
-                const path = args.relative_path as string | undefined;
-                if (path) {
-                    return {
-                        text: `${ACTIVITY.reading} Listing ${path}`,
-                        anchor: {
-                            prefix: `${ACTIVITY.reading} Listing `,
-                            path,
-                        },
-                    };
-                }
-                return { text: `${ACTIVITY.reading} Listing directory...` };
-            }
+            case 'list_directory':
+                return `${ACTIVITY.reading} Listing ${args.relative_path || 'directory'}...`;
 
-            case 'get_symbols_overview': {
-                const path = args.path as string | undefined;
-                if (path) {
-                    return {
-                        text: `${ACTIVITY.analyzing} Getting symbols in ${path}`,
-                        anchor: {
-                            prefix: `${ACTIVITY.analyzing} Getting symbols in `,
-                            path,
-                        },
-                    };
-                }
-                return { text: `${ACTIVITY.analyzing} Getting symbols...` };
-            }
+            case 'get_symbols_overview':
+                return `${ACTIVITY.analyzing} Getting symbols in ${args.path || 'file'}...`;
 
-            // Non-file tools: return text only
             case 'update_plan':
-                return { text: '📝 Updating analysis plan...' };
+                return '📝 Updating analysis plan...';
 
             case 'find_symbol':
-                return {
-                    text: `${ACTIVITY.searching} Finding symbol \`${args.name_path || 'symbol'}\`...`,
-                };
+                return `${ACTIVITY.searching} Finding symbol \`${args.name_path || 'symbol'}\`...`;
 
-            case 'find_usages':
-                return {
-                    text: `${ACTIVITY.analyzing} Finding usages of \`${args.symbol_name || 'symbol'}\`...`,
-                };
+            case 'find_usages': {
+                const symbol = args.symbol_name || 'symbol';
+                const file = args.file_path ? ` in ${args.file_path}` : '';
+                return `${ACTIVITY.analyzing} Finding usages of \`${symbol}\`${file}...`;
+            }
 
             case 'find_files_by_pattern':
-                return {
-                    text: `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`,
-                };
+                return `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`;
 
             case 'search_for_pattern':
-                return {
-                    text: `${ACTIVITY.searching} Searching for \`${args.pattern || 'pattern'}\`...`,
-                };
+                return `${ACTIVITY.searching} Searching for \`${args.pattern || 'pattern'}\`...`;
 
             case 'run_subagent':
-                return { text: '🤖 Spawning subagent investigation...' };
+                return '🤖 Spawning subagent investigation...';
 
             case 'think_about_context':
-                return { text: '🧠 Reflecting on context...' };
+                return '🧠 Reflecting on context...';
 
             case 'think_about_investigation':
-                return { text: '🧠 Checking investigation progress...' };
+                return '🧠 Checking investigation progress...';
 
             case 'think_about_task':
-                return { text: '🧠 Verifying task alignment...' };
+                return '🧠 Verifying task alignment...';
 
             case 'think_about_completion':
-                return { text: '🧠 Verifying analysis completeness...' };
+                return '🧠 Verifying analysis completeness...';
 
             case 'submit_review':
-                return { text: '🚀 Submitting code review...' };
+                return '🚀 Submitting code review...';
 
             default:
-                return { text: `🔧 Running ${toolName}...` };
+                return `🔧 Running ${toolName}...`;
         }
     }
 }

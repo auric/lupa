@@ -5,14 +5,13 @@ import { ToolCallStreamAdapter } from './toolCallStreamAdapter';
 
 /**
  * Adapts tool call events for subagent context with visual distinction.
- * Wraps a ChatToolCallHandler and prefixes all messages with the subagent indicator.
+ * Wraps a ChatToolCallHandler and prefixes progress/thinking messages with subagent indicator.
  *
  * UX Design:
  * - Main agent: "📂 Reading src/index.ts..."
- * - Subagent:   "🔹 #1: Reading src/auth.ts..."
+ * - Subagent:   "🔹 #1: 📂 Reading src/auth.ts..."
  *
- * This provides clear visual distinction between main and subagent work
- * while maintaining clickable file references.
+ * This provides clear visual distinction between main and subagent work.
  */
 export class SubagentStreamAdapter implements ToolCallHandler {
     private readonly innerAdapter: ToolCallStreamAdapter;
@@ -26,7 +25,6 @@ export class SubagentStreamAdapter implements ToolCallHandler {
         chatHandler: ChatToolCallHandler,
         private readonly subagentId: number
     ) {
-        // Create a prefixed wrapper that adds subagent indicator to all messages
         this.prefix = `🔹 #${subagentId}: `;
         this.innerAdapter = new ToolCallStreamAdapter(
             this.createPrefixedHandler(chatHandler)
@@ -34,53 +32,28 @@ export class SubagentStreamAdapter implements ToolCallHandler {
     }
 
     /**
-     * Creates a wrapped ChatToolCallHandler that prefixes progress and markdown messages.
-     * For file-based tools, the prefix is added to markdown content (the first fragment).
-     * For other tools, the prefix is added to progress messages.
+     * Creates a wrapped ChatToolCallHandler that prefixes progress and thinking messages.
+     * Simple pass-through for other methods.
      */
     private createPrefixedHandler(
         baseHandler: ChatToolCallHandler
     ): ChatToolCallHandler {
         return {
-            onProgress: (msg) => {
-                // Prefix progress messages with subagent indicator
-                baseHandler.onProgress(`${this.prefix}${msg}`);
-            },
+            onProgress: (msg) => baseHandler.onProgress(`${this.prefix}${msg}`),
+            onThinking: (thought) =>
+                baseHandler.onThinking(`${this.prefix}${thought}`),
+            // Pass-through methods (no prefixing needed)
             onToolStart: baseHandler.onToolStart.bind(baseHandler),
             onToolComplete: baseHandler.onToolComplete.bind(baseHandler),
             onFileReference: baseHandler.onFileReference.bind(baseHandler),
-            onThinking: (thought) => {
-                // Prefix thinking messages too
-                baseHandler.onThinking(`${this.prefix}${thought}`);
-            },
-            onMarkdown: (content) => {
-                // Prefix markdown messages that start with an emoji (tool message start)
-                // Don't prefix suffix fragments like "...\n\n"
-                if (this.isToolMessageStart(content)) {
-                    baseHandler.onMarkdown(`${this.prefix}${content}`);
-                } else {
-                    baseHandler.onMarkdown(content);
-                }
-            },
+            onMarkdown: baseHandler.onMarkdown.bind(baseHandler),
         };
-    }
-
-    /**
-     * Checks if content is the start of a tool message (begins with emoji).
-     * Used to determine when to add the subagent prefix.
-     */
-    private isToolMessageStart(content: string): boolean {
-        // Tool messages start with emoji like 📂, 🔍, etc.
-        // The suffix ("...\n\n") doesn't start with emoji
-        const emojiPattern = /^[\p{Emoji_Presentation}\p{Emoji}\u{FE0F}]/u;
-        return emojiPattern.test(content);
     }
 
     // Delegate all ToolCallHandler methods to the inner adapter
 
     onIterationStart(_current: number, _max: number): void {
         // Suppress iteration messages for subagents - just show tool actions
-        // This avoids the noisy "Sub-analysis (1/100)..." messages
     }
 
     onToolCallStart(

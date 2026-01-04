@@ -192,19 +192,15 @@ describe('streamMarkdownWithAnchors', () => {
         expect(mockStream.anchor).not.toHaveBeenCalled();
     });
 
-    it('should handle undefined workspace root', () => {
+    it('should emit plain text when workspace root is undefined for relative paths', () => {
         const markdown = 'Check [file.ts:10](file.ts:10).';
 
         streamMarkdownWithAnchors(mockStream, markdown, undefined);
 
         expect(mockStream.markdown).toHaveBeenCalledWith('Check ');
-        // anchor receives a Location object with uri.fsPath
-        expect(mockStream.anchor).toHaveBeenCalledWith(
-            expect.objectContaining({
-                uri: expect.objectContaining({ fsPath: 'file.ts' }),
-            }),
-            'file.ts:10'
-        );
+        // Relative path without workspace root: emit as plain text, not anchor
+        expect(mockStream.markdown).toHaveBeenCalledWith('file.ts:10');
         expect(mockStream.markdown).toHaveBeenCalledWith('.');
+        expect(mockStream.anchor).not.toHaveBeenCalled();
     });
 });
