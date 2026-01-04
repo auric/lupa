@@ -203,4 +203,23 @@ describe('streamMarkdownWithAnchors', () => {
         expect(mockStream.markdown).toHaveBeenCalledWith('.');
         expect(mockStream.anchor).not.toHaveBeenCalled();
     });
+
+    it('should still create anchors for absolute paths when workspace root is undefined', () => {
+        const markdown =
+            'Check [/absolute/path/file.ts:10](/absolute/path/file.ts:10).';
+
+        streamMarkdownWithAnchors(mockStream, markdown, undefined);
+
+        expect(mockStream.markdown).toHaveBeenCalledWith('Check ');
+        // Absolute path resolves without workspace root
+        expect(mockStream.anchor).toHaveBeenCalledWith(
+            expect.objectContaining({
+                uri: expect.objectContaining({
+                    fsPath: '/absolute/path/file.ts',
+                }),
+            }),
+            '/absolute/path/file.ts:10'
+        );
+        expect(mockStream.markdown).toHaveBeenCalledWith('.');
+    });
 });

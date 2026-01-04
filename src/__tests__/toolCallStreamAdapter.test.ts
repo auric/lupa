@@ -245,6 +245,58 @@ describe('ToolCallStreamAdapter', () => {
                 `${ACTIVITY.reading} Read \`src/index.ts\``
             );
         });
+
+        it('should escape backticks in symbol names', () => {
+            adapter.onToolCallStart(
+                'find_symbol',
+                { name_path: 'Class`Name' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Looked up symbol \`Class'Name\``
+            );
+        });
+
+        it('should escape backticks in find_usages symbol', () => {
+            adapter.onToolCallStart(
+                'find_usages',
+                { symbol_name: 'method`Name', file_path: 'src/file.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.analyzing} Searched usages of \`method'Name\` in \`src/file.ts\``
+            );
+        });
+
+        it('should escape backticks in file pattern', () => {
+            adapter.onToolCallStart(
+                'find_files_by_pattern',
+                { pattern: '*.`test`.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Searched files matching \`*.'test'.ts\``
+            );
+        });
+
+        it('should escape backticks in search pattern', () => {
+            adapter.onToolCallStart(
+                'search_for_pattern',
+                { pattern: 'console`log' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Searched for \`console'log\``
+            );
+        });
     });
 
     describe('onToolCallComplete', () => {
