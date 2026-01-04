@@ -56,47 +56,54 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
     /**
      * Formats a tool invocation into a displayable progress message.
+     * - Quick actions (file reads, searches): Past tense - completed by render time
+     * - Long-running actions (thinking, subagents): Present continuous - still in progress
      */
     private formatToolMessage(
         toolName: string,
         args: Record<string, unknown>
     ): string {
         switch (toolName) {
+            // Quick actions - past tense
             case 'read_file':
-                return `${ACTIVITY.reading} Reading ${args.file_path || 'file'}...`;
+                return `${ACTIVITY.reading} Read ${args.file_path || 'file'}`;
 
             case 'list_directory':
-                return `${ACTIVITY.reading} Listing ${args.relative_path || 'directory'}...`;
+                return `${ACTIVITY.reading} Listed ${args.relative_path || 'directory'}`;
 
             case 'get_symbols_overview':
-                return `${ACTIVITY.analyzing} Getting symbols in ${args.path || 'file'}...`;
+                return `${ACTIVITY.analyzing} Analyzed symbols in ${args.path || 'file'}`;
 
             case 'update_plan':
-                return '📝 Updating analysis plan...';
+                return '📝 Updated analysis plan';
 
             case 'find_symbol':
-                return `${ACTIVITY.searching} Finding symbol \`${args.name_path || 'symbol'}\`...`;
+                return `${ACTIVITY.searching} Found symbol \`${args.name_path || 'symbol'}\``;
 
             case 'find_usages': {
                 const symbol = args.symbol_name || 'symbol';
                 const file = args.file_path ? ` in ${args.file_path}` : '';
-                return `${ACTIVITY.analyzing} Finding usages of \`${symbol}\`${file}...`;
+                return `${ACTIVITY.analyzing} Found usages of \`${symbol}\`${file}`;
             }
 
             case 'find_files_by_pattern':
-                return `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`;
+                return `${ACTIVITY.searching} Found files matching \`${args.pattern || 'pattern'}\``;
 
             case 'search_for_pattern':
-                return `${ACTIVITY.searching} Searching for \`${args.pattern || 'pattern'}\`...`;
+                return `${ACTIVITY.searching} Searched for \`${args.pattern || 'pattern'}\``;
 
+            case 'submit_review':
+                return '🚀 Submitted code review';
+
+            // Long-running actions - present continuous
             case 'run_subagent':
-                return '🤖 Spawning subagent investigation...';
+                return '🤖 Running subagent investigation...';
 
             case 'think_about_context':
-                return '🧠 Reflecting on context...';
+                return '🧠 Analyzing context...';
 
             case 'think_about_investigation':
-                return '🧠 Checking investigation progress...';
+                return '🧠 Reviewing investigation progress...';
 
             case 'think_about_task':
                 return '🧠 Verifying task alignment...';
@@ -104,11 +111,8 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'think_about_completion':
                 return '🧠 Verifying analysis completeness...';
 
-            case 'submit_review':
-                return '🚀 Submitting code review...';
-
             default:
-                return `🔧 Running ${toolName}...`;
+                return `🔧 Executed ${toolName}`;
         }
     }
 }

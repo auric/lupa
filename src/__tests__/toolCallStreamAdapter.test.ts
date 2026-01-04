@@ -42,7 +42,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Finding symbol \`MyClass\`...`
+                `${ACTIVITY.searching} Found symbol \`MyClass\``
             );
             expect(mockChatHandler.onToolStart).toHaveBeenCalledWith(
                 'find_symbol',
@@ -62,7 +62,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Reading src/index.ts...`
+                `${ACTIVITY.reading} Read src/index.ts`
             );
             // Progress-only: no markdown or anchors
             expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Finding usages of \`processData\` in src/handler.ts...`
+                `${ACTIVITY.analyzing} Found usages of \`processData\` in src/handler.ts`
             );
         });
 
@@ -91,7 +91,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Finding usages of \`processData\`...`
+                `${ACTIVITY.analyzing} Found usages of \`processData\``
             );
         });
 
@@ -104,7 +104,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Listing src/utils...`
+                `${ACTIVITY.reading} Listed src/utils`
             );
             expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
             expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
@@ -119,7 +119,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Finding files matching \`*.test.ts\`...`
+                `${ACTIVITY.searching} Found files matching \`*.test.ts\``
             );
         });
 
@@ -132,7 +132,7 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Getting symbols in src/service.ts...`
+                `${ACTIVITY.analyzing} Analyzed symbols in src/service.ts`
             );
             expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
             expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
@@ -147,11 +147,11 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Searching for \`TODO:\`...`
+                `${ACTIVITY.searching} Searched for \`TODO:\``
             );
         });
 
-        it('should format run_subagent message', () => {
+        it('should format run_subagent message (present continuous - long-running)', () => {
             adapter.onToolCallStart(
                 'run_subagent',
                 { task: 'investigate security' },
@@ -160,27 +160,27 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🤖 Spawning subagent investigation...'
+                '🤖 Running subagent investigation...'
             );
         });
 
-        it('should format think_about_context message', () => {
+        it('should format think_about_context message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_context', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Reflecting on context...'
+                '🧠 Analyzing context...'
             );
         });
 
-        it('should format think_about_investigation message', () => {
+        it('should format think_about_investigation message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_investigation', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Checking investigation progress...'
+                '🧠 Reviewing investigation progress...'
             );
         });
 
-        it('should format think_about_task message', () => {
+        it('should format think_about_task message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_task', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
@@ -188,7 +188,7 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
-        it('should format think_about_completion message', () => {
+        it('should format think_about_completion message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_completion', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
@@ -200,7 +200,7 @@ describe('ToolCallStreamAdapter', () => {
             adapter.onToolCallStart('custom_tool', { foo: 'bar' }, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🔧 Running custom_tool...'
+                '🔧 Executed custom_tool'
             );
         });
 
@@ -208,7 +208,7 @@ describe('ToolCallStreamAdapter', () => {
             adapter.onToolCallStart('read_file', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Reading file...`
+                `${ACTIVITY.reading} Read file`
             );
         });
     });

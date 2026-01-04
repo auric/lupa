@@ -11,9 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Subagent Tool Visibility
 
-- **See what subagents are doing**: When a subagent is spawned in chat, you now see its tool invocations with a distinctive prefix. For example: "🔹 #1: 📂 Reading src/auth.ts..." clearly indicates which subagent is performing which action.
+- **See what subagents are doing**: When a subagent is spawned in chat, you now see its tool invocations with a distinctive prefix. For example: "🔹 #1: 📂 Read src/auth.ts" clearly indicates which subagent is performing which action.
 
-- **Visual distinction**: Main agent actions appear normally (e.g., "📂 Reading file...") while subagent actions are prefixed with "🔹 #N:" to distinguish them from the parent analysis.
+- **Visual distinction**: Main agent actions appear normally (e.g., "📂 Read file") while subagent actions are prefixed with "🔹 #N:" to distinguish them from the parent analysis.
 
 - **Clean architecture**: New `SubagentStreamAdapter` class bridges subagent tool calls to the chat UI with proper message prefixing.
 
@@ -23,9 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Progress-only tool feedback**: Tool invocations use `stream.progress()` for all status messages. Progress messages are transient and clear automatically when the final response appears, providing clean UX without noisy copy/paste output.
 
+- **Past-tense progress messages**: All tool progress messages now use past tense (e.g., "Read src/file.ts" instead of "Reading src/file.ts...") since by the time the user sees the message, the action has completed.
+
 - **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed.
 
-- **Enhanced find_usages progress**: Now shows both the symbol name AND the file path context (e.g., "Finding usages of `login` in src/auth.ts...") for more informative feedback.
+- **Enhanced find_usages progress**: Now shows both the symbol name AND the file path context (e.g., "Found usages of `login` in src/auth.ts") for more informative feedback.
 
 #### Architecture Improvements
 
@@ -37,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Consistent anchor behavior for unresolved paths**: `streamMarkdownWithAnchors` no longer emits anchors for relative file paths when workspace root is unavailable. Now emits plain text instead.
 
-- **Fixed `list_directory` progress message**: Now correctly displays the directory path (e.g., "📂 Listing src/utils...") instead of generic "Listing directory..." message.
+- **Fixed `list_directory` progress message**: Now correctly displays the directory path (e.g., "📂 Listed src/utils") instead of generic "Listing directory..." message.
 
 ### Testing
 

@@ -39,7 +39,7 @@ describe('SubagentStreamAdapter', () => {
 
             // All tools use progress now (no markdown/anchors)
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #1: ${ACTIVITY.reading} Reading src/auth.ts...`
+                `🔹 #1: ${ACTIVITY.reading} Read src/auth.ts`
             );
         });
 
@@ -52,7 +52,7 @@ describe('SubagentStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #1: ${ACTIVITY.searching} Finding symbol \`login\`...`
+                `🔹 #1: ${ACTIVITY.searching} Found symbol \`login\``
             );
         });
 
@@ -68,7 +68,7 @@ describe('SubagentStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #2: ${ACTIVITY.searching} Finding symbol \`login\`...`
+                `🔹 #2: ${ACTIVITY.searching} Found symbol \`login\``
             );
 
             adapter3.onToolCallStart(
@@ -79,7 +79,7 @@ describe('SubagentStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `🔹 #3: ${ACTIVITY.reading} Listing src...`
+                `🔹 #3: ${ACTIVITY.reading} Listed src`
             );
         });
 
@@ -146,8 +146,8 @@ describe('SubagentStreamAdapter', () => {
 
     describe('visual distinction', () => {
         it('should provide clear visual distinction via prefixed progress', () => {
-            // Main agent would show: "📂 Reading src/index.ts..."
-            // Subagent shows:       "🔹 #1: 📂 Reading src/index.ts..."
+            // Main agent would show: "📂 Read src/index.ts"
+            // Subagent shows:       "🔹 #1: 📂 Read src/index.ts"
             adapter.onToolCallStart(
                 'read_file',
                 { file_path: 'src/index.ts' },
@@ -185,15 +185,11 @@ describe('SubagentStreamAdapter', () => {
                 mockChatHandler.onProgress as ReturnType<typeof vi.fn>
             ).mock.calls;
             expect(calls).toHaveLength(3);
-            expect(calls[0][0]).toMatch(
-                /^🔹 #1: .* Finding symbol `MyClass`\.\.\.$/
-            );
+            expect(calls[0][0]).toMatch(/^🔹 #1: .* Found symbol `MyClass`$/);
             expect(calls[1][0]).toMatch(
-                /^🔹 #1: .* Finding usages of `login` in src\/auth\.ts\.\.\.$/
+                /^🔹 #1: .* Found usages of `login` in src\/auth\.ts$/
             );
-            expect(calls[2][0]).toMatch(
-                /^🔹 #1: .* Searching for `TODO`\.\.\.$/
-            );
+            expect(calls[2][0]).toMatch(/^🔹 #1: .* Searched for `TODO`$/);
         });
     });
 });
