@@ -42,3 +42,12 @@ npm run package        # Production build
 - Excessive defensive programming
 - Copy-paste code instead of proper abstractions
 - Comments explaining obvious code
+
+## Skills
+
+When the user asks you to use a specific skill, you **must** use it. Skills are `SKILL.md` files located in:
+
+- `.claude/skills/` folder
+- `.github/skills/` folder
+
+Read the skill file first, then follow its instructions for the task at hand.

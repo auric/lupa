@@ -1,10 +1,10 @@
 import { ToolRegistry } from './toolRegistry';
-import { ITool } from '../tools/ITool';
+import type { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ToolResultMetadata } from '../types/toolResultTypes';
-import { ExecutionContext } from '../types/executionContext';
+import type { ToolResultMetadata } from '../types/toolResultTypes';
+import type { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 
 /**

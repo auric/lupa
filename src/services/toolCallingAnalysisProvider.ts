@@ -81,6 +81,7 @@ export class ToolCallingAnalysisProvider {
             this.toolRegistry,
             new SubagentPromptGenerator(),
             this.workspaceSettings,
+            undefined, // No chat handler in command context
             progressCallback,
             progressContext
         );

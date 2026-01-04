@@ -90,7 +90,8 @@ src/
 │   ├── modelRequestHandler.ts    # Request/response handling
 │   ├── chatLLMClient.ts          # Chat-mode LLM client
 │   ├── chatContextManager.ts     # Chat history processing
-│   ├── toolCallStreamAdapter.ts  # Stream tool calls to chat
+│   ├── toolCallStreamAdapter.ts  # Progress-only tool feedback
+│   ├── subagentStreamAdapter.ts  # Prefixes subagent messages with "🔹 #N:"
 │   ├── debouncedStreamHandler.ts # Debounce stream updates
 │   ├── workspaceSettingsSchema.ts # Settings Zod schema
 │   ├── ILLMClient.ts             # LLM client interface

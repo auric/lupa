@@ -47,23 +47,24 @@ These components are created fresh for each analysis session, not managed by Ser
 
 ## Models (`src/models/`)
 
-| Model                     | File                         | Description                           |
-| ------------------------- | ---------------------------- | ------------------------------------- |
-| `CopilotModelManager`     | `copilotModelManager.ts`     | Model selection and LLM API           |
-| `ConversationManager`     | `conversationManager.ts`     | Conversation history management       |
-| `ConversationRunner`      | `conversationRunner.ts`      | Multi-turn conversation loop          |
-| `ToolExecutor`            | `toolExecutor.ts`            | Tool execution with rate limiting     |
-| `ToolRegistry`            | `toolRegistry.ts`            | Tool storage and retrieval            |
-| `PromptGenerator`         | `promptGenerator.ts`         | System and user prompt generation     |
-| `TokenValidator`          | `tokenValidator.ts`          | Context window validation and cleanup |
-| `TokenConstants`          | `tokenConstants.ts`          | Token limit constants                 |
-| `ToolConstants`           | `toolConstants.ts`           | Tool-related constants and limits     |
-| `ModelRequestHandler`     | `modelRequestHandler.ts`     | Request/response handling             |
-| `ChatLLMClient`           | `chatLLMClient.ts`           | Chat-mode LLM client wrapper          |
-| `ChatContextManager`      | `chatContextManager.ts`      | Chat history processing               |
-| `ToolCallStreamAdapter`   | `toolCallStreamAdapter.ts`   | Adapts tool calls to stream           |
-| `DebouncedStreamHandler`  | `debouncedStreamHandler.ts`  | Debounces stream updates              |
-| `WorkspaceSettingsSchema` | `workspaceSettingsSchema.ts` | Settings Zod schema                   |
+| Model                     | File                         | Description                                              |
+| ------------------------- | ---------------------------- | -------------------------------------------------------- |
+| `CopilotModelManager`     | `copilotModelManager.ts`     | Model selection and LLM API                              |
+| `ConversationManager`     | `conversationManager.ts`     | Conversation history management                          |
+| `ConversationRunner`      | `conversationRunner.ts`      | Multi-turn conversation loop                             |
+| `ToolExecutor`            | `toolExecutor.ts`            | Parallel tool execution (Promise.all) with rate limiting |
+| `ToolRegistry`            | `toolRegistry.ts`            | Tool storage and retrieval                               |
+| `PromptGenerator`         | `promptGenerator.ts`         | System and user prompt generation                        |
+| `TokenValidator`          | `tokenValidator.ts`          | Context window validation and cleanup                    |
+| `TokenConstants`          | `tokenConstants.ts`          | Token limit constants                                    |
+| `ToolConstants`           | `toolConstants.ts`           | Tool-related constants and limits                        |
+| `ModelRequestHandler`     | `modelRequestHandler.ts`     | Request/response handling                                |
+| `ChatLLMClient`           | `chatLLMClient.ts`           | Chat-mode LLM client wrapper                             |
+| `ChatContextManager`      | `chatContextManager.ts`      | Chat history processing                                  |
+| `ToolCallStreamAdapter`   | `toolCallStreamAdapter.ts`   | Progress-only tool feedback via stream.progress()        |
+| `SubagentStreamAdapter`   | `subagentStreamAdapter.ts`   | Prefixes subagent tool messages with "🔹 #N:"            |
+| `DebouncedStreamHandler`  | `debouncedStreamHandler.ts`  | Debounces stream updates                                 |
+| `WorkspaceSettingsSchema` | `workspaceSettingsSchema.ts` | Settings Zod schema                                      |
 
 ### Interfaces
 

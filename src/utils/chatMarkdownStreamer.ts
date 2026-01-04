@@ -28,6 +28,15 @@ export function streamMarkdownWithAnchors(
             // Resolve the file path to a proper URI
             const fileUri = resolveFileUri(segment.filePath, workspaceRoot);
 
+            // Use title or fall back to file path
+            const displayText = segment.title || segment.filePath;
+
+            // Can't resolve - emit as plain text (preserves content without broken anchor)
+            if (!fileUri) {
+                stream.markdown(displayText);
+                continue;
+            }
+
             if (segment.line !== undefined) {
                 // Create a Location with line or range (convert 1-based to 0-based)
                 const startLine = segment.line - 1;
@@ -63,22 +72,22 @@ export function streamMarkdownWithAnchors(
 
 /**
  * Resolve a file path to a VS Code URI.
- * Handles both absolute and relative paths.
+ * Returns undefined for relative paths without workspace root (can't resolve).
  */
 function resolveFileUri(
     filePath: string,
     workspaceRoot: vscode.Uri | undefined
-): vscode.Uri {
-    // Check if it's an absolute path
+): vscode.Uri | undefined {
+    // Absolute paths resolve directly
     if (path.isAbsolute(filePath)) {
         return vscode.Uri.file(filePath);
     }
 
-    // Resolve relative to workspace root if available
+    // Relative paths need workspace root
     if (workspaceRoot) {
         return vscode.Uri.joinPath(workspaceRoot, filePath);
     }
 
-    // Fall back to file URI (may not resolve correctly without workspace)
-    return vscode.Uri.file(filePath);
+    // Can't resolve relative path without workspace - caller should handle
+    return undefined;
 }

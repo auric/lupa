@@ -5,6 +5,52 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-01-04
+
+### Added
+
+#### Subagent Tool Visibility
+
+- **See what subagents are doing**: When a subagent is spawned in chat, you now see its tool invocations with a distinctive prefix. For example: "🔹 #1: 📂 Read src/auth.ts" clearly indicates which subagent is performing which action.
+
+- **Visual distinction**: Main agent actions appear normally (e.g., "📂 Read file") while subagent actions are prefixed with "🔹 #N:" to distinguish them from the parent analysis.
+
+- **Clean architecture**: New `SubagentStreamAdapter` class bridges subagent tool calls to the chat UI with proper message prefixing.
+
+### Changed
+
+#### Chat Participant UI
+
+- **Progress-only tool feedback**: Tool invocations use `stream.progress()` for all status messages. Progress messages are transient and clear automatically when the final response appears, providing clean UX without noisy copy/paste output.
+
+- **Improved progress message wording**: Quick actions use past tense ("Read file.ts", "Listed directory"). Search actions use neutral wording that doesn't imply success ("Looked up symbol", "Searched usages"). Long-running actions use present continuous ("Analyzing context...").
+
+- **Input sanitization**: Tool arguments are sanitized before display to prevent markdown injection (backticks escaped, whitespace trimmed).
+
+- **Cleaner iteration messages**: Subagent turn-by-turn iteration counters ("Sub-analysis (1/100)...", etc.) are suppressed. Instead, you see the actual tool actions being performed.
+
+- **Enhanced find_usages progress**: Now shows both the symbol name AND the file path context (e.g., "Searched usages of `login` in src/auth.ts") for more informative feedback.
+
+#### Architecture Improvements
+
+- **Simplified ToolCallStreamAdapter**: The `formatToolMessage()` method returns a plain string. Consolidated from 4 separate methods into one, following Single Responsibility Principle.
+
+### Fixed
+
+- **Subagent tool completions surfaced to chat UI**: `SubagentExecutor` now forwards `onToolCallComplete` events to the subagent stream adapter.
+
+- **Consistent anchor behavior for unresolved paths**: `streamMarkdownWithAnchors` no longer emits anchors for relative file paths when workspace root is unavailable. Now emits plain text instead.
+
+- **Fixed `list_directory` progress message**: Now correctly displays the directory path (e.g., "📂 Listed src/utils") instead of generic "Listing directory..." message.
+
+### Testing
+
+- **SubagentStreamAdapter test suite**: Comprehensive tests covering message prefixing, visual distinction, iteration suppression, and proper delegation.
+
+- **ToolCallStreamAdapter tests**: Updated to expect progress-only output.
+
+- **chatMarkdownStreamer tests**: Added test for plain text output when workspace root is undefined.
+
 ## [0.1.8] - 2026-01-02
 
 ### Added
@@ -301,6 +347,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.9]: https://github.com/auric/lupa/releases/tag/v0.1.9
 [0.1.8]: https://github.com/auric/lupa/releases/tag/v0.1.8
 [0.1.7]: https://github.com/auric/lupa/releases/tag/v0.1.7
 [0.1.6]: https://github.com/auric/lupa/releases/tag/v0.1.6

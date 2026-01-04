@@ -33,7 +33,7 @@ describe('ToolCallStreamAdapter', () => {
     });
 
     describe('onToolCallStart', () => {
-        it('should forward to onProgress and onToolStart with tool name and args', () => {
+        it('should use progress for all tools (no anchors)', () => {
             adapter.onToolCallStart(
                 'find_symbol',
                 { name_path: 'MyClass' },
@@ -42,15 +42,18 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Finding symbol \`MyClass\`...`
+                `${ACTIVITY.searching} Looked up symbol \`MyClass\``
             );
             expect(mockChatHandler.onToolStart).toHaveBeenCalledWith(
                 'find_symbol',
                 { name_path: 'MyClass' }
             );
+            // No markdown or anchors for progress-only approach
+            expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
+            expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
         });
 
-        it('should format read_file message with file path', () => {
+        it('should use progress for read_file (no anchors)', () => {
             adapter.onToolCallStart(
                 'read_file',
                 { file_path: 'src/index.ts' },
@@ -59,11 +62,27 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Reading src/index.ts...`
+                `${ACTIVITY.reading} Read \`src/index.ts\``
+            );
+            // Progress-only: no markdown or anchors
+            expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
+            expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
+        });
+
+        it('should format find_usages message with symbol and file', () => {
+            adapter.onToolCallStart(
+                'find_usages',
+                { symbol_name: 'processData', file_path: 'src/handler.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.analyzing} Searched usages of \`processData\` in \`src/handler.ts\``
             );
         });
 
-        it('should format find_usages message with symbol name', () => {
+        it('should format find_usages message without file when missing', () => {
             adapter.onToolCallStart(
                 'find_usages',
                 { symbol_name: 'processData' },
@@ -72,21 +91,23 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Finding usages of \`processData\`...`
+                `${ACTIVITY.analyzing} Searched usages of \`processData\``
             );
         });
 
-        it('should format list_directory message with path', () => {
+        it('should use progress for list_directory (no anchors)', () => {
             adapter.onToolCallStart(
                 'list_directory',
-                { path: 'src/utils' },
+                { relative_path: 'src/utils' },
                 0,
                 1
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Listing src/utils...`
+                `${ACTIVITY.reading} Listed \`src/utils\``
             );
+            expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
+            expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
         });
 
         it('should format find_files_by_pattern message', () => {
@@ -98,11 +119,11 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Finding files matching \`*.test.ts\`...`
+                `${ACTIVITY.searching} Searched files matching \`*.test.ts\``
             );
         });
 
-        it('should format get_symbols_overview message', () => {
+        it('should use progress for get_symbols_overview (no anchors)', () => {
             adapter.onToolCallStart(
                 'get_symbols_overview',
                 { path: 'src/service.ts' },
@@ -111,8 +132,10 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.analyzing} Getting symbols in src/service.ts...`
+                `${ACTIVITY.analyzing} Analyzed symbols in \`src/service.ts\``
             );
+            expect(mockChatHandler.onMarkdown).not.toHaveBeenCalled();
+            expect(mockChatHandler.onFileReference).not.toHaveBeenCalled();
         });
 
         it('should format search_for_pattern message', () => {
@@ -124,11 +147,11 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.searching} Searching for \`TODO:\`...`
+                `${ACTIVITY.searching} Searched for \`TODO:\``
             );
         });
 
-        it('should format run_subagent message', () => {
+        it('should format run_subagent message (present continuous - long-running)', () => {
             adapter.onToolCallStart(
                 'run_subagent',
                 { task: 'investigate security' },
@@ -137,27 +160,27 @@ describe('ToolCallStreamAdapter', () => {
             );
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🤖 Spawning subagent investigation...'
+                '🤖 Running subagent investigation...'
             );
         });
 
-        it('should format think_about_context message', () => {
+        it('should format think_about_context message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_context', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Reflecting on context...'
+                '🧠 Analyzing context...'
             );
         });
 
-        it('should format think_about_investigation message', () => {
+        it('should format think_about_investigation message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_investigation', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Checking investigation progress...'
+                '🧠 Reviewing investigation progress...'
             );
         });
 
-        it('should format think_about_task message', () => {
+        it('should format think_about_task message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_task', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
@@ -165,7 +188,7 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
-        it('should format think_about_completion message', () => {
+        it('should format think_about_completion message (present continuous - long-running)', () => {
             adapter.onToolCallStart('think_about_completion', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
@@ -177,15 +200,101 @@ describe('ToolCallStreamAdapter', () => {
             adapter.onToolCallStart('custom_tool', { foo: 'bar' }, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🔧 Running custom_tool...'
+                '🔧 Ran `custom_tool`'
             );
         });
 
-        it('should handle missing args gracefully', () => {
+        it('should fallback to default path when file path is missing', () => {
             adapter.onToolCallStart('read_file', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                `${ACTIVITY.reading} Reading file...`
+                `${ACTIVITY.reading} Read \`file\``
+            );
+        });
+
+        it('should escape backticks in file paths to prevent markdown injection', () => {
+            adapter.onToolCallStart(
+                'read_file',
+                { file_path: 'src/`test`.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read \`src/'test'.ts\``
+            );
+        });
+
+        it('should handle empty string values with fallback', () => {
+            adapter.onToolCallStart('find_symbol', { name_path: '' }, 0, 1);
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Looked up symbol \`symbol\``
+            );
+        });
+
+        it('should trim whitespace from values', () => {
+            adapter.onToolCallStart(
+                'read_file',
+                { file_path: '  src/index.ts  ' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read \`src/index.ts\``
+            );
+        });
+
+        it('should escape backticks in symbol names', () => {
+            adapter.onToolCallStart(
+                'find_symbol',
+                { name_path: 'Class`Name' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Looked up symbol \`Class'Name\``
+            );
+        });
+
+        it('should escape backticks in find_usages symbol', () => {
+            adapter.onToolCallStart(
+                'find_usages',
+                { symbol_name: 'method`Name', file_path: 'src/file.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.analyzing} Searched usages of \`method'Name\` in \`src/file.ts\``
+            );
+        });
+
+        it('should escape backticks in file pattern', () => {
+            adapter.onToolCallStart(
+                'find_files_by_pattern',
+                { pattern: '*.`test`.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Searched files matching \`*.'test'.ts\``
+            );
+        });
+
+        it('should escape backticks in search pattern', () => {
+            adapter.onToolCallStart(
+                'search_for_pattern',
+                { pattern: 'console`log' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.searching} Searched for \`console'log\``
             );
         });
     });
@@ -214,7 +323,7 @@ describe('ToolCallStreamAdapter', () => {
             adapter.onToolCallComplete(
                 'call_456',
                 'read_file',
-                { path: '/test' },
+                { file_path: '/test' },
                 '',
                 false,
                 'File not found',

@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { Log } from './loggingService';
 import { GitService } from './gitService';
@@ -46,17 +47,42 @@ export interface ChatParticipantDependencies {
  * Creates a ChatToolCallHandler that bridges ConversationRunner events to ChatResponseStream.
  * Extracted for DRY usage across exploration and analysis modes.
  *
+ * Key UX features:
+ * - `onProgress`: Shows spinner with progress text
+ * - `onFileReference`: Creates clickable file anchors for file-based tools
+ * - `onMarkdown`: Streams rich markdown content
+ *
  * @param stream The VS Code chat response stream for output
+ * @param gitRootUri Optional Git repository root for resolving file paths
  * @returns ChatToolCallHandler implementation
  */
 function createChatStreamHandler(
-    stream: vscode.ChatResponseStream
+    stream: vscode.ChatResponseStream,
+    gitRootUri?: vscode.Uri
 ): ChatToolCallHandler {
     return {
         onProgress: (msg) => stream.progress(msg),
         onToolStart: () => {},
         onToolComplete: () => {},
-        onFileReference: () => {},
+        onFileReference: (filePath, range) => {
+            // Resolve relative paths to absolute URIs
+            let fileUri: vscode.Uri;
+            if (path.isAbsolute(filePath)) {
+                fileUri = vscode.Uri.file(filePath);
+            } else if (gitRootUri) {
+                fileUri = vscode.Uri.joinPath(gitRootUri, filePath);
+            } else {
+                // Can't resolve relative path without git root - skip anchor
+                return;
+            }
+
+            // Create clickable anchor with optional line range
+            if (range) {
+                stream.anchor(new vscode.Location(fileUri, range), filePath);
+            } else {
+                stream.anchor(fileUri, filePath);
+            }
+        },
         onThinking: (thought) =>
             stream.progress(`${ACTIVITY.thinking} ${thought}`),
         onMarkdown: (content) => stream.markdown(content),
@@ -222,9 +248,16 @@ export class ChatParticipantService implements vscode.Disposable {
         }
 
         try {
-            // Create per-request subagent infrastructure
+            // Create stream adapter first - needed for subagent tool streaming
+            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
+            const { debouncedHandler, adapter } = this.createStreamAdapter(
+                stream,
+                gitRootUri
+            );
+
+            // Create per-request subagent infrastructure with chat handler
             const { subagentSessionManager, subagentExecutor } =
-                this.createSubagentContext(stream, token);
+                this.createSubagentContext(token, debouncedHandler);
 
             // Create per-request ToolExecutor with subagent context
             const toolExecutor = new ToolExecutor(
@@ -285,9 +318,6 @@ export class ChatParticipantService implements vscode.Disposable {
 
             conversation.addUserMessage(request.prompt);
 
-            const { debouncedHandler, adapter } =
-                this.createStreamAdapter(stream);
-
             const result = await runner.run(
                 {
                     systemPrompt,
@@ -307,7 +337,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
-            const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
             streamMarkdownWithAnchors(stream, result, gitRootUri);
 
             return {
@@ -465,10 +494,19 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
+        const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
+        const gitRootUri = this.deps!.gitOperations.getRepository()?.rootUri;
+
+        // Create stream adapter first - needed for subagent tool streaming
+        const { debouncedHandler, adapter } = this.createStreamAdapter(
+            stream,
+            gitRootUri
+        );
+
         // Create per-analysis instances for complete isolation
         const planManager = new PlanSessionManager();
         const { subagentSessionManager, subagentExecutor } =
-            this.createSubagentContext(stream, token);
+            this.createSubagentContext(token, debouncedHandler);
 
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
@@ -490,9 +528,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 availableTools
             );
 
-        const parsedDiff = DiffUtils.parseDiff(diffResult.diffText);
-
-        const gitRootUri = this.deps!.gitOperations.getRepository()?.rootUri;
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);
             stream.filetree(fileTree, gitRootUri);
@@ -504,8 +539,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 request.prompt || undefined
             );
         conversation.addUserMessage(userPrompt);
-
-        const { debouncedHandler, adapter } = this.createStreamAdapter(stream);
 
         try {
             const analysisResult = await runner.run(
@@ -598,10 +631,16 @@ export class ChatParticipantService implements vscode.Disposable {
     /**
      * Create per-request subagent infrastructure.
      * Extracted to avoid duplication between exploration and analysis modes.
+     *
+     * Subagent tool calls are streamed to chat UI with prefixed messages
+     * (e.g., "🔹 #1: Reading src/auth.ts...") for visual distinction.
+     *
+     * @param token Cancellation token for the request
+     * @param chatHandler Optional handler for streaming subagent tool calls to chat UI
      */
     private createSubagentContext(
-        stream: vscode.ChatResponseStream,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        chatHandler?: ChatToolCallHandler
     ): {
         subagentSessionManager: SubagentSessionManager;
         subagentExecutor: SubagentExecutor;
@@ -614,7 +653,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.toolRegistry,
             new SubagentPromptGenerator(),
             this.deps!.workspaceSettings,
-            (msg) => stream.progress(msg)
+            chatHandler // Pass handler for subagent tool streaming
         );
         subagentSessionManager.setParentCancellationToken(token);
         return { subagentSessionManager, subagentExecutor };
@@ -623,12 +662,18 @@ export class ChatParticipantService implements vscode.Disposable {
     /**
      * Create stream adapter pipeline for tool-calling UI feedback.
      * Extracted to avoid duplication between exploration and analysis modes.
+     *
+     * @param stream The VS Code chat response stream
+     * @param gitRootUri Optional Git root for resolving file paths in anchors
      */
-    private createStreamAdapter(stream: vscode.ChatResponseStream): {
+    private createStreamAdapter(
+        stream: vscode.ChatResponseStream,
+        gitRootUri?: vscode.Uri
+    ): {
         debouncedHandler: DebouncedStreamHandler;
         adapter: ToolCallStreamAdapter;
     } {
-        const uiHandler = createChatStreamHandler(stream);
+        const uiHandler = createChatStreamHandler(stream, gitRootUri);
         const debouncedHandler = new DebouncedStreamHandler(uiHandler);
         const adapter = new ToolCallStreamAdapter(debouncedHandler);
         return { debouncedHandler, adapter };

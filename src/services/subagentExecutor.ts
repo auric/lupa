@@ -6,13 +6,16 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { SubagentLimits } from '../models/toolConstants';
+import { SubagentStreamAdapter } from '../models/subagentStreamAdapter';
 import type { SubagentTask, SubagentResult } from '../types/modelTypes';
 import type {
     ToolCallRecord,
     AnalysisProgressCallback,
     SubagentProgressContext,
 } from '../types/toolCallTypes';
+import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
+import type { ToolResultMetadata } from '@/types/toolResultTypes';
 import { Log } from './loggingService';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
@@ -20,12 +23,12 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  * Executes subagent investigations with isolated context.
  * Thin wrapper that delegates to ConversationRunner - no loop duplication.
  *
- * Created per-analysis for concurrency safety. Progress callback is bound
- * at construction time, eliminating mutable state.
+ * Created per-analysis for concurrency safety.
  *
  * Responsibilities:
  * - Create isolated conversation context per investigation
  * - Filter tools to prevent infinite recursion
+ * - Stream tool calls to parent's chat UI with subagent prefix
  * - Return raw response for parent LLM to interpret
  */
 export class SubagentExecutor {
@@ -34,6 +37,7 @@ export class SubagentExecutor {
         private readonly toolRegistry: ToolRegistry,
         private readonly promptGenerator: SubagentPromptGenerator,
         private readonly workspaceSettings: WorkspaceSettingsService,
+        private readonly chatHandler?: ChatToolCallHandler,
         private readonly progressCallback?: AnalysisProgressCallback,
         private readonly progressContext?: SubagentProgressContext
     ) {}
@@ -110,6 +114,12 @@ export class SubagentExecutor {
             // Track tool calls made by the subagent with full details
             const toolCalls: ToolCallRecord[] = [];
 
+            // Create subagent stream adapter for prefixed tool progress in chat UI
+            // This shows tool calls with "🔹 #N: Reading file..." format
+            const subagentAdapter = this.chatHandler
+                ? new SubagentStreamAdapter(this.chatHandler, subagentId)
+                : undefined;
+
             // Run the conversation loop with labeled logging and progress reporting
             const response = await conversationRunner.run(
                 {
@@ -122,9 +132,25 @@ export class SubagentExecutor {
                 token,
                 {
                     onIterationStart: (current, max) => {
+                        // Report to VS Code progress bar (command palette flow).
+                        // Chat UI iteration is suppressed by SubagentStreamAdapter's no-op onIterationStart.
                         this.reportProgress(
                             `Sub-analysis (${current}/${max})...`,
                             0.1
+                        );
+                    },
+                    onToolCallStart: (
+                        toolName,
+                        args,
+                        toolIndex,
+                        totalTools
+                    ) => {
+                        // Forward to subagent adapter for prefixed chat UI display
+                        subagentAdapter?.onToolCallStart(
+                            toolName,
+                            args,
+                            toolIndex,
+                            totalTools
                         );
                     },
                     onToolCallComplete: (
@@ -134,7 +160,8 @@ export class SubagentExecutor {
                         result: string,
                         success: boolean,
                         error?: string,
-                        durationMs?: number
+                        durationMs?: number,
+                        metadata?: ToolResultMetadata
                     ) => {
                         toolCallsMade++;
                         toolCalls.push({
@@ -147,6 +174,17 @@ export class SubagentExecutor {
                             durationMs,
                             timestamp: Date.now(),
                         });
+                        // Forward to subagent adapter for chat UI completion feedback
+                        subagentAdapter?.onToolCallComplete(
+                            toolCallId,
+                            toolName,
+                            args,
+                            result,
+                            success,
+                            error,
+                            durationMs,
+                            metadata
+                        );
                     },
                 }
             );

@@ -4,13 +4,27 @@ import { ACTIVITY } from '../config/chatEmoji';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 
 /**
+ * Sanitizes a value for safe interpolation in markdown progress messages.
+ * - Trims whitespace
+ * - Escapes backticks (replaces with single quotes)
+ * - Returns fallback if empty or non-string
+ */
+function sanitizeForMarkdown(value: unknown, fallback: string): string {
+    if (typeof value !== 'string' || !value.trim()) {
+        return fallback;
+    }
+    return value.trim().replace(/`/g, "'");
+}
+
+/**
  * Adapts ConversationRunner's ToolCallHandler to ChatToolCallHandler for UI streaming.
- * Bridges the internal conversation events to external chat UI updates.
+ * Bridges internal conversation events to external chat UI updates.
  *
- * Part of the Three-Layer Streaming Architecture:
- * 1. UI Handler (ChatToolCallHandler) → stream.* calls
- * 2. DebouncedStreamHandler → rate limiting (NFR-002)
- * 3. ToolCallStreamAdapter (this class) → interface bridge
+ * Architecture:
+ * - Uses stream.progress() for all tool feedback (transient, clears on completion)
+ * - formatToolMessage() returns plain strings for simplicity
+ * - No anchors/markdown - progress messages provide clean UX that clears for final output
+ * - Messages are activity indicators, not success confirmations (tool may still fail)
  *
  * @see docs/architecture.md - Architecture Decision 10: Streaming Debounce Pattern
  */
@@ -19,17 +33,13 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
     /**
      * Called when a conversation iteration starts.
-     * Intentionally does NOT show turn indicators - they're noise.
-     * Users care about tool actions, not iteration counts.
+     * No-op: turn indicators are noise. Users care about tool actions.
      */
-    onIterationStart(_current: number, _max: number): void {
-        // No-op: Turn indicators removed per UX decision.
-        // Tool-specific messages provide sufficient progress feedback.
-    }
+    onIterationStart(_current: number, _max: number): void {}
 
     /**
      * Called when a tool execution starts.
-     * Forwards formatted progress message based on tool type and args.
+     * Emits transient progress message showing current tool activity.
      */
     onToolCallStart(
         toolName: string,
@@ -37,14 +47,12 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
         _toolIndex: number,
         _totalTools: number
     ): void {
-        const message = this.formatToolStartMessage(toolName, args);
-        this.chatHandler.onProgress(message);
         this.chatHandler.onToolStart(toolName, args);
+        this.chatHandler.onProgress(this.formatToolMessage(toolName, args));
     }
 
     /**
      * Called after each tool call completes.
-     * Forwards to onToolComplete with success/failure summary.
      */
     onToolCallComplete(
         _toolCallId: string,
@@ -61,58 +69,71 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
     }
 
     /**
-     * Formats a human-readable progress message for tool execution.
-     * Uses tool-specific templates with argument interpolation.
+     * Formats a tool invocation into a displayable progress message.
+     * - Quick actions (file reads): Past tense - completed by render time
+     * - Search actions: Neutral "looked up"/"searched" - doesn't imply success
+     * - Long-running actions (thinking, subagents): Present continuous - still in progress
+     *
+     * Note: These are activity indicators, not success confirmations. The tool
+     * may still fail after this message is shown.
      */
-    private formatToolStartMessage(
+    private formatToolMessage(
         toolName: string,
         args: Record<string, unknown>
     ): string {
         switch (toolName) {
-            case 'update_plan':
-                return `📝 Updating analysis plan...`;
-
+            // Quick actions - past tense (file I/O completes quickly)
             case 'read_file':
-                return `${ACTIVITY.reading} Reading ${args.file_path || 'file'}...`;
-
-            case 'find_symbol':
-                return `${ACTIVITY.searching} Finding symbol \`${args.name_path || 'symbol'}\`...`;
-
-            case 'find_usages':
-                return `${ACTIVITY.analyzing} Finding usages of \`${args.symbol_name || 'symbol'}\`...`;
+                return `${ACTIVITY.reading} Read \`${sanitizeForMarkdown(args.file_path, 'file')}\``;
 
             case 'list_directory':
-                return `${ACTIVITY.reading} Listing ${args.path || 'directory'}...`;
-
-            case 'find_files_by_pattern':
-                return `${ACTIVITY.searching} Finding files matching \`${args.pattern || 'pattern'}\`...`;
+                return `${ACTIVITY.reading} Listed \`${sanitizeForMarkdown(args.relative_path, 'directory')}\``;
 
             case 'get_symbols_overview':
-                return `${ACTIVITY.analyzing} Getting symbols in ${args.path || 'file'}...`;
+                return `${ACTIVITY.analyzing} Analyzed symbols in \`${sanitizeForMarkdown(args.path, 'file')}\``;
+
+            case 'update_plan':
+                return '📝 Updated analysis plan';
+
+            // Search actions - neutral wording (doesn't imply success)
+            case 'find_symbol':
+                return `${ACTIVITY.searching} Looked up symbol \`${sanitizeForMarkdown(args.name_path, 'symbol')}\``;
+
+            case 'find_usages': {
+                const symbol = sanitizeForMarkdown(args.symbol_name, 'symbol');
+                const file = args.file_path
+                    ? ` in \`${sanitizeForMarkdown(args.file_path, 'file')}\``
+                    : '';
+                return `${ACTIVITY.analyzing} Searched usages of \`${symbol}\`${file}`;
+            }
+
+            case 'find_files_by_pattern':
+                return `${ACTIVITY.searching} Searched files matching \`${sanitizeForMarkdown(args.pattern, 'pattern')}\``;
 
             case 'search_for_pattern':
-                return `${ACTIVITY.searching} Searching for \`${args.pattern || 'pattern'}\`...`;
-
-            case 'run_subagent':
-                return `🤖 Spawning subagent investigation...`;
-
-            case 'think_about_context':
-                return `🧠 Reflecting on context...`;
-
-            case 'think_about_investigation':
-                return `🧠 Checking investigation progress...`;
-
-            case 'think_about_task':
-                return `🧠 Verifying task alignment...`;
-
-            case 'think_about_completion':
-                return `🧠 Verifying analysis completeness...`;
+                return `${ACTIVITY.searching} Searched for \`${sanitizeForMarkdown(args.pattern, 'pattern')}\``;
 
             case 'submit_review':
-                return `🚀 Submitting code review...`;
+                return '🚀 Submitted code review';
+
+            // Long-running actions - present continuous
+            case 'run_subagent':
+                return '🤖 Running subagent investigation...';
+
+            case 'think_about_context':
+                return '🧠 Analyzing context...';
+
+            case 'think_about_investigation':
+                return '🧠 Reviewing investigation progress...';
+
+            case 'think_about_task':
+                return '🧠 Verifying task alignment...';
+
+            case 'think_about_completion':
+                return '🧠 Verifying analysis completeness...';
 
             default:
-                return `🔧 Running ${toolName}...`;
+                return `🔧 Ran \`${sanitizeForMarkdown(toolName, 'tool')}\``;
         }
     }
 }
