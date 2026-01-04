@@ -1,7 +1,7 @@
 /**
  * Lupa - Pull Request Analysis Extension for VS Code
- * @license AGPL-3.0-or-later
- * @copyright 2026 Ihor Lifanov
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (c) 2026 Ihor Lifanov
  */
 
 import * as vscode from 'vscode';
