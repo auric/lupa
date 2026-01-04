@@ -156,7 +156,7 @@ Pre-commit hooks for linting and formatting are installed automatically when you
 
 This project is licensed under the [GNU Affero General Public License v3.0](./LICENSE) (AGPL-3.0).
 
-Copyright © 2025-2026 [Ihor Lifanov](https://github.com/auric)
+Copyright © 2026 [Ihor Lifanov](https://github.com/auric)
 
 ---
 
