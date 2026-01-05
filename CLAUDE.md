@@ -27,8 +27,6 @@ npx vitest run src/__tests__/file.test.ts  # Single test
 
 **Context window warning:** `npm run test` output is massive and will overwhelm context. After running tests, read only the last ~50 lines for the summary. Prefer running specific test files over the full suite.
 
-**Terminal note:** This project uses PowerShell on Windows.
-
 ## Architecture
 
 ### Layers
@@ -197,26 +195,3 @@ Before finalizing any implementation:
 - [ ] Are edge cases handled gracefully?
 - [ ] Is there anything that could be removed without losing functionality?
 - [ ] Have type checks passed (`npm run check-types`)?
-
----
-
-## BMAD Method (v6 Alpha)
-
-This project uses BMAD-METHOD for agent-driven development workflows.
-
-### BMAD Agent Detection
-
-**If your mode/persona starts with `bmd-` or `bmad-`, you ARE a BMAD agent.**
-
-### CRITICAL: File Loading Requirements
-
-**Before any BMAD workflow execution, you MUST read and load the required config and workflow files. Do not proceed from memory—always fetch the actual files.**
-
-1. **Activation is mandatory**: Load agent persona file first, then read `{project-root}/_bmad/core/config.yaml` for user settings
-2. **Workflow execution**: Before running any workflow, load `{project-root}/_bmad/core/tasks/workflow.xml` as the core OS
-3. **Stay in character**: Follow agent persona and menu system until explicitly dismissed
-4. **Output discipline**: Save outputs after each workflow step—never batch multiple steps together
-
-### Why This Matters
-
-BMAD agents may not automatically load instruction files. The explicit file-loading step ensures the agent has current configuration and doesn't operate from stale or missing context.

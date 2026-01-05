@@ -10,7 +10,7 @@ import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { OutputFormatter, FileContentOptions } from '../utils/outputFormatter';
 
-const FILE_OPERATION_TIMEOUT = 15000; // 30 seconds for file operations
+const FILE_OPERATION_TIMEOUT = 15000; // 15 seconds for file operations
 
 /**
  * Tool that reads file content with support for partial content reading.

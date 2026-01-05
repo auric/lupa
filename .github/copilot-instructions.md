@@ -12,6 +12,11 @@ VS Code extension for PR analysis using GitHub Copilot.
 - **Tests**: Vitest with VS Code mocks
 - **UI**: React 19, shadcn/ui, Tailwind CSS v4
 
+## Environment
+
+- **Terminal**: PowerShell on Windows
+- **Test output**: Massive—read only last ~50 lines for summary
+
 ## Quick Reference
 
 ```bash

@@ -210,7 +210,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                     Log.warn(
                         `Some settings in ${this.settingsPath} are invalid. Keeping valid settings.`
                     );
-                    this.userSettings = this.salvageValidSettings(parsed);
+                    this.userSettings = this.recoverValidSettings(parsed);
                     // Re-validate with salvaged settings to get proper defaults
                     const salvageResult = WorkspaceSettingsSchema.safeParse(
                         this.userSettings
@@ -234,10 +234,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Attempt to salvage valid individual settings from a partially invalid config.
+     * Recover valid individual settings from a partially invalid config.
      * Invalid keys are dropped and logged.
      */
-    private salvageValidSettings(
+    private recoverValidSettings(
         parsed: Record<string, unknown>
     ): UserSettings {
         const salvaged: UserSettings = {};
