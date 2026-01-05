@@ -312,8 +312,8 @@ Tools receive an `ExecutionContext` containing per-analysis dependencies:
 ```typescript
 interface ExecutionContext {
     traceId: string; // Required: unique ID for log correlation
-    contextLabel?: string; // "Main", "Chat", "Exploration", "Sub#1"
-    currentIteration?: number;
+    contextLabel: string; // "Main", "Chat", "Exploration", "Sub#1"
+    currentIteration: number;
     planManager?: PlanSessionManager;
     subagentSessionManager?: SubagentSessionManager;
     subagentExecutor?: SubagentExecutor;
