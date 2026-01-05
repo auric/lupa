@@ -109,14 +109,16 @@ export class ConversationRunner {
 
         while (iteration < config.maxIterations) {
             iteration++;
+            // Include iteration marker (:iN) for consistent log filtering across all components
+            const iterationPrefix = config.label
+                ? `[${config.label}:i${iteration}]`
+                : `[Conversation:i${iteration}]`;
             Log.info(
-                `${logPrefix} Iteration ${iteration}/${config.maxIterations}`
+                `${iterationPrefix} Iteration ${iteration}/${config.maxIterations}`
             );
 
             if (token.isCancellationRequested) {
-                Log.info(
-                    `${logPrefix} Cancelled before iteration ${iteration}`
-                );
+                Log.info(`${iterationPrefix} Cancelled before starting`);
                 return CANCELLATION_MESSAGE;
             }
 
@@ -184,7 +186,7 @@ export class ConversationRunner {
 
                     if (cleanup.contextFullMessageAdded) {
                         Log.info(
-                            `${logPrefix} Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`
+                            `${iterationPrefix} Context cleanup: removed ${cleanup.toolResultsRemoved} tool results and ${cleanup.assistantMessagesRemoved} assistant messages`
                         );
                     }
                 }
@@ -198,7 +200,7 @@ export class ConversationRunner {
                 );
 
                 if (token.isCancellationRequested) {
-                    Log.info(`${logPrefix} Cancelled by user`);
+                    Log.info(`${iterationPrefix} Cancelled by user`);
                     return CANCELLATION_MESSAGE;
                 }
 
@@ -215,13 +217,13 @@ export class ConversationRunner {
                         response.toolCalls,
                         conversation,
                         handler,
-                        logPrefix
+                        iterationPrefix
                     );
 
                     // If submit_review was called, return its content as the final review
                     if (result.finalReview) {
                         Log.info(
-                            `${logPrefix} Completed via submit_review tool`
+                            `${iterationPrefix} Completed via submit_review tool`
                         );
                         return result.finalReview;
                     }
@@ -237,7 +239,7 @@ export class ConversationRunner {
                     // After MAX_COMPLETION_NUDGES attempts, accept the response to prevent infinite loops
                     if (completionNudgeCount > MAX_COMPLETION_NUDGES) {
                         Log.warn(
-                            `${logPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
+                            `${iterationPrefix} Model did not call submit_review after ${MAX_COMPLETION_NUDGES} nudges. Accepting response as final.`
                         );
 
                         // Try to extract review content from malformed tool call attempts
@@ -247,7 +249,7 @@ export class ConversationRunner {
                             );
                         if (extractedReview) {
                             Log.info(
-                                `${logPrefix} Extracted review content from malformed tool call`
+                                `${iterationPrefix} Extracted review content from malformed tool call`
                             );
                             return extractedReview;
                         }
@@ -265,7 +267,7 @@ export class ConversationRunner {
                             ? response.content.slice(-100)
                             : '';
                     Log.info(
-                        `${logPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                        `${iterationPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
                             `Content preview: "${contentPreview}...". ` +
                             `Ending: "...${contentEnding}". Nudging to use submit_review.`
                     );
@@ -277,7 +279,7 @@ export class ConversationRunner {
                 }
 
                 // For subagents and other contexts, accept the response as final
-                Log.info(`${logPrefix} Completed successfully`);
+                Log.info(`${iterationPrefix} Completed successfully`);
                 return (
                     response.content ||
                     'Conversation completed but no content returned.'
@@ -289,16 +291,14 @@ export class ConversationRunner {
                     (error instanceof Error &&
                         error.message?.toLowerCase().includes('cancel'))
                 ) {
-                    Log.info(
-                        `${logPrefix} Cancelled during iteration ${iteration}`
-                    );
+                    Log.info(`${iterationPrefix} Cancelled during execution`);
                     return CANCELLATION_MESSAGE;
                 }
 
                 const fatalError = this.detectFatalError(error);
                 if (fatalError) {
                     Log.error(
-                        `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`
+                        `${iterationPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`
                     );
                     vscode.window.showErrorMessage(fatalError.message);
                     throw new CopilotApiError(
@@ -307,7 +307,7 @@ export class ConversationRunner {
                     );
                 }
 
-                const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
+                const errorMessage = `${iterationPrefix} Error: ${error instanceof Error ? error.message : String(error)}`;
                 Log.error(errorMessage);
 
                 // Re-throw service unavailable errors to be handled by caller

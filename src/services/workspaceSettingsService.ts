@@ -45,6 +45,15 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     private settingsPath: string | null = null;
     private saveDebounceTimeout: NodeJS.Timeout | null = null;
 
+    /** File system watcher for detecting external settings changes */
+    private fileWatcher: vscode.FileSystemWatcher | undefined;
+
+    /** Flag to ignore file change events triggered by our own writes */
+    private isWriting = false;
+
+    /** Debounce timer for file change events */
+    private reloadDebounceTimeout: NodeJS.Timeout | null = null;
+
     /**
      * Creates a new WorkspaceSettingsService
      * @param context VS Code extension context
@@ -62,6 +71,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Initialize settings for the current workspace
      */
     private initializeSettings(): void {
+        // Dispose existing file watcher if any
+        this.fileWatcher?.dispose();
+        this.fileWatcher = undefined;
+
         // First try to get settings path from workspace
         this.settingsPath = this.getWorkspaceSettingsPath();
 
@@ -72,6 +85,59 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
         // Load settings
         this.loadSettings();
+
+        // Set up file watcher for external changes
+        this.setupFileWatcher();
+    }
+
+    /**
+     * Set up file system watcher to detect external changes to settings file.
+     * Reloads settings when the file is modified externally (not by us).
+     */
+    private setupFileWatcher(): void {
+        if (!this.settingsPath) {
+            return;
+        }
+
+        try {
+            const dir = path.dirname(this.settingsPath);
+            const pattern = new vscode.RelativePattern(
+                dir,
+                WorkspaceSettingsService.SETTINGS_FILENAME
+            );
+            this.fileWatcher = vscode.workspace.createFileSystemWatcher(
+                pattern,
+                false, // Don't ignore creates
+                false, // Don't ignore changes
+                false // Don't ignore deletes
+            );
+
+            const handleFileChange = () => {
+                // Ignore events triggered by our own writes
+                if (this.isWriting) {
+                    return;
+                }
+
+                // Debounce rapid changes (e.g., editor auto-save)
+                if (this.reloadDebounceTimeout) {
+                    clearTimeout(this.reloadDebounceTimeout);
+                }
+
+                this.reloadDebounceTimeout = setTimeout(() => {
+                    Log.debug('Settings file changed externally, reloading...');
+                    this.loadSettings();
+                    this.reloadDebounceTimeout = null;
+                }, 300);
+            };
+
+            this.fileWatcher.onDidChange(handleFileChange);
+            this.fileWatcher.onDidCreate(handleFileChange);
+            this.fileWatcher.onDidDelete(handleFileChange);
+        } catch (error) {
+            Log.error(
+                `Failed to set up file watcher: ${error instanceof Error ? error.message : String(error)}`
+            );
+        }
     }
 
     /**
@@ -211,6 +277,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             return;
         }
 
+        // Set flag to ignore file watcher events from our own write
+        this.isWriting = true;
+
         try {
             // If there are no user-set values, delete the file if it exists
             if (Object.keys(this.userSettings).length === 0) {
@@ -245,6 +314,11 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             Log.error(
                 `Failed to save settings: ${error instanceof Error ? error.message : String(error)}`
             );
+        } finally {
+            // Clear the flag after a short delay to handle async file system events
+            setTimeout(() => {
+                this.isWriting = false;
+            }, 100);
         }
     }
 
@@ -470,5 +544,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             clearTimeout(this.saveDebounceTimeout);
             this.saveSettings(); // Save immediately before disposal
         }
+        if (this.reloadDebounceTimeout) {
+            clearTimeout(this.reloadDebounceTimeout);
+        }
+        this.fileWatcher?.dispose();
     }
 }

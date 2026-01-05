@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Trace ID correlation**: Every analysis session and subagent now has a unique trace ID (e.g., `[a1b2c3d4:Main:i5]`) for correlating logs across tool calls.
 
-- **Iteration log tracing**: Conversation iteration logs now include trace IDs for easier correlation when multiple analyses run concurrently (e.g., `[a1b2c3d4:Main] Iteration 5/100`).
+- **Consistent iteration markers**: All logs within a conversation iteration now include the `:iN` marker (e.g., `[a1b2c3d4:Main:i5]`). Previously, iteration start logs used a different format than tool execution logs. This makes log filtering by iteration much easier.
 
 - **Abandoned operation logging**: When a tool times out but the underlying operation completes later, the log now shows when it finished (helps diagnose slow language servers).
 
 - **Cryptographically unique trace IDs**: Trace IDs now use `crypto.randomUUID()` for better uniqueness and collision resistance.
+
+#### Settings File Watching
+
+- **Live settings reload**: Changes to `.vscode/lupa.json` are now detected automatically. External edits (from another editor or git operations) reload settings without requiring extension restart.
 
 ### Changed
 
