@@ -4,7 +4,7 @@ import * as path from 'path';
 import { BaseTool } from './baseTool';
 import { UsageFormatter } from './usageFormatter';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
@@ -194,13 +194,13 @@ Requires file_path where the symbol is defined as starting point.`;
 
                 return toolSuccess(formattedUsages.join('\n\n'));
             } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : String(error);
-                if (message.includes('timed out')) {
+                if (isTimeoutError(error)) {
                     return toolError(
                         `Reference search timed out. The language server may be slow or the codebase too large.`
                     );
                 }
+                const message =
+                    error instanceof Error ? error.message : String(error);
                 return toolError(
                     `Error executing reference provider: ${message}`
                 );

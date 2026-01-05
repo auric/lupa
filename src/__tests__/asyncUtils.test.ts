@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, TimeoutError, isTimeoutError } from '../utils/asyncUtils';
 
 vi.mock('../services/loggingService', () => ({
     Log: {
@@ -108,6 +108,57 @@ describe('asyncUtils', () => {
             expect(await withTimeout(arrayPromise, 1000, 'array')).toEqual([
                 1, 2, 3,
             ]);
+        });
+
+        it('should throw TimeoutError instance when timeout occurs', async () => {
+            const slowPromise = new Promise<string>((resolve) => {
+                setTimeout(() => resolve('too late'), 2000);
+            });
+
+            const resultPromise = withTimeout(
+                slowPromise,
+                100,
+                'slow operation'
+            );
+
+            await vi.advanceTimersByTimeAsync(150);
+
+            try {
+                await resultPromise;
+                expect.fail('Should have thrown');
+            } catch (error) {
+                expect(error).toBeInstanceOf(TimeoutError);
+                expect(isTimeoutError(error)).toBe(true);
+                if (error instanceof TimeoutError) {
+                    expect(error.operation).toBe('slow operation');
+                    expect(error.timeoutMs).toBe(100);
+                    expect(error.isTimeout).toBe(true);
+                }
+            }
+        });
+    });
+
+    describe('isTimeoutError', () => {
+        it('should return true for TimeoutError instances', () => {
+            const error = new TimeoutError('test op', 5000);
+            expect(isTimeoutError(error)).toBe(true);
+        });
+
+        it('should return false for regular Error instances', () => {
+            const error = new Error('regular error');
+            expect(isTimeoutError(error)).toBe(false);
+        });
+
+        it('should return false for non-Error objects', () => {
+            expect(isTimeoutError({ message: 'not an error' })).toBe(false);
+            expect(isTimeoutError('string error')).toBe(false);
+            expect(isTimeoutError(null)).toBe(false);
+            expect(isTimeoutError(undefined)).toBe(false);
+        });
+
+        it('should return false for Error with "timed out" in message but not TimeoutError', () => {
+            const error = new Error('Operation timed out');
+            expect(isTimeoutError(error)).toBe(false);
         });
     });
 });

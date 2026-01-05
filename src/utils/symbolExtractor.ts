@@ -4,7 +4,7 @@ import ignore from 'ignore';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { Log } from '../services/loggingService';
 import { readGitignore } from '../utils/gitUtils';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { CodeFileUtils } from './codeFileUtils';
 
 /**
@@ -65,7 +65,7 @@ export class SymbolExtractor {
             return symbols || [];
         } catch (error) {
             // Log timeout specifically for diagnostics
-            if (error instanceof Error && error.message.includes('timed out')) {
+            if (isTimeoutError(error)) {
                 Log.warn(
                     `[SymbolExtractor] LSP timed out for ${path.basename(fileUri.fsPath)} after ${PER_FILE_LSP_TIMEOUT_MS}ms`
                 );

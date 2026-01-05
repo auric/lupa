@@ -1,6 +1,34 @@
 import { Log } from '../services/loggingService';
 
 /**
+ * Custom error class for timeout errors.
+ * Use `instanceof TimeoutError` for robust error type checking.
+ */
+export class TimeoutError extends Error {
+    readonly isTimeout = true;
+    readonly timeoutMs: number;
+    readonly operation: string;
+
+    constructor(operation: string, timeoutMs: number) {
+        super(`${operation} timed out after ${timeoutMs}ms`);
+        this.name = 'TimeoutError';
+        this.operation = operation;
+        this.timeoutMs = timeoutMs;
+        // Maintain proper stack trace in V8 environments
+        if (Error.captureStackTrace) {
+            Error.captureStackTrace(this, TimeoutError);
+        }
+    }
+}
+
+/**
+ * Type guard to check if an error is a TimeoutError.
+ */
+export function isTimeoutError(error: unknown): error is TimeoutError {
+    return error instanceof TimeoutError;
+}
+
+/**
  * Wraps a promise with a timeout.
  *
  * IMPORTANT: This uses Promise.race, which means the underlying operation
@@ -28,9 +56,7 @@ export function withTimeout<T>(
         timeoutId = setTimeout(() => {
             if (!resolved) {
                 timedOut = true;
-                reject(
-                    new Error(`${operation} timed out after ${timeoutMs}ms`)
-                );
+                reject(new TimeoutError(operation, timeoutMs));
             }
         }, timeoutMs);
     });

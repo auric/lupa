@@ -78,6 +78,12 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         this.fileWatcher?.dispose();
         this.fileWatcher = undefined;
 
+        // Clear any pending reload debounce when reinitializing
+        if (this.reloadDebounceTimeout) {
+            clearTimeout(this.reloadDebounceTimeout);
+            this.reloadDebounceTimeout = null;
+        }
+
         // First try to get settings path from workspace
         this.settingsPath = this.getWorkspaceSettingsPath();
 

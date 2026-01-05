@@ -5,7 +5,7 @@ import { BaseTool } from './baseTool';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { OutputFormatter, FileContentOptions } from '../utils/outputFormatter';
@@ -88,9 +88,7 @@ export class ReadFileTool extends BaseTool {
                     `File stat for ${sanitizedPath}`
                 );
             } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : String(error);
-                if (message.includes('timed out')) {
+                if (isTimeoutError(error)) {
                     return toolError(
                         `File operation timed out: ${sanitizedPath}`
                     );
@@ -107,11 +105,11 @@ export class ReadFileTool extends BaseTool {
                 );
                 fileContent = Buffer.from(contentBytes).toString('utf8');
             } catch (error) {
-                const message =
-                    error instanceof Error ? error.message : String(error);
-                if (message.includes('timed out')) {
+                if (isTimeoutError(error)) {
                     return toolError(`File read timed out: ${sanitizedPath}`);
                 }
+                const message =
+                    error instanceof Error ? error.message : String(error);
                 return toolError(
                     `Failed to read file ${sanitizedPath}: ${message}`
                 );

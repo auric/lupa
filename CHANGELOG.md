@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ripgrep error handler timer cleanup**: Added `forceKillTimeoutId` cleanup in the error handler to prevent potential timer leaks when spawn fails after timeout.
 
+- **TimeoutError type safety**: Replaced fragile string matching (`error.message.includes('timed out')`) with a proper `TimeoutError` class and `isTimeoutError()` type guard across 7 files. This makes timeout detection robust against message changes and enables proper TypeScript type narrowing.
+
 - **Settings persistence key deletion**: When optional settings (model identifier, repository path) are cleared, the key is now properly deleted from the config file instead of being set to `undefined`. This ensures empty config files are correctly detected and deleted.
 
 - **Partial settings recovery**: Invalid individual settings no longer cause all settings to be dropped. Valid settings are now preserved when loading a config file with some invalid values, with warnings logged for the invalid keys.
@@ -58,6 +60,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Settings file watcher grace window**: Extended self-write detection window from 100ms to 500ms to reduce race condition risk when external editors save files slowly.
 
 - **Chat participant iteration tracking**: Chat and Exploration modes now properly update `executionContext.currentIteration` during their conversation loops. Tool execution logs in chat flows now show the correct iteration number instead of always showing `:i1`.
+
+- **Log format consistency at max iterations**: The max iterations warning now uses the `[label:iN]` format instead of the old `[label]` format, matching all other iteration logs.
+
+- **Settings watcher reinitialization**: Fixed potential stale callback when settings watcher is reinitialized - now clears pending reload debounce timeout.
+
+- **isWriting timer race condition**: Fixed race where rapid saves could cause premature clearing of the isWriting flag, leading to incorrect reloads. Timer is now tracked and cleared before scheduling a new one.
+
+- **isWriting flag timing**: Flag is now set immediately before actual I/O operations (write/unlink) rather than at method start, for accurate write state tracking.
+
+### Tests
+
+- **asyncUtils.test.ts**: New test file for `withTimeout` utility covering timer cleanup, timeout behavior, and error propagation.
+
+- **workspaceSettingsService.test.ts**: Added tests for `recoverValidSettings` partial recovery and `isWriting` timer management.
 
 ## [0.1.10] - 2026-01-05
 

@@ -2,7 +2,7 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
@@ -82,13 +82,13 @@ export class FindFilesByPatternTool extends BaseTool {
 
             return toolSuccess(output);
         } catch (error) {
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
-            if (errorMessage.includes('timed out')) {
+            if (isTimeoutError(error)) {
                 return toolError(
                     `File search timed out. Try a more specific pattern or search in a smaller directory.`
                 );
             }
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
             return toolError(`Unable to find files: ${errorMessage}`);
         }
     }

@@ -105,7 +105,6 @@ export class ConversationRunner {
         let iteration = 0;
         let completionNudgeCount = 0;
         const MAX_COMPLETION_NUDGES = 2;
-        const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
 
         while (iteration < config.maxIterations) {
             iteration++;
@@ -328,8 +327,11 @@ export class ConversationRunner {
             }
         }
 
+        const finalPrefix = config.label
+            ? `[${config.label}:i${iteration}]`
+            : `[Conversation:i${iteration}]`;
         Log.warn(
-            `${logPrefix} Reached maximum iterations (${config.maxIterations})`
+            `${finalPrefix} Reached maximum iterations (${config.maxIterations})`
         );
         return 'Conversation reached maximum iterations. The conversation may be incomplete.';
     }

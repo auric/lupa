@@ -7,7 +7,7 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
@@ -146,13 +146,13 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
             return toolSuccess(result);
         } catch (error) {
-            const message =
-                error instanceof Error ? error.message : String(error);
-            if (message.includes('timed out')) {
+            if (isTimeoutError(error)) {
                 return toolError(
                     `Symbol extraction timed out. Try a specific file path instead of a directory, or use filters.`
                 );
             }
+            const message =
+                error instanceof Error ? error.message : String(error);
             return toolError(`Failed to get symbols overview: ${message}`);
         }
     }

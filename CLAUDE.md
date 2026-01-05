@@ -96,6 +96,25 @@ Use `toolSuccess(data)` and `toolError(message)` helpers from `src/types/toolRes
 
 Prefer `param: string | undefined` over `param?: string` for explicit nullability.
 
+### Error Handling
+
+Use typed error classes instead of string matching on error messages:
+
+- **Timeouts**: Use `TimeoutError` class and `isTimeoutError()` type guard from `src/utils/asyncUtils.ts`
+- Never use `error.message.includes('...')` for error detection—it's fragile and breaks on message changes
+- Custom error classes should include an `isXxxError` type guard for safe narrowing
+
+```typescript
+// ✅ Good
+import { isTimeoutError } from '../utils/asyncUtils';
+if (isTimeoutError(error)) {
+    return toolError(`Operation timed out after ${error.timeoutMs}ms`);
+}
+
+// ❌ Bad
+if (error.message.includes('timed out')) { ... }
+```
+
 ### New Tools
 
 1. Extend `BaseTool`
