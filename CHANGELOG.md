@@ -53,13 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Log label formatting**: Fixed double bracket issue in subagent logs. Was `[[trace:Sub#1]:i40]`, now correctly formatted as `[trace:Sub#1:i40]`.
 
-- **Ripgrep timeout race condition**: Added `timedOut` guard to ripgrep error handler to prevent duplicate promise rejection when error event fires after timeout.
-
 - **Settings file watcher grace window**: Extended self-write detection window from 100ms to 500ms to reduce race condition risk when external editors save files slowly.
 
 - **Chat participant iteration tracking**: Chat and Exploration modes now properly update `executionContext.currentIteration` during their conversation loops. Tool execution logs in chat flows now show the correct iteration number instead of always showing `:i1`.
-
-- **Ripgrep SIGKILL timer cleanup**: The force-kill timer (SIGKILL after SIGTERM) is now properly cleared when the process terminates gracefully, preventing potential timer leaks.
 
 ## [0.1.10] - 2026-01-05
 
