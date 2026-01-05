@@ -255,6 +255,10 @@ export class RipgrepSearchService {
 
             rg.on('error', (err: Error) => {
                 clearTimeout(timeoutId);
+                // Ignore errors after timeout-induced rejection
+                if (timedOut) {
+                    return;
+                }
                 reject(new Error(`Failed to spawn ripgrep: ${err.message}`));
             });
         });

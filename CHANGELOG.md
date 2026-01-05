@@ -49,6 +49,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Partial settings recovery**: Invalid individual settings no longer cause all settings to be dropped. Valid settings are now preserved when loading a config file with some invalid values, with warnings logged for the invalid keys.
 
+- **Subagent iteration tracking**: `SubagentExecutor` now properly updates `executionContext.currentIteration` during its conversation loop. Tool execution logs now show the correct iteration number instead of always showing `:i1`.
+
+- **Log label formatting**: Fixed double bracket issue in subagent logs. Was `[[trace:Sub#1]:i40]`, now correctly formatted as `[trace:Sub#1:i40]`.
+
+- **Ripgrep timeout race condition**: Added `timedOut` guard to ripgrep error handler to prevent duplicate promise rejection when error event fires after timeout.
+
+- **Settings file watcher grace window**: Extended self-write detection window from 100ms to 500ms to reduce race condition risk when external editors save files slowly.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added

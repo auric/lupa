@@ -84,9 +84,11 @@ export class SubagentExecutor {
             task.task.length > 30
                 ? task.task.substring(0, 30).replace(/\s+/g, ' ').trim() + '...'
                 : task.task.replace(/\s+/g, ' ').trim();
-        const logLabel = traceId
-            ? `[${traceId}:Sub#${subagentId}]`
-            : `[Sub#${subagentId}]`;
+        // Label WITHOUT brackets - ConversationRunner adds brackets
+        const contextLabel = traceId
+            ? `${traceId}:Sub#${subagentId}`
+            : `Sub#${subagentId}`;
+        const logLabel = `[${contextLabel}]`;
 
         try {
             Log.info(`${logLabel} Starting: "${taskLabel}"`);
@@ -100,14 +102,15 @@ export class SubagentExecutor {
             // Note: subagents don't get planManager or subagentExecutor (they can't spawn subagents)
             // Generate a new traceId if not provided (for backwards compatibility)
             const effectiveTraceId = traceId ?? generateTraceId();
+            const executionContext = {
+                traceId: effectiveTraceId,
+                contextLabel: `Sub#${subagentId}`,
+                currentIteration: 1,
+            };
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
                 this.workspaceSettings,
-                {
-                    traceId: effectiveTraceId,
-                    contextLabel: `Sub#${subagentId}`,
-                    currentIteration: 1,
-                }
+                executionContext
             );
             const conversationRunner = new ConversationRunner(
                 this.modelManager,
@@ -138,12 +141,14 @@ export class SubagentExecutor {
                     systemPrompt,
                     maxIterations,
                     tools: filteredTools,
-                    label: logLabel,
+                    label: contextLabel, // WITHOUT brackets - ConversationRunner adds them
                 },
                 conversation,
                 token,
                 {
                     onIterationStart: (current, max) => {
+                        // Update execution context so ToolExecutor logs show correct iteration
+                        executionContext.currentIteration = current;
                         // Report to VS Code progress bar (command palette flow).
                         // Chat UI iteration is suppressed by SubagentStreamAdapter's no-op onIterationStart.
                         this.reportProgress(

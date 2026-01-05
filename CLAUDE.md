@@ -123,6 +123,8 @@ interface ExecutionContext {
 
 Generate trace IDs using `generateTraceId()` from `src/types/executionContext.ts`.
 
+**Log format**: All logs use `[traceId:contextLabel:iN]` format where N is the iteration number. This enables filtering logs by iteration: `grep ":i5]"` finds all logs from iteration 5. Both `ConversationRunner` and `ToolExecutor` use this format consistently. Subagents must update `currentIteration` in their conversation loops to maintain accurate iteration tracking.
+
 ### New Services
 
 1. Implement `vscode.Disposable`

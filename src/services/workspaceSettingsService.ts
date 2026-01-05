@@ -315,10 +315,11 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 `Failed to save settings: ${error instanceof Error ? error.message : String(error)}`
             );
         } finally {
-            // Clear the flag after a short delay to handle async file system events
+            // Clear the flag after a delay to handle async file system events.
+            // Use 500ms to reduce race condition risk with external file watchers.
             setTimeout(() => {
                 this.isWriting = false;
-            }, 100);
+            }, 500);
         }
     }
 
