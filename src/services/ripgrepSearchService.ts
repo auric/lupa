@@ -259,6 +259,9 @@ export class RipgrepSearchService {
 
             rg.on('error', (err: Error) => {
                 clearTimeout(timeoutId);
+                if (forceKillTimeoutId) {
+                    clearTimeout(forceKillTimeoutId);
+                }
                 // Ignore errors after timeout-induced rejection
                 if (timedOut) {
                     return;

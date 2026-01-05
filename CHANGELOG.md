@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ripgrep search timeout**: Added 30-second timeout to `search_for_pattern` tool. If ripgrep hangs (e.g., on network mounts or pathological patterns), the process is now killed and an error is returned instead of hanging indefinitely.
 
+- **Ripgrep error handler timer cleanup**: Added `forceKillTimeoutId` cleanup in the error handler to prevent potential timer leaks when spawn fails after timeout.
+
 - **Settings persistence key deletion**: When optional settings (model identifier, repository path) are cleared, the key is now properly deleted from the config file instead of being set to `undefined`. This ensures empty config files are correctly detected and deleted.
 
 - **Partial settings recovery**: Invalid individual settings no longer cause all settings to be dropped. Valid settings are now preserved when loading a config file with some invalid values, with warnings logged for the invalid keys.
