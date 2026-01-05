@@ -315,4 +315,104 @@ describe('WorkspaceSettingsService', () => {
             });
         });
     });
+
+    describe('recoverValidSettings', () => {
+        it('should recover valid settings when config has invalid values', () => {
+            // Config with valid maxIterations but invalid maxSubagentsPerSession
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    maxIterations: 50,
+                    maxSubagentsPerSession: 'not a number', // Invalid
+                })
+            );
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Valid setting should be preserved
+            expect(service.getMaxIterations()).toBe(50);
+            // Invalid setting should fall back to default
+            expect(service.getMaxSubagentsPerSession()).toBe(10);
+        });
+
+        it('should ignore unknown keys in config', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    maxIterations: 25,
+                    unknownKey: 'some value',
+                    anotherUnknown: 123,
+                })
+            );
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Known valid setting should work
+            expect(service.getMaxIterations()).toBe(25);
+        });
+
+        it('should recover all valid settings from partially invalid config', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    maxIterations: 75,
+                    maxSubagentsPerSession: 5,
+                    requestTimeoutSeconds: 'invalid', // Invalid
+                    selectedRepositoryPath: '/valid/path',
+                })
+            );
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxIterations()).toBe(75);
+            expect(service.getMaxSubagentsPerSession()).toBe(5);
+            expect(service.getRequestTimeoutSeconds()).toBe(300); // Default
+            expect(service.getSelectedRepositoryPath()).toBe('/valid/path');
+        });
+
+        it('should handle completely invalid config by using all defaults', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    maxIterations: 'invalid',
+                    maxSubagentsPerSession: null,
+                    requestTimeoutSeconds: [],
+                })
+            );
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            // All should be defaults
+            expect(service.getMaxIterations()).toBe(100);
+            expect(service.getMaxSubagentsPerSession()).toBe(10);
+            expect(service.getRequestTimeoutSeconds()).toBe(300);
+        });
+
+        it('should handle malformed JSON gracefully', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('{ invalid json }');
+
+            // Should not throw, should use defaults
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxIterations()).toBe(100);
+        });
+    });
+
+    describe('isWriting timer management', () => {
+        it('should not reload settings during write operation', () => {
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Trigger a setting change which will write
+            service.setSetting('maxIterations', 50);
+            vi.advanceTimersByTime(600); // Debounce + write
+
+            // Simulate file watcher detecting our own write
+            // The isWriting flag should prevent reload
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxIterations: 999 }) // Different value
+            );
+
+            // Advance time but not past the isWriting grace period (500ms)
+            vi.advanceTimersByTime(100);
+
+            // Value should still be what we set, not reloaded
+            expect(service.getMaxIterations()).toBe(50);
+        });
+    });
 });
