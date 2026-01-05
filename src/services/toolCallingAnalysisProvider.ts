@@ -232,7 +232,7 @@ export class ToolCallingAnalysisProvider {
                     systemPrompt,
                     maxIterations: this.maxIterations,
                     tools: availableTools,
-                    label: 'Main Analysis',
+                    label: `${traceId}:Main`,
                     requiresExplicitCompletion: true,
                 },
                 conversationManager,

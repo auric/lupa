@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Trace ID correlation**: Every analysis session and subagent now has a unique trace ID (e.g., `[a1b2c3d4:Main:i5]`) for correlating logs across tool calls.
 
+- **Iteration log tracing**: Conversation iteration logs now include trace IDs for easier correlation when multiple analyses run concurrently (e.g., `[a1b2c3d4:Main] Iteration 5/100`).
+
 - **Abandoned operation logging**: When a tool times out but the underlying operation completes later, the log now shows when it finished (helps diagnose slow language servers).
 
 - **Cryptographically unique trace IDs**: Trace IDs now use `crypto.randomUUID()` for better uniqueness and collision resistance.
@@ -23,11 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Minimal config files**: `.vscode/lupa.json` now only saves user-modified values. Defaults are applied at runtime from the schema. This prevents config files from containing stale defaults when upgrading.
 
+- **Empty settings cleanup**: When all user settings are reset to defaults, the settings file is now deleted rather than leaving an empty or stale file on disk.
+
 ### Fixed
 
 - **Timer memory leak**: Fixed `withTimeout()` utility to properly clear timers when operations complete before timeout.
 
 - **Chat participant tracing**: Chat participant mode now includes trace IDs for log correlation, matching the command palette behavior.
+
+### Known Issues
+
+- **Directory symbol search with slow language servers**: When using `find_symbol` or `get_symbols_overview` on directories (not specific files), operations can take very long (minutes) with slow language servers like clangd. The tool-level timeouts protect post-processing but don't cancel in-flight LSP calls. **Workaround**: Specify exact file paths instead of directories when possible.
 
 ## [0.1.10] - 2026-01-05
 

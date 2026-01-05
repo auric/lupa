@@ -164,6 +164,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     /**
      * Save only user-modified settings to disk.
      * Defaults are NOT saved - they're applied at runtime.
+     * If no user settings remain, deletes the file to keep config minimal.
      */
     private saveSettings(): void {
         if (!this.settingsPath) {
@@ -171,8 +172,20 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         }
 
         try {
-            // If there are no user-set values, don't create/update the file
+            // If there are no user-set values, delete the file if it exists
             if (Object.keys(this.userSettings).length === 0) {
+                if (fs.existsSync(this.settingsPath)) {
+                    try {
+                        fs.unlinkSync(this.settingsPath);
+                        Log.debug(
+                            `Deleted empty settings file: ${this.settingsPath}`
+                        );
+                    } catch (deleteError) {
+                        Log.error(
+                            `Failed to delete settings file: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`
+                        );
+                    }
+                }
                 return;
             }
 

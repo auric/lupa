@@ -336,7 +336,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     maxIterations:
                         this.deps.workspaceSettings.getMaxIterations(),
                     tools: availableTools,
-                    label: 'Chat exploration',
+                    label: `${traceId}:Exploration`,
                 },
                 conversation,
                 token,
@@ -568,7 +568,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     maxIterations:
                         this.deps!.workspaceSettings.getMaxIterations(),
                     tools: availableTools,
-                    label: `Chat /${scopeLabel}`,
+                    label: `${traceId}:Chat /${scopeLabel}`,
                     requiresExplicitCompletion: true,
                 },
                 conversation,
