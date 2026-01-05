@@ -68,8 +68,7 @@ describe('Tool-Calling Integration Tests', () => {
         } as any;
         findSymbolTool = new FindSymbolTool(
             mockGitOperationsManager,
-            mockSymbolExtractor,
-            mockWorkspaceSettings
+            mockSymbolExtractor
         );
         toolRegistry.registerTool(findSymbolTool);
         toolRegistry.registerTool(new SubmitReviewTool());

@@ -86,8 +86,7 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
 
         getSymbolsOverviewTool = new GetSymbolsOverviewTool(
             mockGitOperationsManager,
-            mockSymbolExtractor,
-            createMockWorkspaceSettings()
+            mockSymbolExtractor
         );
 
         // Set up tool registry and executor for integration testing

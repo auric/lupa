@@ -2,13 +2,10 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SymbolExtractor } from '../utils/symbolExtractor';
-import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
-// Mock vscode
-vi.mock('vscode', async () => {
-    const actualVscode = await vi.importActual('vscode');
+vi.mock('vscode', async (importOriginal) => {
+    const actualVscode = await importOriginal<typeof vscode>();
     return {
         ...actualVscode,
         workspace: {
@@ -63,19 +60,16 @@ vi.mock('vscode', async () => {
     };
 });
 
-// Mock PathSanitizer
 vi.mock('../utils/pathSanitizer', () => ({
     PathSanitizer: {
         sanitizePath: vi.fn((path) => path),
     },
 }));
 
-// Mock readGitignore
 vi.mock('../utils/gitUtils', () => ({
     readGitignore: vi.fn().mockResolvedValue(''),
 }));
 
-// Mock ignore library
 vi.mock('ignore', () => ({
     default: vi.fn(() => ({
         add: vi.fn().mockReturnThis(),
@@ -83,14 +77,12 @@ vi.mock('ignore', () => ({
     })),
 }));
 
-// Mock SymbolExtractor
 vi.mock('../utils/symbolExtractor');
 
 describe('GetSymbolsOverviewTool (Unit Tests)', () => {
     let getSymbolsOverviewTool: GetSymbolsOverviewTool;
     let mockGitOperationsManager: Mocked<GitOperationsManager>;
     let mockSymbolExtractor: Mocked<SymbolExtractor>;
-    let mockWorkspaceSettings: WorkspaceSettingsService;
 
     beforeEach(() => {
         mockGitOperationsManager = {
@@ -108,13 +100,9 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             getTextDocument: vi.fn(),
         } as any;
 
-        // Mock WorkspaceSettingsService
-        mockWorkspaceSettings = createMockWorkspaceSettings();
-
         getSymbolsOverviewTool = new GetSymbolsOverviewTool(
             mockGitOperationsManager,
-            mockSymbolExtractor,
-            mockWorkspaceSettings
+            mockSymbolExtractor
         );
         vi.clearAllMocks();
     });
@@ -363,8 +351,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const toolWithoutRepo = new GetSymbolsOverviewTool(
                 mockGitOpsWithoutRepo,
-                mockSymbolExtractorWithoutRepo,
-                mockWorkspaceSettings
+                mockSymbolExtractorWithoutRepo
             );
 
             const result = await toolWithoutRepo.execute({
