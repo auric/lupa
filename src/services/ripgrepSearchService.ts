@@ -167,6 +167,7 @@ export class RipgrepSearchService {
             const results = new Map<string, RipgrepMatch[]>();
             let stderr = '';
             let timedOut = false;
+            let forceKillTimeoutId: NodeJS.Timeout | undefined;
 
             const rg: ChildProcess = spawn(this.rgPath, args, {
                 cwd: options.cwd,
@@ -178,7 +179,7 @@ export class RipgrepSearchService {
                 timedOut = true;
                 rg.kill('SIGTERM');
                 // Give it a moment to terminate gracefully, then force kill
-                setTimeout(() => {
+                forceKillTimeoutId = setTimeout(() => {
                     if (!rg.killed) {
                         rg.kill('SIGKILL');
                     }
@@ -219,8 +220,11 @@ export class RipgrepSearchService {
             });
 
             rg.on('close', (code: number | null) => {
-                // Clear timeout on normal completion
+                // Clear timeouts on process exit
                 clearTimeout(timeoutId);
+                if (forceKillTimeoutId) {
+                    clearTimeout(forceKillTimeoutId);
+                }
 
                 // If we already rejected due to timeout, don't resolve
                 if (timedOut) {
