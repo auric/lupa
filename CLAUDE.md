@@ -112,11 +112,16 @@ Tools receive an `ExecutionContext` with per-analysis dependencies:
 
 ```typescript
 interface ExecutionContext {
+    traceId: string; // Required for log correlation
+    contextLabel?: string; // "Main" or "Sub#1", "Sub#2", etc.
+    currentIteration?: number; // Current conversation loop iteration
     planManager?: PlanSessionManager;
     subagentSessionManager?: SubagentSessionManager;
     subagentExecutor?: SubagentExecutor;
 }
 ```
+
+Generate trace IDs using `generateTraceId()` from `src/types/executionContext.ts`.
 
 ### New Services
 

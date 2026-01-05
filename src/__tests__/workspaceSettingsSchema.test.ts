@@ -32,8 +32,6 @@ describe('WorkspaceSettingsSchema', () => {
                 requestTimeoutSeconds: 120,
                 maxSubagentsPerSession: 15,
                 logLevel: 'debug' as const,
-                lspOperationTimeoutSeconds: 30,
-                symbolSearchTimeoutSeconds: 15,
             };
 
             const result = WorkspaceSettingsSchema.safeParse(validSettings);

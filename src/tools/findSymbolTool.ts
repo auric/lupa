@@ -5,7 +5,6 @@ import { BaseTool } from './baseTool';
 import { SymbolRangeExpander } from './symbolRangeExpander';
 import { DefinitionFormatter } from './definitionFormatter';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolMatcher, type SymbolMatch } from '../utils/symbolMatcher';
@@ -20,6 +19,9 @@ import ignore from 'ignore';
 
 // Per-file processing timeout (not configurable, should be fast)
 const FILE_PROCESSING_TIMEOUT = 500; // 500ms per file
+
+/** Timeout for workspace symbol search operations (15 seconds) */
+const SYMBOL_SEARCH_TIMEOUT_MS = 15_000;
 
 // Symbol formatting functions now handled by SymbolFormatter utility
 
@@ -44,8 +46,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
     constructor(
         private readonly gitOperationsManager: GitOperationsManager,
-        private readonly symbolExtractor: SymbolExtractor,
-        private readonly workspaceSettings: WorkspaceSettingsService
+        private readonly symbolExtractor: SymbolExtractor
     ) {
         super();
     }
@@ -268,8 +269,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         targetSymbolName
                     )
                 );
-                const symbolSearchTimeout =
-                    this.workspaceSettings.getSymbolSearchTimeoutMs();
+                const symbolSearchTimeout = SYMBOL_SEARCH_TIMEOUT_MS;
                 workspaceSymbols =
                     (await withTimeout(
                         symbolsPromise,
@@ -429,8 +429,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         sanitizedPath
                     );
                 const allMatches: SymbolMatch[] = [];
-                const symbolSearchTimeout =
-                    this.workspaceSettings.getSymbolSearchTimeoutMs();
+                const symbolSearchTimeout = SYMBOL_SEARCH_TIMEOUT_MS;
 
                 for (const { filePath, symbols } of directoryResults) {
                     // Time-based execution control

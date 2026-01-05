@@ -7,7 +7,6 @@ import {
     WorkspaceSettingsSchema,
     WorkspaceSettings,
     ANALYSIS_LIMITS,
-    LSP_LIMITS,
     SUBAGENT_LIMITS,
 } from '../models/workspaceSettingsSchema';
 
@@ -344,23 +343,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the symbol search timeout in milliseconds.
-     * This applies to workspace symbol search operations.
-     * Increase for slow language servers like clangd.
-     */
-    public getSymbolSearchTimeoutMs(): number {
-        return this.settings.symbolSearchTimeoutSeconds * 1000;
-    }
-
-    /**
-     * Get the LSP operation timeout in milliseconds.
-     * This applies to single-file LSP operations (document symbols, references).
-     */
-    public getLspOperationTimeoutMs(): number {
-        return this.settings.lspOperationTimeoutSeconds * 1000;
-    }
-
-    /**
      * Reset all analysis limit settings to their defaults.
      * Removes the user-set values so defaults are applied at runtime.
      */
@@ -369,8 +351,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         delete this.userSettings.maxIterations;
         delete this.userSettings.requestTimeoutSeconds;
         delete this.userSettings.maxSubagentsPerSession;
-        delete this.userSettings.symbolSearchTimeoutSeconds;
-        delete this.userSettings.lspOperationTimeoutSeconds;
 
         // Apply defaults to resolved settings
         this.settings.maxIterations = ANALYSIS_LIMITS.maxIterations.default;
@@ -378,10 +358,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             ANALYSIS_LIMITS.requestTimeoutSeconds.default;
         this.settings.maxSubagentsPerSession =
             SUBAGENT_LIMITS.maxPerSession.default;
-        this.settings.symbolSearchTimeoutSeconds =
-            LSP_LIMITS.symbolSearchTimeoutSeconds.default;
-        this.settings.lspOperationTimeoutSeconds =
-            LSP_LIMITS.lspOperationTimeoutSeconds.default;
 
         this.debouncedSaveSettings();
     }

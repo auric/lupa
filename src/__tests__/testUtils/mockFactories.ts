@@ -6,7 +6,6 @@ import { vi } from 'vitest';
 import type * as vscode from 'vscode';
 import {
     ANALYSIS_LIMITS,
-    LSP_LIMITS,
     SUBAGENT_LIMITS,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
@@ -182,8 +181,6 @@ export function createMockWorkspaceSettings(
         maxIterations: number;
         requestTimeoutSeconds: number;
         maxSubagentsPerSession: number;
-        symbolSearchTimeoutMs: number;
-        lspOperationTimeoutMs: number;
     }> = {}
 ): WorkspaceSettingsService {
     return {
@@ -195,12 +192,6 @@ export function createMockWorkspaceSettings(
         getMaxSubagentsPerSession: () =>
             overrides.maxSubagentsPerSession ??
             SUBAGENT_LIMITS.maxPerSession.default,
-        getSymbolSearchTimeoutMs: () =>
-            overrides.symbolSearchTimeoutMs ??
-            LSP_LIMITS.symbolSearchTimeoutSeconds.default * 1000,
-        getLspOperationTimeoutMs: () =>
-            overrides.lspOperationTimeoutMs ??
-            LSP_LIMITS.lspOperationTimeoutSeconds.default * 1000,
     } as WorkspaceSettingsService;
 }
 

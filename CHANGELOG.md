@@ -9,12 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-#### Configurable LSP Timeouts
-
-- **New timeout settings**: Added `symbolSearchTimeoutSeconds` (default: 15s) and `lspOperationTimeoutSeconds` (default: 30s) to `.vscode/lupa.json`. Increase these for slow language servers like clangd.
-
-- **Consistent timeout handling**: All LSP-based tools (`find_symbol`, `find_usages`, `get_symbols_overview`) now use configurable timeouts from workspace settings.
-
 #### Enhanced Logging & Tracing
 
 - **Trace ID correlation**: Every analysis session and subagent now has a unique trace ID (e.g., `[a1b2c3d4:Main:i5]`) for correlating logs across tool calls.

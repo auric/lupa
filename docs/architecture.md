@@ -563,21 +563,17 @@ Only user-modified values are saved to the settings file. Defaults are applied a
     "maxIterations": 100,
     "requestTimeoutSeconds": 300,
     "maxSubagentsPerSession": 10,
-    "symbolSearchTimeoutSeconds": 15,
-    "lspOperationTimeoutSeconds": 30,
     "logLevel": "info"
 }
 ```
 
-| Setting                      | Default | Description                                                                          |
-| ---------------------------- | ------- | ------------------------------------------------------------------------------------ |
-| `preferredModelIdentifier`   | -       | Model in `vendor/id` format (e.g., `copilot/gpt-4.1`)                                |
-| `maxIterations`              | 100     | Maximum conversation turns per analysis                                              |
-| `requestTimeoutSeconds`      | 300     | Timeout for LLM requests                                                             |
-| `maxSubagentsPerSession`     | 10      | Maximum subagent investigations per analysis                                         |
-| `symbolSearchTimeoutSeconds` | 15      | Timeout for workspace symbol search (increase for slow language servers like clangd) |
-| `lspOperationTimeoutSeconds` | 30      | Timeout for single-file LSP operations (references, document symbols)                |
-| `logLevel`                   | `info`  | Logging verbosity: `debug`, `info`, `warn`, `error`                                  |
+| Setting                    | Default | Description                                           |
+| -------------------------- | ------- | ----------------------------------------------------- |
+| `preferredModelIdentifier` | -       | Model in `vendor/id` format (e.g., `copilot/gpt-4.1`) |
+| `maxIterations`            | 100     | Maximum conversation turns per analysis               |
+| `requestTimeoutSeconds`    | 300     | Timeout for LLM requests                              |
+| `maxSubagentsPerSession`   | 10      | Maximum subagent investigations per analysis          |
+| `logLevel`                 | `info`  | Logging verbosity: `debug`, `info`, `warn`, `error`   |
 
 ### Reset Limits Command
 

@@ -3,7 +3,6 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
@@ -11,6 +10,9 @@ import { OutputFormatter } from '../utils/outputFormatter';
 import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+
+/** Timeout for LSP symbol extraction operations (30 seconds) */
+const LSP_OPERATION_TIMEOUT_MS = 30_000;
 
 /**
  * Enhanced tool that provides a configurable overview of symbols in a file or directory.
@@ -78,8 +80,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
     constructor(
         private readonly gitOperationsManager: GitOperationsManager,
-        private readonly symbolExtractor: SymbolExtractor,
-        private readonly workspaceSettings: WorkspaceSettingsService
+        private readonly symbolExtractor: SymbolExtractor
     ) {
         super();
     }
@@ -118,8 +119,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
 
             const effectiveMaxSymbols = maxSymbols || 100;
-            const lspTimeout =
-                this.workspaceSettings.getLspOperationTimeoutMs();
+            const lspTimeout = LSP_OPERATION_TIMEOUT_MS;
 
             // Get symbols overview using enhanced utilities (with timeout)
             const { content, symbolCount, truncated } = await withTimeout(
