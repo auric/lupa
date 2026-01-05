@@ -1,5 +1,14 @@
+import { Log } from '../services/loggingService';
+
 /**
  * Wraps a promise with a timeout.
+ *
+ * IMPORTANT: This uses Promise.race, which means the underlying operation
+ * is NOT cancelled - it continues running in the background. This is a
+ * limitation of VS Code's LSP commands which don't accept CancellationToken.
+ *
+ * For operations that can be cancelled, use withTimeoutAndToken instead.
+ *
  * @param promise The promise to wrap
  * @param timeoutMs Timeout in milliseconds
  * @param operation Description of the operation for error messages
@@ -10,16 +19,48 @@ export function withTimeout<T>(
     timeoutMs: number,
     operation: string
 ): Promise<T> {
-    return Promise.race([
-        promise,
-        new Promise<T>((_, reject) =>
-            setTimeout(
-                () =>
-                    reject(
-                        new Error(`${operation} timed out after ${timeoutMs}ms`)
-                    ),
-                timeoutMs
-            )
-        ),
-    ]);
+    let timedOut = false;
+    let resolved = false;
+    let timeoutId: NodeJS.Timeout | undefined;
+    const startTime = Date.now();
+
+    const timeoutPromise = new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            if (!resolved) {
+                timedOut = true;
+                reject(
+                    new Error(`${operation} timed out after ${timeoutMs}ms`)
+                );
+            }
+        }, timeoutMs);
+    });
+
+    // Track when the original promise completes (even after timeout)
+    promise
+        .then(() => {
+            resolved = true;
+            if (timedOut) {
+                const totalTime = Date.now() - startTime;
+                Log.debug(
+                    `[Abandoned] ${operation} completed after ${totalTime}ms (was rejected at ${timeoutMs}ms)`
+                );
+            }
+        })
+        .catch(() => {
+            resolved = true;
+            if (timedOut) {
+                const totalTime = Date.now() - startTime;
+                Log.debug(
+                    `[Abandoned] ${operation} failed after ${totalTime}ms (was rejected at ${timeoutMs}ms)`
+                );
+            }
+        });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        resolved = true;
+        // Clear the timeout to prevent memory leaks and unnecessary timer execution
+        if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+        }
+    });
 }

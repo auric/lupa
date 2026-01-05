@@ -25,6 +25,7 @@ import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
+import { generateTraceId } from '../types/executionContext';
 import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
@@ -259,11 +260,22 @@ export class ChatParticipantService implements vscode.Disposable {
             const { subagentSessionManager, subagentExecutor } =
                 this.createSubagentContext(token, debouncedHandler);
 
+            // Generate trace ID for log correlation
+            const traceId = generateTraceId();
+            Log.info(
+                `[${traceId}:Exploration] Starting exploration mode analysis`
+            );
+
             // Create per-request ToolExecutor with subagent context
             const toolExecutor = new ToolExecutor(
                 this.deps.toolRegistry,
                 this.deps.workspaceSettings,
-                { subagentSessionManager, subagentExecutor }
+                {
+                    traceId,
+                    contextLabel: 'Exploration',
+                    subagentSessionManager,
+                    subagentExecutor,
+                }
             );
 
             const timeoutMs =
@@ -508,13 +520,22 @@ export class ChatParticipantService implements vscode.Disposable {
         const { subagentSessionManager, subagentExecutor } =
             this.createSubagentContext(token, debouncedHandler);
 
+        // Generate trace ID for log correlation
+        const traceId = generateTraceId();
+
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
             this.deps!.workspaceSettings,
-            { planManager, subagentSessionManager, subagentExecutor }
+            {
+                traceId,
+                contextLabel: 'Chat',
+                planManager,
+                subagentSessionManager,
+                subagentExecutor,
+            }
         );
 
-        Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
+        Log.info(`[${traceId}:Chat] Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
 
         const timeoutMs =

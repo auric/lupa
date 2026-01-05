@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { PlanSessionManager } from '../services/planSessionManager';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
@@ -12,6 +13,28 @@ import { SubagentExecutor } from '../services/subagentExecutor';
  * ensuring complete isolation between parallel analyses.
  */
 export interface ExecutionContext {
+    /**
+     * Unique trace ID for this analysis session.
+     * Used for correlating logs across tool calls and subagents.
+     * Format: 8-character hex string (e.g., "a1b2c3d4")
+     *
+     * This field is required for proper log correlation.
+     */
+    traceId: string;
+
+    /**
+     * Label for the current execution context.
+     * For main analysis: "Main"
+     * For subagents: "Sub#1", "Sub#2", etc.
+     */
+    contextLabel?: string;
+
+    /**
+     * Current iteration number in the conversation loop.
+     * Updated by ConversationRunner at the start of each iteration.
+     */
+    currentIteration?: number;
+
     /**
      * Plan manager for the current analysis session.
      * Used by UpdatePlanTool to track review progress.
@@ -32,4 +55,14 @@ export interface ExecutionContext {
      * Created per-analysis with bound progress callback.
      */
     subagentExecutor?: SubagentExecutor;
+}
+
+/**
+ * Generate a short trace ID for logging correlation.
+ * Uses crypto.randomUUID for better uniqueness and collision resistance.
+ * @returns 8-character hex string
+ */
+export function generateTraceId(): string {
+    // Use first 8 chars of UUID (removing hyphens)
+    return crypto.randomUUID().replace(/-/g, '').substring(0, 8);
 }

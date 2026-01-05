@@ -7,6 +7,7 @@ import { CopilotModelManager } from '../models/copilotModelManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { SubagentLimits } from '../models/toolConstants';
 import { SubagentStreamAdapter } from '../models/subagentStreamAdapter';
+import { generateTraceId } from '../types/executionContext';
 import type { SubagentTask, SubagentResult } from '../types/modelTypes';
 import type {
     ToolCallRecord,
@@ -67,11 +68,13 @@ export class SubagentExecutor {
      * @param task The investigation task
      * @param token Cancellation token
      * @param subagentId Unique ID for this subagent (for logging)
+     * @param traceId Optional trace ID from parent analysis for log correlation
      */
     async execute(
         task: SubagentTask,
         token: vscode.CancellationToken,
-        subagentId: number
+        subagentId: number,
+        traceId?: string
     ): Promise<SubagentResult> {
         const startTime = Date.now();
         let toolCallsMade = 0;
@@ -81,7 +84,9 @@ export class SubagentExecutor {
             task.task.length > 30
                 ? task.task.substring(0, 30).replace(/\s+/g, ' ').trim() + '...'
                 : task.task.replace(/\s+/g, ' ').trim();
-        const logLabel = `Subagent #${subagentId}`;
+        const logLabel = traceId
+            ? `[${traceId}:Sub#${subagentId}]`
+            : `[Sub#${subagentId}]`;
 
         try {
             Log.info(`${logLabel} Starting: "${taskLabel}"`);
@@ -91,11 +96,17 @@ export class SubagentExecutor {
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
-            // No ExecutionContext passed intentionally - SubagentLimits.DISALLOWED_TOOLS
-            // filters out all tools that require context (run_subagent, update_plan, etc.)
+            // ExecutionContext with traceId for log correlation
+            // Note: subagents don't get planManager or subagentExecutor (they can't spawn subagents)
+            // Generate a new traceId if not provided (for backwards compatibility)
+            const effectiveTraceId = traceId ?? generateTraceId();
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
-                this.workspaceSettings
+                this.workspaceSettings,
+                {
+                    traceId: effectiveTraceId,
+                    contextLabel: `Sub#${subagentId}`,
+                }
             );
             const conversationRunner = new ConversationRunner(
                 this.modelManager,

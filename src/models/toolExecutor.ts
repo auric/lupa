@@ -59,6 +59,25 @@ export class ToolExecutor {
     }
 
     /**
+     * Get a logging prefix based on execution context.
+     * Examples: "[abc123:Main]", "[abc123:Sub#1]", ""
+     */
+    private getLogPrefix(): string {
+        if (!this.executionContext) {
+            return '';
+        }
+
+        const traceId = this.executionContext.traceId;
+        const label = this.executionContext.contextLabel ?? 'Main';
+        const iter = this.executionContext.currentIteration;
+
+        if (iter !== undefined) {
+            return `[${traceId}:${label}:i${iter}] `;
+        }
+        return `[${traceId}:${label}] `;
+    }
+
+    /**
      * Format arguments for logging, truncating long values
      */
     private formatArgsForLog(args: any): string {
@@ -85,17 +104,20 @@ export class ToolExecutor {
      */
     async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
         const startTime = Date.now();
+        const logPrefix = this.getLogPrefix();
 
         // Count BEFORE validation intentionally - rate limit protects against attempts,
         // not just successful executions. A model making many invalid calls is broken
         // and should be stopped. Like password lockout, we count all attempts.
         this.toolCallCount++;
 
-        Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
+        Log.debug(
+            `${logPrefix}Tool '${name}' starting (call #${this.toolCallCount})`
+        );
 
         if (this.toolCallCount > this.maxToolCalls) {
             Log.warn(
-                `Tool '${name}' ✗ rate limit exceeded (${this.toolCallCount}/${this.maxToolCalls}) | args: ${this.formatArgsForLog(args)}`
+                `${logPrefix}Tool '${name}' ✗ rate limit exceeded (${this.toolCallCount}/${this.maxToolCalls}) | args: ${this.formatArgsForLog(args)}`
             );
             return {
                 name,
@@ -112,7 +134,7 @@ export class ToolExecutor {
 
             if (!tool) {
                 Log.warn(
-                    `Tool '${name}' ✗ not found in registry | args: ${this.formatArgsForLog(args)}`
+                    `${logPrefix}Tool '${name}' ✗ not found in registry | args: ${this.formatArgsForLog(args)}`
                 );
                 return {
                     name,
@@ -133,7 +155,7 @@ export class ToolExecutor {
                     )
                     .join(', ');
                 Log.warn(
-                    `Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}`
+                    `${logPrefix}Tool '${name}' ✗ schema validation failed: ${errorDetails} | args: ${this.formatArgsForLog(args)}`
                 );
                 return {
                     name,
@@ -157,7 +179,7 @@ export class ToolExecutor {
                 );
                 if (!validationResult.isValid) {
                     Log.warn(
-                        `Tool '${name}' ✗ response too large (${toolResult.data.length} chars) [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
+                        `${logPrefix}Tool '${name}' ✗ response too large (${toolResult.data.length} chars) [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
                     );
                     return {
                         name,
@@ -170,11 +192,11 @@ export class ToolExecutor {
             if (toolResult.success) {
                 const resultSize = toolResult.data?.length ?? 0;
                 Log.info(
-                    `Tool '${name}' ✓ (${resultSize} chars) [${elapsed}ms]`
+                    `${logPrefix}Tool '${name}' ✓ (${resultSize} chars) [${elapsed}ms]`
                 );
             } else {
                 Log.info(
-                    `Tool '${name}' ✗ ${toolResult.error ?? 'unknown error'} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
+                    `${logPrefix}Tool '${name}' ✗ ${toolResult.error ?? 'unknown error'} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
                 );
             }
 
@@ -190,7 +212,7 @@ export class ToolExecutor {
             const errorMsg =
                 error instanceof Error ? error.message : String(error);
             Log.error(
-                `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
+                `${logPrefix}Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
             );
             return {
                 name,
@@ -212,9 +234,10 @@ export class ToolExecutor {
             return [];
         }
 
+        const logPrefix = this.getLogPrefix();
         const toolNames = requests.map((r) => r.name).join(', ');
         Log.debug(
-            `Executing ${requests.length} tools in parallel: ${toolNames}`
+            `${logPrefix}Executing ${requests.length} tools in parallel: ${toolNames}`
         );
         const startTime = Date.now();
 
@@ -229,7 +252,7 @@ export class ToolExecutor {
             const succeeded = results.filter((r) => r.success).length;
             const failed = results.length - succeeded;
             Log.info(
-                `Execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`
+                `${logPrefix}Execution complete: ${succeeded} succeeded, ${failed} failed [${elapsed}ms total]`
             );
             return results;
         } catch (error) {

@@ -7,6 +7,7 @@ import {
     WorkspaceSettingsSchema,
     WorkspaceSettings,
     ANALYSIS_LIMITS,
+    LSP_LIMITS,
     SUBAGENT_LIMITS,
 } from '../models/workspaceSettingsSchema';
 
@@ -20,11 +21,28 @@ const getDefaultSettings = (): WorkspaceSettings =>
 const WORKSPACE_ROOT_MARKER = '.';
 
 /**
- * Service for persisting and loading workspace-specific settings
+ * User-set settings (partial). Only contains values explicitly set by the user.
+ * Defaults are NOT stored here - they're applied at runtime from the schema.
+ */
+type UserSettings = Partial<WorkspaceSettings>;
+
+/**
+ * Service for persisting and loading workspace-specific settings.
+ *
+ * Design principle: Only user-modified values are saved to disk.
+ * Defaults are applied at runtime from the Zod schema, ensuring:
+ * - Config files remain minimal and portable
+ * - New defaults in future versions aren't overridden by stale saved values
  */
 export class WorkspaceSettingsService implements vscode.Disposable {
     private static readonly SETTINGS_FILENAME = 'lupa.json';
+
+    /** User-set values only (partial). Saved to disk. */
+    private userSettings: UserSettings = {};
+
+    /** Resolved settings (user values merged with defaults). Used at runtime. */
     private settings: WorkspaceSettings = getDefaultSettings();
+
     private settingsPath: string | null = null;
     private saveDebounceTimeout: NodeJS.Timeout | null = null;
 
@@ -98,43 +116,55 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Load settings from disk
+     * Load settings from disk.
+     * Only loads user-set values and merges with defaults at runtime.
      */
     private loadSettings(): void {
         if (!this.settingsPath) {
+            this.userSettings = {};
+            this.settings = getDefaultSettings();
             return;
         }
 
         try {
             if (fs.existsSync(this.settingsPath)) {
                 const data = fs.readFileSync(this.settingsPath, 'utf-8');
-                const parsed = JSON.parse(data);
+                const parsed = JSON.parse(data) as UserSettings;
+
+                // Validate the partial settings by merging with defaults
                 const result = WorkspaceSettingsSchema.safeParse(parsed);
 
                 if (result.success) {
+                    // Store only the user-provided values (not the resolved ones)
+                    this.userSettings = parsed;
+                    // Apply defaults to get resolved settings
                     this.settings = result.data;
                 } else {
                     const errorMessages = z.prettifyError(result.error);
                     Log.error(
-                        `Invalid settings in ${this.settingsPath}: ${errorMessages}. Resetting to defaults.`
+                        `Invalid settings in ${this.settingsPath}: ${errorMessages}. Using defaults.`
                     );
+                    this.userSettings = {};
                     this.settings = getDefaultSettings();
-                    this.saveSettings();
+                    // Don't save - let user fix the invalid file
                 }
             } else {
+                // File doesn't exist - use defaults, don't create file
+                this.userSettings = {};
                 this.settings = getDefaultSettings();
-                this.saveSettings();
             }
         } catch (error) {
             Log.error(
                 `Failed to load settings: ${error instanceof Error ? error.message : String(error)}`
             );
+            this.userSettings = {};
             this.settings = getDefaultSettings();
         }
     }
 
     /**
-     * Save settings to disk
+     * Save only user-modified settings to disk.
+     * Defaults are NOT saved - they're applied at runtime.
      */
     private saveSettings(): void {
         if (!this.settingsPath) {
@@ -142,16 +172,21 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         }
 
         try {
+            // If there are no user-set values, don't create/update the file
+            if (Object.keys(this.userSettings).length === 0) {
+                return;
+            }
+
             // Make sure the directory exists
             const dir = path.dirname(this.settingsPath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
             }
 
-            // Write settings to file
+            // Write only user-set values (not merged with defaults)
             fs.writeFileSync(
                 this.settingsPath,
-                JSON.stringify(this.settings, null, 2),
+                JSON.stringify(this.userSettings, null, 2),
                 'utf-8'
             );
         } catch (error) {
@@ -191,7 +226,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Set a setting by key
+     * Set a setting by key.
+     * The value is marked as user-set and will be persisted.
      * @param key Setting key
      * @param value Setting value
      */
@@ -199,6 +235,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         key: K,
         value: WorkspaceSettings[K]
     ): void {
+        this.userSettings[key] = value;
         this.settings[key] = value;
         this.debouncedSaveSettings();
     }
@@ -246,21 +283,25 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * @param repoPath The absolute path to the repository root
      */
     public setSelectedRepositoryPath(repoPath: string | undefined): void {
+        let valueToStore: string | undefined;
+
         if (repoPath === undefined) {
-            this.settings.selectedRepositoryPath = undefined;
-            this.debouncedSaveSettings();
-            return;
+            valueToStore = undefined;
+        } else {
+            const workspaceRoot = this.getWorkspaceRootPath();
+            if (
+                workspaceRoot &&
+                this.normalizePath(repoPath) ===
+                    this.normalizePath(workspaceRoot)
+            ) {
+                valueToStore = WORKSPACE_ROOT_MARKER;
+            } else {
+                valueToStore = repoPath;
+            }
         }
 
-        const workspaceRoot = this.getWorkspaceRootPath();
-        if (
-            workspaceRoot &&
-            this.normalizePath(repoPath) === this.normalizePath(workspaceRoot)
-        ) {
-            this.settings.selectedRepositoryPath = WORKSPACE_ROOT_MARKER;
-        } else {
-            this.settings.selectedRepositoryPath = repoPath;
-        }
+        this.userSettings.selectedRepositoryPath = valueToStore;
+        this.settings.selectedRepositoryPath = valueToStore;
         this.debouncedSaveSettings();
     }
 
@@ -276,6 +317,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * @param identifier Model identifier in 'vendor/id' format (e.g., 'copilot/gpt-4.1')
      */
     public setPreferredModelIdentifier(identifier: string | undefined): void {
+        this.userSettings.preferredModelIdentifier = identifier;
         this.settings.preferredModelIdentifier = identifier;
         this.debouncedSaveSettings();
     }
@@ -302,14 +344,45 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Reset all analysis limit settings to their defaults
+     * Get the symbol search timeout in milliseconds.
+     * This applies to workspace symbol search operations.
+     * Increase for slow language servers like clangd.
+     */
+    public getSymbolSearchTimeoutMs(): number {
+        return this.settings.symbolSearchTimeoutSeconds * 1000;
+    }
+
+    /**
+     * Get the LSP operation timeout in milliseconds.
+     * This applies to single-file LSP operations (document symbols, references).
+     */
+    public getLspOperationTimeoutMs(): number {
+        return this.settings.lspOperationTimeoutSeconds * 1000;
+    }
+
+    /**
+     * Reset all analysis limit settings to their defaults.
+     * Removes the user-set values so defaults are applied at runtime.
      */
     public resetAnalysisLimitsToDefaults(): void {
+        // Remove from user settings (so defaults apply)
+        delete this.userSettings.maxIterations;
+        delete this.userSettings.requestTimeoutSeconds;
+        delete this.userSettings.maxSubagentsPerSession;
+        delete this.userSettings.symbolSearchTimeoutSeconds;
+        delete this.userSettings.lspOperationTimeoutSeconds;
+
+        // Apply defaults to resolved settings
         this.settings.maxIterations = ANALYSIS_LIMITS.maxIterations.default;
         this.settings.requestTimeoutSeconds =
             ANALYSIS_LIMITS.requestTimeoutSeconds.default;
         this.settings.maxSubagentsPerSession =
             SUBAGENT_LIMITS.maxPerSession.default;
+        this.settings.symbolSearchTimeoutSeconds =
+            LSP_LIMITS.symbolSearchTimeoutSeconds.default;
+        this.settings.lspOperationTimeoutSeconds =
+            LSP_LIMITS.lspOperationTimeoutSeconds.default;
+
         this.debouncedSaveSettings();
     }
 
@@ -317,18 +390,27 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Clear all workspace settings (except for selected models and repository)
      */
     public clearWorkspaceSettings(): void {
-        const preferredModelIdentifier = this.settings.preferredModelIdentifier;
-        const selectedRepositoryPath = this.settings.selectedRepositoryPath;
+        const preferredModelIdentifier =
+            this.userSettings.preferredModelIdentifier;
+        const selectedRepositoryPath = this.userSettings.selectedRepositoryPath;
 
-        this.settings = getDefaultSettings();
+        // Clear user settings
+        this.userSettings = {};
 
-        if (preferredModelIdentifier) {
-            this.settings.preferredModelIdentifier = preferredModelIdentifier;
+        // Restore preserved values
+        if (preferredModelIdentifier !== undefined) {
+            this.userSettings.preferredModelIdentifier =
+                preferredModelIdentifier;
+        }
+        if (selectedRepositoryPath !== undefined) {
+            this.userSettings.selectedRepositoryPath = selectedRepositoryPath;
         }
 
-        if (selectedRepositoryPath) {
-            this.settings.selectedRepositoryPath = selectedRepositoryPath;
-        }
+        // Re-merge with defaults
+        this.settings = {
+            ...getDefaultSettings(),
+            ...this.userSettings,
+        };
 
         this.saveSettings();
     }
@@ -338,6 +420,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * Use with caution - changing model may cause incompatibility with existing data
      */
     public resetAllSettings(): void {
+        this.userSettings = {};
         this.settings = getDefaultSettings();
         this.saveSettings();
     }

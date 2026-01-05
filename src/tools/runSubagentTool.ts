@@ -101,8 +101,9 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
         const subagentId = sessionManager.recordSpawn();
         const remaining = sessionManager.getRemainingBudget();
+        const logPrefix = context?.traceId ? `[${context.traceId}:Main] ` : '';
         Log.info(
-            `Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
+            `${logPrefix}Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );
 
         this.cancellationTokenSource = new vscode.CancellationTokenSource();
@@ -123,7 +124,8 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                     context: taskContext,
                 },
                 this.cancellationTokenSource.token,
-                subagentId
+                subagentId,
+                context?.traceId
             );
 
             clearTimeout(timeoutHandle);

@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
@@ -10,8 +11,6 @@ import { OutputFormatter } from '../utils/outputFormatter';
 import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
-
-const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
 
 /**
  * Enhanced tool that provides a configurable overview of symbols in a file or directory.
@@ -79,7 +78,8 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
     constructor(
         private readonly gitOperationsManager: GitOperationsManager,
-        private readonly symbolExtractor: SymbolExtractor
+        private readonly symbolExtractor: SymbolExtractor,
+        private readonly workspaceSettings: WorkspaceSettingsService
     ) {
         super();
     }
@@ -118,6 +118,8 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
 
             const effectiveMaxSymbols = maxSymbols || 100;
+            const lspTimeout =
+                this.workspaceSettings.getLspOperationTimeoutMs();
 
             // Get symbols overview using enhanced utilities (with timeout)
             const { content, symbolCount, truncated } = await withTimeout(
@@ -129,7 +131,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
                     includeKinds,
                     excludeKinds,
                 }),
-                LSP_OPERATION_TIMEOUT,
+                lspTimeout,
                 `Symbol overview for ${sanitizedPath}`
             );
 

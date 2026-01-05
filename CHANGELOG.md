@@ -5,6 +5,36 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-01-05
+
+### Added
+
+#### Configurable LSP Timeouts
+
+- **New timeout settings**: Added `symbolSearchTimeoutSeconds` (default: 15s) and `lspOperationTimeoutSeconds` (default: 30s) to `.vscode/lupa.json`. Increase these for slow language servers like clangd.
+
+- **Consistent timeout handling**: All LSP-based tools (`find_symbol`, `find_usages`, `get_symbols_overview`) now use configurable timeouts from workspace settings.
+
+#### Enhanced Logging & Tracing
+
+- **Trace ID correlation**: Every analysis session and subagent now has a unique trace ID (e.g., `[a1b2c3d4:Main:i5]`) for correlating logs across tool calls.
+
+- **Abandoned operation logging**: When a tool times out but the underlying operation completes later, the log now shows when it finished (helps diagnose slow language servers).
+
+- **Cryptographically unique trace IDs**: Trace IDs now use `crypto.randomUUID()` for better uniqueness and collision resistance.
+
+### Changed
+
+#### Settings Persistence
+
+- **Minimal config files**: `.vscode/lupa.json` now only saves user-modified values. Defaults are applied at runtime from the schema. This prevents config files from containing stale defaults when upgrading.
+
+### Fixed
+
+- **Timer memory leak**: Fixed `withTimeout()` utility to properly clear timers when operations complete before timeout.
+
+- **Chat participant tracing**: Chat participant mode now includes trace IDs for log correlation, matching the command palette behavior.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added
@@ -356,6 +386,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.11]: https://github.com/auric/lupa/releases/tag/v0.1.11
 [0.1.10]: https://github.com/auric/lupa/releases/tag/v0.1.10
 [0.1.9]: https://github.com/auric/lupa/releases/tag/v0.1.9
 [0.1.8]: https://github.com/auric/lupa/releases/tag/v0.1.8

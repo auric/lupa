@@ -24,8 +24,11 @@ const createMockExecutor = (
 
 const createExecutionContext = (
     executor: SubagentExecutor,
-    sessionManager: SubagentSessionManager
+    sessionManager: SubagentSessionManager,
+    traceId?: string
 ): ExecutionContext => ({
+    traceId: traceId ?? 'test1234',
+    contextLabel: 'Main',
     subagentExecutor: executor,
     subagentSessionManager: sessionManager,
 });
@@ -111,7 +114,8 @@ describe('RunSubagentTool', () => {
                     context: 'PR adds new JWT validation',
                 }),
                 expect.anything(),
-                expect.any(Number)
+                expect.any(Number),
+                expect.anything() // traceId from context
             );
         });
     });
@@ -153,7 +157,8 @@ describe('RunSubagentTool', () => {
             expect(mockExecutor.execute).toHaveBeenCalledWith(
                 expect.anything(),
                 expect.anything(),
-                1
+                1,
+                expect.anything() // traceId from context
             );
         });
 

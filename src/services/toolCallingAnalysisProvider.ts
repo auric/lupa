@@ -23,6 +23,7 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
+import { generateTraceId } from '../types/executionContext';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -60,6 +61,7 @@ export class ToolCallingAnalysisProvider {
         progressCallback?: AnalysisProgressCallback
     ): Promise<ToolCallingAnalysisResult> {
         // === Per-analysis state (local for concurrent-safety) ===
+        const traceId = generateTraceId();
         const toolCallRecords: ToolCallRecord[] = [];
         let currentIteration = 0;
         let currentMaxIterations = this.maxIterations;
@@ -85,10 +87,19 @@ export class ToolCallingAnalysisProvider {
             progressCallback,
             progressContext
         );
+        // Get executionContext reference for updating iteration
+        const executionContext = {
+            traceId,
+            contextLabel: 'Main',
+            currentIteration: 0,
+            planManager,
+            subagentSessionManager,
+            subagentExecutor,
+        };
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
             this.workspaceSettings,
-            { planManager, subagentSessionManager, subagentExecutor }
+            executionContext
         );
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,
@@ -101,7 +112,9 @@ export class ToolCallingAnalysisProvider {
         let toolCallCount = 0;
 
         try {
-            Log.info('Starting analysis with tool-calling support');
+            Log.info(
+                `[${traceId}:Main] Starting analysis with tool-calling support`
+            );
             progressCallback?.('Initializing analysis...', 0.5);
             subagentSessionManager.setParentCancellationToken(token);
 
@@ -180,6 +193,8 @@ export class ToolCallingAnalysisProvider {
                 onIterationStart: (current, max) => {
                     currentIteration = current;
                     currentMaxIterations = max;
+                    // Update execution context so tool logs include current iteration
+                    executionContext.currentIteration = current;
                     progressCallback?.(
                         `Turn ${current}/${max}: Analyzing...`,
                         0.2

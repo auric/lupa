@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FindUsagesTool } from '../tools/findUsagesTool';
-import { createMockGitOperationsManager } from './testUtils/mockFactories';
+import {
+    createMockGitOperationsManager,
+    createMockWorkspaceSettings,
+} from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -25,11 +28,16 @@ describe('FindUsagesTool', () => {
     let mockGitOperationsManager: ReturnType<
         typeof createMockGitOperationsManager
     >;
+    let mockWorkspaceSettings: ReturnType<typeof createMockWorkspaceSettings>;
 
     beforeEach(() => {
         mockGitOperationsManager =
             createMockGitOperationsManager('/test/workspace');
-        findUsagesTool = new FindUsagesTool(mockGitOperationsManager as any);
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+        findUsagesTool = new FindUsagesTool(
+            mockGitOperationsManager as any,
+            mockWorkspaceSettings as any
+        );
         vi.clearAllMocks();
 
         // Ensure workspace folders are properly set up for all tests

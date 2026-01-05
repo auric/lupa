@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SymbolExtractor } from '../utils/symbolExtractor';
+import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -88,6 +90,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
     let getSymbolsOverviewTool: GetSymbolsOverviewTool;
     let mockGitOperationsManager: Mocked<GitOperationsManager>;
     let mockSymbolExtractor: Mocked<SymbolExtractor>;
+    let mockWorkspaceSettings: WorkspaceSettingsService;
 
     beforeEach(() => {
         mockGitOperationsManager = {
@@ -105,9 +108,13 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             getTextDocument: vi.fn(),
         } as any;
 
+        // Mock WorkspaceSettingsService
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+
         getSymbolsOverviewTool = new GetSymbolsOverviewTool(
             mockGitOperationsManager,
-            mockSymbolExtractor
+            mockSymbolExtractor,
+            mockWorkspaceSettings
         );
         vi.clearAllMocks();
     });
@@ -356,7 +363,8 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
             const toolWithoutRepo = new GetSymbolsOverviewTool(
                 mockGitOpsWithoutRepo,
-                mockSymbolExtractorWithoutRepo
+                mockSymbolExtractorWithoutRepo,
+                mockWorkspaceSettings
             );
 
             const result = await toolWithoutRepo.execute({

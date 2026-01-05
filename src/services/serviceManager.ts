@@ -240,13 +240,15 @@ export class ServiceManager implements vscode.Disposable {
             // Register the FindSymbolTool (Get Definition functionality)
             const findSymbolTool = new FindSymbolTool(
                 this.services.gitOperations!,
-                this.services.symbolExtractor!
+                this.services.symbolExtractor!,
+                this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(findSymbolTool);
 
             // Register the FindUsagesTool (Find Usages functionality)
             const findUsagesTool = new FindUsagesTool(
-                this.services.gitOperations!
+                this.services.gitOperations!,
+                this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(findUsagesTool);
 
@@ -267,7 +269,8 @@ export class ServiceManager implements vscode.Disposable {
             // Register the GetSymbolsOverviewTool (Get Symbols Overview functionality)
             const getSymbolsOverviewTool = new GetSymbolsOverviewTool(
                 this.services.gitOperations!,
-                this.services.symbolExtractor!
+                this.services.symbolExtractor!,
+                this.services.workspaceSettings!
             );
             this.services.toolRegistry!.registerTool(getSymbolsOverviewTool);
 

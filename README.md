@@ -3,7 +3,7 @@
 **Magnify your code intelligence**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.10-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.11-green.svg)](./CHANGELOG.md)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](./LICENSE)
 
 > ⚠️ **Important: Read before using!**
@@ -126,7 +126,7 @@ You can configure alternative model providers in GitHub Copilot with your own AP
 
 ## Configuration
 
-Settings are stored in `.vscode/lupa.json`:
+Settings are stored in `.vscode/lupa.json`. Only explicitly set values are saved; defaults are applied at runtime.
 
 ```json
 {
@@ -134,9 +134,21 @@ Settings are stored in `.vscode/lupa.json`:
     "maxIterations": 100,
     "requestTimeoutSeconds": 300,
     "maxSubagentsPerSession": 10,
+    "symbolSearchTimeoutSeconds": 15,
+    "lspOperationTimeoutSeconds": 30,
     "logLevel": "info"
 }
 ```
+
+| Setting                      | Default | Description                                                              |
+| ---------------------------- | ------- | ------------------------------------------------------------------------ |
+| `preferredModelIdentifier`   | -       | Model in `vendor/id` format (e.g., `copilot/gpt-4.1`)                    |
+| `maxIterations`              | 100     | Maximum conversation turns per analysis                                  |
+| `requestTimeoutSeconds`      | 300     | Timeout for LLM requests                                                 |
+| `maxSubagentsPerSession`     | 10      | Maximum subagent investigations per analysis                             |
+| `symbolSearchTimeoutSeconds` | 15      | Timeout for workspace symbol search (increase for slow language servers) |
+| `lspOperationTimeoutSeconds` | 30      | Timeout for single-file LSP operations                                   |
+| `logLevel`                   | `info`  | Logging verbosity: `debug`, `info`, `warn`, `error`                      |
 
 ## Documentation
 

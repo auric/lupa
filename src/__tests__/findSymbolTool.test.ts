@@ -2,7 +2,9 @@ import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SymbolExtractor } from '../utils/symbolExtractor';
+import { createMockWorkspaceSettings } from './testUtils/mockFactories';
 
 // Mock the readGitignore function
 vi.mock('../utils/gitUtils', () => ({
@@ -34,6 +36,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
     let findSymbolTool: FindSymbolTool;
     let mockGitOperationsManager: Mocked<GitOperationsManager>;
     let mockSymbolExtractor: Mocked<SymbolExtractor>;
+    let mockWorkspaceSettings: WorkspaceSettingsService;
 
     beforeEach(() => {
         // Mock GitOperationsManager
@@ -53,9 +56,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
             extractSymbolsWithContext: vi.fn(),
         } as any;
 
+        // Mock WorkspaceSettingsService
+        mockWorkspaceSettings = createMockWorkspaceSettings();
+
         findSymbolTool = new FindSymbolTool(
             mockGitOperationsManager,
-            mockSymbolExtractor
+            mockSymbolExtractor,
+            mockWorkspaceSettings
         );
         vi.clearAllMocks();
     });

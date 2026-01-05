@@ -8,8 +8,7 @@ import { withTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-
-const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
+import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
 /**
  * Tool that finds all usages of a code symbol using VS Code's reference provider.
@@ -27,7 +26,10 @@ Requires file_path where the symbol is defined as starting point.`;
 
     private readonly formatter = new UsageFormatter();
 
-    constructor(private readonly gitOperationsManager: GitOperationsManager) {
+    constructor(
+        private readonly gitOperationsManager: GitOperationsManager,
+        private readonly workspaceSettings: WorkspaceSettingsService
+    ) {
         super();
     }
 
@@ -135,7 +137,7 @@ Requires file_path where the symbol is defined as starting point.`;
                             }
                         )
                     ),
-                    LSP_OPERATION_TIMEOUT,
+                    this.workspaceSettings.getLspOperationTimeoutMs(),
                     `Reference search for ${sanitizedSymbolName}`
                 );
 

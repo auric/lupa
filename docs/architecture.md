@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.9 | **Generated**: January 4, 2026 | **Type**: VS Code Extension
+> **Version**: 0.1.11 | **Generated**: January 5, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
@@ -311,11 +311,16 @@ Tools receive an `ExecutionContext` containing per-analysis dependencies:
 
 ```typescript
 interface ExecutionContext {
+    traceId: string; // Required: unique ID for log correlation
+    contextLabel?: string; // "Main", "Chat", "Exploration", "Sub#1"
+    currentIteration?: number;
     planManager?: PlanSessionManager;
     subagentSessionManager?: SubagentSessionManager;
     subagentExecutor?: SubagentExecutor;
 }
 ```
+
+Trace IDs use `crypto.randomUUID()` for uniqueness and appear in logs as `[traceId:label:iteration]`, enabling correlation across tool calls and subagents.
 
 #### Tool ExecutionContext Requirements
 
@@ -550,14 +555,29 @@ VS Code API mocked via `__mocks__/vscode.js`:
 
 ### Workspace Settings (`.vscode/lupa.json`)
 
+Only user-modified values are saved to the settings file. Defaults are applied at runtime from the schema, ensuring config files remain minimal and portable.
+
 ```json
 {
-    "maxIterations": 25,
-    "requestTimeoutSeconds": 180,
-    "maxSubagentsPerSession": 3,
-    "preferredModelIdentifier": "copilot/gpt-4.1"
+    "preferredModelIdentifier": "copilot/gpt-4.1",
+    "maxIterations": 100,
+    "requestTimeoutSeconds": 300,
+    "maxSubagentsPerSession": 10,
+    "symbolSearchTimeoutSeconds": 15,
+    "lspOperationTimeoutSeconds": 30,
+    "logLevel": "info"
 }
 ```
+
+| Setting                      | Default | Description                                                                          |
+| ---------------------------- | ------- | ------------------------------------------------------------------------------------ |
+| `preferredModelIdentifier`   | -       | Model in `vendor/id` format (e.g., `copilot/gpt-4.1`)                                |
+| `maxIterations`              | 100     | Maximum conversation turns per analysis                                              |
+| `requestTimeoutSeconds`      | 300     | Timeout for LLM requests                                                             |
+| `maxSubagentsPerSession`     | 10      | Maximum subagent investigations per analysis                                         |
+| `symbolSearchTimeoutSeconds` | 15      | Timeout for workspace symbol search (increase for slow language servers like clangd) |
+| `lspOperationTimeoutSeconds` | 30      | Timeout for single-file LSP operations (references, document symbols)                |
+| `logLevel`                   | `info`  | Logging verbosity: `debug`, `info`, `warn`, `error`                                  |
 
 ### Reset Limits Command
 
