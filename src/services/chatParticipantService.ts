@@ -267,16 +267,17 @@ export class ChatParticipantService implements vscode.Disposable {
             );
 
             // Create per-request ToolExecutor with subagent context
+            const executionContext = {
+                traceId,
+                contextLabel: 'Exploration',
+                currentIteration: 1,
+                subagentSessionManager,
+                subagentExecutor,
+            };
             const toolExecutor = new ToolExecutor(
                 this.deps.toolRegistry,
                 this.deps.workspaceSettings,
-                {
-                    traceId,
-                    contextLabel: 'Exploration',
-                    currentIteration: 1,
-                    subagentSessionManager,
-                    subagentExecutor,
-                }
+                executionContext
             );
 
             const timeoutMs =
@@ -341,7 +342,16 @@ export class ChatParticipantService implements vscode.Disposable {
                 },
                 conversation,
                 token,
-                adapter
+                {
+                    // Wrap adapter to update executionContext.currentIteration
+                    onIterationStart: (current, max) => {
+                        executionContext.currentIteration = current;
+                        adapter.onIterationStart(current, max);
+                    },
+                    onToolCallStart: adapter.onToolCallStart.bind(adapter),
+                    onToolCallComplete:
+                        adapter.onToolCallComplete.bind(adapter),
+                }
             );
 
             debouncedHandler.flush();
@@ -524,17 +534,18 @@ export class ChatParticipantService implements vscode.Disposable {
         // Generate trace ID for log correlation
         const traceId = generateTraceId();
 
+        const executionContext = {
+            traceId,
+            contextLabel: 'Chat',
+            currentIteration: 1,
+            planManager,
+            subagentSessionManager,
+            subagentExecutor,
+        };
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
             this.deps!.workspaceSettings,
-            {
-                traceId,
-                contextLabel: 'Chat',
-                currentIteration: 1,
-                planManager,
-                subagentSessionManager,
-                subagentExecutor,
-            }
+            executionContext
         );
 
         Log.info(`[${traceId}:Chat] Analyzing ${scopeLabel}`);
@@ -575,7 +586,16 @@ export class ChatParticipantService implements vscode.Disposable {
                 },
                 conversation,
                 token,
-                adapter
+                {
+                    // Wrap adapter to update executionContext.currentIteration
+                    onIterationStart: (current, max) => {
+                        executionContext.currentIteration = current;
+                        adapter.onIterationStart(current, max);
+                    },
+                    onToolCallStart: adapter.onToolCallStart.bind(adapter),
+                    onToolCallComplete:
+                        adapter.onToolCallComplete.bind(adapter),
+                }
             );
 
             debouncedHandler.flush();

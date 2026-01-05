@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Settings file watcher grace window**: Extended self-write detection window from 100ms to 500ms to reduce race condition risk when external editors save files slowly.
 
+- **Chat participant iteration tracking**: Chat and Exploration modes now properly update `executionContext.currentIteration` during their conversation loops. Tool execution logs in chat flows now show the correct iteration number instead of always showing `:i1`.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added
