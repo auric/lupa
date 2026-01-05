@@ -51,6 +51,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     /** Flag to ignore file change events triggered by our own writes */
     private isWriting = false;
 
+    /** Timer for clearing isWriting flag - tracked to prevent premature clearing */
+    private isWritingTimeout: NodeJS.Timeout | null = null;
+
     /** Debounce timer for file change events */
     private reloadDebounceTimeout: NodeJS.Timeout | null = null;
 
@@ -315,10 +318,16 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 `Failed to save settings: ${error instanceof Error ? error.message : String(error)}`
             );
         } finally {
+            // Clear any existing timeout to prevent premature flag clearing
+            // when saveSettings is called multiple times rapidly
+            if (this.isWritingTimeout) {
+                clearTimeout(this.isWritingTimeout);
+            }
             // Clear the flag after a delay to handle async file system events.
             // Use 500ms to reduce race condition risk with external file watchers.
-            setTimeout(() => {
+            this.isWritingTimeout = setTimeout(() => {
                 this.isWriting = false;
+                this.isWritingTimeout = null;
             }, 500);
         }
     }
@@ -547,6 +556,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         }
         if (this.reloadDebounceTimeout) {
             clearTimeout(this.reloadDebounceTimeout);
+        }
+        if (this.isWritingTimeout) {
+            clearTimeout(this.isWritingTimeout);
         }
         this.fileWatcher?.dispose();
     }
