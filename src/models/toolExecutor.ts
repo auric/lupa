@@ -60,21 +60,17 @@ export class ToolExecutor {
 
     /**
      * Get a logging prefix based on execution context.
-     * Examples: "[abc123:Main]", "[abc123:Sub#1]", ""
+     * Examples: "[abc123:Main:i5] ", "[abc123:Sub#1:i3] "
      */
     private getLogPrefix(): string {
         if (!this.executionContext) {
             return '';
         }
 
-        const traceId = this.executionContext.traceId || 'no-trace';
-        const label = this.executionContext.contextLabel ?? 'Main';
-        const iter = this.executionContext.currentIteration;
+        const { traceId, contextLabel, currentIteration } =
+            this.executionContext;
 
-        if (iter !== undefined) {
-            return `[${traceId}:${label}:i${iter}] `;
-        }
-        return `[${traceId}:${label}] `;
+        return `[${traceId}:${contextLabel}:i${currentIteration}] `;
     }
 
     /**

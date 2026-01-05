@@ -17,8 +17,6 @@ export interface ExecutionContext {
      * Unique trace ID for this analysis session.
      * Used for correlating logs across tool calls and subagents.
      * Format: 8-character hex string (e.g., "a1b2c3d4")
-     *
-     * This field is required for proper log correlation.
      */
     traceId: string;
 
@@ -26,14 +24,15 @@ export interface ExecutionContext {
      * Label for the current execution context.
      * For main analysis: "Main"
      * For subagents: "Sub#1", "Sub#2", etc.
+     * For chat: "Chat", "Exploration"
      */
-    contextLabel?: string;
+    contextLabel: string;
 
     /**
      * Current iteration number in the conversation loop.
-     * Updated by ConversationRunner at the start of each iteration.
+     * Starts at 1, updated by ConversationRunner at the start of each iteration.
      */
-    currentIteration?: number;
+    currentIteration: number;
 
     /**
      * Plan manager for the current analysis session.

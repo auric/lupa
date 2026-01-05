@@ -91,7 +91,7 @@ export class ToolCallingAnalysisProvider {
         const executionContext = {
             traceId,
             contextLabel: 'Main',
-            currentIteration: 0,
+            currentIteration: 1,
             planManager,
             subagentSessionManager,
             subagentExecutor,

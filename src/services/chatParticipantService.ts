@@ -273,6 +273,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 {
                     traceId,
                     contextLabel: 'Exploration',
+                    currentIteration: 1,
                     subagentSessionManager,
                     subagentExecutor,
                 }
@@ -529,6 +530,7 @@ export class ChatParticipantService implements vscode.Disposable {
             {
                 traceId,
                 contextLabel: 'Chat',
+                currentIteration: 1,
                 planManager,
                 subagentSessionManager,
                 subagentExecutor,

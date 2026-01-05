@@ -106,6 +106,7 @@ export class SubagentExecutor {
                 {
                     traceId: effectiveTraceId,
                     contextLabel: `Sub#${subagentId}`,
+                    currentIteration: 1,
                 }
             );
             const conversationRunner = new ConversationRunner(

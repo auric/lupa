@@ -10,7 +10,12 @@ describe('UpdatePlanTool', () => {
 
     beforeEach(() => {
         planManager = new PlanSessionManager();
-        executionContext = { traceId: 'test1234', planManager };
+        executionContext = {
+            traceId: 'test1234',
+            contextLabel: 'Main',
+            currentIteration: 1,
+            planManager,
+        };
 
         tool = new UpdatePlanTool();
     });
@@ -124,6 +129,8 @@ describe('UpdatePlanTool', () => {
             const manager1 = new PlanSessionManager();
             const context1: ExecutionContext = {
                 traceId: 'test0001',
+                contextLabel: 'Main',
+                currentIteration: 1,
                 planManager: manager1,
             };
             await tool.execute({ plan: validPlan1 }, context1);
@@ -132,6 +139,8 @@ describe('UpdatePlanTool', () => {
             const manager2 = new PlanSessionManager();
             const context2: ExecutionContext = {
                 traceId: 'test0002',
+                contextLabel: 'Main',
+                currentIteration: 1,
                 planManager: manager2,
             };
             const result = await tool.execute({ plan: validPlan2 }, context2);

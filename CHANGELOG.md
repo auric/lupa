@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Empty settings cleanup**: When all user settings are reset to defaults, the settings file is now deleted rather than leaving an empty or stale file on disk.
 
+#### ExecutionContext Contract
+
+- **Stricter ExecutionContext**: `contextLabel` and `currentIteration` are now required fields (were optional). This ensures all execution paths provide complete context for logging. `currentIteration` now starts at 1 (was 0).
+
 ### Fixed
 
 - **Timer memory leak**: Fixed `withTimeout()` utility to properly clear timers when operations complete before timeout.
@@ -35,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Per-file LSP timeout protection**: Added 5-second timeout to each individual LSP call in `SymbolExtractor.getFileSymbols()`. Previously, slow language servers (e.g., clangd) could cause directory symbol operations to hang indefinitely. Now, slow files are skipped after 5 seconds and processing continues with remaining files, providing partial results instead of complete failure.
 
-- **Ripgrep search timeout**: Added 60-second timeout to `search_for_pattern` tool. If ripgrep hangs (e.g., on network mounts or pathological patterns), the process is now killed and an error is returned instead of hanging indefinitely.
+- **Ripgrep search timeout**: Added 30-second timeout to `search_for_pattern` tool. If ripgrep hangs (e.g., on network mounts or pathological patterns), the process is now killed and an error is returned instead of hanging indefinitely.
 
 - **Settings persistence key deletion**: When optional settings (model identifier, repository path) are cleared, the key is now properly deleted from the config file instead of being set to `undefined`. This ensures empty config files are correctly detected and deleted.
 

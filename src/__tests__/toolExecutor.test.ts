@@ -522,6 +522,9 @@ describe('ToolExecutor', () => {
             toolRegistry.registerTool(contextCaptureTool);
 
             const mockExecutionContext = {
+                traceId: 'test1234',
+                contextLabel: 'Main',
+                currentIteration: 1,
                 planManager: { someProp: 'testPlan' },
                 subagentSessionManager: { someProp: 'testSession' },
                 subagentExecutor: { someProp: 'testExecutor' },

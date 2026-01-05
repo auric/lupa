@@ -29,6 +29,7 @@ const createExecutionContext = (
 ): ExecutionContext => ({
     traceId: traceId ?? 'test1234',
     contextLabel: 'Main',
+    currentIteration: 1,
     subagentExecutor: executor,
     subagentSessionManager: sessionManager,
 });

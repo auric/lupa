@@ -5,8 +5,8 @@ import * as vscode from 'vscode';
 import { CodeFileDetector } from '../utils/codeFileDetector';
 import { Log } from './loggingService';
 
-/** Timeout for ripgrep search operations (60 seconds) */
-const RIPGREP_TIMEOUT_MS = 60_000;
+/** Timeout for ripgrep search operations (30 seconds) */
+const RIPGREP_TIMEOUT_MS = 30_000;
 
 /**
  * Gets the path to ripgrep binary bundled with VS Code.
