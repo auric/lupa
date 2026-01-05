@@ -7,7 +7,15 @@ import { readGitignore } from '../utils/gitUtils';
 import { withTimeout } from '../utils/asyncUtils';
 import { CodeFileUtils } from './codeFileUtils';
 
-/** Per-file timeout for LSP symbol extraction (5 seconds) */
+/**
+ * Per-file timeout for LSP symbol extraction (5 seconds).
+ *
+ * Note: VS Code's executeCommand doesn't accept CancellationToken, and internal
+ * LSP commands like vscode.executeDocumentSymbolProvider use CancellationToken.None.
+ * This means we CANNOT cancel in-flight LSP requests. The timeout uses Promise.race
+ * which lets us proceed but the underlying operation continues in the background.
+ * This is the best available approach given VS Code's API limitations.
+ */
 const PER_FILE_LSP_TIMEOUT_MS = 5_000;
 
 /**

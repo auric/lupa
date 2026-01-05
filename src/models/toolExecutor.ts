@@ -67,7 +67,7 @@ export class ToolExecutor {
             return '';
         }
 
-        const traceId = this.executionContext.traceId;
+        const traceId = this.executionContext.traceId || 'no-trace';
         const label = this.executionContext.contextLabel ?? 'Main';
         const iter = this.executionContext.currentIteration;
 

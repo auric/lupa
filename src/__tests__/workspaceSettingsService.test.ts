@@ -8,6 +8,7 @@ vi.mock('fs', () => ({
     readFileSync: vi.fn(),
     writeFileSync: vi.fn(),
     mkdirSync: vi.fn(),
+    unlinkSync: vi.fn(),
 }));
 
 vi.mock('vscode', async (importOriginal) => {
@@ -139,17 +140,20 @@ describe('WorkspaceSettingsService', () => {
                 );
             });
 
-            it('should store undefined when called with undefined', () => {
+            it('should delete key when called with undefined (not write undefined)', () => {
+                // First set a value so the file exists
+                vi.mocked(fs.existsSync).mockReturnValue(true);
+                vi.mocked(fs.readFileSync).mockReturnValue(
+                    JSON.stringify({ selectedRepositoryPath: '/some/path' })
+                );
                 service = new WorkspaceSettingsService(mockContext);
 
+                // Now clear it
                 service.setSelectedRepositoryPath(undefined);
                 vi.advanceTimersByTime(600);
 
-                // Should not contain selectedRepositoryPath or should have it as null/undefined
-                const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
-                const writtenContent = writeCall?.[1] as string;
-                const parsed = JSON.parse(writtenContent);
-                expect(parsed.selectedRepositoryPath).toBeUndefined();
+                // Since userSettings is now empty, the file should be deleted
+                expect(fs.unlinkSync).toHaveBeenCalled();
             });
 
             it('should store absolute path when workspace root is undefined', () => {

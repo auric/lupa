@@ -117,6 +117,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     /**
      * Load settings from disk.
      * Only loads user-set values and merges with defaults at runtime.
+     * Invalid individual settings are dropped, preserving valid ones.
      */
     private loadSettings(): void {
         if (!this.settingsPath) {
@@ -139,13 +140,18 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                     // Apply defaults to get resolved settings
                     this.settings = result.data;
                 } else {
-                    const errorMessages = z.prettifyError(result.error);
-                    Log.error(
-                        `Invalid settings in ${this.settingsPath}: ${errorMessages}. Using defaults.`
+                    // Validation failed - try to salvage valid individual keys
+                    Log.warn(
+                        `Some settings in ${this.settingsPath} are invalid. Keeping valid settings.`
                     );
-                    this.userSettings = {};
-                    this.settings = getDefaultSettings();
-                    // Don't save - let user fix the invalid file
+                    this.userSettings = this.salvageValidSettings(parsed);
+                    // Re-validate with salvaged settings to get proper defaults
+                    const salvageResult = WorkspaceSettingsSchema.safeParse(
+                        this.userSettings
+                    );
+                    this.settings = salvageResult.success
+                        ? salvageResult.data
+                        : getDefaultSettings();
                 }
             } else {
                 // File doesn't exist - use defaults, don't create file
@@ -159,6 +165,40 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             this.userSettings = {};
             this.settings = getDefaultSettings();
         }
+    }
+
+    /**
+     * Attempt to salvage valid individual settings from a partially invalid config.
+     * Invalid keys are dropped and logged.
+     */
+    private salvageValidSettings(
+        parsed: Record<string, unknown>
+    ): UserSettings {
+        const salvaged: UserSettings = {};
+        const schemaShape = WorkspaceSettingsSchema.shape;
+
+        for (const key of Object.keys(parsed)) {
+            if (!(key in schemaShape)) {
+                // Unknown key - skip silently (looseObject strips these anyway)
+                continue;
+            }
+
+            const fieldSchema = schemaShape[key as keyof typeof schemaShape];
+            if (!fieldSchema) {
+                continue;
+            }
+
+            const fieldResult = fieldSchema.safeParse(parsed[key]);
+            if (fieldResult.success) {
+                (salvaged as Record<string, unknown>)[key] = parsed[key];
+            } else {
+                Log.warn(
+                    `Invalid setting '${key}': ${z.prettifyError(fieldResult.error)}. Using default.`
+                );
+            }
+        }
+
+        return salvaged;
     }
 
     /**
@@ -312,7 +352,11 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             }
         }
 
-        this.userSettings.selectedRepositoryPath = valueToStore;
+        if (valueToStore === undefined) {
+            delete this.userSettings.selectedRepositoryPath;
+        } else {
+            this.userSettings.selectedRepositoryPath = valueToStore;
+        }
         this.settings.selectedRepositoryPath = valueToStore;
         this.debouncedSaveSettings();
     }
@@ -329,7 +373,11 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      * @param identifier Model identifier in 'vendor/id' format (e.g., 'copilot/gpt-4.1')
      */
     public setPreferredModelIdentifier(identifier: string | undefined): void {
-        this.userSettings.preferredModelIdentifier = identifier;
+        if (identifier === undefined) {
+            delete this.userSettings.preferredModelIdentifier;
+        } else {
+            this.userSettings.preferredModelIdentifier = identifier;
+        }
         this.settings.preferredModelIdentifier = identifier;
         this.debouncedSaveSettings();
     }

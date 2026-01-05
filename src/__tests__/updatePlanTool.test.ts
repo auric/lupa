@@ -10,7 +10,7 @@ describe('UpdatePlanTool', () => {
 
     beforeEach(() => {
         planManager = new PlanSessionManager();
-        executionContext = { planManager };
+        executionContext = { traceId: 'test1234', planManager };
 
         tool = new UpdatePlanTool();
     });
@@ -122,12 +122,18 @@ describe('UpdatePlanTool', () => {
 
             // First analysis with its own context
             const manager1 = new PlanSessionManager();
-            const context1: ExecutionContext = { planManager: manager1 };
+            const context1: ExecutionContext = {
+                traceId: 'test0001',
+                planManager: manager1,
+            };
             await tool.execute({ plan: validPlan1 }, context1);
 
             // Second analysis with different context
             const manager2 = new PlanSessionManager();
-            const context2: ExecutionContext = { planManager: manager2 };
+            const context2: ExecutionContext = {
+                traceId: 'test0002',
+                planManager: manager2,
+            };
             const result = await tool.execute({ plan: validPlan2 }, context2);
 
             // Should show "created" not "updated" since it's a new context

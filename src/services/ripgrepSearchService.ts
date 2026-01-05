@@ -3,6 +3,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CodeFileDetector } from '../utils/codeFileDetector';
+import { Log } from './loggingService';
+
+/** Timeout for ripgrep search operations (60 seconds) */
+const RIPGREP_TIMEOUT_MS = 60_000;
 
 /**
  * Gets the path to ripgrep binary bundled with VS Code.
@@ -162,11 +166,32 @@ export class RipgrepSearchService {
         return new Promise((resolve, reject) => {
             const results = new Map<string, RipgrepMatch[]>();
             let stderr = '';
+            let timedOut = false;
 
             const rg: ChildProcess = spawn(this.rgPath, args, {
                 cwd: options.cwd,
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
+
+            // Set up timeout to kill process if it takes too long
+            const timeoutId = setTimeout(() => {
+                timedOut = true;
+                rg.kill('SIGTERM');
+                // Give it a moment to terminate gracefully, then force kill
+                setTimeout(() => {
+                    if (!rg.killed) {
+                        rg.kill('SIGKILL');
+                    }
+                }, 1000);
+                Log.warn(
+                    `[RipgrepSearchService] Search timed out after ${RIPGREP_TIMEOUT_MS}ms, process killed`
+                );
+                reject(
+                    new Error(
+                        `Pattern search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s`
+                    )
+                );
+            }, RIPGREP_TIMEOUT_MS);
 
             let buffer = '';
 
@@ -194,6 +219,14 @@ export class RipgrepSearchService {
             });
 
             rg.on('close', (code: number | null) => {
+                // Clear timeout on normal completion
+                clearTimeout(timeoutId);
+
+                // If we already rejected due to timeout, don't resolve
+                if (timedOut) {
+                    return;
+                }
+
                 // Process remaining buffer
                 if (buffer.trim()) {
                     try {
@@ -221,6 +254,7 @@ export class RipgrepSearchService {
             });
 
             rg.on('error', (err: Error) => {
+                clearTimeout(timeoutId);
                 reject(new Error(`Failed to spawn ripgrep: ${err.message}`));
             });
         });
