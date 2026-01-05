@@ -2,8 +2,13 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import ignore from 'ignore';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { Log } from '../services/loggingService';
 import { readGitignore } from '../utils/gitUtils';
+import { withTimeout } from '../utils/asyncUtils';
 import { CodeFileUtils } from './codeFileUtils';
+
+/** Per-file timeout for LSP symbol extraction (5 seconds) */
+const PER_FILE_LSP_TIMEOUT_MS = 5_000;
 
 /**
  * Options for directory symbol extraction
@@ -30,20 +35,34 @@ export class SymbolExtractor {
     constructor(private readonly gitOperationsManager: GitOperationsManager) {}
 
     /**
-     * Extract symbols from a single file using VS Code LSP API
+     * Extract symbols from a single file using VS Code LSP API with timeout protection
      * @param fileUri - VS Code URI of the file
-     * @returns Array of DocumentSymbols or SymbolInformation, or empty array if extraction fails
+     * @returns Array of DocumentSymbols or SymbolInformation, or empty array if extraction fails or times out
      */
     async getFileSymbols(
         fileUri: vscode.Uri
     ): Promise<vscode.DocumentSymbol[] | vscode.SymbolInformation[]> {
         try {
-            const symbols = await vscode.commands.executeCommand<
-                vscode.DocumentSymbol[] | vscode.SymbolInformation[]
-            >('vscode.executeDocumentSymbolProvider', fileUri);
+            const lspPromise = Promise.resolve(
+                vscode.commands.executeCommand<
+                    vscode.DocumentSymbol[] | vscode.SymbolInformation[]
+                >('vscode.executeDocumentSymbolProvider', fileUri)
+            );
+
+            const symbols = await withTimeout(
+                lspPromise,
+                PER_FILE_LSP_TIMEOUT_MS,
+                `LSP symbols for ${path.basename(fileUri.fsPath)}`
+            );
             return symbols || [];
-        } catch {
-            // Return empty array if no symbols or provider not available
+        } catch (error) {
+            // Log timeout specifically for diagnostics
+            if (error instanceof Error && error.message.includes('timed out')) {
+                Log.warn(
+                    `[SymbolExtractor] LSP timed out for ${path.basename(fileUri.fsPath)} after ${PER_FILE_LSP_TIMEOUT_MS}ms`
+                );
+            }
+            // Return empty array if no symbols, provider not available, or timeout
             return [];
         }
     }
@@ -61,23 +80,12 @@ export class SymbolExtractor {
         options: DirectorySymbolOptions = {}
     ): Promise<FileSymbolResult[]> {
         const results: FileSymbolResult[] = [];
+        const startTime = Date.now();
 
         // Read .gitignore patterns
         const repository = this.gitOperationsManager.getRepository();
         const gitignoreContent = await readGitignore(repository);
         const ig = ignore().add(gitignoreContent);
-
-        // Debug: Log gitignore patterns loaded
-        if (gitignoreContent.trim()) {
-            console.log(
-                `[SymbolExtractor] Loaded gitignore patterns:`,
-                gitignoreContent
-                    .split('\n')
-                    .filter((line) => line.trim() && !line.startsWith('#'))
-            );
-        } else {
-            console.log(`[SymbolExtractor] No gitignore patterns found`);
-        }
 
         // Get all files in directory recursively
         const files = await this.getAllFiles(
@@ -87,7 +95,11 @@ export class SymbolExtractor {
             options
         );
 
-        // Get symbols for each file
+        Log.debug(
+            `[SymbolExtractor] Processing ${files.length} files in ${relativePath}`
+        );
+
+        // Get symbols for each file (with per-file timeout protection)
         for (const filePath of files) {
             const gitRootDirectory =
                 this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
@@ -104,6 +116,11 @@ export class SymbolExtractor {
                 continue;
             }
         }
+
+        const elapsed = Date.now() - startTime;
+        Log.debug(
+            `[SymbolExtractor] Extracted symbols from ${results.length}/${files.length} files in ${elapsed}ms`
+        );
 
         return results;
     }
@@ -158,15 +175,14 @@ export class SymbolExtractor {
                         }
                     } catch (error) {
                         // Log gitignore check failures for debugging but continue processing
-                        console.warn(
-                            `Failed to check gitignore for path "${fullPath}":`,
-                            error
+                        Log.debug(
+                            `[SymbolExtractor] Failed to check gitignore for path "${fullPath}": ${error}`
                         );
                     }
                 } else {
                     // Log invalid paths for debugging
-                    console.warn(
-                        `Invalid path format for gitignore check: "${fullPath}"`
+                    Log.debug(
+                        `[SymbolExtractor] Invalid path format for gitignore check: "${fullPath}"`
                     );
                 }
 

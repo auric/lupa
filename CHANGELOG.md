@@ -33,9 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Chat participant tracing**: Chat participant mode now includes trace IDs for log correlation, matching the command palette behavior.
 
-### Known Issues
-
-- **Directory symbol search with slow language servers**: When using `find_symbol` or `get_symbols_overview` on directories (not specific files), operations can take very long (minutes) with slow language servers like clangd. The tool-level timeouts protect post-processing but don't cancel in-flight LSP calls. **Workaround**: Specify exact file paths instead of directories when possible.
+- **Per-file LSP timeout protection**: Added 5-second timeout to each individual LSP call in `SymbolExtractor.getFileSymbols()`. Previously, slow language servers (e.g., clangd) could cause directory symbol operations to hang indefinitely. Now, slow files are skipped after 5 seconds and processing continues with remaining files, providing partial results instead of complete failure.
 
 ## [0.1.10] - 2026-01-05
 
