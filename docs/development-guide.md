@@ -254,6 +254,26 @@ Log.error('Tool execution failed:', error);
 
 View logs: `Output` panel → `Lupa`
 
+### TraceId Log Format
+
+All analysis logs use the format `[traceId:contextLabel:iN]` for correlation:
+
+| Component      | Example                 | Purpose                              |
+| -------------- | ----------------------- | ------------------------------------ |
+| `traceId`      | `a1b2c3d4`              | Unique session identifier (8 chars)  |
+| `contextLabel` | `Main`, `Sub#1`, `Chat` | Identifies main agent vs subagents   |
+| `iN`           | `i1`, `i5`, `i10`       | Iteration number within conversation |
+
+**Filtering logs by iteration:**
+
+```bash
+# Find all logs from iteration 5
+grep ":i5]" lupa.log
+
+# Find all subagent #2 logs
+grep ":Sub#2:" lupa.log
+```
+
 ---
 
 ## Code Style

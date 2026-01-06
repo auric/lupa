@@ -121,7 +121,7 @@ export class ToolCallingAnalysisProvider {
             // Check diff size and handle truncation/tool availability
             progressCallback?.('Processing diff...', 0.5);
             const { processedDiff, toolsAvailable, toolsDisabledMessage } =
-                await this.processDiffSize(diff);
+                await this.processDiffSize(diff, traceId);
 
             // Get available tools and generate system prompt based on tool availability
             const availableTools = toolsAvailable
@@ -296,9 +296,13 @@ export class ToolCallingAnalysisProvider {
     /**
      * Process diff size and determine if tools should be available
      * @param diff Original diff content
+     * @param traceId Trace ID for log correlation
      * @returns Object with processed diff, tool availability, and disabled message
      */
-    private async processDiffSize(diff: string): Promise<{
+    private async processDiffSize(
+        diff: string,
+        traceId: string
+    ): Promise<{
         processedDiff: string;
         toolsAvailable: boolean;
         toolsDisabledMessage?: string;
@@ -339,7 +343,7 @@ export class ToolCallingAnalysisProvider {
 
             // If diff is too large, truncate it and disable tools
             Log.warn(
-                `[ToolCallingAnalysisProvider] Diff uses too much context (${totalUsedTokens}/${maxTokens} tokens, only ${availableForTools} remaining). Truncating and disabling tools.`
+                `[${traceId}:Main] Diff uses too much context (${totalUsedTokens}/${maxTokens} tokens, only ${availableForTools} remaining). Truncating and disabling tools.`
             );
 
             // Calculate how much of the diff we can keep to leave room for basic analysis
@@ -371,10 +375,7 @@ export class ToolCallingAnalysisProvider {
                     TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED,
             };
         } catch (error) {
-            Log.error(
-                '[ToolCallingAnalysisProvider] Error processing diff size:',
-                error
-            );
+            Log.error(`[${traceId}:Main] Error processing diff size:`, error);
             // On error, return original diff with tools available
             return {
                 processedDiff: diff,

@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Abandoned operation logging**: When a tool times out but the underlying operation completes later, the log shows when it finished (helps diagnose slow language servers).
 
+- **Subagent lifecycle logging**: Subagent spawn, completion, and failure events now include full trace ID context (`[traceId:Main:iN]`), making it easy to track subagent lifecycle in logs.
+
+- **processDiffSize trace propagation**: Diff size logging in `ToolCallingAnalysisProvider` now includes trace IDs for consistent correlation.
+
 #### Settings File Watching
 
 - **Live settings reload**: Changes to `.vscode/lupa.json` are detected automatically. External edits (from another editor or git operations) reload settings without requiring extension restart.
@@ -52,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Cross-module `isTimeoutError()` detection**: Made `isTimeoutError()` type guard more robust by adding fallback check for `isTimeout` property. This handles cross-module boundary cases where `instanceof` may fail due to different module instances.
 
 - **FindSymbolTool timeout message**: When workspace symbol search times out, the tool now returns a specific timeout error message instead of the generic "Symbol 'X' not found". This helps the LLM understand the search failed due to timeout rather than the symbol not existing.
+
+- **SearchForPatternTool actionable timeout message**: Pattern search timeout now returns an actionable error: "Pattern search timed out. Try narrowing the scope with include_files/exclude_files globs or a more specific search_path." This guides the LLM toward retry strategies.
 
 - **Clean error messages**: Error messages in conversation history no longer include internal trace ID prefixes (`[traceId:contextLabel:iN]`). Trace IDs remain in logs for debugging but are stripped from user-visible messages.
 

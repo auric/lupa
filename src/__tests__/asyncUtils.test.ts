@@ -238,6 +238,7 @@ describe('asyncUtils', () => {
         it('should return true for TimeoutError instances', () => {
             const error = new TimeoutError('test op', 5000);
             expect(isTimeoutError(error)).toBe(true);
+            expect(error.name).toBe('TimeoutError');
         });
 
         it('should return false for regular Error instances', () => {

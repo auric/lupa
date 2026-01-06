@@ -528,6 +528,19 @@ VS Code API mocked via `__mocks__/vscode.js`:
 
 ---
 
+## Timeout Configuration
+
+Timeouts protect against slow language servers and runaway searches:
+
+| Operation            | Timeout | Notes                                              |
+| -------------------- | ------- | -------------------------------------------------- |
+| Per-file LSP symbols | 5s      | Individual file extraction; slow files are skipped |
+| Ripgrep search       | 30s     | Pattern search via `search_for_pattern` tool       |
+
+When timeouts occur, tools return actionable error messages suggesting retry strategies (e.g., narrowing search scope).
+
+---
+
 ## Extension Points
 
 ### Adding a New Tool

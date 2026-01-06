@@ -4,7 +4,7 @@ import { BaseTool } from './baseTool';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import type { SubagentResult } from '../types/modelTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
-import { ExecutionContext } from '../types/executionContext';
+import { ExecutionContext, generateTraceId } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 
@@ -101,10 +101,9 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
         const subagentId = sessionManager.recordSpawn();
         const remaining = sessionManager.getRemainingBudget();
+        const effectiveTraceId = context?.traceId ?? generateTraceId();
         const iteration = context?.currentIteration ?? 1;
-        const logPrefix = context?.traceId
-            ? `[${context.traceId}:Main:i${iteration}] `
-            : '';
+        const logPrefix = `[${effectiveTraceId}:Main:i${iteration}] `;
         Log.info(
             `${logPrefix}Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );

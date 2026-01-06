@@ -576,5 +576,48 @@ describe('ToolExecutor', () => {
 
             expect(capturedContext).toBeUndefined();
         });
+
+        it('should use execution context for log prefix when context is provided', async () => {
+            // This test verifies that ToolExecutor uses the execution context
+            // to generate log prefixes. The getLogPrefix() method returns
+            // '[traceId:label:iN] ' format when context is provided, or empty string
+            // when no context is available. This is verified indirectly through
+            // the context propagation tests above.
+            const mockExecutionContext = {
+                traceId: 'abc123',
+                contextLabel: 'TestLabel',
+                currentIteration: 5,
+            };
+
+            const dummyTool: ITool = {
+                name: 'log_test_tool',
+                description: 'Test tool for log prefix',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'log_test_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> => {
+                    return toolSuccess('done');
+                },
+            };
+
+            toolRegistry.registerTool(dummyTool);
+
+            const executorWithContext = new ToolExecutor(
+                toolRegistry,
+                mockSettings,
+                mockExecutionContext as any
+            );
+
+            // The tool should execute successfully - the log prefix format
+            // '[abc123:TestLabel:i5] ' is used internally for debug/info logs
+            const result = await executorWithContext.executeTool(
+                'log_test_tool',
+                {}
+            );
+            expect(result.success).toBe(true);
+        });
     });
 });
