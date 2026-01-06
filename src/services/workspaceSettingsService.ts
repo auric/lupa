@@ -441,7 +441,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
     /**
      * Set the selected repository path for this workspace.
-     * Stores "." when the path matches the workspace root for portability.
+     * If the path matches the workspace root, nothing is persisted (default behavior).
+     * Only non-default paths are stored, keeping the config file minimal.
      * @param repoPath The absolute path to the repository root
      */
     public setSelectedRepositoryPath(repoPath: string | undefined): void {
@@ -456,7 +457,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 this.normalizePath(repoPath) ===
                     this.normalizePath(workspaceRoot)
             ) {
-                valueToStore = WORKSPACE_ROOT_MARKER;
+                // Workspace root is the default - no need to persist
+                valueToStore = undefined;
             } else {
                 valueToStore = repoPath;
             }

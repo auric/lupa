@@ -53,7 +53,7 @@ describe('WorkspaceSettingsService', () => {
 
     describe('WORKSPACE_ROOT_MARKER functionality', () => {
         describe('setSelectedRepositoryPath', () => {
-            it('should store "." when repo path matches workspace root exactly', () => {
+            it('should not persist when repo path matches workspace root (default behavior)', () => {
                 (vscode.workspace as any).workspaceFolders = [
                     { uri: { fsPath: '/test/workspace' } },
                 ];
@@ -63,14 +63,13 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test/workspace');
                 vi.advanceTimersByTime(600); // Trigger debounced save
 
-                expect(fs.writeFileSync).toHaveBeenCalledWith(
-                    expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "."'),
-                    'utf-8'
-                );
+                // No file written - workspace root is the default, no need to persist
+                expect(fs.writeFileSync).not.toHaveBeenCalled();
+                // File should be deleted if it existed (empty userSettings)
+                expect(fs.unlinkSync).toHaveBeenCalled();
             });
 
-            it('should store "." when paths differ only in trailing slash', () => {
+            it('should not persist when paths differ only in trailing slash', () => {
                 (vscode.workspace as any).workspaceFolders = [
                     { uri: { fsPath: '/test/workspace' } },
                 ];
@@ -80,14 +79,11 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test/workspace/');
                 vi.advanceTimersByTime(600);
 
-                expect(fs.writeFileSync).toHaveBeenCalledWith(
-                    expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "."'),
-                    'utf-8'
-                );
+                // Normalized to workspace root - not persisted
+                expect(fs.writeFileSync).not.toHaveBeenCalled();
             });
 
-            it('should store "." when paths differ only in backslash vs forward slash', () => {
+            it('should not persist when paths differ only in backslash vs forward slash', () => {
                 (vscode.workspace as any).workspaceFolders = [
                     { uri: { fsPath: 'C:\\test\\workspace' } },
                 ];
@@ -97,14 +93,11 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('C:/test/workspace');
                 vi.advanceTimersByTime(600);
 
-                expect(fs.writeFileSync).toHaveBeenCalledWith(
-                    expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "."'),
-                    'utf-8'
-                );
+                // Normalized to workspace root - not persisted
+                expect(fs.writeFileSync).not.toHaveBeenCalled();
             });
 
-            it('should store "." when paths differ in double slashes', () => {
+            it('should not persist when paths differ in double slashes', () => {
                 (vscode.workspace as any).workspaceFolders = [
                     { uri: { fsPath: '/test/workspace' } },
                 ];
@@ -114,11 +107,8 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test//workspace');
                 vi.advanceTimersByTime(600);
 
-                expect(fs.writeFileSync).toHaveBeenCalledWith(
-                    expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "."'),
-                    'utf-8'
-                );
+                // Normalized to workspace root - not persisted
+                expect(fs.writeFileSync).not.toHaveBeenCalled();
             });
 
             it('should store absolute path when repo path differs from workspace root', () => {
@@ -244,13 +234,8 @@ describe('WorkspaceSettingsService', () => {
                     service.setSelectedRepositoryPath('c:\\test\\workspace');
                     vi.advanceTimersByTime(600);
 
-                    expect(fs.writeFileSync).toHaveBeenCalledWith(
-                        expect.any(String),
-                        expect.stringContaining(
-                            '"selectedRepositoryPath": "."'
-                        ),
-                        'utf-8'
-                    );
+                    // Normalized to workspace root - not persisted
+                    expect(fs.writeFileSync).not.toHaveBeenCalled();
                 } finally {
                     // Always restore platform, even if test fails
                     Object.defineProperty(process, 'platform', {
@@ -269,11 +254,8 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test///workspace');
                 vi.advanceTimersByTime(600);
 
-                expect(fs.writeFileSync).toHaveBeenCalledWith(
-                    expect.any(String),
-                    expect.stringContaining('"selectedRepositoryPath": "."'),
-                    'utf-8'
-                );
+                // Normalized to workspace root - not persisted
+                expect(fs.writeFileSync).not.toHaveBeenCalled();
             });
 
             it('should not match different paths that look similar', () => {

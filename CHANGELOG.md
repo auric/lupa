@@ -33,9 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Settings Persistence
 
-- **Minimal config files**: `.vscode/lupa.json` now only saves user-modified values. Defaults are applied at runtime from the schema, preventing stale defaults when upgrading.
-
-- **Empty settings cleanup**: When all user settings are reset to defaults, the settings file is deleted rather than leaving an empty file.
+- **Minimal config files**: `.vscode/lupa.json` only stores non-default settings. The workspace root repository path (the most common case) is not persisted since it's auto-detected. If all settings are defaults, the file is deleted entirely.
 
 - **Partial settings recovery**: Invalid individual settings no longer cause all settings to be dropped. Valid settings are preserved with warnings logged for invalid keys.
 
