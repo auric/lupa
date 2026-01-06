@@ -57,6 +57,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     /** Debounce timer for file change events */
     private reloadDebounceTimeout: NodeJS.Timeout | null = null;
 
+    /** Flag indicating a save is pending (scheduled but not yet executed) */
+    private isSavePending = false;
+
     /**
      * Creates a new WorkspaceSettingsService
      * @param context VS Code extension context
@@ -122,8 +125,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             );
 
             const handleFileChange = () => {
-                // Ignore events triggered by our own writes
-                if (this.isWriting) {
+                // Ignore events triggered by our own writes or pending saves
+                if (this.isWriting || this.isSavePending) {
                     return;
                 }
 
@@ -134,8 +137,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
                 this.reloadDebounceTimeout = setTimeout(() => {
                     this.reloadDebounceTimeout = null;
-                    // Re-check isWriting to handle race where write started after event
-                    if (this.isWriting) {
+                    // Re-check flags to handle race where write/save started after event
+                    if (this.isWriting || this.isSavePending) {
                         return;
                     }
                     Log.debug('Settings file changed externally, reloading...');
@@ -359,16 +362,23 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Save settings with debounce to avoid excessive disk writes
+     * Save settings with debounce to avoid excessive disk writes.
+     * Sets isSavePending to prevent file watcher from reloading during the pending window.
      */
     private debouncedSaveSettings(): void {
         if (this.saveDebounceTimeout) {
             clearTimeout(this.saveDebounceTimeout);
         }
 
+        this.isSavePending = true;
         this.saveDebounceTimeout = setTimeout(() => {
             this.saveSettings();
             this.saveDebounceTimeout = null;
+            // Note: isSavePending stays true until isWriting grace period ends
+            // This is handled by withWriteSuppression which sets isWriting
+            // Once the write completes, isWriting protects us during grace period
+            // We can clear isSavePending here since isWriting takes over
+            this.isSavePending = false;
         }, 500); // 500ms debounce
     }
 

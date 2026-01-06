@@ -396,5 +396,38 @@ describe('WorkspaceSettingsService', () => {
             // Value should still be what we set, not reloaded
             expect(service.getMaxIterations()).toBe(50);
         });
+
+        it('should not reload settings while save is pending (race condition fix)', () => {
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Set a value - this schedules a debounced save (500ms)
+            service.setSetting('maxIterations', 50);
+            // At this point, isSavePending should be true
+
+            // Simulate external file change BEFORE our save executes
+            // Mock what loadSettings would read if it were allowed to run
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxIterations: 999 })
+            );
+
+            // Advance 300ms (file watcher debounce) - still before our 500ms save
+            vi.advanceTimersByTime(350);
+
+            // Our in-memory value should still be 50, not overwritten by "external" 999
+            expect(service.getMaxIterations()).toBe(50);
+
+            // Now let the save complete
+            vi.advanceTimersByTime(200); // Total 550ms, past the 500ms debounce
+
+            // Value should still be 50
+            expect(service.getMaxIterations()).toBe(50);
+
+            // And our value should have been written to disk
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.stringContaining('"maxIterations": 50'),
+                'utf-8'
+            );
+        });
     });
 });

@@ -317,12 +317,14 @@ export class ConversationRunner {
                     throw error;
                 }
 
+                const userFacingError =
+                    error instanceof Error ? error.message : String(error);
                 conversation.addAssistantMessage(
-                    `I encountered an error: ${errorMessage}. Let me try to continue.`
+                    `I encountered an error: ${userFacingError}. Let me try to continue.`
                 );
 
                 if (iteration >= config.maxIterations) {
-                    return errorMessage;
+                    return `Error: ${userFacingError}`;
                 }
             }
         }
