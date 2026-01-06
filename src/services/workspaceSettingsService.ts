@@ -290,41 +290,31 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             // If there are no user-set values, delete the file if it exists
             if (Object.keys(this.userSettings).length === 0) {
                 if (fs.existsSync(this.settingsPath)) {
-                    try {
-                        // Set flag just before actual I/O operation
-                        this.isWriting = true;
-                        fs.unlinkSync(this.settingsPath);
-                        this.scheduleIsWritingClear();
-                        Log.debug(
-                            `Deleted empty settings file: ${this.settingsPath}`
-                        );
-                    } catch (deleteError) {
-                        this.isWriting = false;
-                        Log.error(
-                            `Failed to delete settings file: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`
-                        );
-                    }
+                    this.withWriteSuppression(() =>
+                        fs.unlinkSync(this.settingsPath!)
+                    );
+                    Log.debug(
+                        `Deleted empty settings file: ${this.settingsPath}`
+                    );
                 }
                 return;
             }
 
-            // Make sure the directory exists
+            // Make sure the directory exists (not a watched operation)
             const dir = path.dirname(this.settingsPath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
             }
 
-            // Set flag just before actual I/O operation
-            this.isWriting = true;
             // Write only user-set values (not merged with defaults)
-            fs.writeFileSync(
-                this.settingsPath,
-                JSON.stringify(this.userSettings, null, 2),
-                'utf-8'
+            this.withWriteSuppression(() =>
+                fs.writeFileSync(
+                    this.settingsPath!,
+                    JSON.stringify(this.userSettings, null, 2),
+                    'utf-8'
+                )
             );
-            this.scheduleIsWritingClear();
         } catch (error) {
-            this.isWriting = false;
             Log.error(
                 `Failed to save settings: ${error instanceof Error ? error.message : String(error)}`
             );
@@ -343,6 +333,25 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             this.isWriting = false;
             this.isWritingTimeout = null;
         }, 500);
+    }
+
+    /**
+     * Execute a file operation with write suppression.
+     * Centralizes isWriting flag management to ensure consistent behavior:
+     * - Sets isWriting before operation
+     * - Schedules delayed clear on success (for file watcher grace period)
+     * - Immediately clears on error
+     */
+    private withWriteSuppression<T>(fn: () => T): T {
+        this.isWriting = true;
+        try {
+            const result = fn();
+            this.scheduleIsWritingClear();
+            return result;
+        } catch (error) {
+            this.isWriting = false;
+            throw error;
+        }
     }
 
     /**
