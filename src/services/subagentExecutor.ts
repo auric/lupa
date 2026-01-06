@@ -99,8 +99,10 @@ export class SubagentExecutor {
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
-            // ExecutionContext with traceId for log correlation
-            // Note: subagents don't get planManager or subagentExecutor (they can't spawn subagents)
+            // ExecutionContext with traceId for log correlation.
+            // Subagents don't receive planManager or subagentExecutor because:
+            // 1. run_subagent tool is filtered out via SubagentLimits.DISALLOWED_TOOLS
+            // 2. Plan tools require planManager which isn't provided here
             const executionContext = {
                 traceId: effectiveTraceId,
                 contextLabel: `Sub#${subagentId}`,

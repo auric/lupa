@@ -146,6 +146,30 @@ describe('WorkspaceSettingsService', () => {
                 expect(fs.unlinkSync).toHaveBeenCalled();
             });
 
+            it('should remove key from JSON when other settings exist', () => {
+                // File has multiple settings
+                vi.mocked(fs.existsSync).mockReturnValue(true);
+                vi.mocked(fs.readFileSync).mockReturnValue(
+                    JSON.stringify({
+                        selectedRepositoryPath: '/some/path',
+                        preferredModelIdentifier: 'copilot/gpt-4.1',
+                    })
+                );
+                service = new WorkspaceSettingsService(mockContext);
+
+                // Clear only the repository path
+                service.setSelectedRepositoryPath(undefined);
+                vi.advanceTimersByTime(600);
+
+                // File should be written (not deleted) with only the model identifier
+                expect(fs.unlinkSync).not.toHaveBeenCalled();
+                const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
+                const writtenContent = writeCall?.[1] as string;
+                const parsed = JSON.parse(writtenContent);
+                expect(parsed.selectedRepositoryPath).toBeUndefined();
+                expect(parsed.preferredModelIdentifier).toBe('copilot/gpt-4.1');
+            });
+
             it('should store absolute path when workspace root is undefined', () => {
                 (vscode.workspace as any).workspaceFolders = undefined;
 

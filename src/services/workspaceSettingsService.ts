@@ -235,14 +235,16 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                     return;
                 }
 
-                const typedParsed = parsed as UserSettings;
+                // Use Record<string, unknown> since we only know it's an object at this point;
+                // Zod validation will verify the actual structure
+                const typedParsed = parsed as Record<string, unknown>;
 
                 // Validate the partial settings by merging with defaults
                 const result = WorkspaceSettingsSchema.safeParse(typedParsed);
 
                 if (result.success) {
                     // Store only the user-provided values (not the resolved ones)
-                    this.userSettings = typedParsed;
+                    this.userSettings = typedParsed as UserSettings;
                     // Apply defaults to get resolved settings
                     this.settings = result.data;
                 } else {

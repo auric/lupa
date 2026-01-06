@@ -180,16 +180,25 @@ export class RipgrepSearchService {
                 timedOut = true;
                 try {
                     rg.kill('SIGTERM');
-                } catch {
-                    // Process may already be dead
+                } catch (error) {
+                    // Process may already be dead; log for diagnostics
+                    Log.debug(
+                        `[RipgrepSearchService] Failed to send SIGTERM:`,
+                        error
+                    );
                 }
-                // Give it a moment to terminate gracefully, then force kill
+                // Give it a moment to terminate gracefully, then force kill.
+                // This timer is cleared in close/error handlers when process exits.
                 forceKillTimeoutId = setTimeout(() => {
                     if (!rg.killed) {
                         try {
                             rg.kill('SIGKILL');
-                        } catch {
-                            // Process may already be dead
+                        } catch (error) {
+                            // Process may already be dead; log for diagnostics
+                            Log.debug(
+                                `[RipgrepSearchService] Failed to send SIGKILL:`,
+                                error
+                            );
                         }
                     }
                 }, 1000);
