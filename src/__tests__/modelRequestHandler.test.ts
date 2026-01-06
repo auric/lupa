@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { ToolCallRequest, ToolCallMessage } from '../types/modelTypes';
+import { TimeoutError, isTimeoutError } from '../utils/asyncUtils';
 
 describe('ModelRequestHandler', () => {
     let mockModel: any;
@@ -187,7 +188,7 @@ describe('ModelRequestHandler', () => {
             expect(result).toBe('success');
         });
 
-        it('should reject with timeout error if thenable takes too long', async () => {
+        it('should reject with TimeoutError if thenable takes too long', async () => {
             // Create a promise that never resolves
             const thenable = new Promise(() => {});
 
@@ -197,19 +198,24 @@ describe('ModelRequestHandler', () => {
                     50, // 50ms timeout
                     cancellationTokenSource.token
                 )
-            ).rejects.toThrow('LLM request timed out after');
+            ).rejects.toThrow(TimeoutError);
         }, 1000);
 
-        it('should include helpful message in timeout error', async () => {
+        it('should be detectable via isTimeoutError type guard', async () => {
             const thenable = new Promise(() => {});
 
-            await expect(
-                ModelRequestHandler.withTimeout(
+            try {
+                await ModelRequestHandler.withTimeout(
                     thenable,
                     50,
                     cancellationTokenSource.token
-                )
-            ).rejects.toThrow('The model may be overloaded. Please try again.');
+                );
+                expect.fail('Should have thrown');
+            } catch (error) {
+                expect(isTimeoutError(error)).toBe(true);
+                expect((error as TimeoutError).operation).toBe('LLM request');
+                expect((error as TimeoutError).timeoutMs).toBe(50);
+            }
         }, 1000);
 
         it('should reject immediately if token is cancelled', async () => {
@@ -431,7 +437,7 @@ describe('ModelRequestHandler', () => {
                     cancellationTokenSource.token,
                     50 // 50ms timeout
                 )
-            ).rejects.toThrow('LLM request timed out after');
+            ).rejects.toThrow(TimeoutError);
         }, 1000);
 
         it('should propagate errors from model', async () => {

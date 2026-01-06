@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { TimeoutError } from '../utils/asyncUtils';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific timeout
@@ -57,7 +58,7 @@ describe('CopilotModelManager timeout', () => {
 
         await expect(
             modelManager.sendRequest(request, cancellationTokenSource.token)
-        ).rejects.toThrow('LLM request timed out after');
+        ).rejects.toThrow(TimeoutError);
     }, 1000); // Test timeout of 1 second
 
     it('should complete normally if response is fast', async () => {
@@ -121,7 +122,7 @@ describe('CopilotModelManager timeout', () => {
         ).rejects.toThrow('Model error');
     });
 
-    it('should include helpful message in timeout error', async () => {
+    it('should be detectable via isTimeoutError type guard', async () => {
         mockModel.sendRequest.mockImplementation(() => new Promise(() => {}));
 
         const request = {
@@ -131,6 +132,6 @@ describe('CopilotModelManager timeout', () => {
 
         await expect(
             modelManager.sendRequest(request, cancellationTokenSource.token)
-        ).rejects.toThrow('The model may be overloaded. Please try again.');
+        ).rejects.toThrow(TimeoutError);
     }, 1000);
 });
