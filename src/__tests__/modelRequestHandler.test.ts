@@ -3,6 +3,16 @@ import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { ToolCallRequest, ToolCallMessage } from '../types/modelTypes';
 import { TimeoutError, isTimeoutError } from '../utils/asyncUtils';
+import { Log } from '../services/loggingService';
+
+vi.mock('../services/loggingService', () => ({
+    Log: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+    },
+}));
 
 describe('ModelRequestHandler', () => {
     let mockModel: any;
@@ -288,6 +298,78 @@ describe('ModelRequestHandler', () => {
 
             expect(clearTimeoutSpy).toHaveBeenCalled();
             clearTimeoutSpy.mockRestore();
+        });
+
+        it('should log when abandoned operation completes after timeout', async () => {
+            vi.useFakeTimers();
+            let resolveThenable: (value: string) => void;
+            const thenable = new Promise<string>((resolve) => {
+                resolveThenable = resolve;
+            });
+
+            const promise = ModelRequestHandler.withTimeout(
+                thenable,
+                100,
+                cancellationTokenSource.token
+            );
+
+            // Advance past timeout
+            vi.advanceTimersByTime(150);
+
+            await expect(promise).rejects.toThrow(TimeoutError);
+
+            // Now resolve the "abandoned" promise
+            resolveThenable!('late result');
+            await vi.runAllTimersAsync();
+
+            expect(Log.debug).toHaveBeenCalledWith(
+                expect.stringContaining('[Abandoned] LLM request completed')
+            );
+            vi.useRealTimers();
+        });
+
+        it('should log when abandoned operation fails after timeout', async () => {
+            vi.useFakeTimers();
+            let rejectThenable: (error: Error) => void;
+            const thenable = new Promise<string>((_, reject) => {
+                rejectThenable = reject;
+            });
+
+            const promise = ModelRequestHandler.withTimeout(
+                thenable,
+                100,
+                cancellationTokenSource.token
+            );
+
+            // Advance past timeout
+            vi.advanceTimersByTime(150);
+
+            await expect(promise).rejects.toThrow(TimeoutError);
+
+            // Now reject the "abandoned" promise
+            rejectThenable!(new Error('Late error'));
+            await vi.runAllTimersAsync();
+
+            expect(Log.debug).toHaveBeenCalledWith(
+                expect.stringContaining('[Abandoned] LLM request failed')
+            );
+            vi.useRealTimers();
+        });
+
+        it('should not log abandoned when operation completes before timeout', async () => {
+            vi.clearAllMocks();
+            const thenable = Promise.resolve('success');
+
+            const result = await ModelRequestHandler.withTimeout(
+                thenable,
+                1000,
+                cancellationTokenSource.token
+            );
+
+            expect(result).toBe('success');
+            expect(Log.debug).not.toHaveBeenCalledWith(
+                expect.stringContaining('[Abandoned]')
+            );
         });
     });
 

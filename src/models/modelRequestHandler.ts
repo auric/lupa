@@ -6,6 +6,7 @@ import type {
     ToolCallMessage,
 } from '../types/modelTypes';
 import { TimeoutError } from '../utils/asyncUtils';
+import { Log } from '../services/loggingService';
 
 /**
  * Static utility class for handling language model requests.
@@ -99,6 +100,9 @@ export class ModelRequestHandler {
      * - The request completes (success or failure)
      * - The cancellation token fires
      *
+     * When a timeout occurs, the underlying request continues in the background.
+     * If it later completes, an "[Abandoned]" debug log is emitted for diagnostics.
+     *
      * @param thenable - The thenable to wrap
      * @param timeoutMs - The timeout duration in milliseconds
      * @param token - The cancellation token
@@ -115,9 +119,12 @@ export class ModelRequestHandler {
 
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let cancellationDisposable: vscode.Disposable | undefined;
+        let timedOut = false;
+        const startTime = Date.now();
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
+                timedOut = true;
                 reject(new TimeoutError('LLM request', timeoutMs));
             }, timeoutMs);
         });
@@ -128,9 +135,30 @@ export class ModelRequestHandler {
             });
         });
 
+        // Track when the original thenable completes (even after timeout)
+        // to log abandoned operations for diagnostics
+        const wrappedThenable = Promise.resolve(thenable);
+        wrappedThenable
+            .then(() => {
+                if (timedOut) {
+                    const totalTime = Date.now() - startTime;
+                    Log.debug(
+                        `[Abandoned] LLM request completed after ${totalTime}ms (was rejected at ${timeoutMs}ms)`
+                    );
+                }
+            })
+            .catch(() => {
+                if (timedOut) {
+                    const totalTime = Date.now() - startTime;
+                    Log.debug(
+                        `[Abandoned] LLM request failed after ${totalTime}ms (was rejected at ${timeoutMs}ms)`
+                    );
+                }
+            });
+
         try {
             return await Promise.race([
-                Promise.resolve(thenable),
+                wrappedThenable,
                 timeoutPromise,
                 cancellationPromise,
             ]);
