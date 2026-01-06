@@ -14,8 +14,10 @@ const getDefaultSettings = (): WorkspaceSettings =>
     WorkspaceSettingsSchema.parse({});
 
 /**
- * Marker used to indicate the repository path matches the workspace root.
- * Using "." makes settings portable across machines with different absolute paths.
+ * Marker used when reading old settings files to detect that the repository path
+ * matches the workspace root. New settings no longer write this marker - they simply
+ * omit the selectedRepositoryPath key entirely when it equals the workspace root.
+ * Kept for backward compatibility with settings files created by older versions.
  */
 const WORKSPACE_ROOT_MARKER = '.';
 
@@ -393,7 +395,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
     /**
      * Set a setting by key.
-     * The value is marked as user-set and will be persisted.
+     * If the value differs from the schema default, it is persisted.
+     * If the value equals the schema default, the key is removed from userSettings
+     * so that future default changes can take effect.
      * @param key Setting key
      * @param value Setting value
      */
@@ -401,7 +405,21 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         key: K,
         value: WorkspaceSettings[K]
     ): void {
-        this.userSettings[key] = value;
+        const defaults = getDefaultSettings();
+        const defaultValue = defaults[key];
+
+        // Compare using JSON serialization for reliable deep equality
+        const isEqualToDefault =
+            JSON.stringify(value) === JSON.stringify(defaultValue);
+
+        if (isEqualToDefault) {
+            // Value equals default - remove from userSettings so future defaults apply
+            delete this.userSettings[key];
+        } else {
+            // Value differs from default - persist it
+            this.userSettings[key] = value;
+        }
+
         this.settings[key] = value;
         this.debouncedSaveSettings();
     }

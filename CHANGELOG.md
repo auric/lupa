@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Minimal config files**: `.vscode/lupa.json` only stores non-default settings. The workspace root repository path (the most common case) is not persisted since it's auto-detected. If all settings are defaults, the file is deleted entirely.
 
+- **setSetting respects schema defaults**: Calling `setSetting()` with a value equal to the schema default no longer persists that value. This ensures future default upgrades are automatically picked up by existing users. Previously, explicitly setting a default value would lock it in the config file.
+
 - **Partial settings recovery**: Invalid individual settings no longer cause all settings to be dropped. Valid settings are preserved with warnings logged for invalid keys.
 
 - **Request timeout default increased**: Changed from 300 to 600 seconds (10 minutes) to accommodate long-running analyses on large PRs.

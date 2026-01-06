@@ -18,6 +18,13 @@ vi.mock('vscode', async (importOriginal) => {
         workspace: {
             workspaceFolders: [{ uri: { fsPath: '/test/workspace' } }],
             onDidChangeWorkspaceFolders: vi.fn(() => ({ dispose: vi.fn() })),
+            // Default file watcher mock - tests can override for simulation
+            createFileSystemWatcher: vi.fn(() => ({
+                onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+                onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+                onDidDelete: vi.fn(() => ({ dispose: vi.fn() })),
+                dispose: vi.fn(),
+            })),
         },
     };
 });
@@ -590,6 +597,193 @@ describe('WorkspaceSettingsService', () => {
             service.resetAllSettings();
 
             expect(fs.unlinkSync).toHaveBeenCalledWith(expect.any(String));
+        });
+    });
+
+    describe('setSetting default-equality behavior', () => {
+        it('should not persist values that equal the schema default', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue('{}');
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.writeFileSync).mockClear();
+            vi.mocked(fs.unlinkSync).mockClear();
+
+            // maxIterations default is 100
+            service.setSetting('maxIterations', 100);
+            vi.advanceTimersByTime(600);
+
+            // Should not write the default value - file should be deleted (empty userSettings)
+            expect(fs.writeFileSync).not.toHaveBeenCalled();
+            expect(fs.unlinkSync).toHaveBeenCalled();
+        });
+
+        it('should persist values that differ from the schema default', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue('{}');
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.writeFileSync).mockClear();
+
+            // Set a non-default value
+            service.setSetting('maxIterations', 50);
+            vi.advanceTimersByTime(600);
+
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.stringContaining('"maxIterations": 50'),
+                'utf-8'
+            );
+        });
+
+        it('should remove previously-set value when reset to default', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxIterations: 50 })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.writeFileSync).mockClear();
+            vi.mocked(fs.unlinkSync).mockClear();
+
+            // Reset to default value
+            service.setSetting('maxIterations', 100);
+            vi.advanceTimersByTime(600);
+
+            // Should delete file since no non-default values remain
+            expect(fs.writeFileSync).not.toHaveBeenCalled();
+            expect(fs.unlinkSync).toHaveBeenCalled();
+        });
+
+        it('should still update runtime settings even when not persisting', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxIterations: 50 })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Reset to default - should still update runtime value
+            service.setSetting('maxIterations', 100);
+
+            expect(service.getMaxIterations()).toBe(100);
+        });
+    });
+
+    describe('file watcher reload suppression', () => {
+        let fileWatcherHandlers: {
+            change?: () => void;
+            create?: () => void;
+            delete?: () => void;
+        };
+
+        beforeEach(() => {
+            fileWatcherHandlers = {};
+
+            // Ensure workspace folders are set
+            (vscode.workspace as any).workspaceFolders = [
+                { uri: { fsPath: '/test/workspace' } },
+            ];
+
+            // Override createFileSystemWatcher to capture handlers
+            vi.mocked(
+                vscode.workspace.createFileSystemWatcher
+            ).mockImplementation(
+                () =>
+                    ({
+                        onDidChange: vi.fn((cb: () => void) => {
+                            fileWatcherHandlers.change = cb;
+                            return { dispose: vi.fn() };
+                        }),
+                        onDidCreate: vi.fn((cb: () => void) => {
+                            fileWatcherHandlers.create = cb;
+                            return { dispose: vi.fn() };
+                        }),
+                        onDidDelete: vi.fn((cb: () => void) => {
+                            fileWatcherHandlers.delete = cb;
+                            return { dispose: vi.fn() };
+                        }),
+                        dispose: vi.fn(),
+                    }) as unknown as vscode.FileSystemWatcher
+            );
+
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue('{}');
+        });
+
+        it('should not reload when file changes during save debounce period', () => {
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.readFileSync).mockClear();
+
+            // Start a save operation
+            service.setSetting('maxIterations', 50);
+
+            // Simulate external file change during debounce
+            vi.advanceTimersByTime(100); // Still within SAVE_DEBOUNCE_MS (500ms)
+            fileWatcherHandlers.change?.();
+
+            // Advance past RELOAD_DEBOUNCE_MS
+            vi.advanceTimersByTime(400);
+
+            // Should not have reloaded
+            expect(fs.readFileSync).not.toHaveBeenCalled();
+        });
+
+        it('should not reload when file changes during write grace period', () => {
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.readFileSync).mockClear();
+
+            // Start a save operation and complete it
+            service.setSetting('maxIterations', 50);
+            vi.advanceTimersByTime(550); // Past SAVE_DEBOUNCE_MS, triggers write
+
+            vi.mocked(fs.readFileSync).mockClear();
+
+            // Simulate external file change during grace period
+            vi.advanceTimersByTime(100); // Within WRITE_GRACE_MS (500ms)
+            fileWatcherHandlers.change?.();
+
+            // Advance past RELOAD_DEBOUNCE_MS
+            vi.advanceTimersByTime(400);
+
+            // Should not have reloaded
+            expect(fs.readFileSync).not.toHaveBeenCalled();
+        });
+
+        it('should reload when file changes after grace period expires', () => {
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Complete a save operation
+            service.setSetting('maxIterations', 50);
+            vi.advanceTimersByTime(550); // Triggers write
+
+            vi.mocked(fs.readFileSync).mockClear();
+
+            // Wait for grace period to expire
+            vi.advanceTimersByTime(600); // Past WRITE_GRACE_MS (500ms)
+
+            // Simulate external file change
+            fileWatcherHandlers.change?.();
+
+            // Advance past RELOAD_DEBOUNCE_MS (300ms)
+            vi.advanceTimersByTime(350);
+
+            // Should have reloaded
+            expect(fs.readFileSync).toHaveBeenCalled();
+        });
+
+        it('should debounce rapid external file changes', () => {
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.readFileSync).mockClear();
+
+            // Trigger multiple rapid changes (no save in progress)
+            fileWatcherHandlers.change?.();
+            vi.advanceTimersByTime(100);
+            fileWatcherHandlers.change?.();
+            vi.advanceTimersByTime(100);
+            fileWatcherHandlers.change?.();
+
+            // Advance past RELOAD_DEBOUNCE_MS from last change
+            vi.advanceTimersByTime(350);
+
+            // Should have reloaded only once
+            expect(fs.readFileSync).toHaveBeenCalledTimes(1);
         });
     });
 });

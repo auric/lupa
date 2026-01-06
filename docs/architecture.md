@@ -568,7 +568,7 @@ When timeouts occur, tools return actionable error messages suggesting retry str
 
 ### Workspace Settings (`.vscode/lupa.json`)
 
-Only user-modified values are saved to the settings file. Defaults are applied at runtime from the schema, ensuring config files remain minimal and portable.
+Only non-default values are saved to the settings file. Calling `setSetting()` with a value equal to the schema default will not persist it—this ensures future default upgrades are picked up automatically. Defaults are applied at runtime from the schema, ensuring config files remain minimal and portable.
 
 ```json
 {
