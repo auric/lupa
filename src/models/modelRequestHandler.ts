@@ -207,7 +207,15 @@ export class ModelRequestHandler {
         let responseText = '';
         const toolCalls: ToolCall[] = [];
 
+        // Stream consumption with timeout protection
+        // If the stream stalls, we throw TimeoutError to prevent hanging
+        const streamStartTime = Date.now();
         for await (const chunk of response.stream) {
+            // Check for stream consumption timeout (uses same timeout as initial request)
+            if (Date.now() - streamStartTime > timeoutMs) {
+                throw new TimeoutError('LLM stream consumption', timeoutMs);
+            }
+
             if (chunk instanceof vscode.LanguageModelTextPart) {
                 responseText += chunk.value;
             } else if (chunk instanceof vscode.LanguageModelToolCallPart) {

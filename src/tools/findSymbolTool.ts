@@ -3,7 +3,6 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { SymbolRangeExpander } from './symbolRangeExpander';
-import { DefinitionFormatter } from './definitionFormatter';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
@@ -11,7 +10,7 @@ import { SymbolMatcher, type SymbolMatch } from '../utils/symbolMatcher';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
-import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError, TimeoutError } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -42,7 +41,6 @@ Supports hierarchical paths: "MyClass/method" finds method inside MyClass.
 Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
     private readonly rangeExpander = new SymbolRangeExpander();
-    private readonly formatter = new DefinitionFormatter();
 
     constructor(
         private readonly gitOperationsManager: GitOperationsManager,
@@ -441,12 +439,12 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 const symbolSearchTimeout = SYMBOL_SEARCH_TIMEOUT_MS;
 
                 for (const { filePath, symbols } of directoryResults) {
-                    // Time-based execution control
+                    // Time-based execution control - throw TimeoutError for user-facing message
                     if (Date.now() - startTime > symbolSearchTimeout) {
-                        Log.warn(
-                            `Symbol search in ${relativePath} stopped after ${symbolSearchTimeout}ms timeout`
+                        throw new TimeoutError(
+                            `symbol search in ${relativePath}`,
+                            symbolSearchTimeout
                         );
-                        break;
                     }
 
                     // Process symbols using enhanced matching with C++ support
@@ -519,9 +517,16 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             }
 
             const document = await vscode.workspace.openTextDocument(fileUri);
-            const documentSymbols = await vscode.commands.executeCommand<
-                vscode.DocumentSymbol[]
-            >('vscode.executeDocumentSymbolProvider', fileUri);
+            const documentSymbols = await withTimeout(
+                Promise.resolve(
+                    vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                        'vscode.executeDocumentSymbolProvider',
+                        fileUri
+                    )
+                ),
+                FILE_PROCESSING_TIMEOUT,
+                `Document symbols for ${path.basename(fileUri.fsPath)}`
+            );
 
             if (!documentSymbols || documentSymbols.length === 0) {
                 return [];
@@ -868,9 +873,16 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         targetRange: vscode.Range
     ): Promise<vscode.DocumentSymbol | undefined> {
         try {
-            const documentSymbols = await vscode.commands.executeCommand<
-                vscode.DocumentSymbol[]
-            >('vscode.executeDocumentSymbolProvider', document.uri);
+            const documentSymbols = await withTimeout(
+                Promise.resolve(
+                    vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                        'vscode.executeDocumentSymbolProvider',
+                        document.uri
+                    )
+                ),
+                FILE_PROCESSING_TIMEOUT,
+                `Document symbols for ${path.basename(document.uri.fsPath)}`
+            );
 
             if (!documentSymbols || documentSymbols.length === 0) {
                 return undefined;

@@ -9,6 +9,12 @@ import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 
+/** Timeout for LSP reference search operations (30 seconds) */
+const REFERENCE_TIMEOUT_MS = 30_000;
+
+/** Timeout for definition lookup in symbol position search (5 seconds) */
+const DEFINITION_LOOKUP_TIMEOUT_MS = 5_000;
+
 /**
  * Tool that finds all usages of a code symbol using VS Code's reference provider.
  * Uses vscode.executeReferenceProvider to locate all references to a symbol.
@@ -24,9 +30,6 @@ COMBINE with find_symbol: first understand the definition, then find who uses it
 Requires file_path where the symbol is defined as starting point.`;
 
     private readonly formatter = new UsageFormatter();
-
-    /** Timeout for LSP reference search operations (30 seconds) */
-    private static readonly REFERENCE_TIMEOUT_MS = 30_000;
 
     constructor(private readonly gitOperationsManager: GitOperationsManager) {
         super();
@@ -136,7 +139,7 @@ Requires file_path where the symbol is defined as starting point.`;
                             }
                         )
                     ),
-                    FindUsagesTool.REFERENCE_TIMEOUT_MS,
+                    REFERENCE_TIMEOUT_MS,
                     `Reference search for ${sanitizedSymbolName}`
                 );
 
@@ -260,12 +263,16 @@ Requires file_path where the symbol is defined as starting point.`;
 
                 // Verify this is actually a symbol definition by checking if definition provider returns this location
                 try {
-                    const definitions = await vscode.commands.executeCommand<
-                        vscode.Location[]
-                    >(
-                        'vscode.executeDefinitionProvider',
-                        document.uri,
-                        position
+                    const definitions = await withTimeout(
+                        Promise.resolve(
+                            vscode.commands.executeCommand<vscode.Location[]>(
+                                'vscode.executeDefinitionProvider',
+                                document.uri,
+                                position
+                            )
+                        ),
+                        DEFINITION_LOOKUP_TIMEOUT_MS,
+                        `Definition lookup for ${symbolName}`
                     );
 
                     // If we get back the same location, this is likely the definition
