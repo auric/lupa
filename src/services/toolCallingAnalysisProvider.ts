@@ -150,7 +150,7 @@ export class ToolCallingAnalysisProvider {
             // Create token validator for this analysis
             const model = await this.copilotModelManager.getCurrentModel();
             Log.info(
-                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
+                `[${traceId}:Main] Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
             );
             const tokenValidator = new TokenValidator(model);
 
@@ -183,7 +183,10 @@ export class ToolCallingAnalysisProvider {
                     }
                     return '';
                 } catch (error) {
-                    Log.error('Error calculating context status:', error);
+                    Log.error(
+                        `[${traceId}:Main] Error calculating context status:`,
+                        error
+                    );
                     return '';
                 }
             };
@@ -245,13 +248,15 @@ export class ToolCallingAnalysisProvider {
                 `Analysis complete (${toolCallCount} tool calls)`,
                 2
             );
-            Log.info('Analysis completed successfully');
+            Log.info(`[${traceId}:Main] Analysis completed successfully`);
         } catch (error) {
             analysisError =
                 error instanceof Error ? error.message : String(error);
-            const errorMessage = `Error during analysis: ${analysisError}`;
-            Log.error(errorMessage);
-            analysisText = errorMessage;
+            // Log with trace ID for debugging, but keep user-facing message clean
+            Log.error(
+                `[${traceId}:Main] Error during analysis: ${analysisError}`
+            );
+            analysisText = `Error during analysis: ${analysisError}`;
         } finally {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
@@ -334,7 +339,7 @@ export class ToolCallingAnalysisProvider {
 
             // If diff is too large, truncate it and disable tools
             Log.warn(
-                `Diff uses too much context (${totalUsedTokens}/${maxTokens} tokens, only ${availableForTools} remaining). Truncating and disabling tools.`
+                `[ToolCallingAnalysisProvider] Diff uses too much context (${totalUsedTokens}/${maxTokens} tokens, only ${availableForTools} remaining). Truncating and disabling tools.`
             );
 
             // Calculate how much of the diff we can keep to leave room for basic analysis
@@ -366,7 +371,10 @@ export class ToolCallingAnalysisProvider {
                     TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED,
             };
         } catch (error) {
-            Log.error('Error processing diff size:', error);
+            Log.error(
+                '[ToolCallingAnalysisProvider] Error processing diff size:',
+                error
+            );
             // On error, return original diff with tools available
             return {
                 processedDiff: diff,

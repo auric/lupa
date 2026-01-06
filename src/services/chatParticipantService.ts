@@ -248,6 +248,9 @@ export class ChatParticipantService implements vscode.Disposable {
             return this.handleCancellation(stream);
         }
 
+        // Generate trace ID for log correlation (outside try block for catch access)
+        const traceId = generateTraceId();
+
         try {
             // Create stream adapter first - needed for subagent tool streaming
             const gitRootUri = this.deps.gitOperations.getRepository()?.rootUri;
@@ -260,8 +263,6 @@ export class ChatParticipantService implements vscode.Disposable {
             const { subagentSessionManager, subagentExecutor } =
                 this.createSubagentContext(token, debouncedHandler);
 
-            // Generate trace ID for log correlation
-            const traceId = generateTraceId();
             Log.info(
                 `[${traceId}:Exploration] Starting exploration mode analysis`
             );
@@ -320,7 +321,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     }
                 } catch (error) {
                     Log.warn(
-                        '[ChatParticipantService]: History processing failed, continuing without',
+                        `[${traceId}:Exploration] History processing failed, continuing without`,
                         error
                     );
                 }
@@ -377,7 +378,7 @@ export class ChatParticipantService implements vscode.Disposable {
             const errorMessage =
                 error instanceof Error ? error.message : String(error);
             Log.error(
-                '[ChatParticipantService]: Exploration mode failed',
+                `[${traceId}:Exploration] Exploration mode failed`,
                 error
             );
 
