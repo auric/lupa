@@ -376,7 +376,7 @@ describe('WorkspaceSettingsService', () => {
         });
     });
 
-    describe('isWriting timer management', () => {
+    describe('reload suppression during save operations', () => {
         it('should not reload settings during write operation', () => {
             service = new WorkspaceSettingsService(mockContext);
 
@@ -385,12 +385,12 @@ describe('WorkspaceSettingsService', () => {
             vi.advanceTimersByTime(600); // Debounce + write
 
             // Simulate file watcher detecting our own write
-            // The isWriting flag should prevent reload
+            // The suppressReloadUntil timestamp should prevent reload
             vi.mocked(fs.readFileSync).mockReturnValue(
                 JSON.stringify({ maxIterations: 999 }) // Different value
             );
 
-            // Advance time but not past the isWriting grace period (500ms)
+            // Advance time but not past the grace period (500ms)
             vi.advanceTimersByTime(100);
 
             // Value should still be what we set, not reloaded
@@ -401,8 +401,8 @@ describe('WorkspaceSettingsService', () => {
             service = new WorkspaceSettingsService(mockContext);
 
             // Set a value - this schedules a debounced save (500ms)
+            // and sets suppressReloadUntil to now + 1000ms
             service.setSetting('maxIterations', 50);
-            // At this point, isSavePending should be true
 
             // Simulate external file change BEFORE our save executes
             // Mock what loadSettings would read if it were allowed to run

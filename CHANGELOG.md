@@ -49,7 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Clean error messages**: Error messages in conversation history no longer include internal trace ID prefixes (`[traceId:contextLabel:iN]`). Trace IDs remain in logs for debugging but are stripped from user-visible messages.
 
-- **Settings save/reload race condition**: Fixed a race condition where external file changes could overwrite in-memory settings pending save. The file watcher now checks both `isWriting` and `isSavePending` flags before reloading.
+- **Settings save/reload race condition**: Fixed a race condition where external file changes could overwrite in-memory settings pending save. Refactored to use a simple timestamp-based suppression instead of multiple boolean flags, making the logic easier to understand and maintain.
 
 ## [0.1.10] - 2026-01-05
 

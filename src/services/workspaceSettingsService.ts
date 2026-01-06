@@ -19,6 +19,15 @@ const getDefaultSettings = (): WorkspaceSettings =>
  */
 const WORKSPACE_ROOT_MARKER = '.';
 
+/** Time to debounce save operations (ms) */
+const SAVE_DEBOUNCE_MS = 500;
+
+/** Grace period after write to ignore file watcher events (ms) */
+const WRITE_GRACE_MS = 500;
+
+/** Time to debounce reload operations (ms) */
+const RELOAD_DEBOUNCE_MS = 300;
+
 /**
  * User-set settings (partial). Only contains values explicitly set by the user.
  * Defaults are NOT stored here - they're applied at runtime from the schema.
@@ -48,17 +57,16 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     /** File system watcher for detecting external settings changes */
     private fileWatcher: vscode.FileSystemWatcher | undefined;
 
-    /** Flag to ignore file change events triggered by our own writes */
-    private isWriting = false;
-
-    /** Timer for clearing isWriting flag - tracked to prevent premature clearing */
-    private isWritingTimeout: NodeJS.Timeout | null = null;
-
     /** Debounce timer for file change events */
     private reloadDebounceTimeout: NodeJS.Timeout | null = null;
 
-    /** Flag indicating a save is pending (scheduled but not yet executed) */
-    private isSavePending = false;
+    /**
+     * Timestamp until which file watcher reload events should be ignored.
+     * Set when saving to prevent reloading our own writes.
+     * Using a timestamp is simpler than multiple boolean flags (isWriting, isSavePending)
+     * and handles edge cases like slow writes automatically.
+     */
+    private suppressReloadUntil = 0;
 
     /**
      * Creates a new WorkspaceSettingsService
@@ -125,8 +133,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             );
 
             const handleFileChange = () => {
-                // Ignore events triggered by our own writes or pending saves
-                if (this.isWriting || this.isSavePending) {
+                // Ignore events while we're saving (debounce + write + grace period)
+                if (Date.now() < this.suppressReloadUntil) {
                     return;
                 }
 
@@ -137,13 +145,13 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
                 this.reloadDebounceTimeout = setTimeout(() => {
                     this.reloadDebounceTimeout = null;
-                    // Re-check flags to handle race where write/save started after event
-                    if (this.isWriting || this.isSavePending) {
+                    // Re-check in case save started after the event
+                    if (Date.now() < this.suppressReloadUntil) {
                         return;
                     }
                     Log.debug('Settings file changed externally, reloading...');
                     this.loadSettings();
-                }, 300);
+                }, RELOAD_DEBOUNCE_MS);
             };
 
             this.fileWatcher.onDidChange(handleFileChange);
@@ -293,13 +301,17 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             return;
         }
 
+        // Extend suppression in case write is slow
+        this.suppressReloadUntil = Math.max(
+            this.suppressReloadUntil,
+            Date.now() + WRITE_GRACE_MS
+        );
+
         try {
             // If there are no user-set values, delete the file if it exists
             if (Object.keys(this.userSettings).length === 0) {
                 if (fs.existsSync(this.settingsPath)) {
-                    this.withWriteSuppression(() =>
-                        fs.unlinkSync(this.settingsPath!)
-                    );
+                    fs.unlinkSync(this.settingsPath);
                     Log.debug(
                         `Deleted empty settings file: ${this.settingsPath}`
                     );
@@ -307,19 +319,17 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 return;
             }
 
-            // Make sure the directory exists (not a watched operation)
+            // Make sure the directory exists
             const dir = path.dirname(this.settingsPath);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
             }
 
             // Write only user-set values (not merged with defaults)
-            this.withWriteSuppression(() =>
-                fs.writeFileSync(
-                    this.settingsPath!,
-                    JSON.stringify(this.userSettings, null, 2),
-                    'utf-8'
-                )
+            fs.writeFileSync(
+                this.settingsPath,
+                JSON.stringify(this.userSettings, null, 2),
+                'utf-8'
             );
         } catch (error) {
             Log.error(
@@ -329,57 +339,23 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Schedule clearing the isWriting flag after a delay.
-     * Clears any existing timeout to prevent premature flag clearing.
-     */
-    private scheduleIsWritingClear(): void {
-        if (this.isWritingTimeout) {
-            clearTimeout(this.isWritingTimeout);
-        }
-        this.isWritingTimeout = setTimeout(() => {
-            this.isWriting = false;
-            this.isWritingTimeout = null;
-        }, 500);
-    }
-
-    /**
-     * Execute a file operation with write suppression.
-     * Centralizes isWriting flag management to ensure consistent behavior:
-     * - Sets isWriting before operation
-     * - Schedules delayed clear on success (for file watcher grace period)
-     * - Immediately clears on error
-     */
-    private withWriteSuppression<T>(fn: () => T): T {
-        this.isWriting = true;
-        try {
-            const result = fn();
-            this.scheduleIsWritingClear();
-            return result;
-        } catch (error) {
-            this.isWriting = false;
-            throw error;
-        }
-    }
-
-    /**
      * Save settings with debounce to avoid excessive disk writes.
-     * Sets isSavePending to prevent file watcher from reloading during the pending window.
+     * Sets suppressReloadUntil timestamp to prevent file watcher from reloading
+     * during the debounce period, write operation, and grace period after.
      */
     private debouncedSaveSettings(): void {
         if (this.saveDebounceTimeout) {
             clearTimeout(this.saveDebounceTimeout);
         }
 
-        this.isSavePending = true;
+        // Suppress reloads during: debounce wait + write + grace period
+        this.suppressReloadUntil =
+            Date.now() + SAVE_DEBOUNCE_MS + WRITE_GRACE_MS;
+
         this.saveDebounceTimeout = setTimeout(() => {
             this.saveSettings();
             this.saveDebounceTimeout = null;
-            // Note: isSavePending stays true until isWriting grace period ends
-            // This is handled by withWriteSuppression which sets isWriting
-            // Once the write completes, isWriting protects us during grace period
-            // We can clear isSavePending here since isWriting takes over
-            this.isSavePending = false;
-        }, 500); // 500ms debounce
+        }, SAVE_DEBOUNCE_MS);
     }
 
     /**
@@ -594,9 +570,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         }
         if (this.reloadDebounceTimeout) {
             clearTimeout(this.reloadDebounceTimeout);
-        }
-        if (this.isWritingTimeout) {
-            clearTimeout(this.isWritingTimeout);
         }
         this.fileWatcher?.dispose();
     }
