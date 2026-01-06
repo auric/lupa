@@ -114,8 +114,17 @@ You can configure alternative model providers in GitHub Copilot with your own AP
 ## Requirements
 
 - **VS Code** 1.107 or higher
-- **GitHub Copilot** extension installed and activated
+- **GitHub Copilot Chat** extension installed and activated (includes GitHub Copilot)
 - **Git repository** with changes to analyze
+
+## Commands
+
+| Command                                   | Description                                            |
+| ----------------------------------------- | ------------------------------------------------------ |
+| `Lupa: Analyze Pull Request`              | Open comprehensive PR analysis in webview              |
+| `Lupa: Select Language Model`             | Choose which language model to use                     |
+| `Lupa: Select Git Repository`             | Choose which repository to analyze (multi-root)        |
+| `Lupa: Reset Analysis Limits to Defaults` | Reset maxIterations and maxSubagents to default values |
 
 ## Quick Start
 

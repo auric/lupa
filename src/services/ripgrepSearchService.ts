@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { CodeFileDetector } from '../utils/codeFileDetector';
 import { Log } from './loggingService';
+import { TimeoutError } from '../utils/asyncUtils';
 
 /** Timeout for ripgrep search operations (30 seconds) */
 const RIPGREP_TIMEOUT_MS = 30_000;
@@ -187,11 +188,7 @@ export class RipgrepSearchService {
                 Log.warn(
                     `[RipgrepSearchService] Search timed out after ${RIPGREP_TIMEOUT_MS}ms, process killed`
                 );
-                reject(
-                    new Error(
-                        `Pattern search timed out after ${RIPGREP_TIMEOUT_MS / 1000}s`
-                    )
-                );
+                reject(new TimeoutError('ripgrep search', RIPGREP_TIMEOUT_MS));
             }, RIPGREP_TIMEOUT_MS);
 
             let buffer = '';

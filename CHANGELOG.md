@@ -69,6 +69,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **isWriting flag timing**: Flag is now set immediately before actual I/O operations (write/unlink) rather than at method start, for accurate write state tracking.
 
+- **File watcher debounce race condition**: Fixed race where a write could start after file change event but before debounced reload executes. The debounced callback now re-checks `isWriting` before reloading to prevent overwriting in-flight changes.
+
+- **Ripgrep TimeoutError consistency**: Ripgrep timeout now throws `TimeoutError` instead of generic `Error`, matching the timeout handling pattern used elsewhere in the codebase.
+
+- **Settings write suppression refactor**: Extracted `withWriteSuppression()` helper to centralize isWriting flag management, eliminating redundant try-catch patterns and ensuring consistent error handling.
+
 ### Tests
 
 - **asyncUtils.test.ts**: New test file for `withTimeout` utility covering timer cleanup, timeout behavior, and error propagation.

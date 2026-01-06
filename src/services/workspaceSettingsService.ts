@@ -133,9 +133,13 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 }
 
                 this.reloadDebounceTimeout = setTimeout(() => {
+                    this.reloadDebounceTimeout = null;
+                    // Re-check isWriting to handle race where write started after event
+                    if (this.isWriting) {
+                        return;
+                    }
                     Log.debug('Settings file changed externally, reloading...');
                     this.loadSettings();
-                    this.reloadDebounceTimeout = null;
                 }, 300);
             };
 

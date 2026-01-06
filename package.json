@@ -28,7 +28,7 @@
     "main": "./dist/extension.js",
     "extensionDependencies": [
         "vscode.git",
-        "GitHub.copilot-chat"
+        "github.copilot-chat"
     ],
     "contributes": {
         "commands": [
