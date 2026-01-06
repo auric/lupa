@@ -178,11 +178,19 @@ export class RipgrepSearchService {
             // Set up timeout to kill process if it takes too long
             const timeoutId = setTimeout(() => {
                 timedOut = true;
-                rg.kill('SIGTERM');
+                try {
+                    rg.kill('SIGTERM');
+                } catch {
+                    // Process may already be dead
+                }
                 // Give it a moment to terminate gracefully, then force kill
                 forceKillTimeoutId = setTimeout(() => {
                     if (!rg.killed) {
-                        rg.kill('SIGKILL');
+                        try {
+                            rg.kill('SIGKILL');
+                        } catch {
+                            // Process may already be dead
+                        }
                     }
                 }, 1000);
                 Log.warn(

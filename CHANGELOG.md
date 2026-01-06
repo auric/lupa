@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Settings save/reload race condition**: Fixed a race condition where external file changes could overwrite in-memory settings pending save. Refactored to use a simple timestamp-based suppression instead of multiple boolean flags, making the logic easier to understand and maintain.
 
+- **Non-object JSON guard in settings loader**: `WorkspaceSettingsService.loadSettings()` now handles malformed JSON gracefully (null, arrays, primitives). Previously, non-object JSON would cause the settings loader to fail silently or produce unexpected behavior.
+
+- **Ripgrep process termination**: Wrapped ripgrep `kill()` calls in try/catch for robustness. If a search process times out and the kill fails (e.g., process already exited), the error is logged but doesn't propagate.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added

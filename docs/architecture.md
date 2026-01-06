@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.11 | **Generated**: January 5, 2026 | **Type**: VS Code Extension
+> **Version**: 0.1.11 | **Generated**: January 6, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
