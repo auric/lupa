@@ -219,14 +219,30 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         try {
             if (fs.existsSync(this.settingsPath)) {
                 const data = fs.readFileSync(this.settingsPath, 'utf-8');
-                const parsed = JSON.parse(data) as UserSettings;
+                const parsed = JSON.parse(data);
+
+                // Guard against non-object JSON (null, [], 123, "string", etc.)
+                if (
+                    typeof parsed !== 'object' ||
+                    parsed === null ||
+                    Array.isArray(parsed)
+                ) {
+                    Log.warn(
+                        `Settings file ${this.settingsPath} contains non-object JSON; using defaults.`
+                    );
+                    this.userSettings = {};
+                    this.settings = getDefaultSettings();
+                    return;
+                }
+
+                const typedParsed = parsed as UserSettings;
 
                 // Validate the partial settings by merging with defaults
-                const result = WorkspaceSettingsSchema.safeParse(parsed);
+                const result = WorkspaceSettingsSchema.safeParse(typedParsed);
 
                 if (result.success) {
                     // Store only the user-provided values (not the resolved ones)
-                    this.userSettings = parsed;
+                    this.userSettings = typedParsed;
                     // Apply defaults to get resolved settings
                     this.settings = result.data;
                 } else {
@@ -234,7 +250,7 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                     Log.warn(
                         `Some settings in ${this.settingsPath} are invalid. Keeping valid settings.`
                     );
-                    this.userSettings = this.recoverValidSettings(parsed);
+                    this.userSettings = this.recoverValidSettings(typedParsed);
                     // Re-validate with salvaged settings to get proper defaults
                     const salvageResult = WorkspaceSettingsSchema.safeParse(
                         this.userSettings

@@ -374,6 +374,43 @@ describe('WorkspaceSettingsService', () => {
 
             expect(service.getMaxIterations()).toBe(100);
         });
+
+        it('should handle non-object JSON (null) gracefully', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('null');
+
+            // Should not throw, should use defaults
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxIterations()).toBe(100);
+            expect(service.getMaxSubagentsPerSession()).toBe(10);
+        });
+
+        it('should handle non-object JSON (array) gracefully', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('[1, 2, 3]');
+
+            // Should not throw, should use defaults
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxIterations()).toBe(100);
+        });
+
+        it('should handle non-object JSON (number) gracefully', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('123');
+
+            // Should not throw, should use defaults
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxIterations()).toBe(100);
+        });
+
+        it('should handle non-object JSON (string) gracefully', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('"just a string"');
+
+            // Should not throw, should use defaults
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxIterations()).toBe(100);
+        });
     });
 
     describe('reload suppression during save operations', () => {
@@ -428,6 +465,107 @@ describe('WorkspaceSettingsService', () => {
                 expect.stringContaining('"maxIterations": 50'),
                 'utf-8'
             );
+        });
+    });
+
+    describe('clearWorkspaceSettings', () => {
+        it('should preserve preferredModelIdentifier and selectedRepositoryPath', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    preferredModelIdentifier: 'gpt-4o',
+                    selectedRepositoryPath: '/test/repo',
+                    maxIterations: 5, // Non-default value (default is 100)
+                    logLevel: 'debug', // Non-default value (default is 'info')
+                })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            service.clearWorkspaceSettings();
+
+            // Preserved settings should remain
+            expect(service.getSetting('preferredModelIdentifier', '')).toBe(
+                'gpt-4o'
+            );
+            expect(service.getSetting('selectedRepositoryPath', '')).toBe(
+                '/test/repo'
+            );
+            // Other settings should be reset to defaults
+            expect(service.getMaxIterations()).toBe(100); // default
+            expect(service.getSetting('logLevel', 'info')).toBe('info'); // default
+        });
+
+        it('should delete settings file when only defaults remain', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    maxIterations: 50,
+                    logLevel: 'debug',
+                })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            service.clearWorkspaceSettings();
+
+            expect(fs.unlinkSync).toHaveBeenCalledWith(expect.any(String));
+        });
+
+        it('should not delete settings file when preserved settings exist', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    preferredModelIdentifier: 'gpt-4o',
+                    maxIterations: 100,
+                })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.unlinkSync).mockClear();
+
+            service.clearWorkspaceSettings();
+
+            expect(fs.unlinkSync).not.toHaveBeenCalled();
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.stringContaining('"preferredModelIdentifier": "gpt-4o"'),
+                'utf-8'
+            );
+        });
+    });
+
+    describe('resetAllSettings', () => {
+        it('should clear all settings including preserved ones', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    preferredModelIdentifier: 'gpt-4o',
+                    selectedRepositoryPath: '/test/repo',
+                    maxIterations: 5, // Non-default value (default is 100)
+                })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            service.resetAllSettings();
+
+            // All settings should be reset to defaults (fallback to empty string)
+            expect(service.getSetting('preferredModelIdentifier', '')).toBe('');
+            expect(service.getSetting('selectedRepositoryPath', '')).toBe('');
+            expect(service.getMaxIterations()).toBe(100); // default is 100
+        });
+
+        it('should delete settings file when all settings are cleared', () => {
+            vi.mocked(fs.existsSync).mockReturnValue(true);
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    preferredModelIdentifier: 'gpt-4o',
+                    maxIterations: 100,
+                })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.unlinkSync).mockClear();
+
+            service.resetAllSettings();
+
+            expect(fs.unlinkSync).toHaveBeenCalledWith(expect.any(String));
         });
     });
 });
