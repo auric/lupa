@@ -101,7 +101,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
 
         const subagentId = sessionManager.recordSpawn();
         const remaining = sessionManager.getRemainingBudget();
-        const logPrefix = context?.traceId ? `[${context.traceId}:Main] ` : '';
+        const iteration = context?.currentIteration ?? 1;
+        const logPrefix = context?.traceId
+            ? `[${context.traceId}:Main:i${iteration}] `
+            : '';
         Log.info(
             `${logPrefix}Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );
@@ -138,11 +141,17 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 return toolError('Subagent was cancelled');
             }
 
+            Log.info(
+                `${logPrefix}Subagent #${subagentId} completed (${result.toolCallsMade} tool calls)`
+            );
             return toolSuccess(this.formatResult(result, subagentId), {
                 nestedToolCalls: result.toolCalls,
             });
         } catch (error) {
             clearTimeout(timeoutHandle);
+            Log.warn(
+                `${logPrefix}Subagent #${subagentId} failed: ${error instanceof Error ? error.message : String(error)}`
+            );
 
             if (cancelledByTimeout) {
                 return toolError(SubagentErrors.timeout(timeoutMs));

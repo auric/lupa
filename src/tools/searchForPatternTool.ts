@@ -4,6 +4,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { isTimeoutError } from '../utils/asyncUtils';
 
 /**
  * High-performance tool for searching regex patterns in the codebase using ripgrep.
@@ -152,6 +153,11 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             const formattedResult = this.ripgrepService.formatResults(results);
             return toolSuccess(formattedResult);
         } catch (error) {
+            if (isTimeoutError(error)) {
+                return toolError(
+                    'Pattern search timed out. Try narrowing the scope with include_files/exclude_files globs or a more specific search_path.'
+                );
+            }
             return toolError(
                 `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
             );
