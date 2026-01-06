@@ -112,9 +112,6 @@ export class ConversationRunner {
             const iterationPrefix = config.label
                 ? `[${config.label}:i${iteration}]`
                 : `[Conversation:i${iteration}]`;
-            Log.info(
-                `${iterationPrefix} Iteration ${iteration}/${config.maxIterations}`
-            );
 
             if (token.isCancellationRequested) {
                 Log.info(`${iterationPrefix} Cancelled before starting`);
