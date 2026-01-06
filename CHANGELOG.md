@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Partial settings recovery**: Invalid individual settings no longer cause all settings to be dropped. Valid settings are preserved with warnings logged for invalid keys.
 
+- **Request timeout default increased**: Changed from 300 to 600 seconds (10 minutes) to accommodate long-running analyses on large PRs.
+
 #### ExecutionContext Contract
 
 - **Stricter ExecutionContext**: `contextLabel` and `currentIteration` are now required fields. `currentIteration` starts at 1 (was 0).

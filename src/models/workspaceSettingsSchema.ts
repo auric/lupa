@@ -3,7 +3,7 @@ import { LOG_LEVELS } from './loggingTypes';
 
 export const ANALYSIS_LIMITS = {
     maxIterations: { default: 100, min: 3, max: 200 },
-    requestTimeoutSeconds: { default: 300, min: 60, max: 600 },
+    requestTimeoutSeconds: { default: 600, min: 60, max: 1200 },
 } as const;
 
 export const SUBAGENT_LIMITS = {

@@ -143,7 +143,7 @@ Settings are stored in `.vscode/lupa.json`. Only explicitly set values are saved
 {
     "preferredModelIdentifier": "copilot/gpt-4.1",
     "maxIterations": 100,
-    "requestTimeoutSeconds": 300,
+    "requestTimeoutSeconds": 600,
     "maxSubagentsPerSession": 10,
     "logLevel": "info"
 }
@@ -153,7 +153,7 @@ Settings are stored in `.vscode/lupa.json`. Only explicitly set values are saved
 | -------------------------- | ------- | ----------------------------------------------------- |
 | `preferredModelIdentifier` | -       | Model in `vendor/id` format (e.g., `copilot/gpt-4.1`) |
 | `maxIterations`            | 100     | Maximum conversation turns per analysis               |
-| `requestTimeoutSeconds`    | 300     | Timeout for LLM requests                              |
+| `requestTimeoutSeconds`    | 600     | Timeout for LLM requests                              |
 | `maxSubagentsPerSession`   | 10      | Maximum subagent investigations per analysis          |
 | `logLevel`                 | `info`  | Logging verbosity: `debug`, `info`, `warn`, `error`   |
 

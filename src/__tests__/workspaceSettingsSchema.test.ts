@@ -114,7 +114,7 @@ describe('WorkspaceSettingsSchema', () => {
 
         it('should reject requestTimeoutSeconds above maximum', () => {
             const result = WorkspaceSettingsSchema.safeParse({
-                requestTimeoutSeconds: 700,
+                requestTimeoutSeconds: 1400,
             });
             expect(result.success).toBe(false);
         });

@@ -345,7 +345,7 @@ describe('WorkspaceSettingsService', () => {
 
             expect(service.getMaxIterations()).toBe(75);
             expect(service.getMaxSubagentsPerSession()).toBe(5);
-            expect(service.getRequestTimeoutSeconds()).toBe(300); // Default
+            expect(service.getRequestTimeoutSeconds()).toBe(600); // Default
             expect(service.getSelectedRepositoryPath()).toBe('/valid/path');
         });
 
@@ -363,7 +363,7 @@ describe('WorkspaceSettingsService', () => {
             // All should be defaults
             expect(service.getMaxIterations()).toBe(100);
             expect(service.getMaxSubagentsPerSession()).toBe(10);
-            expect(service.getRequestTimeoutSeconds()).toBe(300);
+            expect(service.getRequestTimeoutSeconds()).toBe(600);
         });
 
         it('should handle malformed JSON gracefully', () => {
