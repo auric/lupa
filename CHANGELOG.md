@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Chat participant tracing**: Chat participant mode now includes trace IDs for log correlation, matching the command palette behavior.
 
+- **SubagentExecutor trace ID correlation**: Fixed trace ID generation order so all logs from subagent execution use consistent trace ID correlation. Previously, early logs would use just `[Sub#N]` without a trace ID if none was passed in.
+
+- **Cross-module `isTimeoutError()` detection**: Made `isTimeoutError()` type guard more robust by adding fallback check for `isTimeout` property. This handles cross-module boundary cases where `instanceof` may fail due to different module instances.
+
+- **FindSymbolTool timeout message**: When workspace symbol search times out, the tool now returns a specific timeout error message instead of the generic "Symbol 'X' not found". This helps the LLM understand the search failed due to timeout rather than the symbol not existing.
+
 - **Clean error messages**: Error messages in conversation history no longer include internal trace ID prefixes (`[traceId:contextLabel:iN]`). Trace IDs remain in logs for debugging but are stripped from user-visible messages.
 
 - **Settings save/reload race condition**: Fixed a race condition where external file changes could overwrite in-memory settings pending save. Refactored to use a simple timestamp-based suppression instead of multiple boolean flags, making the logic easier to understand and maintain.

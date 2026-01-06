@@ -11,7 +11,7 @@ import { SymbolMatcher, type SymbolMatch } from '../utils/symbolMatcher';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -162,6 +162,11 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             return toolSuccess(formattedResults);
         } catch (error) {
+            if (isTimeoutError(error)) {
+                return toolError(
+                    'Symbol search timed out. Try a narrower scope with relative_path or use include_kinds/exclude_kinds filters.'
+                );
+            }
             return toolError(
                 error instanceof Error ? error.message : String(error)
             );
@@ -277,6 +282,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         'Workspace symbol search'
                     )) || [];
             } catch (error) {
+                // Propagate timeout errors so caller can provide specific message
+                if (isTimeoutError(error)) {
+                    throw error;
+                }
                 Log.warn('Workspace symbol search failed:', error);
                 return [];
             }

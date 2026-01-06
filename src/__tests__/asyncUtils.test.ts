@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { withTimeout, TimeoutError, isTimeoutError } from '../utils/asyncUtils';
+import { Log } from '../services/loggingService';
 
 vi.mock('../services/loggingService', () => ({
     Log: {
@@ -40,12 +41,15 @@ describe('asyncUtils', () => {
                 'slow operation'
             );
 
+            // Start awaiting rejection before advancing time to avoid unhandled rejection
+            const rejectPromise = expect(resultPromise).rejects.toThrow(
+                'slow operation timed out after 100ms'
+            );
+
             // Advance past the timeout
             await vi.advanceTimersByTimeAsync(150);
 
-            await expect(resultPromise).rejects.toThrow(
-                'slow operation timed out after 100ms'
-            );
+            await rejectPromise;
         });
 
         it('should clear timeout timer when promise resolves before timeout', async () => {
@@ -91,9 +95,14 @@ describe('asyncUtils', () => {
                 'zero timeout operation'
             );
 
+            // Start awaiting rejection before advancing time
+            const rejectPromise = expect(resultPromise).rejects.toThrow(
+                'timed out after 0ms'
+            );
+
             await vi.advanceTimersByTimeAsync(1);
 
-            await expect(resultPromise).rejects.toThrow('timed out after 0ms');
+            await rejectPromise;
         });
 
         it('should work with different return types', async () => {
@@ -121,20 +130,107 @@ describe('asyncUtils', () => {
                 'slow operation'
             );
 
-            await vi.advanceTimersByTimeAsync(150);
-
-            try {
-                await resultPromise;
-                expect.fail('Should have thrown');
-            } catch (error) {
-                expect(error).toBeInstanceOf(TimeoutError);
-                expect(isTimeoutError(error)).toBe(true);
-                if (error instanceof TimeoutError) {
-                    expect(error.operation).toBe('slow operation');
-                    expect(error.timeoutMs).toBe(100);
-                    expect(error.isTimeout).toBe(true);
+            // Start awaiting before advancing time to avoid unhandled rejection
+            const awaitPromise = (async () => {
+                try {
+                    await resultPromise;
+                    expect.fail('Should have thrown');
+                } catch (error) {
+                    expect(error).toBeInstanceOf(TimeoutError);
+                    expect(isTimeoutError(error)).toBe(true);
+                    if (error instanceof TimeoutError) {
+                        expect(error.operation).toBe('slow operation');
+                        expect(error.timeoutMs).toBe(100);
+                        expect(error.isTimeout).toBe(true);
+                    }
                 }
-            }
+            })();
+
+            await vi.advanceTimersByTimeAsync(150);
+            await awaitPromise;
+        });
+
+        it('should log abandoned operation when promise resolves after timeout', async () => {
+            const slowPromise = new Promise<string>((resolve) => {
+                setTimeout(() => resolve('completed after timeout'), 500);
+            });
+
+            const resultPromise = withTimeout(
+                slowPromise,
+                100,
+                'abandoned operation'
+            );
+
+            // Start awaiting before advancing time to avoid unhandled rejection
+            const awaitPromise = (async () => {
+                try {
+                    await resultPromise;
+                    expect.fail('Should have thrown TimeoutError');
+                } catch (error) {
+                    expect(error).toBeInstanceOf(TimeoutError);
+                }
+            })();
+
+            // Advance past the timeout (100ms)
+            await vi.advanceTimersByTimeAsync(150);
+            await awaitPromise;
+
+            // Clear mock before checking for abandoned log
+            vi.mocked(Log.debug).mockClear();
+
+            // Now advance time so the underlying promise resolves (at 500ms)
+            await vi.advanceTimersByTimeAsync(400);
+
+            // Verify the abandoned operation was logged
+            expect(Log.debug).toHaveBeenCalledWith(
+                expect.stringContaining('[Abandoned]')
+            );
+            expect(Log.debug).toHaveBeenCalledWith(
+                expect.stringContaining('abandoned operation')
+            );
+        });
+
+        it('should log abandoned operation when promise rejects after timeout', async () => {
+            // Create a promise that rejects after 500ms, add no-op catch to prevent
+            // unhandled rejection warnings (asyncUtils handles it internally)
+            const slowPromise = new Promise<string>((_, reject) => {
+                setTimeout(() => reject(new Error('late error')), 500);
+            });
+            slowPromise.catch(() => {});
+
+            const resultPromise = withTimeout(
+                slowPromise,
+                100,
+                'abandoned failing operation'
+            );
+
+            // Start awaiting before advancing time to avoid unhandled rejection
+            const awaitPromise = (async () => {
+                try {
+                    await resultPromise;
+                    expect.fail('Should have thrown TimeoutError');
+                } catch (error) {
+                    expect(error).toBeInstanceOf(TimeoutError);
+                }
+            })();
+
+            // Advance past the timeout
+            await vi.advanceTimersByTimeAsync(150);
+            await awaitPromise;
+
+            // Clear mock before checking for abandoned log
+            vi.mocked(Log.debug).mockClear();
+
+            // Advance so underlying promise rejects
+            await vi.advanceTimersByTimeAsync(400);
+
+            // Verify the abandoned operation failure was logged
+            expect(Log.debug).toHaveBeenCalledWith(
+                expect.stringContaining('[Abandoned]')
+            );
+            expect(Log.debug).toHaveBeenCalledWith(
+                expect.stringContaining('failed after')
+            );
         });
     });
 
@@ -159,6 +255,25 @@ describe('asyncUtils', () => {
         it('should return false for Error with "timed out" in message but not TimeoutError', () => {
             const error = new Error('Operation timed out');
             expect(isTimeoutError(error)).toBe(false);
+        });
+
+        it('should return true for plain object with isTimeout property', () => {
+            // Handles cross-module boundary cases where instanceof may fail
+            const errorLikeObject = {
+                isTimeout: true,
+                message: 'Simulated timeout',
+                timeoutMs: 5000,
+                operation: 'cross-module operation',
+            };
+            expect(isTimeoutError(errorLikeObject)).toBe(true);
+        });
+
+        it('should return false for object with isTimeout set to false', () => {
+            const errorLikeObject = {
+                isTimeout: false,
+                message: 'Not a timeout',
+            };
+            expect(isTimeoutError(errorLikeObject)).toBe(false);
         });
     });
 });

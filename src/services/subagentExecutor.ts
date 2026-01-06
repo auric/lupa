@@ -79,15 +79,16 @@ export class SubagentExecutor {
         const startTime = Date.now();
         let toolCallsMade = 0;
 
+        // Generate trace ID first so all logs use consistent correlation
+        const effectiveTraceId = traceId ?? generateTraceId();
+
         // Create short task label for logging and progress (first 30 chars)
         const taskLabel =
             task.task.length > 30
                 ? task.task.substring(0, 30).replace(/\s+/g, ' ').trim() + '...'
                 : task.task.replace(/\s+/g, ' ').trim();
         // Label WITHOUT brackets - ConversationRunner adds brackets
-        const contextLabel = traceId
-            ? `${traceId}:Sub#${subagentId}`
-            : `Sub#${subagentId}`;
+        const contextLabel = `${effectiveTraceId}:Sub#${subagentId}`;
         const logLabel = `[${contextLabel}]`;
 
         try {
@@ -100,8 +101,6 @@ export class SubagentExecutor {
 
             // ExecutionContext with traceId for log correlation
             // Note: subagents don't get planManager or subagentExecutor (they can't spawn subagents)
-            // Generate a new traceId if not provided (for backwards compatibility)
-            const effectiveTraceId = traceId ?? generateTraceId();
             const executionContext = {
                 traceId: effectiveTraceId,
                 contextLabel: `Sub#${subagentId}`,

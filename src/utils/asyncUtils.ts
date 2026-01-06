@@ -23,9 +23,20 @@ export class TimeoutError extends Error {
 
 /**
  * Type guard to check if an error is a TimeoutError.
+ * Handles both instanceof checks and cross-module boundary cases where
+ * instanceof may fail due to different module instances.
  */
 export function isTimeoutError(error: unknown): error is TimeoutError {
-    return error instanceof TimeoutError;
+    if (error instanceof TimeoutError) {
+        return true;
+    }
+    // Fallback for cross-module boundaries where instanceof may fail
+    return (
+        typeof error === 'object' &&
+        error !== null &&
+        'isTimeout' in error &&
+        (error as { isTimeout: unknown }).isTimeout === true
+    );
 }
 
 /**
