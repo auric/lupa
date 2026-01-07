@@ -490,7 +490,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
                 return allMatches;
             }
-        } catch {
+        } catch (error) {
+            if (isTimeoutError(error)) {
+                throw error;
+            }
             return [];
         }
 

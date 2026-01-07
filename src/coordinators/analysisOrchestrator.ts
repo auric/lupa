@@ -82,7 +82,11 @@ export class AnalysisOrchestrator implements vscode.Disposable {
             // Run the analysis with a progress notification
             await this.runAnalysisWithProgress(diffText, refName);
         } catch (error) {
-            if (error instanceof Error && error.message.includes('cancelled')) {
+            const isCancellation =
+                error instanceof vscode.CancellationError ||
+                (error instanceof Error && error.name === 'CancellationError');
+
+            if (isCancellation) {
                 this.services.statusBar.showTemporaryMessage(
                     'Analysis cancelled',
                     3000,

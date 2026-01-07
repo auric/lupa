@@ -75,6 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ripgrep process termination**: Wrapped ripgrep `kill()` calls in try/catch for robustness. If a search process times out and the kill fails (e.g., process already exited), the error is logged but doesn't propagate.
 
+- **TimeoutError propagation in symbol search**: Fixed `findSymbolsInPath` catch block that was swallowing `TimeoutError` and returning empty results. Timeouts now propagate correctly so the LLM receives actionable timeout messages.
+
+- **CancellationError detection in analysisOrchestrator**: Replaced fragile string-based error detection (`error.message.includes('cancelled')`) with proper `instanceof vscode.CancellationError` check plus fallback on error name property.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added
