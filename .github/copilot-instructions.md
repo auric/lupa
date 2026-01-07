@@ -52,7 +52,7 @@ npm run package        # Production build
 
 When the user asks you to use a specific skill, you **must** use it. Skills are `SKILL.md` files located in:
 
-- `.claude/skills/` folder
-- `.github/skills/` folder
+- `.claude/skills/` subfolders
+- `.github/skills/` subfolders
 
 Read the skill file first, then follow its instructions for the task at hand.
