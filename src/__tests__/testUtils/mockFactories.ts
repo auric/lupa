@@ -50,9 +50,14 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
 
 /**
  * Creates a mock fdir instance for file discovery tests.
- * Returns an object that mimics fdir's fluent API.
+ * Returns an object that mimics fdir's fluent API with crawl() returning a separate result object.
  */
 export function createMockFdirInstance(syncReturnValue: string[] = []) {
+    // The crawl result has withPromise/sync methods
+    const crawlResult = {
+        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
+        sync: vi.fn().mockReturnValue(syncReturnValue),
+    };
     const instance = {
         withGlobFunction: vi.fn().mockReturnThis(),
         glob: vi.fn().mockReturnThis(),
@@ -61,11 +66,12 @@ export function createMockFdirInstance(syncReturnValue: string[] = []) {
         withFullPaths: vi.fn().mockReturnThis(),
         exclude: vi.fn().mockReturnThis(),
         filter: vi.fn().mockReturnThis(),
-        crawl: vi.fn().mockReturnThis(),
-        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
-        sync: vi.fn().mockReturnValue(syncReturnValue),
+        crawl: vi.fn().mockReturnValue(crawlResult),
+        // Expose for test assertions
+        withPromise: crawlResult.withPromise,
+        sync: crawlResult.sync,
     };
-    // Make chainable methods return the instance
+    // Make chainable methods return the instance (except crawl which returns crawlResult)
     instance.withGlobFunction.mockReturnValue(instance);
     instance.glob.mockReturnValue(instance);
     instance.globWithOptions.mockReturnValue(instance);
@@ -73,7 +79,6 @@ export function createMockFdirInstance(syncReturnValue: string[] = []) {
     instance.withFullPaths.mockReturnValue(instance);
     instance.exclude.mockReturnValue(instance);
     instance.filter.mockReturnValue(instance);
-    instance.crawl.mockReturnValue(instance);
     return instance as any;
 }
 

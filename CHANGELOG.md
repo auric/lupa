@@ -9,29 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-#### Timeout & Resource Handling
+- **Unresponsive symbol searches resolved**: Previously, a single slow language server could block symbol extraction for 9+ minutes. Now each file has a 5-second timeout, and the search returns partial results gracefully instead of hanging.
 
-- **Timer resource leak fixed**: The `withTimeout` utility now properly cleans up timers when promises complete, preventing leaked timer handles that previously accumulated during symbol searches.
+- **Cancellation now works instantly**: Stopping an analysis mid-operation now cancels file discovery and symbol extraction immediately. Previously, these operations would continue running in the background.
 
-- **Per-file timeout for LSP calls**: Each `executeDocumentSymbolProvider` call now has a 5-second timeout. Previously, a single slow language server (like clangd processing a large C++ file) could block the entire symbol search for 9+ minutes.
+- **File discovery no longer blocks VS Code**: Large directory scans now run asynchronously, keeping VS Code responsive during searches.
 
-- **Directory symbol extraction timeout**: Added configurable timeout for directory-wide symbol extraction. The extraction now stops gracefully after the timeout and returns partial results, instead of hanging indefinitely.
-
-- **Consistent TimeoutError class**: Introduced `TimeoutError` class for type-safe timeout detection. Tools now use `isTimeoutError()` instead of brittle string matching on error messages.
-
-- **FileDiscoverer timer leak fixed**: File discovery now uses the improved `withTimeout` utility that properly cleans up timers.
-
-- **SymbolRangeExpander timeout**: Added 5-second timeout to document symbol provider calls in the symbol range expander.
-
-- **GetSymbolsOverviewTool timeout**: Decreased to 30 seconds.
+- **Resource leaks fixed**: Timer handles that accumulated during long symbol searches are now properly cleaned up.
 
 ### Added
 
-- **`withCancellableTimeout` utility**: New async utility that combines timeout protection with CancellationToken support. Use this when operations should be abortable by user action (e.g., stopping analysis).
+- **Better timeout error handling**: Tools now use a consistent `TimeoutError` class for all timeout scenarios, enabling more reliable detection and user-friendly messages.
 
-- **Timeout abandonment logging**: When a timeout occurs, the system now logs that the underlying operation may continue running. This helps diagnose slow language servers.
-
-- **`isTimeoutError` and `isCancellationError` helpers**: Type guard functions for cleaner error handling.
+- **Timeout logging**: When operations time out, the system logs details to help diagnose slow language servers.
 
 ## [0.1.10] - 2026-01-05
 

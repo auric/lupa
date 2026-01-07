@@ -155,9 +155,9 @@ describe('FindFileTool Integration Tests', () => {
 
         it('should handle tool execution errors gracefully', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
-            mockFdirInstance.sync.mockImplementation(function () {
-                throw new Error('Permission denied');
-            });
+            mockFdirInstance.withPromise.mockRejectedValue(
+                new Error('Permission denied')
+            );
             // Vitest 4: use mockImplementation with function syntax for constructor mocks
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;

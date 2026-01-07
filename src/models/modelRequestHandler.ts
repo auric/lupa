@@ -5,6 +5,7 @@ import type {
     ToolCall,
     ToolCallMessage,
 } from '../types/modelTypes';
+import { TimeoutError } from '../types/errorTypes';
 
 /**
  * Static utility class for handling language model requests.
@@ -117,12 +118,7 @@ export class ModelRequestHandler {
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
-                reject(
-                    new Error(
-                        `LLM request timed out after ${timeoutMs / 1000} seconds. ` +
-                            `The model may be overloaded. Please try again.`
-                    )
-                );
+                reject(TimeoutError.create('LLM request', timeoutMs));
             }, timeoutMs);
         });
 

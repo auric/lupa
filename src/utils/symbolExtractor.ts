@@ -70,6 +70,16 @@ export class SymbolExtractor {
                 Log.debug(
                     `Symbol extraction timed out for ${fileUri.fsPath} - language server may be slow`
                 );
+            } else if (error instanceof vscode.CancellationError) {
+                // Cancellation is expected behavior, no need to log at warn level
+                Log.debug(`Symbol extraction cancelled for ${fileUri.fsPath}`);
+            } else {
+                // Log unexpected errors at warn level for debugging LSP issues
+                const message =
+                    error instanceof Error ? error.message : String(error);
+                Log.warn(
+                    `Symbol extraction failed for ${fileUri.fsPath}: ${message}`
+                );
             }
             // Return empty array if no symbols, timeout, or provider not available
             return [];
@@ -117,12 +127,14 @@ export class SymbolExtractor {
             console.log(`[SymbolExtractor] No gitignore patterns found`);
         }
 
-        // Get all files in directory recursively
         const files = await this.getAllFiles(
             targetPath,
             relativePath,
             ig,
-            options
+            options,
+            0,
+            startTime,
+            timeoutMs
         );
 
         // Get symbols for each file with timeout protection
@@ -171,14 +183,18 @@ export class SymbolExtractor {
      * @param ignorePatterns - Ignore patterns from .gitignore
      * @param options - Directory traversal options
      * @param currentDepth - Current recursion depth
-     * @returns Array of relative file paths
+     * @param startTime - Start time for timeout tracking (passed from getDirectorySymbols)
+     * @param timeoutMs - Timeout in milliseconds for entire traversal
+     * @returns Array of relative file paths (may be partial if timeout/cancelled)
      */
     async getAllFiles(
         targetPath: string,
         relativePath: string,
         ignorePatterns: ReturnType<typeof ignore>,
         options: DirectorySymbolOptions = {},
-        currentDepth: number = 0
+        currentDepth: number = 0,
+        startTime: number = Date.now(),
+        timeoutMs: number = DIRECTORY_SYMBOL_TIMEOUT
     ): Promise<string[]> {
         const {
             maxDepth = 10,
@@ -187,6 +203,14 @@ export class SymbolExtractor {
             token,
         } = options;
         const files: string[] = [];
+
+        // Check timeout before starting directory traversal
+        if (Date.now() - startTime > timeoutMs) {
+            Log.warn(
+                `File discovery stopped after timeout - found ${files.length} files so far`
+            );
+            return files;
+        }
 
         // Check cancellation before starting directory traversal
         if (token?.isCancellationRequested) {
@@ -203,6 +227,14 @@ export class SymbolExtractor {
             const entries = await vscode.workspace.fs.readDirectory(targetUri);
 
             for (const [name, type] of entries) {
+                // Check timeout between entries (important for large directories)
+                if (Date.now() - startTime > timeoutMs) {
+                    Log.warn(
+                        `File discovery stopped after timeout - found ${files.length} files so far`
+                    );
+                    return files;
+                }
+
                 // Check cancellation between entries (important for large directories)
                 if (token?.isCancellationRequested) {
                     return files;
@@ -253,14 +285,16 @@ export class SymbolExtractor {
                         files.push(fullPath);
                     }
                 } else if (type === vscode.FileType.Directory) {
-                    // Recursively process subdirectories with depth tracking
+                    // Recursively process subdirectories with depth and timeout tracking
                     const subPath = path.join(targetPath, name);
                     const subFiles = await this.getAllFiles(
                         subPath,
                         fullPath,
                         ignorePatterns,
                         options,
-                        currentDepth + 1
+                        currentDepth + 1,
+                        startTime,
+                        timeoutMs
                     );
                     files.push(...subFiles);
                 }

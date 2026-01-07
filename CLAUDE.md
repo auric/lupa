@@ -113,8 +113,20 @@ interface ExecutionContext {
     planManager?: PlanSessionManager;
     subagentSessionManager?: SubagentSessionManager;
     subagentExecutor?: SubagentExecutor;
+    cancellationToken?: vscode.CancellationToken;
 }
 ```
+
+Pass `cancellationToken` to long-running operations (symbol extraction, LSP calls) for responsive cancellation.
+
+### Timeout Handling
+
+Use consistent patterns for timeout and cancellation:
+
+- **TimeoutError class**: Use `TimeoutError.create(operation, timeoutMs)` for all timeout scenarios
+- **Type guards**: Use `isTimeoutError(error)` and `isCancellationError(error)` from `asyncUtils.ts`
+- **Async file discovery**: Use `fdir.crawl().withPromise()` instead of `.sync()` to keep VS Code responsive
+- **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
 
 ### New Services
 

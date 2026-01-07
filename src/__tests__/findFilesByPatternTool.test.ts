@@ -81,6 +81,10 @@ vi.mock('../utils/pathSanitizer', () => ({
 
 // Test utility functions for DRY mocks
 function createMockFdirInstance(syncReturnValue: string[] = []) {
+    const crawlResult = {
+        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
+        sync: vi.fn().mockReturnValue(syncReturnValue),
+    };
     return {
         withGlobFunction: vi.fn().mockReturnThis(),
         glob: vi.fn().mockReturnThis(),
@@ -89,9 +93,10 @@ function createMockFdirInstance(syncReturnValue: string[] = []) {
         withFullPaths: vi.fn().mockReturnThis(),
         exclude: vi.fn().mockReturnThis(),
         filter: vi.fn().mockReturnThis(),
-        crawl: vi.fn().mockReturnThis(),
-        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
-        sync: vi.fn().mockReturnValue(syncReturnValue),
+        crawl: vi.fn().mockReturnValue(crawlResult),
+        // Also expose these for test assertions
+        withPromise: crawlResult.withPromise,
+        sync: crawlResult.sync,
     } as any;
 }
 
@@ -208,7 +213,7 @@ describe('FindFileTool', () => {
 
             // Verify basic fdir setup and execution
             expect(vi.mocked(fdir)).toHaveBeenCalled();
-            expect(mockFdirInstance.sync).toHaveBeenCalled();
+            expect(mockFdirInstance.withPromise).toHaveBeenCalled();
             expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(
                 ['*.js'],
                 expect.any(Object)
@@ -282,9 +287,9 @@ describe('FindFileTool', () => {
 
         it('should handle fdir errors', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
-            mockFdirInstance.sync.mockImplementation(() => {
-                throw new Error('Directory not found');
-            });
+            mockFdirInstance.withPromise.mockRejectedValue(
+                new Error('Directory not found')
+            );
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;
             } as any);
@@ -381,9 +386,9 @@ describe('FindFileTool', () => {
         it('should handle actual picomatch/fdir integration errors', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
             // Simulate real fdir error that could occur with complex patterns
-            mockFdirInstance.sync.mockImplementation(() => {
-                throw new Error('ENOENT: no such file or directory, scandir');
-            });
+            mockFdirInstance.withPromise.mockRejectedValue(
+                new Error('ENOENT: no such file or directory, scandir')
+            );
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;
             } as any);

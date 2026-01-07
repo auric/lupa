@@ -109,8 +109,10 @@ export function isTimeoutError(error: unknown): error is TimeoutError {
 }
 
 /**
- * Check if an error is a CancellationError
+ * Check if an error is a CancellationError (type guard for consistency with isTimeoutError)
  */
-export function isCancellationError(error: unknown): boolean {
+export function isCancellationError(
+    error: unknown
+): error is vscode.CancellationError {
     return error instanceof vscode.CancellationError;
 }

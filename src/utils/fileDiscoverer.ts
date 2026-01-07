@@ -185,8 +185,8 @@ export class FileDiscoverer {
             return false;
         });
 
-        // Discover all files
-        const allFiles = crawler.crawl(targetPath).sync();
+        // Discover all files (async to avoid blocking the event loop)
+        const allFiles = await crawler.crawl(targetPath).withPromise();
 
         // Convert to relative paths from git root
         let relativeFiles = allFiles.map((file) =>

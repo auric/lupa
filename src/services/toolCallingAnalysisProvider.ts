@@ -88,7 +88,12 @@ export class ToolCallingAnalysisProvider {
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
             this.workspaceSettings,
-            { planManager, subagentSessionManager, subagentExecutor }
+            {
+                planManager,
+                subagentSessionManager,
+                subagentExecutor,
+                cancellationToken: token,
+            }
         );
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,

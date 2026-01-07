@@ -86,7 +86,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
@@ -121,14 +121,18 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
             // Get symbols overview using enhanced utilities (with timeout)
             const { content, symbolCount, truncated } = await withTimeout(
-                this.getEnhancedSymbolsOverview(sanitizedPath, {
-                    maxDepth: maxDepth || 0,
-                    showHierarchy: showHierarchy ?? true,
-                    includeBody: includeBody || false,
-                    maxSymbols: effectiveMaxSymbols,
-                    includeKinds,
-                    excludeKinds,
-                }),
+                this.getEnhancedSymbolsOverview(
+                    sanitizedPath,
+                    {
+                        maxDepth: maxDepth || 0,
+                        showHierarchy: showHierarchy ?? true,
+                        includeBody: includeBody || false,
+                        maxSymbols: effectiveMaxSymbols,
+                        includeKinds,
+                        excludeKinds,
+                    },
+                    context?.cancellationToken
+                ),
                 LSP_OPERATION_TIMEOUT,
                 `Symbol overview for ${sanitizedPath}`
             );
@@ -167,7 +171,8 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             maxSymbols: number;
             includeKinds?: number[];
             excludeKinds?: number[];
-        }
+        },
+        token?: vscode.CancellationToken
     ): Promise<{ content: string; symbolCount: number; truncated: boolean }> {
         const gitRootDirectory = this.symbolExtractor.getGitRootPath();
         if (!gitRootDirectory) {
@@ -221,7 +226,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
                 await this.symbolExtractor.getDirectorySymbols(
                     targetPath,
                     relativePath,
-                    { timeoutMs: LSP_OPERATION_TIMEOUT }
+                    { timeoutMs: LSP_OPERATION_TIMEOUT, token }
                 );
 
             // Sort results by file path for consistent output

@@ -96,7 +96,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
@@ -127,6 +127,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 return toolError('Symbol name cannot be empty');
             }
 
+            const token = context?.cancellationToken;
             let symbols: SymbolMatch[] = [];
 
             if (relativePath && relativePath !== '.') {
@@ -135,7 +136,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     pathSegments,
                     relativePath,
                     includeKinds,
-                    excludeKinds
+                    excludeKinds,
+                    token
                 );
             } else {
                 // Path A: Workspace search using VS Code's optimized indexing
@@ -391,7 +393,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         pathSegments: string[],
         relativePath: string,
         includeKinds?: number[],
-        excludeKinds?: number[]
+        excludeKinds?: number[],
+        token?: vscode.CancellationToken
     ): Promise<SymbolMatch[]> {
         const gitRootDirectory = this.symbolExtractor.getGitRootPath();
         if (!gitRootDirectory) {
@@ -430,7 +433,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     await this.symbolExtractor.getDirectorySymbols(
                         targetPath,
                         sanitizedPath,
-                        { timeoutMs: SYMBOL_SEARCH_TIMEOUT }
+                        { timeoutMs: SYMBOL_SEARCH_TIMEOUT, token }
                     );
                 const allMatches: SymbolMatch[] = [];
 

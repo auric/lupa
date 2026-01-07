@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { PlanSessionManager } from '../services/planSessionManager';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
@@ -32,4 +33,11 @@ export interface ExecutionContext {
      * Created per-analysis with bound progress callback.
      */
     subagentExecutor?: SubagentExecutor;
+
+    /**
+     * Cancellation token for the current analysis.
+     * Tools should pass this to long-running operations (symbol extraction, LSP calls)
+     * to enable responsive cancellation when user stops the analysis.
+     */
+    cancellationToken?: vscode.CancellationToken;
 }
