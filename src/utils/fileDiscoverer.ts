@@ -107,11 +107,9 @@ export class FileDiscoverer {
             );
             return result;
         } catch (error) {
-            // Provide user-friendly message for timeout
+            // Rethrow TimeoutError directly to preserve type for isTimeoutError() checks
             if (error instanceof TimeoutError) {
-                throw new Error(
-                    'File discovery timeout - search too expensive'
-                );
+                throw error;
             }
             throw new Error(
                 `File discovery failed: ${error instanceof Error ? error.message : String(error)}`

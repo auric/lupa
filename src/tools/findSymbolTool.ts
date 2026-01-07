@@ -11,7 +11,7 @@ import { SymbolMatcher, type SymbolMatch } from '../utils/symbolMatcher';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -313,7 +313,13 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     if (match) {
                         matches.push(match);
                     }
-                } catch {
+                } catch (error) {
+                    // Log timeout errors specifically (indicates slow language server)
+                    if (isTimeoutError(error)) {
+                        Log.debug(
+                            `Skipping symbol ${symbol.name} - processing timed out`
+                        );
+                    }
                     continue;
                 }
             }
@@ -480,7 +486,15 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
                 return allMatches;
             }
-        } catch {
+        } catch (error) {
+            // Log error for debugging (could be file access, timeout, or LSP issue)
+            if (isTimeoutError(error)) {
+                Log.debug(
+                    `Symbol search in ${relativePath} timed out - returning empty results`
+                );
+            } else {
+                Log.debug(`Symbol search in ${relativePath} failed:`, error);
+            }
             return [];
         }
 
@@ -544,7 +558,12 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             }
 
             return matches;
-        } catch {
+        } catch (error) {
+            // Log issues finding symbols in file (could be file access, parsing, or LSP error)
+            Log.debug(
+                `Failed to find symbols in ${fileUri.fsPath}:`,
+                error instanceof Error ? error.message : String(error)
+            );
             return [];
         }
     }

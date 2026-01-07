@@ -180,8 +180,18 @@ export class SymbolExtractor {
         options: DirectorySymbolOptions = {},
         currentDepth: number = 0
     ): Promise<string[]> {
-        const { maxDepth = 10, includeHidden = false, filePattern } = options;
+        const {
+            maxDepth = 10,
+            includeHidden = false,
+            filePattern,
+            token,
+        } = options;
         const files: string[] = [];
+
+        // Check cancellation before starting directory traversal
+        if (token?.isCancellationRequested) {
+            return files;
+        }
 
         // Prevent infinite recursion by limiting depth
         if (currentDepth > maxDepth) {
@@ -193,6 +203,10 @@ export class SymbolExtractor {
             const entries = await vscode.workspace.fs.readDirectory(targetUri);
 
             for (const [name, type] of entries) {
+                // Check cancellation between entries (important for large directories)
+                if (token?.isCancellationRequested) {
+                    return files;
+                }
                 // Skip hidden files/directories unless explicitly included
                 if (!includeHidden && name.startsWith('.')) {
                     continue;
