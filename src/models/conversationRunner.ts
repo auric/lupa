@@ -10,6 +10,7 @@ import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUtils';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /**
  * Configuration for running a conversation loop.
@@ -285,9 +286,7 @@ export class ConversationRunner {
             } catch (error) {
                 if (
                     token.isCancellationRequested ||
-                    error instanceof vscode.CancellationError ||
-                    (error instanceof Error &&
-                        error.message?.toLowerCase().includes('cancel'))
+                    isCancellationError(error)
                 ) {
                     Log.info(
                         `${logPrefix} Cancelled during iteration ${iteration}`

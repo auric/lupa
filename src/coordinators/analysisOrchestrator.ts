@@ -5,6 +5,7 @@ import type {
     AnalysisProgressCallback,
 } from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /**
  * AnalysisOrchestrator handles the core PR analysis workflow.
@@ -82,7 +83,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
             // Run the analysis with a progress notification
             await this.runAnalysisWithProgress(diffText, refName);
         } catch (error) {
-            if (error instanceof Error && error.message.includes('cancelled')) {
+            if (isCancellationError(error)) {
                 this.services.statusBar.showTemporaryMessage(
                     'Analysis cancelled',
                     3000,

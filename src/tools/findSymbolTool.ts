@@ -286,7 +286,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             } catch (error) {
                 if (isCancellationError(error)) {
                     Log.debug('Workspace symbol search cancelled');
-                    return [];
+                    throw error; // Re-throw cancellation to stop tool execution
                 }
                 Log.warn('Workspace symbol search failed:', error);
                 return [];

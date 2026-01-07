@@ -7,7 +7,11 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
-import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    isCancellationError,
+} from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
@@ -119,23 +123,26 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
             const effectiveMaxSymbols = maxSymbols || 100;
 
-            // Get symbols overview using enhanced utilities (with timeout)
-            const { content, symbolCount, truncated } = await withTimeout(
-                this.getEnhancedSymbolsOverview(
-                    sanitizedPath,
-                    {
-                        maxDepth: maxDepth || 0,
-                        showHierarchy: showHierarchy ?? true,
-                        includeBody: includeBody || false,
-                        maxSymbols: effectiveMaxSymbols,
-                        includeKinds,
-                        excludeKinds,
-                    },
-                    context?.cancellationToken
-                ),
-                LSP_OPERATION_TIMEOUT,
-                `Symbol overview for ${sanitizedPath}`
-            );
+            // Get symbols overview using enhanced utilities (with cancellable timeout)
+            const token = context?.cancellationToken;
+            const { content, symbolCount, truncated } =
+                await withCancellableTimeout(
+                    this.getEnhancedSymbolsOverview(
+                        sanitizedPath,
+                        {
+                            maxDepth: maxDepth || 0,
+                            showHierarchy: showHierarchy ?? true,
+                            includeBody: includeBody || false,
+                            maxSymbols: effectiveMaxSymbols,
+                            includeKinds,
+                            excludeKinds,
+                        },
+                        token
+                    ),
+                    LSP_OPERATION_TIMEOUT,
+                    `Symbol overview for ${sanitizedPath}`,
+                    token
+                );
 
             if (symbolCount === 0) {
                 return toolError(`No symbols found in '${sanitizedPath}'`);
@@ -148,6 +155,9 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
             return toolSuccess(result);
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error; // Re-throw cancellation to stop tool execution
+            }
             if (isTimeoutError(error)) {
                 return toolError(
                     `Symbol extraction timed out. Try a specific file path instead of a directory, or use filters.`
