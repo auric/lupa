@@ -127,7 +127,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 },
                 this.cancellationTokenSource.token,
                 subagentId,
-                context?.traceId
+                effectiveTraceId
             );
 
             clearTimeout(timeoutHandle);

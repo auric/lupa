@@ -79,6 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **CancellationError detection in analysisOrchestrator**: Replaced fragile string-based error detection (`error.message.includes('cancelled')`) with proper `instanceof vscode.CancellationError` check plus fallback on error name property.
 
+- **Ripgrep SIGKILL escalation**: Fixed force-kill logic that was incorrectly using `ChildProcess.killed` to determine whether to send SIGKILL. The `killed` property only indicates whether `kill()` was _called_, not whether the process actually exited. Now uses a `processExited` flag set in the close/error handlers to correctly determine when SIGKILL is needed.
+
+- **TraceId propagation in subagent execution**: Fixed traceId propagation bug where subagent spawn logs used `effectiveTraceId` but executor received `context?.traceId`. When no parent context exists, this caused different trace IDs between spawn log and subagent execution. Now consistently passes `effectiveTraceId` to the executor.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added

@@ -168,6 +168,7 @@ export class RipgrepSearchService {
             const results = new Map<string, RipgrepMatch[]>();
             let stderr = '';
             let timedOut = false;
+            let processExited = false;
             let forceKillTimeoutId: NodeJS.Timeout | undefined;
 
             const rg: ChildProcess = spawn(this.rgPath, args, {
@@ -190,9 +191,14 @@ export class RipgrepSearchService {
                 // Give it a moment to terminate gracefully, then force kill.
                 // This timer is cleared in close/error handlers when process exits.
                 forceKillTimeoutId = setTimeout(() => {
-                    if (!rg.killed) {
+                    // Check if process actually exited (not just if kill() was called).
+                    // rg.killed only indicates kill() was called, not that process terminated.
+                    if (!processExited) {
                         try {
                             rg.kill('SIGKILL');
+                            Log.debug(
+                                `[RipgrepSearchService] Sent SIGKILL after SIGTERM timeout`
+                            );
                         } catch (error) {
                             // Process may already be dead; log for diagnostics
                             Log.debug(
@@ -234,6 +240,8 @@ export class RipgrepSearchService {
             });
 
             rg.on('close', (code: number | null) => {
+                processExited = true;
+
                 // Clear timeouts on process exit
                 clearTimeout(timeoutId);
                 if (forceKillTimeoutId) {
@@ -272,6 +280,8 @@ export class RipgrepSearchService {
             });
 
             rg.on('error', (err: Error) => {
+                processExited = true;
+
                 clearTimeout(timeoutId);
                 if (forceKillTimeoutId) {
                     clearTimeout(forceKillTimeoutId);
