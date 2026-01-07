@@ -6,6 +6,8 @@ import ignore from 'ignore';
 import { PathSanitizer } from './pathSanitizer';
 import { readGitignore } from './gitUtils';
 import { Repository } from '../types/vscodeGitExtension';
+import { withTimeout } from './asyncUtils';
+import { TimeoutError } from '../types/errorTypes';
 
 export interface FileDiscoveryOptions {
     /**
@@ -87,19 +89,6 @@ export class FileDiscoverer {
         const gitRootDirectory = gitRepo.rootUri.fsPath;
         const targetPath = path.join(gitRootDirectory, sanitizedPath);
 
-        // Setup timeout protection
-        const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(
-                () =>
-                    reject(
-                        new Error(
-                            'File discovery timeout - search too expensive'
-                        )
-                    ),
-                timeoutMs
-            )
-        );
-
         try {
             const discoveryPromise = this.performFileDiscovery(gitRepo, {
                 gitRootDirectory,
@@ -110,12 +99,20 @@ export class FileDiscoverer {
                 maxResults,
             });
 
-            const result = await Promise.race([
+            // Use withTimeout which properly cleans up the timer
+            const result = await withTimeout(
                 discoveryPromise,
-                timeoutPromise,
-            ]);
+                timeoutMs,
+                'File discovery'
+            );
             return result;
         } catch (error) {
+            // Provide user-friendly message for timeout
+            if (error instanceof TimeoutError) {
+                throw new Error(
+                    'File discovery timeout - search too expensive'
+                );
+            }
             throw new Error(
                 `File discovery failed: ${error instanceof Error ? error.message : String(error)}`
             );

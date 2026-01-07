@@ -4,6 +4,14 @@ import ignore from 'ignore';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { readGitignore } from '../utils/gitUtils';
 import { CodeFileUtils } from './codeFileUtils';
+import { withCancellableTimeout, isTimeoutError } from './asyncUtils';
+import { Log } from '../services/loggingService';
+
+/** Timeout for extracting symbols from a single file */
+const FILE_SYMBOL_TIMEOUT = 5_000; // 5 seconds per file
+
+/** Maximum time for entire directory symbol extraction */
+const DIRECTORY_SYMBOL_TIMEOUT = 60_000; // 60 seconds total
 
 /**
  * Options for directory symbol extraction
@@ -12,6 +20,10 @@ export interface DirectorySymbolOptions {
     maxDepth?: number;
     includeHidden?: boolean;
     filePattern?: RegExp;
+    /** Maximum time in milliseconds for entire directory scan. Defaults to DIRECTORY_SYMBOL_TIMEOUT. */
+    timeoutMs?: number;
+    /** Cancellation token to abort the operation early */
+    token?: vscode.CancellationToken;
 }
 
 /**
@@ -30,30 +42,48 @@ export class SymbolExtractor {
     constructor(private readonly gitOperationsManager: GitOperationsManager) {}
 
     /**
-     * Extract symbols from a single file using VS Code LSP API
+     * Extract symbols from a single file using VS Code LSP API with timeout protection.
      * @param fileUri - VS Code URI of the file
-     * @returns Array of DocumentSymbols or SymbolInformation, or empty array if extraction fails
+     * @param token - Optional cancellation token
+     * @returns Array of DocumentSymbols or SymbolInformation, or empty array if extraction fails/times out
      */
     async getFileSymbols(
-        fileUri: vscode.Uri
+        fileUri: vscode.Uri,
+        token?: vscode.CancellationToken
     ): Promise<vscode.DocumentSymbol[] | vscode.SymbolInformation[]> {
         try {
-            const symbols = await vscode.commands.executeCommand<
+            const symbolsPromise = vscode.commands.executeCommand<
                 vscode.DocumentSymbol[] | vscode.SymbolInformation[]
             >('vscode.executeDocumentSymbolProvider', fileUri);
+
+            const symbols = await withCancellableTimeout(
+                Promise.resolve(symbolsPromise),
+                FILE_SYMBOL_TIMEOUT,
+                `Symbol extraction for ${path.basename(fileUri.fsPath)}`,
+                token
+            );
+
             return symbols || [];
-        } catch {
-            // Return empty array if no symbols or provider not available
+        } catch (error) {
+            // Log timeout specifically for debugging slow language servers
+            if (isTimeoutError(error)) {
+                Log.debug(
+                    `Symbol extraction timed out for ${fileUri.fsPath} - language server may be slow`
+                );
+            }
+            // Return empty array if no symbols, timeout, or provider not available
             return [];
         }
     }
 
     /**
-     * Extract symbols from all files in a directory, respecting .gitignore
+     * Extract symbols from all files in a directory, respecting .gitignore.
+     * Has built-in timeout protection and returns partial results if stopped early.
+     *
      * @param targetPath - Absolute path to the directory
      * @param relativePath - Relative path for context
-     * @param options - Directory extraction options
-     * @returns Array of file symbol results
+     * @param options - Directory extraction options (including timeoutMs and token)
+     * @returns Array of file symbol results (may be partial if timeout/cancelled)
      */
     async getDirectorySymbols(
         targetPath: string,
@@ -61,6 +91,14 @@ export class SymbolExtractor {
         options: DirectorySymbolOptions = {}
     ): Promise<FileSymbolResult[]> {
         const results: FileSymbolResult[] = [];
+        const startTime = Date.now();
+        const timeoutMs = options.timeoutMs ?? DIRECTORY_SYMBOL_TIMEOUT;
+        const token = options.token;
+
+        // Check cancellation before starting
+        if (token?.isCancellationRequested) {
+            return results;
+        }
 
         // Read .gitignore patterns
         const repository = this.gitOperationsManager.getRepository();
@@ -87,20 +125,38 @@ export class SymbolExtractor {
             options
         );
 
-        // Get symbols for each file
+        // Get symbols for each file with timeout protection
         for (const filePath of files) {
+            // Check overall directory timeout
+            const elapsed = Date.now() - startTime;
+            if (elapsed > timeoutMs) {
+                Log.warn(
+                    `Directory symbol extraction stopped after ${elapsed}ms (limit: ${timeoutMs}ms) - processed ${results.length} files with symbols`
+                );
+                break;
+            }
+
+            // Check cancellation between files
+            if (token?.isCancellationRequested) {
+                Log.debug(
+                    `Directory symbol extraction cancelled after processing ${results.length} files`
+                );
+                break;
+            }
+
             const gitRootDirectory =
                 this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
             const fullPath = path.join(gitRootDirectory, filePath);
             const fileUri = vscode.Uri.file(fullPath);
 
             try {
-                const symbols = await this.getFileSymbols(fileUri);
+                // getFileSymbols now has its own per-file timeout
+                const symbols = await this.getFileSymbols(fileUri, token);
                 if (symbols.length > 0) {
                     results.push({ filePath, symbols });
                 }
             } catch {
-                // Skip files that can't be processed
+                // Skip files that can't be processed (cancelled, etc.)
                 continue;
             }
         }

@@ -5,6 +5,34 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-01-07
+
+### Fixed
+
+#### Timeout & Resource Handling
+
+- **Timer resource leak fixed**: The `withTimeout` utility now properly cleans up timers when promises complete, preventing leaked timer handles that previously accumulated during symbol searches.
+
+- **Per-file timeout for LSP calls**: Each `executeDocumentSymbolProvider` call now has a 5-second timeout. Previously, a single slow language server (like clangd processing a large C++ file) could block the entire symbol search for 9+ minutes.
+
+- **Directory symbol extraction timeout**: Added configurable timeout for directory-wide symbol extraction. The extraction now stops gracefully after the timeout and returns partial results, instead of hanging indefinitely.
+
+- **Consistent TimeoutError class**: Introduced `TimeoutError` class for type-safe timeout detection. Tools now use `isTimeoutError()` instead of brittle string matching on error messages.
+
+- **FileDiscoverer timer leak fixed**: File discovery now uses the improved `withTimeout` utility that properly cleans up timers.
+
+- **SymbolRangeExpander timeout**: Added 5-second timeout to document symbol provider calls in the symbol range expander.
+
+- **GetSymbolsOverviewTool timeout**: Decreased to 30 seconds.
+
+### Added
+
+- **`withCancellableTimeout` utility**: New async utility that combines timeout protection with CancellationToken support. Use this when operations should be abortable by user action (e.g., stopping analysis).
+
+- **Timeout abandonment logging**: When a timeout occurs, the system now logs that the underlying operation may continue running. This helps diagnose slow language servers.
+
+- **`isTimeoutError` and `isCancellationError` helpers**: Type guard functions for cleaner error handling.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added
@@ -356,6 +384,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.11]: https://github.com/auric/lupa/releases/tag/v0.1.11
 [0.1.10]: https://github.com/auric/lupa/releases/tag/v0.1.10
 [0.1.9]: https://github.com/auric/lupa/releases/tag/v0.1.9
 [0.1.8]: https://github.com/auric/lupa/releases/tag/v0.1.8

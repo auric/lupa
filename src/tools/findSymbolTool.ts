@@ -423,12 +423,13 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 const directoryResults =
                     await this.symbolExtractor.getDirectorySymbols(
                         targetPath,
-                        sanitizedPath
+                        sanitizedPath,
+                        { timeoutMs: SYMBOL_SEARCH_TIMEOUT }
                     );
                 const allMatches: SymbolMatch[] = [];
 
                 for (const { filePath, symbols } of directoryResults) {
-                    // Time-based execution control
+                    // Time-based execution control (secondary safety check)
                     if (Date.now() - startTime > SYMBOL_SEARCH_TIMEOUT) {
                         Log.warn(
                             `Symbol search in ${relativePath} stopped after ${SYMBOL_SEARCH_TIMEOUT}ms timeout`

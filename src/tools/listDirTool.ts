@@ -5,12 +5,12 @@ import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
-const DIRECTORY_OPERATION_TIMEOUT = 15000; // 15 seconds for directory operations
+const DIRECTORY_OPERATION_TIMEOUT = 15_000; // 15 seconds for directory operations
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -60,13 +60,13 @@ export class ListDirTool extends BaseTool {
             // Empty directory is a valid state (success)
             return toolSuccess(output || '(empty directory)');
         } catch (error) {
-            const message =
-                error instanceof Error ? error.message : String(error);
-            if (message.includes('timed out')) {
+            if (isTimeoutError(error)) {
                 return toolError(
                     `Directory listing timed out. Try listing a smaller directory or disable recursion.`
                 );
             }
+            const message =
+                error instanceof Error ? error.message : String(error);
             return toolError(`Error listing directory: ${message}`);
         }
     }

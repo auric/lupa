@@ -7,11 +7,11 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
-const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
+const LSP_OPERATION_TIMEOUT = 30_000; // 30 seconds for language server operations
 
 /**
  * Enhanced tool that provides a configurable overview of symbols in a file or directory.
@@ -144,13 +144,13 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
             return toolSuccess(result);
         } catch (error) {
-            const message =
-                error instanceof Error ? error.message : String(error);
-            if (message.includes('timed out')) {
+            if (isTimeoutError(error)) {
                 return toolError(
                     `Symbol extraction timed out. Try a specific file path instead of a directory, or use filters.`
                 );
             }
+            const message =
+                error instanceof Error ? error.message : String(error);
             return toolError(`Failed to get symbols overview: ${message}`);
         }
     }
@@ -216,10 +216,12 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             }
         } else if (stat.type === vscode.FileType.Directory) {
             // Directory - get symbols from all files using SymbolExtractor
+            // Uses LSP_OPERATION_TIMEOUT since outer withTimeout already wraps this
             const directoryResults =
                 await this.symbolExtractor.getDirectorySymbols(
                     targetPath,
-                    relativePath
+                    relativePath,
+                    { timeoutMs: LSP_OPERATION_TIMEOUT }
                 );
 
             // Sort results by file path for consistent output

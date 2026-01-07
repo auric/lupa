@@ -1,4 +1,8 @@
 import * as vscode from 'vscode';
+import { withTimeout } from '../utils/asyncUtils';
+
+/** Timeout for document symbol provider call */
+const SYMBOL_PROVIDER_TIMEOUT = 5_000; // 5 seconds
 
 /**
  * Utility class for expanding symbol ranges to include full symbol definitions.
@@ -16,10 +20,16 @@ export class SymbolRangeExpander {
         symbolRange: vscode.Range
     ): Promise<vscode.Range> {
         try {
-            // Try to use DocumentSymbolProvider to get the full symbol range
-            const symbols = await vscode.commands.executeCommand<
+            // Try to use DocumentSymbolProvider to get the full symbol range (with timeout)
+            const symbolsPromise = vscode.commands.executeCommand<
                 vscode.DocumentSymbol[]
             >('vscode.executeDocumentSymbolProvider', document.uri);
+
+            const symbols = await withTimeout(
+                Promise.resolve(symbolsPromise),
+                SYMBOL_PROVIDER_TIMEOUT,
+                `Document symbols for ${document.fileName}`
+            );
 
             if (symbols && symbols.length > 0) {
                 // Find the symbol that contains our target position
@@ -38,7 +48,7 @@ export class SymbolRangeExpander {
             // Fallback: try to expand the range intelligently based on code structure
             return this.expandRangeForSymbol(document, symbolRange);
         } catch {
-            // Fallback to expanded range if symbol provider fails
+            // Fallback to expanded range if symbol provider fails or times out
             return this.expandRangeForSymbol(document, symbolRange);
         }
     }
