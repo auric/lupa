@@ -188,12 +188,13 @@ export class FileDiscoverer {
 
         crawler = crawler.exclude((_dirName, dirPath) => {
             const relativePath = path.relative(gitRootDirectory, dirPath);
+            const posixPath = relativePath.replaceAll(path.sep, path.posix.sep);
 
-            if (ig && ig.ignores(relativePath)) {
+            // Use normalized POSIX path for gitignore checks (consistent with file filter)
+            if (ig && ig.ignores(posixPath)) {
                 return true;
             }
 
-            const posixPath = relativePath.replaceAll(path.sep, path.posix.sep);
             if (
                 posixPath === '.git' ||
                 posixPath.startsWith('.git/') ||
@@ -208,6 +209,13 @@ export class FileDiscoverer {
         // Discover all files (async to avoid blocking the event loop)
         const allFiles = await crawler.crawl(targetPath).withPromise();
 
+        const wasAborted = abortSignal.aborted;
+        if (wasAborted) {
+            Log.debug(
+                `[FileDiscoverer] Crawl aborted - returning ${allFiles.length} partial results`
+            );
+        }
+
         // Convert to relative paths from git root (filtering already done during crawl)
         const relativeFiles = allFiles
             .map((file) =>
@@ -218,7 +226,7 @@ export class FileDiscoverer {
             .sort();
 
         const totalFound = relativeFiles.length;
-        const truncated = relativeFiles.length > maxResults;
+        const truncated = wasAborted || relativeFiles.length > maxResults;
         const files = relativeFiles.slice(0, maxResults);
 
         return {

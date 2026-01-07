@@ -5,7 +5,7 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.11] - 2026-01-07
+## [0.1.11] - 2026-01-08
 
 ### Fixed
 
@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **File discovery no longer blocks VS Code**: Large directory scans now run asynchronously, keeping VS Code responsive during searches.
 
 - **Resource leaks fixed**: Timer handles that accumulated during long symbol searches are now properly cleaned up.
+
+- **Cancellation errors properly propagated**: Fixed multiple locations where cancellation errors were being swallowed instead of re-thrown, causing cancelled operations to appear successful. Affected `FindSymbolTool`, `GetSymbolsOverviewTool`, `conversationRunner`, and `analysisOrchestrator`.
+
+- **File discovery reports partial results on abort**: When file discovery is cancelled mid-crawl, it now correctly reports `truncated: true` instead of silently treating partial results as complete.
+
+- **Consistent path normalization for gitignore**: Directory exclusion now normalizes paths to POSIX format before gitignore checks, matching the behavior of file filters.
 
 ### Added
 

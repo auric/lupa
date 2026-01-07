@@ -503,6 +503,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 return allMatches;
             }
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             // Log error for debugging (could be file access, timeout, or LSP issue)
             if (isTimeoutError(error)) {
                 Log.debug(
@@ -584,6 +587,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             return matches;
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             // Log issues finding symbols in file (could be file access, parsing, or LSP error)
             Log.debug(
                 `Failed to find symbols in ${fileUri.fsPath}:`,
