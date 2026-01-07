@@ -185,6 +185,14 @@ vscodeMock.FileStat = vi
         this.size = size || 0;
     });
 
+// Add mock for RelativePattern - used by file watchers
+vscodeMock.RelativePattern = vi
+    .fn()
+    .mockImplementation(function (base, pattern) {
+        this.base = base;
+        this.pattern = pattern;
+    });
+
 vscodeMock.workspace = {
     getConfiguration: vi.fn().mockReturnValue({
         get: vi.fn(),
@@ -201,6 +209,14 @@ vscodeMock.workspace = {
             dispose: vi.fn(),
         };
     }),
+    // File system watcher mock - returns an object with event registration methods
+    // Tests can override this to capture the handlers for simulation
+    createFileSystemWatcher: vi.fn(() => ({
+        onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidDelete: vi.fn(() => ({ dispose: vi.fn() })),
+        dispose: vi.fn(),
+    })),
     // Define workspaceFolders as a mutable array within the mock
     workspaceFolders: [],
     asRelativePath: vi.fn((uriOrPath) => {
@@ -216,14 +232,12 @@ vscodeMock.workspace = {
         readFile: vi.fn().mockResolvedValue(Buffer.from('')),
         writeFile: vi.fn().mockResolvedValue(),
         // Update stat mock to use FileType.File
-        stat: vi
-            .fn()
-            .mockResolvedValue({
-                type: vscodeMock.FileType.File,
-                ctime: 0,
-                mtime: 0,
-                size: 0,
-            }),
+        stat: vi.fn().mockResolvedValue({
+            type: vscodeMock.FileType.File,
+            ctime: 0,
+            mtime: 0,
+            size: 0,
+        }),
         copy: vi.fn().mockResolvedValue(),
         createDirectory: vi.fn().mockResolvedValue(),
         delete: vi.fn().mockResolvedValue(),
@@ -862,6 +876,7 @@ export const env = vscodeMock.env;
 // Export the new mocks
 export const FileType = vscodeMock.FileType;
 export const FileStat = vscodeMock.FileStat;
+export const RelativePattern = vscodeMock.RelativePattern;
 export const ChatResponseFileTreePart = vscodeMock.ChatResponseFileTreePart;
 export const ChatResponseMarkdownPart = vscodeMock.ChatResponseMarkdownPart;
 export const ChatResponseAnchorPart = vscodeMock.ChatResponseAnchorPart;
