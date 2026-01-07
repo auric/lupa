@@ -27,8 +27,6 @@ npx vitest run src/__tests__/file.test.ts  # Single test
 
 **Context window warning:** `npm run test` output is massive and will overwhelm context. After running tests, read only the last ~50 lines for the summary. Prefer running specific test files over the full suite.
 
-**Terminal note:** This project uses PowerShell on Windows.
-
 ## Architecture
 
 ### Layers
