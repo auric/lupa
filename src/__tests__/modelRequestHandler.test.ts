@@ -626,5 +626,48 @@ describe('ModelRequestHandler', () => {
 
             expect(response.content).toBe('Hello, world!');
         });
+
+        it('should timeout if stream consumption exceeds timeout (stalled stream)', async () => {
+            // Mock a stream that starts yielding but then stalls beyond timeout
+            const mockStream = {
+                async *[Symbol.asyncIterator]() {
+                    yield new vscode.LanguageModelTextPart('First chunk');
+                    // Simulate a stalled stream - wait longer than timeout
+                    await new Promise((resolve) => setTimeout(resolve, 200));
+                    yield new vscode.LanguageModelTextPart('Never received');
+                },
+            };
+
+            mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
+
+            const request: ToolCallRequest = {
+                messages: [{ role: 'user', content: 'test' }],
+                tools: [],
+            };
+
+            await expect(
+                ModelRequestHandler.sendRequest(
+                    mockModel,
+                    request,
+                    cancellationTokenSource.token,
+                    100 // 100ms timeout - stream stalls for 200ms
+                )
+            ).rejects.toThrow(TimeoutError);
+
+            // Verify the error details
+            try {
+                await ModelRequestHandler.sendRequest(
+                    mockModel,
+                    request,
+                    cancellationTokenSource.token,
+                    100
+                );
+            } catch (error) {
+                expect(isTimeoutError(error)).toBe(true);
+                expect((error as TimeoutError).operation).toBe(
+                    'LLM stream consumption'
+                );
+            }
+        }, 2000);
     });
 });

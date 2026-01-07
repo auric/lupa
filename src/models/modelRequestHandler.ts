@@ -207,8 +207,10 @@ export class ModelRequestHandler {
         let responseText = '';
         const toolCalls: ToolCall[] = [];
 
-        // Stream consumption with timeout protection
-        // If the stream stalls, we throw TimeoutError to prevent hanging
+        // Stream consumption with max-duration timeout protection.
+        // This is intentionally total elapsed time (not inactivity detection),
+        // ensuring bounded total analysis time regardless of stream pacing.
+        // If the stream stalls or takes too long overall, we throw TimeoutError.
         const streamStartTime = Date.now();
         for await (const chunk of response.stream) {
             // Check for stream consumption timeout (uses same timeout as initial request)

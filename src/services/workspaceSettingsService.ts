@@ -59,6 +59,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     /** File system watcher for detecting external settings changes */
     private fileWatcher: vscode.FileSystemWatcher | undefined;
 
+    /** Listener for workspace folder changes */
+    private workspaceFoldersListener: vscode.Disposable | undefined;
+
     /** Debounce timer for file change events */
     private reloadDebounceTimeout: NodeJS.Timeout | null = null;
 
@@ -78,9 +81,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         this.initializeSettings();
 
         // Watch for workspace folder changes
-        vscode.workspace.onDidChangeWorkspaceFolders(() => {
-            this.initializeSettings();
-        });
+        this.workspaceFoldersListener =
+            vscode.workspace.onDidChangeWorkspaceFolders(() => {
+                this.initializeSettings();
+            });
     }
 
     /**
@@ -328,14 +332,16 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         );
 
         try {
-            // If there are no user-set values, delete the file if it exists
+            // If there are no user-set values, write empty object
+            // (avoids race conditions with external processes vs delete+create)
             if (Object.keys(this.userSettings).length === 0) {
-                if (fs.existsSync(this.settingsPath)) {
-                    fs.unlinkSync(this.settingsPath);
-                    Log.debug(
-                        `Deleted empty settings file: ${this.settingsPath}`
-                    );
+                // Ensure directory exists before writing
+                const dir = path.dirname(this.settingsPath);
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
                 }
+                fs.writeFileSync(this.settingsPath, '{}', 'utf-8');
+                Log.debug(`Wrote empty settings file: ${this.settingsPath}`);
                 return;
             }
 
@@ -437,16 +443,15 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
     /**
      * Normalize path for comparison.
-     * Handles: backslashes, trailing slashes, double slashes, and case sensitivity on Windows.
+     * Uses path.resolve to handle . and .. segments, mixed separators,
+     * and correctly preserve UNC paths on Windows.
      */
     private normalizePath(p: string): string {
-        let normalized = p
-            .replace(/\\/g, '/') // Convert backslashes to forward slashes
-            .replace(/\/+/g, '/') // Collapse multiple slashes to single
-            .replace(/\/$/, ''); // Remove trailing slash
-        return process.platform === 'win32'
-            ? normalized.toLowerCase()
-            : normalized;
+        // path.resolve normalizes . and .. segments, handles mixed separators,
+        // and correctly preserves UNC paths on Windows
+        const resolved = path.resolve(p);
+        // Case-insensitive comparison on Windows
+        return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
     }
 
     /**
@@ -482,7 +487,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 // Workspace root is the default - no need to persist
                 valueToStore = undefined;
             } else {
-                valueToStore = repoPath;
+                // Store canonical (resolved) path for consistency
+                valueToStore = path.resolve(repoPath);
             }
         }
 
@@ -608,5 +614,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             clearTimeout(this.reloadDebounceTimeout);
         }
         this.fileWatcher?.dispose();
+        this.workspaceFoldersListener?.dispose();
     }
 }

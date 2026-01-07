@@ -70,10 +70,13 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test/workspace');
                 vi.advanceTimersByTime(600); // Trigger debounced save
 
-                // No file written - workspace root is the default, no need to persist
-                expect(fs.writeFileSync).not.toHaveBeenCalled();
-                // File should be deleted if it existed (empty userSettings)
-                expect(fs.unlinkSync).toHaveBeenCalled();
+                // No file written with settings - workspace root is the default
+                // Empty userSettings writes {} instead of deleting
+                expect(fs.writeFileSync).toHaveBeenCalledWith(
+                    expect.any(String),
+                    '{}',
+                    'utf-8'
+                );
             });
 
             it('should not persist when paths differ only in trailing slash', () => {
@@ -86,8 +89,12 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test/workspace/');
                 vi.advanceTimersByTime(600);
 
-                // Normalized to workspace root - not persisted
-                expect(fs.writeFileSync).not.toHaveBeenCalled();
+                // Normalized to workspace root - writes empty object
+                expect(fs.writeFileSync).toHaveBeenCalledWith(
+                    expect.any(String),
+                    '{}',
+                    'utf-8'
+                );
             });
 
             it('should not persist when paths differ only in backslash vs forward slash', () => {
@@ -100,8 +107,12 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('C:/test/workspace');
                 vi.advanceTimersByTime(600);
 
-                // Normalized to workspace root - not persisted
-                expect(fs.writeFileSync).not.toHaveBeenCalled();
+                // Normalized to workspace root - writes empty object
+                expect(fs.writeFileSync).toHaveBeenCalledWith(
+                    expect.any(String),
+                    '{}',
+                    'utf-8'
+                );
             });
 
             it('should not persist when paths differ in double slashes', () => {
@@ -114,8 +125,12 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test//workspace');
                 vi.advanceTimersByTime(600);
 
-                // Normalized to workspace root - not persisted
-                expect(fs.writeFileSync).not.toHaveBeenCalled();
+                // Normalized to workspace root - writes empty object
+                expect(fs.writeFileSync).toHaveBeenCalledWith(
+                    expect.any(String),
+                    '{}',
+                    'utf-8'
+                );
             });
 
             it('should store absolute path when repo path differs from workspace root', () => {
@@ -128,13 +143,16 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/other/repo');
                 vi.advanceTimersByTime(600);
 
+                // path.resolve converts to absolute path (platform-dependent)
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining(
-                        '"selectedRepositoryPath": "/other/repo"'
-                    ),
+                    expect.stringContaining('"selectedRepositoryPath":'),
                     'utf-8'
                 );
+                // Verify it's storing some path containing 'repo'
+                const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
+                const content = writeCall?.[1] as string;
+                expect(content).toMatch(/other.*repo/i);
             });
 
             it('should delete key when called with undefined (not write undefined)', () => {
@@ -149,8 +167,12 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath(undefined);
                 vi.advanceTimersByTime(600);
 
-                // Since userSettings is now empty, the file should be deleted
-                expect(fs.unlinkSync).toHaveBeenCalled();
+                // Since userSettings is now empty, writes {} instead of deleting
+                expect(fs.writeFileSync).toHaveBeenCalledWith(
+                    expect.any(String),
+                    '{}',
+                    'utf-8'
+                );
             });
 
             it('should remove key from JSON when other settings exist', () => {
@@ -185,13 +207,16 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/some/repo');
                 vi.advanceTimersByTime(600);
 
+                // path.resolve converts to absolute path (platform-dependent)
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining(
-                        '"selectedRepositoryPath": "/some/repo"'
-                    ),
+                    expect.stringContaining('"selectedRepositoryPath":'),
                     'utf-8'
                 );
+                // Verify it's storing some path containing 'repo'
+                const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
+                const content = writeCall?.[1] as string;
+                expect(content).toMatch(/some.*repo/i);
             });
         });
 
@@ -265,8 +290,12 @@ describe('WorkspaceSettingsService', () => {
                     service.setSelectedRepositoryPath('c:\\test\\workspace');
                     vi.advanceTimersByTime(600);
 
-                    // Normalized to workspace root - not persisted
-                    expect(fs.writeFileSync).not.toHaveBeenCalled();
+                    // Normalized to workspace root - writes empty object
+                    expect(fs.writeFileSync).toHaveBeenCalledWith(
+                        expect.any(String),
+                        '{}',
+                        'utf-8'
+                    );
                 } finally {
                     // Always restore platform, even if test fails
                     Object.defineProperty(process, 'platform', {
@@ -285,8 +314,12 @@ describe('WorkspaceSettingsService', () => {
                 service.setSelectedRepositoryPath('/test///workspace');
                 vi.advanceTimersByTime(600);
 
-                // Normalized to workspace root - not persisted
-                expect(fs.writeFileSync).not.toHaveBeenCalled();
+                // Normalized to workspace root - writes empty object
+                expect(fs.writeFileSync).toHaveBeenCalledWith(
+                    expect.any(String),
+                    '{}',
+                    'utf-8'
+                );
             });
 
             it('should not match different paths that look similar', () => {
@@ -301,11 +334,13 @@ describe('WorkspaceSettingsService', () => {
 
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining(
-                        '"selectedRepositoryPath": "/test/workspace-other"'
-                    ),
+                    expect.stringContaining('"selectedRepositoryPath":'),
                     'utf-8'
                 );
+                // Verify it's storing a path with workspace-other
+                const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
+                const content = writeCall?.[1] as string;
+                expect(content).toMatch(/workspace-other/i);
             });
 
             it('should not match parent directory as workspace root', () => {
@@ -320,11 +355,15 @@ describe('WorkspaceSettingsService', () => {
 
                 expect(fs.writeFileSync).toHaveBeenCalledWith(
                     expect.any(String),
-                    expect.stringContaining(
-                        '"selectedRepositoryPath": "/test/workspace"'
-                    ),
+                    expect.stringContaining('"selectedRepositoryPath":'),
                     'utf-8'
                 );
+                // Verify it's storing a workspace path (not subdir)
+                const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
+                const content = writeCall?.[1] as string;
+                expect(content).toMatch(/workspace/i);
+                // Should NOT contain subdir since we're setting parent
+                expect(content).not.toMatch(/subdir/i);
             });
         });
     });
@@ -526,7 +565,7 @@ describe('WorkspaceSettingsService', () => {
             expect(service.getSetting('logLevel', 'info')).toBe('info'); // default
         });
 
-        it('should delete settings file when only defaults remain', () => {
+        it('should write empty object when only defaults remain', () => {
             vi.mocked(fs.existsSync).mockReturnValue(true);
             vi.mocked(fs.readFileSync).mockReturnValue(
                 JSON.stringify({
@@ -538,7 +577,12 @@ describe('WorkspaceSettingsService', () => {
 
             service.clearWorkspaceSettings();
 
-            expect(fs.unlinkSync).toHaveBeenCalledWith(expect.any(String));
+            // Now writes {} instead of deleting
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                '{}',
+                'utf-8'
+            );
         });
 
         it('should not delete settings file when preserved settings exist', () => {
@@ -583,7 +627,7 @@ describe('WorkspaceSettingsService', () => {
             expect(service.getMaxIterations()).toBe(100); // default is 100
         });
 
-        it('should delete settings file when all settings are cleared', () => {
+        it('should write empty object when all settings are cleared', () => {
             vi.mocked(fs.existsSync).mockReturnValue(true);
             vi.mocked(fs.readFileSync).mockReturnValue(
                 JSON.stringify({
@@ -592,11 +636,16 @@ describe('WorkspaceSettingsService', () => {
                 })
             );
             service = new WorkspaceSettingsService(mockContext);
-            vi.mocked(fs.unlinkSync).mockClear();
+            vi.mocked(fs.writeFileSync).mockClear();
 
             service.resetAllSettings();
 
-            expect(fs.unlinkSync).toHaveBeenCalledWith(expect.any(String));
+            // Now writes {} instead of deleting
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                '{}',
+                'utf-8'
+            );
         });
     });
 
@@ -606,15 +655,17 @@ describe('WorkspaceSettingsService', () => {
             vi.mocked(fs.readFileSync).mockReturnValue('{}');
             service = new WorkspaceSettingsService(mockContext);
             vi.mocked(fs.writeFileSync).mockClear();
-            vi.mocked(fs.unlinkSync).mockClear();
 
             // maxIterations default is 100
             service.setSetting('maxIterations', 100);
             vi.advanceTimersByTime(600);
 
-            // Should not write the default value - file should be deleted (empty userSettings)
-            expect(fs.writeFileSync).not.toHaveBeenCalled();
-            expect(fs.unlinkSync).toHaveBeenCalled();
+            // Should not write the default value - writes {} (empty userSettings)
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                '{}',
+                'utf-8'
+            );
         });
 
         it('should persist values that differ from the schema default', () => {
@@ -641,15 +692,17 @@ describe('WorkspaceSettingsService', () => {
             );
             service = new WorkspaceSettingsService(mockContext);
             vi.mocked(fs.writeFileSync).mockClear();
-            vi.mocked(fs.unlinkSync).mockClear();
 
             // Reset to default value
             service.setSetting('maxIterations', 100);
             vi.advanceTimersByTime(600);
 
-            // Should delete file since no non-default values remain
-            expect(fs.writeFileSync).not.toHaveBeenCalled();
-            expect(fs.unlinkSync).toHaveBeenCalled();
+            // Should write {} since no non-default values remain
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                '{}',
+                'utf-8'
+            );
         });
 
         it('should still update runtime settings even when not persisting', () => {
@@ -784,6 +837,115 @@ describe('WorkspaceSettingsService', () => {
 
             // Should have reloaded only once
             expect(fs.readFileSync).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('workspace folders listener disposal', () => {
+        it('should dispose workspace folders listener on service disposal', () => {
+            const mockDispose = vi.fn();
+            vi.mocked(
+                vscode.workspace.onDidChangeWorkspaceFolders
+            ).mockReturnValue({ dispose: mockDispose });
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Dispose the service
+            service.dispose();
+
+            // Verify the listener was disposed
+            expect(mockDispose).toHaveBeenCalled();
+        });
+    });
+
+    describe('normalizePath with path.resolve', () => {
+        it('should normalize paths with . and .. segments', () => {
+            (vscode.workspace as any).workspaceFolders = [
+                { uri: { fsPath: '/test/workspace' } },
+            ];
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Set a path with .. that resolves to workspace root
+            service.setSelectedRepositoryPath('/test/workspace/subdir/..');
+            vi.advanceTimersByTime(600);
+
+            // Should normalize to workspace root - writes empty object
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                '{}',
+                'utf-8'
+            );
+        });
+
+        it('should normalize paths with . segment', () => {
+            (vscode.workspace as any).workspaceFolders = [
+                { uri: { fsPath: '/test/workspace' } },
+            ];
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Set a path with . that resolves to workspace root
+            service.setSelectedRepositoryPath('/test/workspace/./');
+            vi.advanceTimersByTime(600);
+
+            // Should normalize to workspace root - writes empty object
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                '{}',
+                'utf-8'
+            );
+        });
+
+        it('should handle UNC paths on Windows', () => {
+            const originalPlatform = process.platform;
+            Object.defineProperty(process, 'platform', { value: 'win32' });
+
+            try {
+                (vscode.workspace as any).workspaceFolders = [
+                    { uri: { fsPath: '\\\\server\\share\\project' } },
+                ];
+
+                service = new WorkspaceSettingsService(mockContext);
+
+                // Set same UNC path with different separators
+                service.setSelectedRepositoryPath('//server/share/project');
+                vi.advanceTimersByTime(600);
+
+                // Should normalize to workspace root - writes empty object
+                expect(fs.writeFileSync).toHaveBeenCalledWith(
+                    expect.any(String),
+                    '{}',
+                    'utf-8'
+                );
+            } finally {
+                Object.defineProperty(process, 'platform', {
+                    value: originalPlatform,
+                });
+            }
+        });
+
+        it('should store canonical paths with resolved segments', () => {
+            (vscode.workspace as any).workspaceFolders = [
+                { uri: { fsPath: '/test/workspace' } },
+            ];
+
+            service = new WorkspaceSettingsService(mockContext);
+
+            // Set a path with .. that does NOT resolve to workspace root
+            service.setSelectedRepositoryPath('/test/other/../different');
+            vi.advanceTimersByTime(600);
+
+            // Should store resolved canonical path
+            expect(fs.writeFileSync).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.stringContaining('"selectedRepositoryPath":'),
+                'utf-8'
+            );
+            // The stored path should be resolved (no .. in path)
+            const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
+            const content = writeCall?.[1] as string;
+            expect(content).toMatch(/different/i);
+            expect(content).not.toContain('..');
         });
     });
 });
