@@ -332,16 +332,14 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         );
 
         try {
-            // If there are no user-set values, write empty object
-            // (avoids race conditions with external processes vs delete+create)
+            // If there are no user-set values, delete the file if it exists
             if (Object.keys(this.userSettings).length === 0) {
-                // Ensure directory exists before writing
-                const dir = path.dirname(this.settingsPath);
-                if (!fs.existsSync(dir)) {
-                    fs.mkdirSync(dir, { recursive: true });
+                if (fs.existsSync(this.settingsPath)) {
+                    fs.unlinkSync(this.settingsPath);
+                    Log.debug(
+                        `Deleted empty settings file: ${this.settingsPath}`
+                    );
                 }
-                fs.writeFileSync(this.settingsPath, '{}', 'utf-8');
-                Log.debug(`Wrote empty settings file: ${this.settingsPath}`);
                 return;
             }
 
@@ -456,20 +454,35 @@ export class WorkspaceSettingsService implements vscode.Disposable {
 
     /**
      * Get the selected repository path for this workspace.
-     * Resolves the "." marker back to the workspace root path.
+     * Handles:
+     * - "." marker (legacy): resolves to workspace root
+     * - Relative paths: resolves against workspace root
+     * - Absolute paths: returns as-is (backward compat with old saved settings)
      */
     public getSelectedRepositoryPath(): string | undefined {
         const storedPath = this.settings.selectedRepositoryPath;
+        if (!storedPath) {
+            return undefined;
+        }
         if (storedPath === WORKSPACE_ROOT_MARKER) {
             return this.getWorkspaceRootPath();
         }
+        // If relative path, resolve against workspace root
+        if (!path.isAbsolute(storedPath)) {
+            const workspaceRoot = this.getWorkspaceRootPath();
+            if (workspaceRoot) {
+                return path.resolve(workspaceRoot, storedPath);
+            }
+        }
+        // Absolute path - return as-is (backward compat)
         return storedPath;
     }
 
     /**
      * Set the selected repository path for this workspace.
      * If the path matches the workspace root, nothing is persisted (default behavior).
-     * Only non-default paths are stored, keeping the config file minimal.
+     * If the path is inside the workspace, stores a relative path for portability.
+     * If the path is outside the workspace, stores an absolute path as fallback.
      * @param repoPath The absolute path to the repository root
      */
     public setSelectedRepositoryPath(repoPath: string | undefined): void {
@@ -486,8 +499,25 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             ) {
                 // Workspace root is the default - no need to persist
                 valueToStore = undefined;
+            } else if (workspaceRoot) {
+                // Compute path relative to workspace root for portability
+                const absoluteRepoPath = path.resolve(repoPath);
+                const relativePath = path.relative(
+                    workspaceRoot,
+                    absoluteRepoPath
+                );
+                // Only use relative if repo is inside workspace (no .. escape)
+                if (
+                    !relativePath.startsWith('..') &&
+                    !path.isAbsolute(relativePath)
+                ) {
+                    valueToStore = relativePath;
+                } else {
+                    // Repo outside workspace - store absolute
+                    valueToStore = absoluteRepoPath;
+                }
             } else {
-                // Store canonical (resolved) path for consistency
+                // No workspace - store absolute
                 valueToStore = path.resolve(repoPath);
             }
         }

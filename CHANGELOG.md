@@ -69,11 +69,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Non-object JSON guard in settings loader**: `WorkspaceSettingsService.loadSettings()` now handles malformed JSON gracefully (null, arrays, primitives). Previously, non-object JSON would cause the settings loader to fail silently or produce unexpected behavior.
 
-- **Path normalization for repository paths**: `WorkspaceSettingsService.setSelectedRepositoryPath()` now uses `path.resolve()` to store canonical paths, properly handling `.`/`..` segments, UNC paths on Windows, and mixed separators.
+- **Path normalization for repository paths**: `WorkspaceSettingsService.setSelectedRepositoryPath()` now stores relative paths when the repository is inside the workspace (e.g., `packages/app` instead of `/full/path/to/packages/app`). This improves portability across different machines. Absolute paths are still used for repositories outside the workspace, and old absolute paths are still read correctly for backward compatibility.
 
 - **Workspace folders listener leak**: Fixed memory leak where the `onDidChangeWorkspaceFolders` listener was not being disposed.
-
-- **Settings file deletion race condition**: `saveSettings()` now writes an empty `{}` object instead of deleting the file when no user settings remain, avoiding race conditions with external file watchers.
 
 - **Ripgrep process termination**: Wrapped ripgrep `kill()` calls in try/catch for robustness. If a search process times out and the kill fails (e.g., process already exited), the error is logged but doesn't propagate.
 
