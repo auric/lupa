@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { withTimeout } from '../utils/asyncUtils';
+import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
+import { Log } from '../services/loggingService';
 
 /** Timeout for document symbol provider call */
 const SYMBOL_PROVIDER_TIMEOUT = 5_000; // 5 seconds
@@ -47,7 +48,22 @@ export class SymbolRangeExpander {
 
             // Fallback: try to expand the range intelligently based on code structure
             return this.expandRangeForSymbol(document, symbolRange);
-        } catch {
+        } catch (error) {
+            if (isTimeoutError(error)) {
+                Log.debug(
+                    `Document symbol provider timed out for ${document.fileName} - using heuristic expansion`
+                );
+            } else if (error instanceof vscode.CancellationError) {
+                Log.debug(
+                    `Document symbol provider cancelled for ${document.fileName}`
+                );
+            } else {
+                const message =
+                    error instanceof Error ? error.message : String(error);
+                Log.debug(
+                    `Document symbol provider failed for ${document.fileName}: ${message}`
+                );
+            }
             // Fallback to expanded range if symbol provider fails or times out
             return this.expandRangeForSymbol(document, symbolRange);
         }

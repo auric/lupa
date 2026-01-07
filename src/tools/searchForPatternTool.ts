@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
@@ -104,7 +105,7 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
@@ -143,6 +144,7 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
                 excludeGlob: exclude_files || undefined,
                 codeFilesOnly: only_code_files,
                 multiline: true,
+                token: context?.cancellationToken,
             });
 
             if (results.length === 0) {
@@ -152,6 +154,9 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             const formattedResult = this.ripgrepService.formatResults(results);
             return toolSuccess(formattedResult);
         } catch (error) {
+            if (error instanceof vscode.CancellationError) {
+                return toolError('Search cancelled by user');
+            }
             return toolError(
                 `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
             );

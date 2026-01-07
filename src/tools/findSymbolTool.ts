@@ -11,7 +11,12 @@ import { SymbolMatcher, type SymbolMatch } from '../utils/symbolMatcher';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
-import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    withTimeout,
+    withCancellableTimeout,
+    isTimeoutError,
+    isCancellationError,
+} from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -144,7 +149,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 symbols = await this.findSymbolsInWorkspace(
                     pathSegments,
                     includeKinds,
-                    excludeKinds
+                    excludeKinds,
+                    token
                 );
             }
 
@@ -243,7 +249,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     private async findSymbolsInWorkspace(
         pathSegments: string[],
         includeKinds?: number[],
-        excludeKinds?: number[]
+        excludeKinds?: number[],
+        token?: vscode.CancellationToken
     ): Promise<SymbolMatch[]> {
         try {
             const targetSymbolName = pathSegments[pathSegments.length - 1];
@@ -270,12 +277,17 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     )
                 );
                 workspaceSymbols =
-                    (await withTimeout(
+                    (await withCancellableTimeout(
                         symbolsPromise,
                         SYMBOL_SEARCH_TIMEOUT,
-                        'Workspace symbol search'
+                        'Workspace symbol search',
+                        token
                     )) || [];
             } catch (error) {
+                if (isCancellationError(error)) {
+                    Log.debug('Workspace symbol search cancelled');
+                    return [];
+                }
                 Log.warn('Workspace symbol search failed:', error);
                 return [];
             }
@@ -425,7 +437,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     pathSegments,
                     symbolName,
                     includeKinds,
-                    excludeKinds
+                    excludeKinds,
+                    token
                 );
             } else if (stat.type === vscode.FileType.Directory) {
                 // Directory - search with time control using SymbolExtractor
@@ -512,7 +525,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         pathSegments: string[],
         symbolName: string,
         includeKinds?: number[],
-        excludeKinds?: number[]
+        excludeKinds?: number[],
+        token?: vscode.CancellationToken
     ): Promise<SymbolMatch[]> {
         try {
             // Quick text pre-check before expensive symbol analysis
@@ -524,9 +538,17 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             }
 
             const document = await vscode.workspace.openTextDocument(fileUri);
-            const documentSymbols = await vscode.commands.executeCommand<
-                vscode.DocumentSymbol[]
-            >('vscode.executeDocumentSymbolProvider', fileUri);
+            const documentSymbols = await withCancellableTimeout(
+                Promise.resolve(
+                    vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                        'vscode.executeDocumentSymbolProvider',
+                        fileUri
+                    )
+                ),
+                FILE_PROCESSING_TIMEOUT,
+                `Document symbols for ${fileUri.fsPath}`,
+                token
+            );
 
             if (!documentSymbols || documentSymbols.length === 0) {
                 return [];

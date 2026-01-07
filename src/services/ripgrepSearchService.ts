@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CodeFileDetector } from '../utils/codeFileDetector';
+import { Log } from './loggingService';
 
 /**
  * Gets the path to ripgrep binary bundled with VS Code.
@@ -82,6 +83,8 @@ export interface RipgrepSearchOptions {
     excludeGlob?: string;
     codeFilesOnly?: boolean;
     multiline: boolean;
+    /** Optional cancellation token to abort the search */
+    token?: vscode.CancellationToken;
 }
 
 interface RipgrepJsonMessage {
@@ -160,6 +163,12 @@ export class RipgrepSearchService {
         const args = this.buildArgs(options);
 
         return new Promise((resolve, reject) => {
+            if (options.token?.isCancellationRequested) {
+                Log.debug('[Ripgrep] Search skipped - already cancelled');
+                reject(new vscode.CancellationError());
+                return;
+            }
+
             const results = new Map<string, RipgrepMatch[]>();
             let stderr = '';
 
@@ -167,6 +176,18 @@ export class RipgrepSearchService {
                 cwd: options.cwd,
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
+
+            let cancellationDisposable: vscode.Disposable | undefined;
+            if (options.token) {
+                cancellationDisposable = options.token.onCancellationRequested(
+                    () => {
+                        Log.debug(
+                            '[Ripgrep] Search cancelled by user - killing process'
+                        );
+                        rg.kill('SIGTERM');
+                    }
+                );
+            }
 
             let buffer = '';
 
@@ -194,6 +215,8 @@ export class RipgrepSearchService {
             });
 
             rg.on('close', (code: number | null) => {
+                cancellationDisposable?.dispose();
+
                 // Process remaining buffer
                 if (buffer.trim()) {
                     try {
@@ -204,6 +227,11 @@ export class RipgrepSearchService {
                     } catch {
                         // Skip malformed JSON
                     }
+                }
+
+                if (options.token?.isCancellationRequested) {
+                    reject(new vscode.CancellationError());
+                    return;
                 }
 
                 // ripgrep exit codes: 0 = matches found, 1 = no matches, 2 = error
@@ -221,6 +249,7 @@ export class RipgrepSearchService {
             });
 
             rg.on('error', (err: Error) => {
+                cancellationDisposable?.dispose();
                 reject(new Error(`Failed to spawn ripgrep: ${err.message}`));
             });
         });

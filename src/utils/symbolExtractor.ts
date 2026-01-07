@@ -4,7 +4,11 @@ import ignore from 'ignore';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { readGitignore } from '../utils/gitUtils';
 import { CodeFileUtils } from './codeFileUtils';
-import { withCancellableTimeout, isTimeoutError } from './asyncUtils';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    isCancellationError,
+} from './asyncUtils';
 import { Log } from '../services/loggingService';
 
 /** Timeout for extracting symbols from a single file */
@@ -65,23 +69,20 @@ export class SymbolExtractor {
 
             return symbols || [];
         } catch (error) {
-            // Log timeout specifically for debugging slow language servers
             if (isTimeoutError(error)) {
                 Log.debug(
                     `Symbol extraction timed out for ${fileUri.fsPath} - language server may be slow`
                 );
-            } else if (error instanceof vscode.CancellationError) {
+            } else if (isCancellationError(error)) {
                 // Cancellation is expected behavior, no need to log at warn level
                 Log.debug(`Symbol extraction cancelled for ${fileUri.fsPath}`);
             } else {
-                // Log unexpected errors at warn level for debugging LSP issues
                 const message =
                     error instanceof Error ? error.message : String(error);
                 Log.warn(
                     `Symbol extraction failed for ${fileUri.fsPath}: ${message}`
                 );
             }
-            // Return empty array if no symbols, timeout, or provider not available
             return [];
         }
     }
@@ -105,17 +106,14 @@ export class SymbolExtractor {
         const timeoutMs = options.timeoutMs ?? DIRECTORY_SYMBOL_TIMEOUT;
         const token = options.token;
 
-        // Check cancellation before starting
         if (token?.isCancellationRequested) {
             return results;
         }
 
-        // Read .gitignore patterns
         const repository = this.gitOperationsManager.getRepository();
         const gitignoreContent = await readGitignore(repository);
         const ig = ignore().add(gitignoreContent);
 
-        // Debug: Log gitignore patterns loaded
         if (gitignoreContent.trim()) {
             console.log(
                 `[SymbolExtractor] Loaded gitignore patterns:`,
@@ -137,9 +135,7 @@ export class SymbolExtractor {
             timeoutMs
         );
 
-        // Get symbols for each file with timeout protection
         for (const filePath of files) {
-            // Check overall directory timeout
             const elapsed = Date.now() - startTime;
             if (elapsed > timeoutMs) {
                 Log.warn(
@@ -148,7 +144,6 @@ export class SymbolExtractor {
                 break;
             }
 
-            // Check cancellation between files
             if (token?.isCancellationRequested) {
                 Log.debug(
                     `Directory symbol extraction cancelled after processing ${results.length} files`
@@ -167,8 +162,14 @@ export class SymbolExtractor {
                 if (symbols.length > 0) {
                     results.push({ filePath, symbols });
                 }
-            } catch {
-                // Skip files that can't be processed (cancelled, etc.)
+            } catch (error) {
+                if (isCancellationError(error)) {
+                    Log.debug(`Symbol extraction cancelled for ${filePath}`);
+                } else {
+                    const message =
+                        error instanceof Error ? error.message : String(error);
+                    Log.debug(`Skipping file ${filePath}: ${message}`);
+                }
                 continue;
             }
         }
@@ -299,8 +300,10 @@ export class SymbolExtractor {
                     files.push(...subFiles);
                 }
             }
-        } catch {
-            // Skip directories that can't be read
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : String(error);
+            Log.debug(`Cannot read directory ${targetPath}: ${message}`);
         }
 
         return files;

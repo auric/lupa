@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Cancellation now works instantly**: Stopping an analysis mid-operation now cancels file discovery and symbol extraction immediately. Previously, these operations would continue running in the background.
 
+- **Ripgrep searches stop on cancel**: Pattern searches now terminate immediately when analysis is cancelled, instead of continuing to run in the background.
+
+- **File discovery uses proper cancellation**: Directory crawls now use native fdir cancellation support, ensuring immediate termination when stopped.
+
 - **File discovery no longer blocks VS Code**: Large directory scans now run asynchronously, keeping VS Code responsive during searches.
 
 - **Resource leaks fixed**: Timer handles that accumulated during long symbol searches are now properly cleaned up.
@@ -22,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Better timeout error handling**: Tools now use a consistent `TimeoutError` class for all timeout scenarios, enabling more reliable detection and user-friendly messages.
 
 - **Timeout logging**: When operations time out, the system logs details to help diagnose slow language servers.
+
+- **Debug logging for skipped files**: Silent error catches in symbol extraction now log at debug level for easier troubleshooting.
 
 ## [0.1.10] - 2026-01-05
 

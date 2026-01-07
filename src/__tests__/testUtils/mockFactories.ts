@@ -64,6 +64,7 @@ export function createMockFdirInstance(syncReturnValue: string[] = []) {
         globWithOptions: vi.fn().mockReturnThis(),
         withRelativePaths: vi.fn().mockReturnThis(),
         withFullPaths: vi.fn().mockReturnThis(),
+        withAbortSignal: vi.fn().mockReturnThis(),
         exclude: vi.fn().mockReturnThis(),
         filter: vi.fn().mockReturnThis(),
         crawl: vi.fn().mockReturnValue(crawlResult),
@@ -77,6 +78,7 @@ export function createMockFdirInstance(syncReturnValue: string[] = []) {
     instance.globWithOptions.mockReturnValue(instance);
     instance.withRelativePaths.mockReturnValue(instance);
     instance.withFullPaths.mockReturnValue(instance);
+    instance.withAbortSignal.mockReturnValue(instance);
     instance.exclude.mockReturnValue(instance);
     instance.filter.mockReturnValue(instance);
     return instance as any;

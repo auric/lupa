@@ -44,7 +44,10 @@ vi.mock('fdir', () => ({
         return {
             withGlobFunction: vi.fn().mockReturnThis(),
             glob: vi.fn().mockReturnThis(),
+            globWithOptions: vi.fn().mockReturnThis(),
             withRelativePaths: vi.fn().mockReturnThis(),
+            withFullPaths: vi.fn().mockReturnThis(),
+            withAbortSignal: vi.fn().mockReturnThis(),
             exclude: vi.fn().mockReturnThis(),
             filter: vi.fn().mockReturnThis(),
             crawl: vi.fn().mockReturnThis(),

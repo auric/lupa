@@ -4,7 +4,11 @@ import * as path from 'path';
 import { BaseTool } from './baseTool';
 import { UsageFormatter } from './usageFormatter';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    isCancellationError,
+} from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
@@ -62,7 +66,7 @@ Requires file_path where the symbol is defined as starting point.`;
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         try {
             const {
@@ -122,8 +126,8 @@ Requires file_path where the symbol is defined as starting point.`;
             }
 
             try {
-                // Use VS Code's reference provider to find all references (with timeout)
-                const references = await withTimeout(
+                // Use VS Code's reference provider to find all references (with timeout and cancellation)
+                const references = await withCancellableTimeout(
                     Promise.resolve(
                         vscode.commands.executeCommand<vscode.Location[]>(
                             'vscode.executeReferenceProvider',
@@ -136,7 +140,8 @@ Requires file_path where the symbol is defined as starting point.`;
                         )
                     ),
                     LSP_OPERATION_TIMEOUT,
-                    `Reference search for ${sanitizedSymbolName}`
+                    `Reference search for ${sanitizedSymbolName}`,
+                    context?.cancellationToken
                 );
 
                 if (!references || references.length === 0) {
@@ -193,6 +198,9 @@ Requires file_path where the symbol is defined as starting point.`;
 
                 return toolSuccess(formattedUsages.join('\n\n'));
             } catch (error) {
+                if (isCancellationError(error)) {
+                    return toolError('Reference search was cancelled');
+                }
                 if (isTimeoutError(error)) {
                     return toolError(
                         `Reference search timed out. The language server may be slow or the codebase too large.`

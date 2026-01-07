@@ -6,8 +6,8 @@ import ignore from 'ignore';
 import { PathSanitizer } from './pathSanitizer';
 import { readGitignore } from './gitUtils';
 import { Repository } from '../types/vscodeGitExtension';
-import { withTimeout } from './asyncUtils';
 import { TimeoutError } from '../types/errorTypes';
+import { Log } from '../services/loggingService';
 
 export interface FileDiscoveryOptions {
     /**
@@ -16,7 +16,7 @@ export interface FileDiscoveryOptions {
     searchPath?: string;
 
     // Glob pattern to include files (e.g., "*.ts", "**/*.js")
-    includePattern?: string;
+    includePattern: string;
 
     /**
      * Glob pattern to exclude files (takes precedence over includePattern)
@@ -65,11 +65,12 @@ export class FileDiscoverer {
     private static readonly DEFAULT_TIMEOUT = 15000; // 15 seconds
 
     /**
-     * Discover files matching the specified criteria
+     * Discover files matching the specified criteria.
+     * Uses AbortController for proper cancellation of fdir crawl on timeout.
      */
     static async discoverFiles(
         gitRepo: Repository,
-        options: FileDiscoveryOptions = {}
+        options: FileDiscoveryOptions
     ): Promise<FileDiscoveryResult> {
         const {
             searchPath = '.',
@@ -89,46 +90,49 @@ export class FileDiscoverer {
         const gitRootDirectory = gitRepo.rootUri.fsPath;
         const targetPath = path.join(gitRootDirectory, sanitizedPath);
 
+        const abortController = new AbortController();
+        const timeoutId = setTimeout(() => {
+            Log.warn(`[Timeout] File discovery aborted after ${timeoutMs}ms`);
+            abortController.abort();
+        }, timeoutMs);
+
         try {
-            const discoveryPromise = this.performFileDiscovery(gitRepo, {
+            const result = await this.performFileDiscovery(gitRepo, {
                 gitRootDirectory,
                 targetPath,
                 includePattern,
                 excludePattern,
                 respectGitignore,
                 maxResults,
+                abortSignal: abortController.signal,
             });
-
-            // Use withTimeout which properly cleans up the timer
-            const result = await withTimeout(
-                discoveryPromise,
-                timeoutMs,
-                'File discovery'
-            );
             return result;
         } catch (error) {
-            // Rethrow TimeoutError directly to preserve type for isTimeoutError() checks
-            if (error instanceof TimeoutError) {
-                throw error;
+            if (abortController.signal.aborted) {
+                throw TimeoutError.create('File discovery', timeoutMs);
             }
             throw new Error(
                 `File discovery failed: ${error instanceof Error ? error.message : String(error)}`
             );
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
     /**
-     * Perform the actual file discovery using fdir and filtering
+     * Perform the actual file discovery using fdir and filtering.
+     * Uses AbortSignal for proper cancellation and filters during crawl for efficiency.
      */
     private static async performFileDiscovery(
         gitRepo: Repository,
         options: {
             gitRootDirectory: string;
             targetPath: string;
-            includePattern?: string;
+            includePattern: string;
             excludePattern?: string;
             respectGitignore: boolean;
             maxResults: number;
+            abortSignal: AbortSignal;
         }
     ): Promise<FileDiscoveryResult> {
         const {
@@ -138,9 +142,9 @@ export class FileDiscoverer {
             excludePattern,
             respectGitignore,
             maxResults,
+            abortSignal,
         } = options;
 
-        // Read gitignore patterns if requested
         let ig: ReturnType<typeof ignore> | undefined;
         if (respectGitignore) {
             const gitignorePatterns = await readGitignore(gitRepo);
@@ -156,15 +160,31 @@ export class FileDiscoverer {
         };
 
         // Build fdir crawler, add withGlobFunction to bundle it correctly
-        let crawler = new fdir().withGlobFunction(picomatch).withFullPaths();
+        let crawler = new fdir()
+            .withGlobFunction(picomatch)
+            .withAbortSignal(abortSignal)
+            .withFullPaths()
+            .globWithOptions([includePattern], picomatchOptions);
 
-        // Add include pattern if provided
-        if (includePattern) {
-            crawler = crawler.globWithOptions(
-                [includePattern],
-                picomatchOptions
-            );
-        }
+        const excludeMatcher = excludePattern
+            ? picomatch(excludePattern, picomatchOptions)
+            : undefined;
+
+        crawler = crawler.filter((filePath) => {
+            const relativePath = path
+                .relative(gitRootDirectory, filePath)
+                .replaceAll(path.sep, path.posix.sep);
+
+            if (ig && ig.ignores(relativePath)) {
+                return false;
+            }
+
+            if (excludeMatcher && excludeMatcher(relativePath)) {
+                return false;
+            }
+
+            return true;
+        });
 
         crawler = crawler.exclude((_dirName, dirPath) => {
             const relativePath = path.relative(gitRootDirectory, dirPath);
@@ -188,29 +208,15 @@ export class FileDiscoverer {
         // Discover all files (async to avoid blocking the event loop)
         const allFiles = await crawler.crawl(targetPath).withPromise();
 
-        // Convert to relative paths from git root
-        let relativeFiles = allFiles.map((file) =>
-            path
-                .relative(gitRootDirectory, file)
-                .replaceAll(path.sep, path.posix.sep)
-        );
+        // Convert to relative paths from git root (filtering already done during crawl)
+        const relativeFiles = allFiles
+            .map((file) =>
+                path
+                    .relative(gitRootDirectory, file)
+                    .replaceAll(path.sep, path.posix.sep)
+            )
+            .sort();
 
-        if (ig) {
-            relativeFiles = ig.filter(relativeFiles);
-        }
-
-        // Apply exclude pattern if provided (takes precedence over include)
-        if (excludePattern) {
-            const excludeMatcher = picomatch(excludePattern, picomatchOptions);
-            relativeFiles = relativeFiles.filter(
-                (file) => !excludeMatcher(file)
-            );
-        }
-
-        // Sort files for consistent results
-        relativeFiles.sort();
-
-        // Apply result limits
         const totalFound = relativeFiles.length;
         const truncated = relativeFiles.length > maxResults;
         const files = relativeFiles.slice(0, maxResults);
