@@ -1,10 +1,10 @@
 import * as z from 'zod';
-import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { isCancellationError } from '@/utils/asyncUtils';
 
 /**
  * High-performance tool for searching regex patterns in the codebase using ripgrep.
@@ -154,9 +154,10 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             const formattedResult = this.ripgrepService.formatResults(results);
             return toolSuccess(formattedResult);
         } catch (error) {
-            if (error instanceof vscode.CancellationError) {
-                return toolError('Search cancelled by user');
+            if (isCancellationError(error)) {
+                throw error;
             }
+
             return toolError(
                 `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
             );

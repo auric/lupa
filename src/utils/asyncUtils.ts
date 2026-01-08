@@ -87,6 +87,8 @@ export async function withCancellableTimeout<T>(
                 reject(new vscode.CancellationError());
             });
         });
+        // Prevent unhandled rejection if token fires after race settles
+        cancellationPromise.catch(() => {});
         racers.push(cancellationPromise);
     }
 

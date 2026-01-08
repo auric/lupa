@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
-import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    withTimeout,
+    isTimeoutError,
+    isCancellationError,
+} from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 
 /** Timeout for document symbol provider call */
@@ -21,7 +25,6 @@ export class SymbolRangeExpander {
         symbolRange: vscode.Range
     ): Promise<vscode.Range> {
         try {
-            // Try to use DocumentSymbolProvider to get the full symbol range (with timeout)
             const symbolsPromise = vscode.commands.executeCommand<
                 vscode.DocumentSymbol[]
             >('vscode.executeDocumentSymbolProvider', document.uri);
@@ -33,7 +36,6 @@ export class SymbolRangeExpander {
             );
 
             if (symbols && symbols.length > 0) {
-                // Find the symbol that contains our target position
                 const targetPosition = symbolRange.start;
                 const containingSymbol = this.findContainingSymbol(
                     symbols,
@@ -41,7 +43,6 @@ export class SymbolRangeExpander {
                 );
 
                 if (containingSymbol) {
-                    // Return the full range of the containing symbol
                     return containingSymbol.range;
                 }
             }
@@ -49,13 +50,16 @@ export class SymbolRangeExpander {
             // Fallback: try to expand the range intelligently based on code structure
             return this.expandRangeForSymbol(document, symbolRange);
         } catch (error) {
+            if (isCancellationError(error)) {
+                Log.debug(
+                    `Document symbol provider cancelled for ${document.fileName}`
+                );
+                throw error;
+            }
+
             if (isTimeoutError(error)) {
                 Log.debug(
                     `Document symbol provider timed out for ${document.fileName} - using heuristic expansion`
-                );
-            } else if (error instanceof vscode.CancellationError) {
-                Log.debug(
-                    `Document symbol provider cancelled for ${document.fileName}`
                 );
             } else {
                 const message =

@@ -127,6 +127,8 @@ export class ModelRequestHandler {
                 reject(new vscode.CancellationError());
             });
         });
+        // Prevent unhandled rejection if token fires after race settles
+        cancellationPromise.catch(() => {});
 
         try {
             return await Promise.race([

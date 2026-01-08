@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Consistent path normalization for gitignore**: Directory exclusion now normalizes paths to POSIX format before gitignore checks, matching the behavior of file filters.
 
+- **Unhandled promise rejection warnings eliminated**: Fixed async utilities where cancellation promises could reject after `Promise.race` settled, causing Node.js warning messages. Cancellation promises are now silently handled.
+
 ### Added
 
 - **Better timeout error handling**: Tools now use a consistent `TimeoutError` class for all timeout scenarios, enabling more reliable detection and user-friendly messages.

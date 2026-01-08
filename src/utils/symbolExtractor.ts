@@ -69,13 +69,13 @@ export class SymbolExtractor {
 
             return symbols || [];
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             if (isTimeoutError(error)) {
                 Log.debug(
                     `Symbol extraction timed out for ${fileUri.fsPath} - language server may be slow`
                 );
-            } else if (isCancellationError(error)) {
-                // Cancellation is expected behavior, no need to log at warn level
-                Log.debug(`Symbol extraction cancelled for ${fileUri.fsPath}`);
             } else {
                 const message =
                     error instanceof Error ? error.message : String(error);

@@ -199,7 +199,7 @@ Requires file_path where the symbol is defined as starting point.`;
                 return toolSuccess(formattedUsages.join('\n\n'));
             } catch (error) {
                 if (isCancellationError(error)) {
-                    return toolError('Reference search was cancelled');
+                    throw error;
                 }
                 if (isTimeoutError(error)) {
                     return toolError(
