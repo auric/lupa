@@ -9,33 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Analysis cancellation is now instant**: Clicking "Stop" immediately terminates all operations. Previously, file searches, symbol lookups, and pattern searches would continue running in the background after cancellation.
+- **"Stop" button now works instantly**: Clicking Stop immediately halts all analysis activity. Previously, searches and symbol lookups continued running in the background even after cancellation.
 
-- **Symbol searches no longer hang**: A slow language server could previously block analysis for 9+ minutes. Now each file has a 5-second timeout.
+- **No more analysis hangs**: Analyses could previously get stuck for 9+ minutes waiting for slow language servers or long searches. All operations now have timeouts—symbol lookups (5s per file), pattern searches (60s)—so analysis always makes progress.
 
-- **Pattern searches have a 60-second timeout**: Long-running pattern searches now have a time limit, preventing runaway searches from blocking analysis indefinitely.
+- **VS Code stays responsive during large projects**: File discovery no longer freezes the editor when scanning directories with many files.
 
-- **Ripgrep processes properly terminate on timeout**: Pattern search timeouts now kill the underlying ripgrep process immediately. Previously, timed-out searches would leave orphaned ripgrep processes running until they completed.
-
-- **Symbol lookups have per-operation timeouts**: Individual LSP calls (definition lookups, document symbols) now have their own timeouts, preventing a single slow operation from blocking the entire analysis.
-
-- **Cancellation checks between tool calls**: The tool executor now verifies the analysis hasn't been cancelled before starting each tool, making "Stop" more responsive during long tool chains.
-
-- **VS Code stays responsive during analysis**: Large directory scans now run asynchronously, keeping the editor responsive during file discovery.
-
-- **Cancelled analyses show correct status**: Previously, cancelling mid-analysis could show "Analysis complete" instead of acknowledging the cancellation.
-
-- **Pattern search timeout errors use correct type**: Fixed regression in `SearchForPatternTool` where timeout errors were created with `new Error()` instead of `TimeoutError.create()`, ensuring consistent error handling across the codebase.
-
-- **File discovery abort handling**: Fixed `fileDiscoverer` to properly detect abort conditions after fdir completes. fdir resolves with partial results on abort rather than rejecting, so explicit abort signal checks are now performed to throw the correct error type (CancellationError or TimeoutError).
-
-- **CancellationError propagation in FindUsagesTool**: Fixed catch blocks in `FindUsagesTool` that were swallowing CancellationError during symbol position lookups. Cancellation errors are now properly rethrown to stop analysis immediately.
-
-- **CancellationError propagation in FindSymbolTool**: Fixed catch blocks in `formatSymbolResults` that were swallowing CancellationError during body extraction. Cancellation errors are now properly rethrown.
+- **Correct status after cancellation**: Cancelling mid-analysis now shows a cancellation message instead of incorrectly saying "Analysis complete."
 
 ### Changed
 
-- **Symbol search truncation surfacing**: `FindSymbolTool` now notifies users when results may be incomplete. When symbol searches are truncated due to file limits or timeouts, results include a note: "[Note: Results may be incomplete due to timeout/file limit. Consider narrowing search scope with relative_path.]" A new `SymbolSearchResult` interface tracks `symbols`, `truncated`, and `timedOut` fields.
+- **Incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
 
 ## [0.1.10] - 2026-01-05
 

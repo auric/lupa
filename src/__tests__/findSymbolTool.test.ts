@@ -521,7 +521,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
             vi.mocked(vscode.commands.executeCommand).mockImplementation(
                 (command) => {
                     if (command === 'vscode.executeWorkspaceSymbolProvider') {
-                        throw new vscode.CancellationError();
+                        return Promise.reject(new vscode.CancellationError());
                     }
                     return Promise.resolve([]);
                 }
@@ -559,7 +559,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
                         return Promise.resolve([mockWorkspaceSymbol]);
                     }
                     if (command === 'vscode.executeDocumentSymbolProvider') {
-                        throw new vscode.CancellationError();
+                        return Promise.reject(new vscode.CancellationError());
                     }
                     return Promise.resolve([]);
                 }

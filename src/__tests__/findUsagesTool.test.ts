@@ -472,7 +472,7 @@ describe('FindUsagesTool', () => {
             (vscode.commands.executeCommand as any).mockImplementation(
                 (command: string) => {
                     if (command === 'vscode.executeDefinitionProvider') {
-                        throw new vscode.CancellationError();
+                        return Promise.reject(new vscode.CancellationError());
                     }
                     return Promise.resolve([]);
                 }
