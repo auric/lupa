@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { ToolRegistry } from './toolRegistry';
 import type { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
@@ -105,6 +106,13 @@ export class ToolExecutor {
                     this.toolCallCount
                 ),
             };
+        }
+
+        // Defensive cancellation check - tools should check themselves, but this
+        // prevents starting new work if cancellation was requested between calls
+        if (this.executionContext?.cancellationToken?.isCancellationRequested) {
+            Log.debug(`Tool '${name}' skipped - analysis was cancelled`);
+            throw new vscode.CancellationError();
         }
 
         try {

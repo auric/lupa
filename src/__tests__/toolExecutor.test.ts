@@ -573,5 +573,41 @@ describe('ToolExecutor', () => {
 
             expect(capturedContext).toBeUndefined();
         });
+
+        it('should throw CancellationError when token is cancelled before execution', async () => {
+            const slowTool: ITool = {
+                name: 'slow_tool',
+                description: 'A slow tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'slow_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> => {
+                    // This should never be called
+                    return toolSuccess('should not reach');
+                },
+            };
+
+            toolRegistry.registerTool(slowTool);
+
+            const mockCancelledContext = {
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: () => ({ dispose: () => {} }),
+                },
+            };
+
+            const toolExecutorWithCancelledToken = new ToolExecutor(
+                toolRegistry,
+                mockSettings,
+                mockCancelledContext as any
+            );
+
+            await expect(
+                toolExecutorWithCancelledToken.executeTool('slow_tool', {})
+            ).rejects.toThrow();
+        });
     });
 });

@@ -12,8 +12,10 @@ import {
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
+import { Log } from '../services/loggingService';
 
 const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
+const DEFINITION_CHECK_TIMEOUT = 10000; // 10 seconds per definition check (non-fatal)
 
 /**
  * Tool that finds all usages of a code symbol using VS Code's reference provider.
@@ -117,7 +119,8 @@ Requires file_path where the symbol is defined as starting point.`;
             // Find the symbol position in the document to use as starting point
             const symbolPosition = await this.findSymbolPosition(
                 document,
-                sanitizedSymbolName
+                sanitizedSymbolName,
+                context?.cancellationToken
             );
             if (!symbolPosition) {
                 return toolError(
@@ -245,11 +248,13 @@ Requires file_path where the symbol is defined as starting point.`;
      * Find the position of a symbol within a document
      * @param document The VS Code text document
      * @param symbolName The name of the symbol to find
+     * @param token Optional cancellation token
      * @returns The position of the symbol, or null if not found
      */
     private async findSymbolPosition(
         document: vscode.TextDocument,
-        symbolName: string
+        symbolName: string,
+        token?: vscode.CancellationToken
     ): Promise<vscode.Position | null> {
         const text = document.getText();
         const lines = text.split('\n');
@@ -267,12 +272,17 @@ Requires file_path where the symbol is defined as starting point.`;
 
                 // Verify this is actually a symbol definition by checking if definition provider returns this location
                 try {
-                    const definitions = await vscode.commands.executeCommand<
-                        vscode.Location[]
-                    >(
-                        'vscode.executeDefinitionProvider',
-                        document.uri,
-                        position
+                    const definitions = await withCancellableTimeout(
+                        Promise.resolve(
+                            vscode.commands.executeCommand<vscode.Location[]>(
+                                'vscode.executeDefinitionProvider',
+                                document.uri,
+                                position
+                            )
+                        ),
+                        DEFINITION_CHECK_TIMEOUT,
+                        `Definition check for ${symbolName}`,
+                        token
                     );
 
                     // If we get back the same location, this is likely the definition
@@ -287,7 +297,13 @@ Requires file_path where the symbol is defined as starting point.`;
                     ) {
                         return position;
                     }
-                } catch {
+                } catch (error) {
+                    // Log timeout but continue searching (non-fatal for definition check)
+                    if (isTimeoutError(error)) {
+                        Log.debug(
+                            `Definition check timed out for ${symbolName} at line ${lineIndex + 1}, continuing search`
+                        );
+                    }
                     // Continue searching if definition check fails
                 }
             }

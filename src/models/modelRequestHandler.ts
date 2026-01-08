@@ -130,9 +130,14 @@ export class ModelRequestHandler {
         // Prevent unhandled rejection if token fires after race settles
         cancellationPromise.catch(() => {});
 
+        // Wrap thenable in a promise we can attach catch handler to
+        const thenablePromise = Promise.resolve(thenable);
+        // Suppress late rejections from underlying thenable after timeout/cancellation wins
+        thenablePromise.catch(() => {});
+
         try {
             return await Promise.race([
-                Promise.resolve(thenable),
+                thenablePromise,
                 timeoutPromise,
                 cancellationPromise,
             ]);

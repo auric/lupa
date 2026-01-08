@@ -9,6 +9,7 @@ import { readGitignore } from './gitUtils';
 import { Repository } from '../types/vscodeGitExtension';
 import { TimeoutError } from '../types/errorTypes';
 import { Log } from '../services/loggingService';
+import { isCancellationError } from './asyncUtils';
 
 export interface FileDiscoveryOptions {
     /**
@@ -140,11 +141,20 @@ export class FileDiscoverer {
                 maxResults,
                 abortSignal: combinedSignal,
             });
-            return result;
-        } catch (error) {
-            // Check cancellation first (user-initiated takes priority)
+
+            // fdir resolves with partial results when aborted (does not reject).
+            // Check abort state and throw appropriate error type.
             if (cancellationToken?.isCancellationRequested) {
                 throw new vscode.CancellationError();
+            }
+            if (timeoutController.signal.aborted) {
+                throw TimeoutError.create('File discovery', timeoutMs);
+            }
+
+            return result;
+        } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
             }
             if (timeoutController.signal.aborted) {
                 throw TimeoutError.create('File discovery', timeoutMs);
@@ -248,13 +258,6 @@ export class FileDiscoverer {
         // Discover all files (async to avoid blocking the event loop)
         const allFiles = await crawler.crawl(targetPath).withPromise();
 
-        const wasAborted = abortSignal.aborted;
-        if (wasAborted) {
-            Log.debug(
-                `[FileDiscoverer] Crawl aborted - returning ${allFiles.length} partial results`
-            );
-        }
-
         // Convert to relative paths from git root (filtering already done during crawl)
         const relativeFiles = allFiles
             .map((file) =>
@@ -265,7 +268,7 @@ export class FileDiscoverer {
             .sort();
 
         const totalFound = relativeFiles.length;
-        const truncated = wasAborted || relativeFiles.length > maxResults;
+        const truncated = relativeFiles.length > maxResults;
         const files = relativeFiles.slice(0, maxResults);
 
         return {

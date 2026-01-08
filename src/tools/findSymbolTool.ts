@@ -24,6 +24,7 @@ import ignore from 'ignore';
 // Timeout constants
 const SYMBOL_SEARCH_TIMEOUT = 5000; // 5 seconds total
 const FILE_PROCESSING_TIMEOUT = 500; // 500ms per file
+const DOCUMENT_SYMBOL_TIMEOUT = 500; // 500ms for fetching document symbols
 
 // Symbol formatting functions now handled by SymbolFormatter utility
 
@@ -768,7 +769,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     const documentSymbol =
                         await this.fetchDocumentSymbolForRange(
                             match.document,
-                            symbolRange
+                            symbolRange,
+                            token
                         );
                     if (documentSymbol && documentSymbol.children) {
                         childrenToProcess = documentSymbol.children;
@@ -928,12 +930,21 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
      */
     private async fetchDocumentSymbolForRange(
         document: vscode.TextDocument,
-        targetRange: vscode.Range
+        targetRange: vscode.Range,
+        token?: vscode.CancellationToken
     ): Promise<vscode.DocumentSymbol | undefined> {
         try {
-            const documentSymbols = await vscode.commands.executeCommand<
-                vscode.DocumentSymbol[]
-            >('vscode.executeDocumentSymbolProvider', document.uri);
+            const documentSymbols = await withCancellableTimeout(
+                Promise.resolve(
+                    vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+                        'vscode.executeDocumentSymbolProvider',
+                        document.uri
+                    )
+                ),
+                DOCUMENT_SYMBOL_TIMEOUT,
+                'Document symbol fetch',
+                token
+            );
 
             if (!documentSymbols || documentSymbols.length === 0) {
                 return undefined;
@@ -944,7 +955,14 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 targetRange
             );
         } catch (error) {
-            Log.debug(`Failed to fetch document symbols for range:`, error);
+            if (isCancellationError(error)) {
+                throw error;
+            }
+            if (isTimeoutError(error)) {
+                Log.debug(`Document symbol fetch timed out, skipping`);
+            } else {
+                Log.debug(`Failed to fetch document symbols for range:`, error);
+            }
             return undefined;
         }
     }

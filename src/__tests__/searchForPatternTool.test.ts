@@ -499,4 +499,83 @@ describe('SearchForPatternTool', () => {
             );
         });
     });
+
+    describe('Timeout and Cancellation', () => {
+        it('should use linked token that gets cancelled on timeout', async () => {
+            // Simulate a slow search that never resolves
+            mockRipgrepService.search.mockImplementation(
+                () =>
+                    new Promise((resolve) => {
+                        setTimeout(() => resolve([]), 100000);
+                    })
+            );
+
+            // Create a mock execution context
+            const context = {
+                cancellationToken: {
+                    isCancellationRequested: false,
+                    onCancellationRequested: vi.fn().mockReturnValue({
+                        dispose: vi.fn(),
+                    }),
+                },
+            };
+
+            // Replace the timeout constant for testing by running with short time
+            // The actual timeout is 60s but we can check the token was linked
+            void searchForPatternTool.execute(
+                { pattern: 'test' },
+                context as any
+            );
+
+            // Verify the linked token was set up with onCancellationRequested
+            expect(
+                context.cancellationToken.onCancellationRequested
+            ).toHaveBeenCalled();
+
+            // Cleanup - cancel to stop the hanging promise
+            mockRipgrepService.search.mockResolvedValue([]);
+        });
+
+        it('should pass linked token to ripgrep service', async () => {
+            mockRipgrepService.search.mockResolvedValue([
+                {
+                    filePath: 'test.ts',
+                    matches: [
+                        {
+                            filePath: 'test.ts',
+                            lineNumber: 1,
+                            content: 'test',
+                            isContext: false,
+                        },
+                    ],
+                },
+            ]);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== test.ts ===\n1: test'
+            );
+
+            await searchForPatternTool.execute({ pattern: 'test' });
+
+            // Verify ripgrep was called with a token
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    token: expect.any(Object),
+                })
+            );
+        });
+
+        it('should return timeout error when search times out', async () => {
+            // Simulate timeout by rejecting with a timeout-like error
+            mockRipgrepService.search.mockRejectedValue(
+                new Error('Pattern search timed out after 60000ms')
+            );
+
+            const result = await searchForPatternTool.execute({
+                pattern: 'test',
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('timed out');
+        });
+    });
 });

@@ -1,14 +1,12 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
-import {
-    isCancellationError,
-    isTimeoutError,
-    withCancellableTimeout,
-} from '../utils/asyncUtils';
+import { TimeoutError } from '../types/errorTypes';
+import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 
 /** Maximum time for pattern search operations */
 const PATTERN_SEARCH_TIMEOUT = 60_000; // 60 seconds
@@ -140,8 +138,23 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
 
             const gitRootDirectory = gitRepo.rootUri.fsPath;
 
-            const results = await withCancellableTimeout(
-                this.ripgrepService.search({
+            // Create a linked cancellation token source that will be cancelled on:
+            // 1. User cancellation (original token)
+            // 2. Timeout (we cancel it ourselves)
+            // This ensures ripgrep process is killed on timeout, not just abandoned.
+            const linkedTokenSource = new vscode.CancellationTokenSource();
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+            let userCancellationDisposable: vscode.Disposable | undefined;
+
+            if (context?.cancellationToken) {
+                userCancellationDisposable =
+                    context.cancellationToken.onCancellationRequested(() => {
+                        linkedTokenSource.cancel();
+                    });
+            }
+
+            try {
+                const searchPromise = this.ripgrepService.search({
                     pattern,
                     cwd: gitRootDirectory,
                     searchPath: search_path !== '.' ? search_path : undefined,
@@ -152,19 +165,42 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
                     excludeGlob: exclude_files || undefined,
                     codeFilesOnly: only_code_files,
                     multiline: true,
-                    token: context?.cancellationToken,
-                }),
-                PATTERN_SEARCH_TIMEOUT,
-                `Pattern search for '${pattern}'`,
-                context?.cancellationToken
-            );
+                    token: linkedTokenSource.token,
+                });
 
-            if (results.length === 0) {
-                return toolError(`No matches found for pattern '${pattern}'`);
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    timeoutId = setTimeout(() => {
+                        linkedTokenSource.cancel(); // This kills the ripgrep process
+                        reject(
+                            TimeoutError.create(
+                                'Pattern search',
+                                PATTERN_SEARCH_TIMEOUT
+                            )
+                        );
+                    }, PATTERN_SEARCH_TIMEOUT);
+                });
+
+                const results = await Promise.race([
+                    searchPromise,
+                    timeoutPromise,
+                ]);
+
+                if (results.length === 0) {
+                    return toolError(
+                        `No matches found for pattern '${pattern}'`
+                    );
+                }
+
+                const formattedResult =
+                    this.ripgrepService.formatResults(results);
+                return toolSuccess(formattedResult);
+            } finally {
+                if (timeoutId !== undefined) {
+                    clearTimeout(timeoutId);
+                }
+                userCancellationDisposable?.dispose();
+                linkedTokenSource.dispose();
             }
-
-            const formattedResult = this.ripgrepService.formatResults(results);
-            return toolSuccess(formattedResult);
         } catch (error) {
             if (isCancellationError(error)) {
                 throw error;

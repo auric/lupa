@@ -128,6 +128,7 @@ Use consistent patterns for timeout and cancellation:
 - **Async file discovery**: Use `fdir.crawl().withPromise()` instead of `.sync()` to keep VS Code responsive
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
 - **AbortSignal conversion**: Use `createAbortControllerFromToken(token)` from `asyncUtils.ts` to convert a VS Code `CancellationToken` to an `AbortController` for APIs that require `AbortSignal`
+- **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token. Cancel the linked source on timeout to ensure the child process is killed, not just abandoned (see `SearchForPatternTool`)
 
 ### New Services
 

@@ -290,6 +290,44 @@ describe('ModelRequestHandler', () => {
             expect(clearTimeoutSpy).toHaveBeenCalled();
             clearTimeoutSpy.mockRestore();
         });
+
+        it('should suppress late rejections from thenable after timeout', async () => {
+            // Track unhandled rejections
+            let unhandledRejection = false;
+            const handler = () => {
+                unhandledRejection = true;
+            };
+            process.on('unhandledRejection', handler);
+
+            // Create a thenable that rejects after the timeout
+            let rejectThenable: (reason: any) => void;
+            const thenable = new Promise<string>((_, reject) => {
+                rejectThenable = reject;
+            });
+
+            // Race with timeout
+            const promise = ModelRequestHandler.withTimeout(
+                thenable,
+                10, // Very short timeout
+                cancellationTokenSource.token
+            );
+
+            // Wait for timeout
+            await expect(promise).rejects.toSatisfy((error: unknown) =>
+                isTimeoutError(error)
+            );
+
+            // Now reject the thenable after timeout has won
+            rejectThenable!(new Error('Late rejection'));
+
+            // Give event loop time to process the rejection
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            // Should not have caused an unhandled rejection
+            expect(unhandledRejection).toBe(false);
+
+            process.off('unhandledRejection', handler);
+        });
     });
 
     describe('sendRequest', () => {

@@ -11,9 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Analysis cancellation is now instant**: Clicking "Stop" immediately terminates all operations. Previously, file searches, symbol lookups, and pattern searches would continue running in the background after cancellation.
 
-- **Symbol searches no longer hang**: A slow language server could previously block analysis for 9+ minutes. Now each file has a 5-second timeout, and Lupa returns partial results instead of freezing.
+- **Symbol searches no longer hang**: A slow language server could previously block analysis for 9+ minutes. Now each file has a 5-second timeout.
 
 - **Pattern searches have a 60-second timeout**: Long-running pattern searches now have a time limit, preventing runaway searches from blocking analysis indefinitely.
+
+- **Ripgrep processes properly terminate on timeout**: Pattern search timeouts now kill the underlying ripgrep process immediately. Previously, timed-out searches would leave orphaned ripgrep processes running until they completed.
+
+- **Symbol lookups have per-operation timeouts**: Individual LSP calls (definition lookups, document symbols) now have their own timeouts, preventing a single slow operation from blocking the entire analysis.
+
+- **Cancellation checks between tool calls**: The tool executor now verifies the analysis hasn't been cancelled before starting each tool, making "Stop" more responsive during long tool chains.
 
 - **VS Code stays responsive during analysis**: Large directory scans now run asynchronously, keeping the editor responsive during file discovery.
 
