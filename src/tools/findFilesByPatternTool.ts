@@ -3,6 +3,7 @@ import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
 import {
+    createAbortControllerFromToken,
     isCancellationError,
     isTimeoutError,
     withCancellableTimeout,
@@ -62,11 +63,16 @@ export class FindFilesByPatternTool extends BaseTool {
                 return toolError('Git repository not found');
             }
 
+            const abortController = createAbortControllerFromToken(
+                context?.cancellationToken
+            );
+
             const result = await withCancellableTimeout(
                 FileDiscoverer.discoverFiles(gitRepo, {
                     searchPath: searchPath || '.',
                     includePattern: pattern,
                     respectGitignore: true,
+                    abortSignal: abortController?.signal,
                 }),
                 FILE_SEARCH_TIMEOUT,
                 `File search for pattern ${pattern}`,

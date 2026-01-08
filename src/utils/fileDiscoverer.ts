@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as os from 'os';
+import * as vscode from 'vscode';
 import { fdir } from 'fdir';
 import picomatch, { PicomatchOptions } from 'picomatch';
 import ignore from 'ignore';
@@ -37,6 +38,12 @@ export interface FileDiscoveryOptions {
      * Timeout in milliseconds for file discovery
      */
     timeoutMs?: number;
+
+    /**
+     * External abort signal for cancellation (e.g., from user cancellation).
+     * When provided, will be combined with internal timeout-based abort.
+     */
+    abortSignal?: AbortSignal;
 }
 
 export interface FileDiscoveryResult {
@@ -67,6 +74,7 @@ export class FileDiscoverer {
     /**
      * Discover files matching the specified criteria.
      * Uses AbortController for proper cancellation of fdir crawl on timeout.
+     * Supports external abort signal for user-initiated cancellation.
      */
     static async discoverFiles(
         gitRepo: Repository,
@@ -79,10 +87,15 @@ export class FileDiscoverer {
             respectGitignore = true,
             maxResults = this.DEFAULT_MAX_RESULTS,
             timeoutMs = this.DEFAULT_TIMEOUT,
+            abortSignal: externalSignal,
         } = options;
 
         if (!gitRepo) {
             throw new Error('Git repository not found');
+        }
+
+        if (externalSignal?.aborted) {
+            throw new vscode.CancellationError();
         }
 
         // Sanitize and resolve search path
@@ -90,11 +103,15 @@ export class FileDiscoverer {
         const gitRootDirectory = gitRepo.rootUri.fsPath;
         const targetPath = path.join(gitRootDirectory, sanitizedPath);
 
-        const abortController = new AbortController();
+        const timeoutController = new AbortController();
         const timeoutId = setTimeout(() => {
             Log.warn(`[Timeout] File discovery aborted after ${timeoutMs}ms`);
-            abortController.abort();
+            timeoutController.abort();
         }, timeoutMs);
+
+        const combinedSignal = externalSignal
+            ? AbortSignal.any([timeoutController.signal, externalSignal])
+            : timeoutController.signal;
 
         try {
             const result = await this.performFileDiscovery(gitRepo, {
@@ -104,11 +121,14 @@ export class FileDiscoverer {
                 excludePattern,
                 respectGitignore,
                 maxResults,
-                abortSignal: abortController.signal,
+                abortSignal: combinedSignal,
             });
             return result;
         } catch (error) {
-            if (abortController.signal.aborted) {
+            if (externalSignal?.aborted) {
+                throw new vscode.CancellationError();
+            }
+            if (timeoutController.signal.aborted) {
                 throw TimeoutError.create('File discovery', timeoutMs);
             }
             throw new Error(

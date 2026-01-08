@@ -88,13 +88,14 @@ export class SymbolExtractor {
                 Log.debug(
                     `Symbol extraction timed out for ${fileUri.fsPath} - language server may be slow`
                 );
-            } else {
-                const message =
-                    error instanceof Error ? error.message : String(error);
-                Log.warn(
-                    `Symbol extraction failed for ${fileUri.fsPath}: ${message}`
-                );
+                throw error;
             }
+            // Other errors (LSP failures, etc.) return empty - don't abort entire directory scan
+            const message =
+                error instanceof Error ? error.message : String(error);
+            Log.warn(
+                `Symbol extraction failed for ${fileUri.fsPath}: ${message}`
+            );
             return [];
         }
     }

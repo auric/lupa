@@ -4,7 +4,14 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
-import { isCancellationError } from '../utils/asyncUtils';
+import {
+    isCancellationError,
+    isTimeoutError,
+    withCancellableTimeout,
+} from '../utils/asyncUtils';
+
+/** Maximum time for pattern search operations */
+const PATTERN_SEARCH_TIMEOUT = 60_000; // 60 seconds
 
 /**
  * High-performance tool for searching regex patterns in the codebase using ripgrep.
@@ -133,19 +140,24 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
 
             const gitRootDirectory = gitRepo.rootUri.fsPath;
 
-            const results = await this.ripgrepService.search({
-                pattern,
-                cwd: gitRootDirectory,
-                searchPath: search_path !== '.' ? search_path : undefined,
-                linesBefore: lines_before,
-                linesAfter: lines_after,
-                caseSensitive: case_sensitive,
-                includeGlob: include_files || undefined,
-                excludeGlob: exclude_files || undefined,
-                codeFilesOnly: only_code_files,
-                multiline: true,
-                token: context?.cancellationToken,
-            });
+            const results = await withCancellableTimeout(
+                this.ripgrepService.search({
+                    pattern,
+                    cwd: gitRootDirectory,
+                    searchPath: search_path !== '.' ? search_path : undefined,
+                    linesBefore: lines_before,
+                    linesAfter: lines_after,
+                    caseSensitive: case_sensitive,
+                    includeGlob: include_files || undefined,
+                    excludeGlob: exclude_files || undefined,
+                    codeFilesOnly: only_code_files,
+                    multiline: true,
+                    token: context?.cancellationToken,
+                }),
+                PATTERN_SEARCH_TIMEOUT,
+                `Pattern search for '${pattern}'`,
+                context?.cancellationToken
+            );
 
             if (results.length === 0) {
                 return toolError(`No matches found for pattern '${pattern}'`);
@@ -156,6 +168,12 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
         } catch (error) {
             if (isCancellationError(error)) {
                 throw error;
+            }
+
+            if (isTimeoutError(error)) {
+                return toolError(
+                    `Pattern search timed out. Try a more specific pattern or use search_path to limit the scope.`
+                );
             }
 
             return toolError(

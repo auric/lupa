@@ -127,6 +127,7 @@ Use consistent patterns for timeout and cancellation:
 - **Type guards**: Use `isTimeoutError(error)` and `isCancellationError(error)` from `asyncUtils.ts`
 - **Async file discovery**: Use `fdir.crawl().withPromise()` instead of `.sync()` to keep VS Code responsive
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
+- **AbortSignal conversion**: Use `createAbortControllerFromToken(token)` from `asyncUtils.ts` to convert a VS Code `CancellationToken` to an `AbortController` for APIs that require `AbortSignal`
 
 ### New Services
 

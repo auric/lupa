@@ -124,3 +124,33 @@ export function isCancellationError(
 ): error is vscode.CancellationError {
     return error instanceof vscode.CancellationError;
 }
+
+/**
+ * Creates an AbortController that aborts when the VS Code CancellationToken is cancelled.
+ * Returns the AbortController so caller can access both signal and abort().
+ * The listener is automatically cleaned up when abort is triggered.
+ *
+ * @param token Optional VS Code CancellationToken
+ * @returns AbortController linked to the token, or undefined if no token provided
+ */
+export function createAbortControllerFromToken(
+    token: vscode.CancellationToken | undefined
+): AbortController | undefined {
+    if (!token) {
+        return undefined;
+    }
+
+    const controller = new AbortController();
+
+    if (token.isCancellationRequested) {
+        controller.abort();
+        return controller;
+    }
+
+    const disposable = token.onCancellationRequested(() => {
+        controller.abort();
+        disposable.dispose();
+    });
+
+    return controller;
+}

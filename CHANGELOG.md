@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **File discovery reports partial results on abort**: When file discovery is cancelled mid-crawl, it now correctly reports `truncated: true` instead of silently treating partial results as complete.
 
+- **Pattern file search responds to cancellation**: The `find_files_by_pattern` tool now passes the cancellation signal through to the file discoverer, enabling immediate termination when analysis is cancelled.
+
+- **Pattern search timeout**: The `search_for_pattern` tool now has a 60-second timeout to prevent runaway searches from blocking analysis indefinitely.
+
+- **Per-file timeout tracking**: Symbol extraction now correctly tracks which individual files timed out. Previously, per-file timeouts were swallowed, preventing accurate reporting in `getDirectorySymbols`.
+
+- **Cancellation sentinel detection**: The analysis orchestrator now detects when the analysis provider returns a cancellation sentinel message and properly throws a cancellation error, preventing "Analysis complete" from showing after user cancellation.
+
 - **Consistent path normalization for gitignore**: Directory exclusion now normalizes paths to POSIX format before gitignore checks, matching the behavior of file filters.
 
 - **Unhandled promise rejection warnings eliminated**: Fixed async utilities where cancellation promises could reject after `Promise.race` settled, causing Node.js warning messages. Cancellation promises are now silently handled.

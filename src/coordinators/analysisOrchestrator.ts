@@ -6,6 +6,7 @@ import type {
 } from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 import { isCancellationError } from '../utils/asyncUtils';
+import { CANCELLATION_MESSAGE } from '../config/constants';
 
 /**
  * AnalysisOrchestrator handles the core PR analysis workflow.
@@ -146,6 +147,10 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                             cancellationTokenSource.token,
                             progressCallback
                         );
+
+                    if (result.analysis === CANCELLATION_MESSAGE) {
+                        throw new vscode.CancellationError();
+                    }
 
                     const analysis = result.analysis;
                     const toolCallsData: ToolCallsData | undefined =
