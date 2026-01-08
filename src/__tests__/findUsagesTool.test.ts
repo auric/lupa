@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FindUsagesTool } from '../tools/findUsagesTool';
-import { createMockGitOperationsManager } from './testUtils/mockFactories';
+import {
+    createMockGitOperationsManager,
+    createMockCancellationTokenSource,
+} from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -456,6 +459,57 @@ describe('FindUsagesTool', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Error finding symbol usages');
+        });
+
+        it('should rethrow CancellationError from definition check', async () => {
+            const tokenSource = createMockCancellationTokenSource();
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
+            });
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        throw new vscode.CancellationError();
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            await expect(
+                findUsagesTool.execute(
+                    {
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    },
+                    { cancellationToken: tokenSource.token }
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should rethrow CancellationError from outer catch block', async () => {
+            const tokenSource = createMockCancellationTokenSource();
+
+            // Make Uri.file throw CancellationError
+            const originalFile = vscode.Uri.file;
+            (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
+                throw new vscode.CancellationError();
+            });
+
+            await expect(
+                findUsagesTool.execute(
+                    {
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    },
+                    { cancellationToken: tokenSource.token }
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Restore original function
+            (vscode.Uri as any).file = originalFile;
         });
     });
 

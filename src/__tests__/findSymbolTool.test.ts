@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
+import { createMockCancellationTokenSource } from './testUtils/mockFactories';
 
 // Mock the readGitignore function
 vi.mock('../utils/gitUtils', () => ({
@@ -512,6 +513,198 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const result = await findSymbolTool.execute({ name_path: 'test' });
             expect(result.success).toBe(false);
             expect(result.error).toContain("Symbol 'test' not found");
+        });
+
+        it('should rethrow CancellationError from workspace symbol search', async () => {
+            const tokenSource = createMockCancellationTokenSource();
+
+            vi.mocked(vscode.commands.executeCommand).mockImplementation(
+                (command) => {
+                    if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                        throw new vscode.CancellationError();
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            await expect(
+                findSymbolTool.execute(
+                    { name_path: 'MyClass' },
+                    { cancellationToken: tokenSource.token }
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should rethrow CancellationError from formatSymbolResults body extraction', async () => {
+            const tokenSource = createMockCancellationTokenSource();
+
+            const mockWorkspaceSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                location: {
+                    uri: {
+                        toString: () => 'file:///mock/repo/root/test.ts',
+                        fsPath: '/mock/repo/root/test.ts',
+                    },
+                    range: {
+                        start: { line: 0, character: 0 },
+                        end: { line: 0, character: 10 },
+                    },
+                },
+            };
+
+            vi.mocked(vscode.commands.executeCommand).mockImplementation(
+                (command) => {
+                    if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                        return Promise.resolve([mockWorkspaceSymbol]);
+                    }
+                    if (command === 'vscode.executeDocumentSymbolProvider') {
+                        throw new vscode.CancellationError();
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const mockDocument = {
+                getText: vi.fn(() => {
+                    throw new vscode.CancellationError();
+                }),
+                uri: mockWorkspaceSymbol.location.uri,
+                lineCount: 10,
+            };
+
+            vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(
+                mockDocument as any
+            );
+
+            await expect(
+                findSymbolTool.execute(
+                    { name_path: 'MyClass', include_body: true },
+                    { cancellationToken: tokenSource.token }
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should surface truncation info in results for directory search', async () => {
+            const mockFileUri = {
+                toString: () => 'file:///mock/repo/root/src/test.ts',
+                fsPath: '/mock/repo/root/src/test.ts',
+            };
+
+            const mockDocumentSymbol = {
+                name: 'MyClass',
+                detail: '',
+                kind: vscode.SymbolKind.Class,
+                range: {
+                    start: { line: 0, character: 0 },
+                    end: { line: 2, character: 1 },
+                },
+                selectionRange: {
+                    start: { line: 0, character: 6 },
+                    end: { line: 0, character: 13 },
+                },
+                children: [],
+            };
+
+            mockSymbolExtractor.getGitRootPath.mockReturnValue(
+                '/mock/repo/root'
+            );
+            mockSymbolExtractor.getGitRelativePathFromUri.mockReturnValue(
+                'src/test.ts'
+            );
+            mockSymbolExtractor.getPathStat.mockResolvedValue({
+                type: vscode.FileType.Directory,
+                ctime: 0,
+                mtime: 0,
+                size: 0,
+            });
+            // Return truncated: true to simulate file limit
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/test.ts',
+                        symbols: [mockDocumentSymbol as any],
+                    },
+                ],
+                truncated: true,
+                timedOutFiles: 0,
+            });
+            mockSymbolExtractor.getTextDocument.mockResolvedValue({
+                getText: vi.fn().mockReturnValue('class MyClass {\n}'),
+                uri: mockFileUri,
+                lineCount: 2,
+            } as any);
+
+            const result = await findSymbolTool.execute({
+                name_path: 'MyClass',
+                relative_path: 'src',
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain(
+                '[Note: Results may be incomplete due to file limit'
+            );
+        });
+
+        it('should surface timeout info in results for directory search', async () => {
+            const mockFileUri = {
+                toString: () => 'file:///mock/repo/root/src/test.ts',
+                fsPath: '/mock/repo/root/src/test.ts',
+            };
+
+            const mockDocumentSymbol = {
+                name: 'MyClass',
+                detail: '',
+                kind: vscode.SymbolKind.Class,
+                range: {
+                    start: { line: 0, character: 0 },
+                    end: { line: 2, character: 1 },
+                },
+                selectionRange: {
+                    start: { line: 0, character: 6 },
+                    end: { line: 0, character: 13 },
+                },
+                children: [],
+            };
+
+            mockSymbolExtractor.getGitRootPath.mockReturnValue(
+                '/mock/repo/root'
+            );
+            mockSymbolExtractor.getGitRelativePathFromUri.mockReturnValue(
+                'src/test.ts'
+            );
+            mockSymbolExtractor.getPathStat.mockResolvedValue({
+                type: vscode.FileType.Directory,
+                ctime: 0,
+                mtime: 0,
+                size: 0,
+            });
+            // Return timedOutFiles > 0 to simulate timeout
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/test.ts',
+                        symbols: [mockDocumentSymbol as any],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 3,
+            });
+            mockSymbolExtractor.getTextDocument.mockResolvedValue({
+                getText: vi.fn().mockReturnValue('class MyClass {\n}'),
+                uri: mockFileUri,
+                lineCount: 2,
+            } as any);
+
+            const result = await findSymbolTool.execute({
+                name_path: 'MyClass',
+                relative_path: 'src',
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain(
+                '[Note: Results may be incomplete due to timeout'
+            );
         });
     });
 

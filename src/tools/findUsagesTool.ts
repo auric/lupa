@@ -216,6 +216,9 @@ Requires file_path where the symbol is defined as starting point.`;
                 );
             }
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             return toolError(
                 `Error finding symbol usages: ${error instanceof Error ? error.message : String(error)}`
             );
@@ -298,6 +301,10 @@ Requires file_path where the symbol is defined as starting point.`;
                         return position;
                     }
                 } catch (error) {
+                    // Re-throw cancellation to stop search
+                    if (isCancellationError(error)) {
+                        throw error;
+                    }
                     // Log timeout but continue searching (non-fatal for definition check)
                     if (isTimeoutError(error)) {
                         Log.debug(

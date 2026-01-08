@@ -25,6 +25,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Cancelled analyses show correct status**: Previously, cancelling mid-analysis could show "Analysis complete" instead of acknowledging the cancellation.
 
+- **Pattern search timeout errors use correct type**: Fixed regression in `SearchForPatternTool` where timeout errors were created with `new Error()` instead of `TimeoutError.create()`, ensuring consistent error handling across the codebase.
+
+- **File discovery abort handling**: Fixed `fileDiscoverer` to properly detect abort conditions after fdir completes. fdir resolves with partial results on abort rather than rejecting, so explicit abort signal checks are now performed to throw the correct error type (CancellationError or TimeoutError).
+
+- **CancellationError propagation in FindUsagesTool**: Fixed catch blocks in `FindUsagesTool` that were swallowing CancellationError during symbol position lookups. Cancellation errors are now properly rethrown to stop analysis immediately.
+
+- **CancellationError propagation in FindSymbolTool**: Fixed catch blocks in `formatSymbolResults` that were swallowing CancellationError during body extraction. Cancellation errors are now properly rethrown.
+
+### Changed
+
+- **Symbol search truncation surfacing**: `FindSymbolTool` now notifies users when results may be incomplete. When symbol searches are truncated due to file limits or timeouts, results include a note: "[Note: Results may be incomplete due to timeout/file limit. Consider narrowing search scope with relative_path.]" A new `SymbolSearchResult` interface tracks `symbols`, `truncated`, and `timedOut` fields.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added
