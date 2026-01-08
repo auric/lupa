@@ -163,7 +163,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 includeBody ?? false,
                 includeChildren ?? false,
                 includeKinds,
-                excludeKinds
+                excludeKinds,
+                token
             );
 
             return toolSuccess(formattedResults);
@@ -683,7 +684,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         includeBody: boolean,
         includeChildren: boolean,
         includeKinds: number[] | undefined,
-        excludeKinds: number[] | undefined
+        excludeKinds: number[] | undefined,
+        token?: vscode.CancellationToken
     ): Promise<string> {
         const formattedBlocks: string[] = [];
 
@@ -703,7 +705,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         finalRange =
                             await this.rangeExpander.getFullSymbolRange(
                                 match.document,
-                                symbolRange
+                                symbolRange,
+                                token
                             );
                     } else {
                         finalRange = symbolRange;

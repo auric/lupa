@@ -34,6 +34,11 @@ vi.mock('vscode', async () => {
 // Mock fdir - Vitest 4 requires function syntax for constructor mocks
 vi.mock('fdir', () => ({
     fdir: vi.fn().mockImplementation(function () {
+        // crawl() returns a separate result object with withPromise/sync
+        const crawlResult = {
+            withPromise: vi.fn().mockResolvedValue([]),
+            sync: vi.fn().mockReturnValue([]),
+        };
         return {
             withGlobFunction: vi.fn().mockReturnThis(),
             glob: vi.fn().mockReturnThis(),
@@ -43,8 +48,7 @@ vi.mock('fdir', () => ({
             withAbortSignal: vi.fn().mockReturnThis(),
             exclude: vi.fn().mockReturnThis(),
             filter: vi.fn().mockReturnThis(),
-            crawl: vi.fn().mockReturnThis(),
-            withPromise: vi.fn(),
+            crawl: vi.fn().mockReturnValue(crawlResult),
         };
     }),
 }));
