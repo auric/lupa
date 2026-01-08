@@ -263,7 +263,11 @@ export class ChatParticipantService implements vscode.Disposable {
             const toolExecutor = new ToolExecutor(
                 this.deps.toolRegistry,
                 this.deps.workspaceSettings,
-                { subagentSessionManager, subagentExecutor }
+                {
+                    subagentSessionManager,
+                    subagentExecutor,
+                    cancellationToken: token,
+                }
             );
 
             const timeoutMs =
@@ -511,7 +515,12 @@ export class ChatParticipantService implements vscode.Disposable {
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
             this.deps!.workspaceSettings,
-            { planManager, subagentSessionManager, subagentExecutor }
+            {
+                planManager,
+                subagentSessionManager,
+                subagentExecutor,
+                cancellationToken: token,
+            }
         );
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);

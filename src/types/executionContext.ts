@@ -39,5 +39,5 @@ export interface ExecutionContext {
      * Tools should pass this to long-running operations (symbol extraction, LSP calls)
      * to enable responsive cancellation when user stops the analysis.
      */
-    cancellationToken?: vscode.CancellationToken;
+    cancellationToken: vscode.CancellationToken;
 }
