@@ -12,7 +12,6 @@ import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
 import {
-    withTimeout,
     withCancellableTimeout,
     isTimeoutError,
     isCancellationError,
@@ -169,6 +168,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             return toolSuccess(formattedResults);
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
             return toolError(
                 error instanceof Error ? error.message : String(error)
             );
@@ -320,15 +323,20 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         symbol,
                         pathSegments
                     );
-                    const match = await withTimeout(
+                    const match = await withCancellableTimeout(
                         processSymbolPromise,
                         FILE_PROCESSING_TIMEOUT,
-                        'Symbol processing'
+                        'Symbol processing',
+                        token
                     );
                     if (match) {
                         matches.push(match);
                     }
                 } catch (error) {
+                    if (isCancellationError(error)) {
+                        throw error;
+                    }
+
                     // Log timeout errors specifically (indicates slow language server)
                     if (isTimeoutError(error)) {
                         Log.debug(
@@ -341,6 +349,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             return matches;
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
             Log.warn('Workspace symbol search completely failed:', error);
             return [];
         }
