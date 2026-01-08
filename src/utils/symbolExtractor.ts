@@ -39,6 +39,18 @@ export interface FileSymbolResult {
 }
 
 /**
+ * Result structure for directory symbol extraction with truncation metadata
+ */
+export interface DirectorySymbolsResult {
+    /** Array of file symbol results */
+    results: FileSymbolResult[];
+    /** True if extraction was stopped early due to timeout or cancellation */
+    truncated: boolean;
+    /** Number of files that timed out during symbol extraction */
+    timedOutFiles: number;
+}
+
+/**
  * Utility class for extracting symbols from files and directories using VS Code LSP.
  * Handles Git repository context, .gitignore patterns, and recursive directory traversal.
  */
@@ -94,20 +106,21 @@ export class SymbolExtractor {
      * @param targetPath - Absolute path to the directory
      * @param relativePath - Relative path for context
      * @param options - Directory extraction options (including timeoutMs and token)
-     * @returns Array of file symbol results (may be partial if timeout/cancelled)
+     * @returns Directory symbol results with truncation metadata
      */
     async getDirectorySymbols(
         targetPath: string,
         relativePath: string,
         options: DirectorySymbolOptions = {}
-    ): Promise<FileSymbolResult[]> {
+    ): Promise<DirectorySymbolsResult> {
         const results: FileSymbolResult[] = [];
         const startTime = Date.now();
         const timeoutMs = options.timeoutMs ?? DIRECTORY_SYMBOL_TIMEOUT;
         const token = options.token;
+        let timedOutFiles = 0;
 
         if (token?.isCancellationRequested) {
-            return results;
+            return { results, truncated: true, timedOutFiles };
         }
 
         const repository = this.gitOperationsManager.getRepository();
@@ -135,12 +148,14 @@ export class SymbolExtractor {
             timeoutMs
         );
 
+        let truncated = false;
         for (const filePath of files) {
             const elapsed = Date.now() - startTime;
             if (elapsed > timeoutMs) {
                 Log.warn(
                     `Directory symbol extraction stopped after ${elapsed}ms (limit: ${timeoutMs}ms) - processed ${results.length} files with symbols`
                 );
+                truncated = true;
                 break;
             }
 
@@ -148,6 +163,7 @@ export class SymbolExtractor {
                 Log.debug(
                     `Directory symbol extraction cancelled after processing ${results.length} files`
                 );
+                truncated = true;
                 break;
             }
 
@@ -168,6 +184,10 @@ export class SymbolExtractor {
                     throw error;
                 }
 
+                if (isTimeoutError(error)) {
+                    timedOutFiles++;
+                }
+
                 const message =
                     error instanceof Error ? error.message : String(error);
                 Log.debug(`Skipping file ${filePath}: ${message}`);
@@ -175,7 +195,7 @@ export class SymbolExtractor {
             }
         }
 
-        return results;
+        return { results, truncated, timedOutFiles };
     }
 
     /**

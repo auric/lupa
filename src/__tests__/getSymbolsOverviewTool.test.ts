@@ -236,24 +236,28 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 size: 0,
             } as any);
 
-            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
-                {
-                    filePath: 'src/test1.ts',
-                    symbols: [
-                        createSymbol('Class1', vscode.SymbolKind.Class, 0),
-                    ],
-                },
-                {
-                    filePath: 'src/test2.js',
-                    symbols: [
-                        createSymbol(
-                            'function1',
-                            vscode.SymbolKind.Function,
-                            0
-                        ),
-                    ],
-                },
-            ] as any);
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/test1.ts',
+                        symbols: [
+                            createSymbol('Class1', vscode.SymbolKind.Class, 0),
+                        ],
+                    },
+                    {
+                        filePath: 'src/test2.js',
+                        symbols: [
+                            createSymbol(
+                                'function1',
+                                vscode.SymbolKind.Function,
+                                0
+                            ),
+                        ],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 0,
+            } as any);
 
             const result = await getSymbolsOverviewTool.execute({
                 path: 'src',
@@ -274,18 +278,22 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 size: 0,
             } as any);
 
-            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
-                {
-                    filePath: 'src/services/service1.ts',
-                    symbols: [
-                        createSymbol(
-                            'ServiceClass',
-                            vscode.SymbolKind.Class,
-                            0
-                        ),
-                    ],
-                },
-            ] as any);
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/services/service1.ts',
+                        symbols: [
+                            createSymbol(
+                                'ServiceClass',
+                                vscode.SymbolKind.Class,
+                                0
+                            ),
+                        ],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 0,
+            } as any);
 
             const result = await getSymbolsOverviewTool.execute({
                 path: 'src',
@@ -377,20 +385,32 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             } as any);
 
             // Mock directory symbols - SymbolExtractor should already filter code files
-            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
-                {
-                    filePath: 'src/component.ts',
-                    symbols: [
-                        createSymbol('Component', vscode.SymbolKind.Class, 0),
-                    ],
-                },
-                {
-                    filePath: 'src/script.js',
-                    symbols: [
-                        createSymbol('script', vscode.SymbolKind.Function, 0),
-                    ],
-                },
-            ] as any);
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/component.ts',
+                        symbols: [
+                            createSymbol(
+                                'Component',
+                                vscode.SymbolKind.Class,
+                                0
+                            ),
+                        ],
+                    },
+                    {
+                        filePath: 'src/script.js',
+                        symbols: [
+                            createSymbol(
+                                'script',
+                                vscode.SymbolKind.Function,
+                                0
+                            ),
+                        ],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 0,
+            } as any);
 
             const result = await getSymbolsOverviewTool.execute({
                 path: 'src',

@@ -443,13 +443,23 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 );
             } else if (stat.type === vscode.FileType.Directory) {
                 // Directory - search with time control using SymbolExtractor
-                const directoryResults =
-                    await this.symbolExtractor.getDirectorySymbols(
-                        targetPath,
-                        sanitizedPath,
-                        { timeoutMs: SYMBOL_SEARCH_TIMEOUT, token }
-                    );
+                const {
+                    results: directoryResults,
+                    truncated: dirTruncated,
+                    timedOutFiles,
+                } = await this.symbolExtractor.getDirectorySymbols(
+                    targetPath,
+                    sanitizedPath,
+                    { timeoutMs: SYMBOL_SEARCH_TIMEOUT, token }
+                );
                 const allMatches: SymbolMatch[] = [];
+
+                if (dirTruncated || timedOutFiles > 0) {
+                    Log.debug(
+                        `Symbol search in ${relativePath} was truncated: ` +
+                            `dirTruncated=${dirTruncated}, timedOutFiles=${timedOutFiles}`
+                    );
+                }
 
                 for (const { filePath, symbols } of directoryResults) {
                     // Time-based execution control (secondary safety check)

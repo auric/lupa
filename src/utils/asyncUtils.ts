@@ -28,6 +28,9 @@ export async function withTimeout<T>(
         }, timeoutMs);
     });
 
+    // Suppress late rejections from underlying promise after timeout wins
+    promise.catch(() => {});
+
     try {
         return await Promise.race([promise, timeoutPromise]);
     } finally {
@@ -76,6 +79,9 @@ export async function withCancellableTimeout<T>(
             reject(TimeoutError.create(operation, timeoutMs));
         }, timeoutMs);
     });
+
+    // Suppress late rejections from underlying promise after timeout/cancellation wins
+    promise.catch(() => {});
 
     const racers: Promise<T | never>[] = [promise, timeoutPromise];
 

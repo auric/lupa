@@ -235,12 +235,19 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
         } else if (stat.type === vscode.FileType.Directory) {
             // Directory - get symbols from all files using SymbolExtractor
             // Uses LSP_OPERATION_TIMEOUT since outer withTimeout already wraps this
-            const directoryResults =
-                await this.symbolExtractor.getDirectorySymbols(
-                    targetPath,
-                    relativePath,
-                    { timeoutMs: LSP_OPERATION_TIMEOUT, token }
-                );
+            const {
+                results: directoryResults,
+                truncated: dirTruncated,
+                timedOutFiles,
+            } = await this.symbolExtractor.getDirectorySymbols(
+                targetPath,
+                relativePath,
+                { timeoutMs: LSP_OPERATION_TIMEOUT, token }
+            );
+
+            if (dirTruncated || timedOutFiles > 0) {
+                anyTruncated = true;
+            }
 
             // Sort results by file path for consistent output
             const sortedResults = directoryResults.sort((a, b) =>
