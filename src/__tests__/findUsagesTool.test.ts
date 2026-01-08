@@ -235,7 +235,8 @@ describe('FindUsagesTool', () => {
             expect(result.data).not.toContain('"location"');
         });
 
-        it('should handle reference provider errors gracefully', async () => {
+        it('should propagate reference provider errors to ToolExecutor', async () => {
+            // With centralized error handling, reference provider errors bubble up to ToolExecutor
             (vscode.workspace.openTextDocument as any).mockResolvedValue({
                 getText: () => 'class MyClass {}',
                 uri: { toString: () => 'file:///test.ts' },
@@ -250,15 +251,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain(
-                'Error executing reference provider'
-            );
+            // Error bubbles up to ToolExecutor which converts it to toolError
+            await expect(
+                findUsagesTool.execute({
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                })
+            ).rejects.toThrow('Reference provider failed');
         });
 
         it('should deduplicate references correctly', async () => {
@@ -442,26 +441,28 @@ describe('FindUsagesTool', () => {
     });
 
     describe('error handling', () => {
-        it('should handle general execution errors', async () => {
+        it('should propagate unexpected errors to ToolExecutor', async () => {
             // Mock a general error by making Uri.file throw
+            // With centralized error handling, uncaught errors bubble up to ToolExecutor
             const originalFile = vscode.Uri.file;
-            (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
-                throw new Error('Unexpected error in Uri.file');
-            });
+            try {
+                (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
+                    throw new Error('Unexpected error in Uri.file');
+                });
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
-
-            // Restore original function
-            (vscode.Uri as any).file = originalFile;
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Error finding symbol usages');
+                await expect(
+                    findUsagesTool.execute({
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    })
+                ).rejects.toThrow('Unexpected error in Uri.file');
+            } finally {
+                // Always restore original function
+                (vscode.Uri as any).file = originalFile;
+            }
         });
 
-        it('should rethrow CancellationError from definition check', async () => {
+        it('should propagate CancellationError from LSP operation', async () => {
             const tokenSource = createMockCancellationTokenSource();
 
             (vscode.workspace.openTextDocument as any).mockResolvedValue({
@@ -478,6 +479,7 @@ describe('FindUsagesTool', () => {
                 }
             );
 
+            // CancellationError propagates up to ToolExecutor, which rethrows it
             await expect(
                 findUsagesTool.execute(
                     {
@@ -489,27 +491,30 @@ describe('FindUsagesTool', () => {
             ).rejects.toThrow(vscode.CancellationError);
         });
 
-        it('should rethrow CancellationError from outer catch block', async () => {
+        it('should propagate CancellationError from early execution', async () => {
             const tokenSource = createMockCancellationTokenSource();
 
             // Make Uri.file throw CancellationError
             const originalFile = vscode.Uri.file;
-            (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
-                throw new vscode.CancellationError();
-            });
+            try {
+                (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
+                    throw new vscode.CancellationError();
+                });
 
-            await expect(
-                findUsagesTool.execute(
-                    {
-                        symbol_name: 'MyClass',
-                        file_path: 'src/test.ts',
-                    },
-                    { cancellationToken: tokenSource.token }
-                )
-            ).rejects.toThrow(vscode.CancellationError);
-
-            // Restore original function
-            (vscode.Uri as any).file = originalFile;
+                // CancellationError propagates up to ToolExecutor, which rethrows it
+                await expect(
+                    findUsagesTool.execute(
+                        {
+                            symbol_name: 'MyClass',
+                            file_path: 'src/test.ts',
+                        },
+                        { cancellationToken: tokenSource.token }
+                    )
+                ).rejects.toThrow(vscode.CancellationError);
+            } finally {
+                // Always restore original function
+                (vscode.Uri as any).file = originalFile;
+            }
         });
     });
 

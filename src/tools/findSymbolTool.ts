@@ -11,17 +11,12 @@ import { SymbolMatcher, type SymbolMatch } from '../utils/symbolMatcher';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
-import {
-    withCancellableTimeout,
-    isTimeoutError,
-    isCancellationError,
-} from '../utils/asyncUtils';
+import { withCancellableTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import ignore from 'ignore';
 
-// Timeout constants
 const SYMBOL_SEARCH_TIMEOUT = 5000; // 5 seconds total
 const FILE_PROCESSING_TIMEOUT = 500; // 500ms per file
 const DOCUMENT_SYMBOL_TIMEOUT = 500; // 500ms for fetching document symbols
@@ -32,8 +27,6 @@ interface SymbolSearchResult {
     truncated: boolean;
     timedOut: boolean;
 }
-
-// Symbol formatting functions now handled by SymbolFormatter utility
 
 /**
  * Enhanced tool that finds symbols by name within the codebase with C++ class context support.
@@ -183,13 +176,12 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             return toolSuccess(finalResult);
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
+            if (isTimeoutError(error)) {
+                return toolError(
+                    `Symbol search timed out. Try a more specific path with relative_path.`
+                );
             }
-
-            return toolError(
-                error instanceof Error ? error.message : String(error)
-            );
+            throw error;
         }
     }
 
@@ -304,12 +296,15 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         token
                     )) || [];
             } catch (error) {
-                if (isCancellationError(error)) {
-                    Log.debug('Workspace symbol search cancelled');
-                    throw error; // Re-throw cancellation to stop tool execution
+                if (error instanceof vscode.CancellationError) {
+                    throw error;
                 }
                 Log.warn('Workspace symbol search failed:', error);
-                return { symbols: [], truncated: false, timedOut: false };
+                return {
+                    symbols: [],
+                    truncated: false,
+                    timedOut: isTimeoutError(error),
+                };
             }
 
             if (workspaceSymbols.length === 0) {
@@ -349,11 +344,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         matches.push(match);
                     }
                 } catch (error) {
-                    if (isCancellationError(error)) {
+                    if (error instanceof vscode.CancellationError) {
                         throw error;
                     }
-
-                    // Log timeout errors specifically (indicates slow language server)
                     if (isTimeoutError(error)) {
                         timedOut = true;
                         Log.debug(
@@ -368,12 +361,15 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             const truncated = filteredSymbols.length > 50;
             return { symbols: matches, truncated, timedOut };
         } catch (error) {
-            if (isCancellationError(error)) {
+            if (error instanceof vscode.CancellationError) {
                 throw error;
             }
-
             Log.warn('Workspace symbol search completely failed:', error);
-            return { symbols: [], truncated: false, timedOut: false };
+            return {
+                symbols: [],
+                truncated: false,
+                timedOut: isTimeoutError(error),
+            };
         }
     }
 
@@ -409,6 +405,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     symbol.location.uri
                 );
             } catch (error) {
+                if (error instanceof vscode.CancellationError) {
+                    throw error;
+                }
                 Log.debug(
                     `Failed to open document for symbol ${symbol.name}:`,
                     error
@@ -422,6 +421,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 filePath: this.getGitRelativePath(symbol.location.uri),
             };
         } catch (error) {
+            if (error instanceof vscode.CancellationError) {
+                throw error;
+            }
             Log.debug(
                 `Error processing workspace symbol ${symbol.name}:`,
                 error
@@ -552,19 +554,14 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 };
             }
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
-            // Log error for debugging (could be file access, timeout, or LSP issue)
             if (isTimeoutError(error)) {
                 Log.debug(
                     `Symbol search in ${relativePath} timed out - returning empty results`
                 );
                 return { symbols: [], truncated: false, timedOut: true };
-            } else {
-                Log.debug(`Symbol search in ${relativePath} failed:`, error);
             }
-            return { symbols: [], truncated: false, timedOut: false };
+            Log.debug(`Symbol search in ${relativePath} failed:`, error);
+            throw error;
         }
 
         return { symbols: [], truncated: false, timedOut: false };
@@ -637,15 +634,11 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             return matches;
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
-            // Log issues finding symbols in file (could be file access, parsing, or LSP error)
             Log.debug(
                 `Failed to find symbols in ${fileUri.fsPath}:`,
                 error instanceof Error ? error.message : String(error)
             );
-            return [];
+            throw error;
         }
     }
 
@@ -765,7 +758,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     bodyLines = rawBody.split('\n');
                     startLine = finalRange.start.line + 1;
                 } catch (error) {
-                    if (isCancellationError(error)) {
+                    if (error instanceof vscode.CancellationError) {
                         throw error;
                     }
                     Log.debug(
@@ -834,7 +827,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                                 childStartLine =
                                     childSymbolRange.start.line + 1;
                             } catch (error) {
-                                if (isCancellationError(error)) {
+                                if (error instanceof vscode.CancellationError) {
                                     throw error;
                                 }
                                 Log.debug(
@@ -987,15 +980,12 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 targetRange
             );
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
             if (isTimeoutError(error)) {
                 Log.debug(`Document symbol fetch timed out, skipping`);
-            } else {
-                Log.debug(`Failed to fetch document symbols for range:`, error);
+                return undefined;
             }
-            return undefined;
+            Log.debug(`Failed to fetch document symbols for range:`, error);
+            throw error;
         }
     }
 

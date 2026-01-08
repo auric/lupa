@@ -4,11 +4,7 @@ import * as path from 'path';
 import { BaseTool } from './baseTool';
 import { UsageFormatter } from './usageFormatter';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import {
-    withCancellableTimeout,
-    isTimeoutError,
-    isCancellationError,
-} from '../utils/asyncUtils';
+import { withCancellableTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
@@ -70,159 +66,142 @@ Requires file_path where the symbol is defined as starting point.`;
         args: z.infer<typeof this.schema>,
         context?: ExecutionContext
     ): Promise<ToolResult> {
+        const {
+            symbol_name,
+            file_path,
+            should_include_declaration,
+            context_line_count,
+        } = args;
+
+        // Validate inputs before sanitization
+        const trimmedSymbol = symbol_name.trim();
+        const trimmedPath = file_path.trim();
+
+        if (!trimmedSymbol) {
+            return toolError('Symbol name cannot be empty');
+        }
+
+        if (!trimmedPath) {
+            return toolError('File path cannot be empty');
+        }
+
+        // Sanitize input to prevent path traversal attacks
+        const sanitizedSymbolName = trimmedSymbol;
+        const sanitizedFilePath = PathSanitizer.sanitizePath(trimmedPath);
+
+        // Get the git repository root for path resolution
+        const gitRootDirectory =
+            this.gitOperationsManager.getRepository()?.rootUri.fsPath;
+        if (!gitRootDirectory) {
+            return toolError('Git repository not found');
+        }
+
+        // Convert relative path to absolute path using git root
+        const absolutePath = vscode.Uri.file(
+            path.join(gitRootDirectory, sanitizedFilePath)
+        );
+
+        let document: vscode.TextDocument;
         try {
-            const {
-                symbol_name,
-                file_path,
-                should_include_declaration,
-                context_line_count,
-            } = args;
-
-            // Validate inputs before sanitization
-            const trimmedSymbol = symbol_name.trim();
-            const trimmedPath = file_path.trim();
-
-            if (!trimmedSymbol) {
-                return toolError('Symbol name cannot be empty');
-            }
-
-            if (!trimmedPath) {
-                return toolError('File path cannot be empty');
-            }
-
-            // Sanitize input to prevent path traversal attacks
-            const sanitizedSymbolName = trimmedSymbol;
-            const sanitizedFilePath = PathSanitizer.sanitizePath(trimmedPath);
-
-            // Get the git repository root for path resolution
-            const gitRootDirectory =
-                this.gitOperationsManager.getRepository()?.rootUri.fsPath;
-            if (!gitRootDirectory) {
-                return toolError('Git repository not found');
-            }
-
-            // Convert relative path to absolute path using git root
-            const absolutePath = vscode.Uri.file(
-                path.join(gitRootDirectory, sanitizedFilePath)
-            );
-
-            let document: vscode.TextDocument;
-            try {
-                document =
-                    await vscode.workspace.openTextDocument(absolutePath);
-            } catch (error) {
-                return toolError(
-                    `Could not open file '${sanitizedFilePath}': ${error instanceof Error ? error.message : String(error)}`
-                );
-            }
-
-            // Find the symbol position in the document to use as starting point
-            const symbolPosition = await this.findSymbolPosition(
-                document,
-                sanitizedSymbolName,
-                context?.cancellationToken
-            );
-            if (!symbolPosition) {
-                return toolError(
-                    `No usages found for symbol '${sanitizedSymbolName}' in file '${sanitizedFilePath}'`
-                );
-            }
-
-            try {
-                // Use VS Code's reference provider to find all references (with timeout and cancellation)
-                const references = await withCancellableTimeout(
-                    Promise.resolve(
-                        vscode.commands.executeCommand<vscode.Location[]>(
-                            'vscode.executeReferenceProvider',
-                            document.uri,
-                            symbolPosition,
-                            {
-                                includeDeclaration:
-                                    should_include_declaration || false,
-                            }
-                        )
-                    ),
-                    LSP_OPERATION_TIMEOUT,
-                    `Reference search for ${sanitizedSymbolName}`,
-                    context?.cancellationToken
-                );
-
-                if (!references || references.length === 0) {
-                    return toolError(
-                        `No usages found for symbol '${sanitizedSymbolName}' in file '${sanitizedFilePath}'`
-                    );
-                }
-
-                // Remove duplicates based on URI and range
-                const uniqueReferences = this.deduplicateReferences(references);
-
-                // Format each reference with context
-                const formattedUsages: string[] = [];
-
-                for (const reference of uniqueReferences) {
-                    try {
-                        const refDocument =
-                            await vscode.workspace.openTextDocument(
-                                reference.uri
-                            );
-                        const relativeFilePath = path
-                            .relative(gitRootDirectory, reference.uri.fsPath)
-                            .replace(/\\/g, '/');
-
-                        // Extract context lines around the reference
-                        const contextText = this.formatter.extractContextLines(
-                            refDocument,
-                            reference.range,
-                            context_line_count || 2
-                        );
-
-                        const formattedUsage = this.formatter.formatUsage(
-                            relativeFilePath,
-                            sanitizedSymbolName,
-                            reference.range,
-                            contextText
-                        );
-
-                        formattedUsages.push(formattedUsage);
-                    } catch (error) {
-                        const relativeFilePath = path
-                            .relative(gitRootDirectory, reference.uri.fsPath)
-                            .replace(/\\/g, '/');
-                        const errorUsage = this.formatter.formatErrorUsage(
-                            relativeFilePath,
-                            sanitizedSymbolName,
-                            reference.range,
-                            error
-                        );
-
-                        formattedUsages.push(errorUsage);
-                    }
-                }
-
-                return toolSuccess(formattedUsages.join('\n\n'));
-            } catch (error) {
-                if (isCancellationError(error)) {
-                    throw error;
-                }
-                if (isTimeoutError(error)) {
-                    return toolError(
-                        `Reference search timed out. The language server may be slow or the codebase too large.`
-                    );
-                }
-                const message =
-                    error instanceof Error ? error.message : String(error);
-                return toolError(
-                    `Error executing reference provider: ${message}`
-                );
-            }
+            document = await vscode.workspace.openTextDocument(absolutePath);
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
             return toolError(
-                `Error finding symbol usages: ${error instanceof Error ? error.message : String(error)}`
+                `Could not open file '${sanitizedFilePath}': ${error instanceof Error ? error.message : String(error)}`
             );
         }
+
+        // Find the symbol position in the document to use as starting point
+        const symbolPosition = await this.findSymbolPosition(
+            document,
+            sanitizedSymbolName,
+            context?.cancellationToken
+        );
+        if (!symbolPosition) {
+            return toolError(
+                `No usages found for symbol '${sanitizedSymbolName}' in file '${sanitizedFilePath}'`
+            );
+        }
+
+        // Use VS Code's reference provider to find all references (with timeout and cancellation)
+        let references: vscode.Location[] | undefined;
+        try {
+            references = await withCancellableTimeout(
+                Promise.resolve(
+                    vscode.commands.executeCommand<vscode.Location[]>(
+                        'vscode.executeReferenceProvider',
+                        document.uri,
+                        symbolPosition,
+                        {
+                            includeDeclaration:
+                                should_include_declaration || false,
+                        }
+                    )
+                ),
+                LSP_OPERATION_TIMEOUT,
+                `Reference search for ${sanitizedSymbolName}`,
+                context?.cancellationToken
+            );
+        } catch (error) {
+            if (isTimeoutError(error)) {
+                return toolError(
+                    `Reference search timed out. The language server may be slow or the codebase too large.`
+                );
+            }
+            throw error;
+        }
+
+        if (!references || references.length === 0) {
+            return toolError(
+                `No usages found for symbol '${sanitizedSymbolName}' in file '${sanitizedFilePath}'`
+            );
+        }
+
+        // Remove duplicates based on URI and range
+        const uniqueReferences = this.deduplicateReferences(references);
+
+        // Format each reference with context
+        const formattedUsages: string[] = [];
+
+        for (const reference of uniqueReferences) {
+            try {
+                const refDocument = await vscode.workspace.openTextDocument(
+                    reference.uri
+                );
+                const relativeFilePath = path
+                    .relative(gitRootDirectory, reference.uri.fsPath)
+                    .replace(/\\/g, '/');
+
+                // Extract context lines around the reference
+                const contextText = this.formatter.extractContextLines(
+                    refDocument,
+                    reference.range,
+                    context_line_count || 2
+                );
+
+                const formattedUsage = this.formatter.formatUsage(
+                    relativeFilePath,
+                    sanitizedSymbolName,
+                    reference.range,
+                    contextText
+                );
+
+                formattedUsages.push(formattedUsage);
+            } catch (error) {
+                const relativeFilePath = path
+                    .relative(gitRootDirectory, reference.uri.fsPath)
+                    .replace(/\\/g, '/');
+                const errorUsage = this.formatter.formatErrorUsage(
+                    relativeFilePath,
+                    sanitizedSymbolName,
+                    reference.range,
+                    error
+                );
+
+                formattedUsages.push(errorUsage);
+            }
+        }
+
+        return toolSuccess(formattedUsages.join('\n\n'));
     }
 
     /**
@@ -301,17 +280,15 @@ Requires file_path where the symbol is defined as starting point.`;
                         return position;
                     }
                 } catch (error) {
-                    // Re-throw cancellation to stop search
-                    if (isCancellationError(error)) {
-                        throw error;
-                    }
                     // Log timeout but continue searching (non-fatal for definition check)
                     if (isTimeoutError(error)) {
                         Log.debug(
                             `Definition check timed out for ${symbolName} at line ${lineIndex + 1}, continuing search`
                         );
+                        continue;
                     }
-                    // Continue searching if definition check fails
+                    // Other errors should bubble up
+                    throw error;
                 }
             }
         }

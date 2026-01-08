@@ -5,6 +5,7 @@ import {
     RipgrepSearchService,
     RipgrepFileResult,
 } from '../services/ripgrepSearchService';
+import { TimeoutError } from '../types/errorTypes';
 
 // Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');
@@ -314,32 +315,30 @@ describe('SearchForPatternTool', () => {
     });
 
     describe('Error Handling', () => {
-        it('should handle ripgrep errors for invalid regex patterns', async () => {
+        it('should propagate ripgrep errors to ToolExecutor', async () => {
+            // With centralized error handling, ripgrep errors bubble up to ToolExecutor
             mockRipgrepService.search.mockRejectedValue(
                 new Error('ripgrep error: regex parse error')
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: '[invalid regex',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toBeDefined();
-            expect(result.error).toContain('Pattern search failed');
+            await expect(
+                searchForPatternTool.execute({
+                    pattern: '[invalid regex',
+                })
+            ).rejects.toThrow('ripgrep error: regex parse error');
         });
 
-        it('should handle ripgrep spawn errors', async () => {
+        it('should propagate ripgrep spawn errors to ToolExecutor', async () => {
+            // With centralized error handling, spawn errors bubble up to ToolExecutor
             mockRipgrepService.search.mockRejectedValue(
                 new Error('Failed to spawn ripgrep')
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'test',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toBeDefined();
-            expect(result.error).toContain('Pattern search failed');
+            await expect(
+                searchForPatternTool.execute({
+                    pattern: 'test',
+                })
+            ).rejects.toThrow('Failed to spawn ripgrep');
         });
 
         it('should handle git repository access errors', async () => {
@@ -565,9 +564,9 @@ describe('SearchForPatternTool', () => {
         });
 
         it('should return timeout error when search times out', async () => {
-            // Simulate timeout by rejecting with a timeout-like error
+            // Simulate timeout by rejecting with TimeoutError
             mockRipgrepService.search.mockRejectedValue(
-                new Error('Pattern search timed out after 60000ms')
+                TimeoutError.create('Pattern search', 60000)
             );
 
             const result = await searchForPatternTool.execute({

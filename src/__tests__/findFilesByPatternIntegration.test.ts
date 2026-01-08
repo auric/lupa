@@ -161,6 +161,7 @@ describe('FindFileTool Integration Tests', () => {
         });
 
         it('should handle tool execution errors gracefully', async () => {
+            // With centralized error handling, ToolExecutor catches errors and returns them as toolError
             const mockFdirInstance = createMockFdirInstance([]);
             mockFdirInstance.withPromise.mockRejectedValue(
                 new Error('Permission denied')
@@ -182,7 +183,7 @@ describe('FindFileTool Integration Tests', () => {
 
             expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(false);
-            expect(toolCallResults[0].error).toContain('Unable to find files');
+            // ToolExecutor returns the error message directly from the exception chain
             expect(toolCallResults[0].error).toContain('Permission denied');
         });
     });

@@ -6,7 +6,7 @@ import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { TimeoutError } from '../types/errorTypes';
-import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
+import { isTimeoutError } from '../utils/asyncUtils';
 
 /** Maximum time for pattern search operations */
 const PATTERN_SEARCH_TIMEOUT = 60_000; // 60 seconds
@@ -202,19 +202,12 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
                 linkedTokenSource.dispose();
             }
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
-
             if (isTimeoutError(error)) {
                 return toolError(
                     `Pattern search timed out. Try a more specific pattern or use search_path to limit the scope.`
                 );
             }
-
-            return toolError(
-                `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
-            );
+            throw error;
         }
     }
 }

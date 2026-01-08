@@ -7,6 +7,7 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
+import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 
 /**
  * Interface for tool execution requests
@@ -194,7 +195,26 @@ export class ToolExecutor {
                 metadata: toolResult.metadata,
             };
         } catch (error) {
+            // CancellationError must propagate to stop the entire analysis
+            if (isCancellationError(error)) {
+                Log.debug(`Tool '${name}' cancelled`);
+                throw error;
+            }
+
             const elapsed = Date.now() - startTime;
+
+            // TimeoutError gets a helpful message for the LLM
+            if (isTimeoutError(error)) {
+                Log.warn(
+                    `Tool '${name}' timed out [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
+                );
+                return {
+                    name,
+                    success: false,
+                    error: `Operation timed out. Try a more specific query or limit the search scope.`,
+                };
+            }
+
             const errorMsg =
                 error instanceof Error ? error.message : String(error);
             Log.error(

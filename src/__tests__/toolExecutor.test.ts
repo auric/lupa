@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as vscode from 'vscode';
 import * as z from 'zod';
 import { ToolExecutor, ToolExecutionRequest } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
@@ -10,6 +11,7 @@ import {
 } from '../models/workspaceSettingsSchema';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { TokenConstants } from '../models/tokenConstants';
+import { TimeoutError } from '../types/errorTypes';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
@@ -608,6 +610,52 @@ describe('ToolExecutor', () => {
             await expect(
                 toolExecutorWithCancelledToken.executeTool('slow_tool', {})
             ).rejects.toThrow();
+        });
+
+        it('should rethrow CancellationError when tool throws it during execution', async () => {
+            const cancellingTool: ITool = {
+                name: 'cancelling_tool',
+                description: 'A tool that throws CancellationError',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'cancelling_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> => {
+                    throw new vscode.CancellationError();
+                },
+            };
+
+            toolRegistry.registerTool(cancellingTool);
+
+            await expect(
+                toolExecutor.executeTool('cancelling_tool', {})
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should convert TimeoutError to structured error result', async () => {
+            const timeoutTool: ITool = {
+                name: 'timeout_tool',
+                description: 'A tool that times out',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'timeout_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> => {
+                    throw TimeoutError.create('test operation', 5000);
+                },
+            };
+
+            toolRegistry.registerTool(timeoutTool);
+
+            const result = await toolExecutor.executeTool('timeout_tool', {});
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('timed out');
+            expect(result.error).toContain('more specific query');
         });
     });
 });

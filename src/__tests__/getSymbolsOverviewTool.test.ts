@@ -336,20 +336,21 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             );
         });
 
-        it('should handle path not found error', async () => {
+        it('should propagate path not found error to ToolExecutor', async () => {
+            // With centralized error handling, path not found errors bubble up to ToolExecutor
             vi.mocked(vscode.workspace.fs.stat).mockRejectedValue(
                 new Error('File not found')
             );
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'nonexistent/path',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain("Path 'nonexistent/path' not found");
+            await expect(
+                getSymbolsOverviewTool.execute({
+                    path: 'nonexistent/path',
+                })
+            ).rejects.toThrow("Path 'nonexistent/path' not found");
         });
 
-        it('should handle git repository not found', async () => {
+        it('should propagate git repository not found to ToolExecutor', async () => {
+            // With centralized error handling, git repository errors bubble up
             const mockGitOpsWithoutRepo = {
                 getRepository: vi.fn().mockReturnValue(null),
             } as any;
@@ -367,12 +368,11 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 mockSymbolExtractorWithoutRepo
             );
 
-            const result = await toolWithoutRepo.execute({
-                path: 'src/test.ts',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Git repository not found');
+            await expect(
+                toolWithoutRepo.execute({
+                    path: 'src/test.ts',
+                })
+            ).rejects.toThrow('Git repository not found');
         });
 
         it('should filter code files correctly', async () => {
