@@ -165,11 +165,12 @@ export class SymbolExtractor {
             } catch (error) {
                 if (isCancellationError(error)) {
                     Log.debug(`Symbol extraction cancelled for ${filePath}`);
-                } else {
-                    const message =
-                        error instanceof Error ? error.message : String(error);
-                    Log.debug(`Skipping file ${filePath}: ${message}`);
+                    throw error;
                 }
+
+                const message =
+                    error instanceof Error ? error.message : String(error);
+                Log.debug(`Skipping file ${filePath}: ${message}`);
                 continue;
             }
         }
@@ -382,12 +383,15 @@ export class SymbolExtractor {
      * @param fileUri - VS Code URI of the file
      * @returns Symbol extraction result with context
      */
-    async extractSymbolsWithContext(fileUri: vscode.Uri): Promise<{
+    async extractSymbolsWithContext(
+        fileUri: vscode.Uri,
+        token?: vscode.CancellationToken
+    ): Promise<{
         symbols: vscode.DocumentSymbol[] | vscode.SymbolInformation[];
         document?: vscode.TextDocument;
         relativePath: string;
     }> {
-        const symbols = await this.getFileSymbols(fileUri);
+        const symbols = await this.getFileSymbols(fileUri, token);
         const document = await this.getTextDocument(fileUri);
         const relativePath = this.getGitRelativePathFromUri(fileUri);
 

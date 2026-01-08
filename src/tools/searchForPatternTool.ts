@@ -4,7 +4,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
-import { isCancellationError } from '@/utils/asyncUtils';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /**
  * High-performance tool for searching regex patterns in the codebase using ripgrep.

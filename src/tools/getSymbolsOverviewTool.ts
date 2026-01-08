@@ -204,7 +204,10 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             // Single file - get its symbols with enhanced formatting
             const fileUri = vscode.Uri.file(targetPath);
             const { symbols, document } =
-                await this.symbolExtractor.extractSymbolsWithContext(fileUri);
+                await this.symbolExtractor.extractSymbolsWithContext(
+                    fileUri,
+                    token
+                );
 
             const firstSymbol = symbols[0];
             if (

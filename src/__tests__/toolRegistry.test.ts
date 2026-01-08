@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
 import * as z from 'zod';
+import { ExecutionContext } from '../types/executionContext';
+import type { ToolResult } from '../types/toolResultTypes';
 
 // Mock tool for testing
 class MockTool implements ITool {
@@ -17,8 +19,11 @@ class MockTool implements ITool {
         };
     }
 
-    async execute(args: any) {
-        return `Executed with: ${args.input}`;
+    async execute(args: any, _context?: ExecutionContext): Promise<ToolResult> {
+        return {
+            success: true,
+            data: `Executed with: ${args.input}`,
+        };
     }
 }
 
@@ -35,8 +40,11 @@ class AnotherMockTool implements ITool {
         };
     }
 
-    async execute(args: any) {
-        return args.value * 2;
+    async execute(args: any, _context?: ExecutionContext): Promise<ToolResult> {
+        return {
+            success: true,
+            data: (args.value * 2).toString(),
+        };
     }
 }
 

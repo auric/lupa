@@ -2,9 +2,13 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
-import { withTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    isCancellationError,
+    isTimeoutError,
+    withCancellableTimeout,
+} from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
-import { ExecutionContext } from '../types/executionContext';
+import type { ExecutionContext } from '../types/executionContext';
 
 const FILE_SEARCH_TIMEOUT = 60_000; // 60 seconds for file search operations
 
@@ -48,7 +52,7 @@ export class FindFilesByPatternTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         try {
             const { pattern, search_directory: searchPath } = args;
@@ -58,14 +62,15 @@ export class FindFilesByPatternTool extends BaseTool {
                 return toolError('Git repository not found');
             }
 
-            const result = await withTimeout(
+            const result = await withCancellableTimeout(
                 FileDiscoverer.discoverFiles(gitRepo, {
                     searchPath: searchPath || '.',
                     includePattern: pattern,
                     respectGitignore: true,
                 }),
                 FILE_SEARCH_TIMEOUT,
-                `File search for pattern ${pattern}`
+                `File search for pattern ${pattern}`,
+                context?.cancellationToken
             );
 
             if (result.files.length === 0) {
@@ -82,6 +87,10 @@ export class FindFilesByPatternTool extends BaseTool {
 
             return toolSuccess(output);
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
             if (isTimeoutError(error)) {
                 return toolError(
                     `File search timed out. Try a more specific pattern or search in a smaller directory.`
