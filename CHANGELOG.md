@@ -5,7 +5,7 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.11] - 2026-01-08
+## [0.1.11] - 2026-01-09
 
 ### Fixed
 
@@ -13,13 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **No more analysis hangs**: Analyses could previously get stuck for 9+ minutes waiting for slow language servers or long searches. All operations now have timeouts—symbol lookups (5s per file), pattern searches (60s)—so analysis always makes progress.
 
-- **VS Code stays responsive during large projects**: File discovery no longer freezes the editor when scanning directories with many files.
-
-- **Correct status after cancellation**: Cancelling mid-analysis now shows a cancellation message instead of incorrectly saying "Analysis complete."
-
 ### Changed
 
-- **Incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
+- **Tools incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
 
 - **Simplified tool error handling**: Timeout and cancellation errors now propagate to a central handler instead of being duplicated in each tool. Tools that need custom behavior (like returning partial results) can still handle errors themselves.
 
