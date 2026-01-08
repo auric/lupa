@@ -2,12 +2,7 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
-import {
-    createAbortControllerFromToken,
-    isCancellationError,
-    isTimeoutError,
-    withCancellableTimeout,
-} from '../utils/asyncUtils';
+import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -63,21 +58,14 @@ export class FindFilesByPatternTool extends BaseTool {
                 return toolError('Git repository not found');
             }
 
-            const abortController = createAbortControllerFromToken(
-                context?.cancellationToken
-            );
-
-            const result = await withCancellableTimeout(
-                FileDiscoverer.discoverFiles(gitRepo, {
-                    searchPath: searchPath || '.',
-                    includePattern: pattern,
-                    respectGitignore: true,
-                    abortSignal: abortController?.signal,
-                }),
-                FILE_SEARCH_TIMEOUT,
-                `File search for pattern ${pattern}`,
-                context?.cancellationToken
-            );
+            // FileDiscoverer handles timeout and cancellation internally
+            const result = await FileDiscoverer.discoverFiles(gitRepo, {
+                searchPath: searchPath || '.',
+                includePattern: pattern,
+                respectGitignore: true,
+                timeoutMs: FILE_SEARCH_TIMEOUT,
+                cancellationToken: context?.cancellationToken,
+            });
 
             if (result.files.length === 0) {
                 return toolError(

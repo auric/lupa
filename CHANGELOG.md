@@ -9,41 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Unresponsive symbol searches resolved**: Previously, a single slow language server could block symbol extraction for 9+ minutes. Now each file has a 5-second timeout, and the search returns partial results gracefully instead of hanging.
+- **Analysis cancellation is now instant**: Clicking "Stop" immediately terminates all operations. Previously, file searches, symbol lookups, and pattern searches would continue running in the background after cancellation.
 
-- **Cancellation now works instantly**: Stopping an analysis mid-operation now cancels file discovery and symbol extraction immediately. Previously, these operations would continue running in the background.
+- **Symbol searches no longer hang**: A slow language server could previously block analysis for 9+ minutes. Now each file has a 5-second timeout, and Lupa returns partial results instead of freezing.
 
-- **Ripgrep searches stop on cancel**: Pattern searches now terminate immediately when analysis is cancelled, instead of continuing to run in the background.
+- **Pattern searches have a 60-second timeout**: Long-running pattern searches now have a time limit, preventing runaway searches from blocking analysis indefinitely.
 
-- **File discovery uses proper cancellation**: Directory crawls now use native fdir cancellation support, ensuring immediate termination when stopped.
+- **VS Code stays responsive during analysis**: Large directory scans now run asynchronously, keeping the editor responsive during file discovery.
 
-- **File discovery no longer blocks VS Code**: Large directory scans now run asynchronously, keeping VS Code responsive during searches.
-
-- **Resource leaks fixed**: Timer handles that accumulated during long symbol searches are now properly cleaned up.
-
-- **Cancellation errors properly propagated**: Fixed multiple locations where cancellation errors were being swallowed instead of re-thrown, causing cancelled operations to appear successful. Affected `FindSymbolTool`, `GetSymbolsOverviewTool`, `conversationRunner`, and `analysisOrchestrator`.
-
-- **File discovery reports partial results on abort**: When file discovery is cancelled mid-crawl, it now correctly reports `truncated: true` instead of silently treating partial results as complete.
-
-- **Pattern file search responds to cancellation**: The `find_files_by_pattern` tool now passes the cancellation signal through to the file discoverer, enabling immediate termination when analysis is cancelled.
-
-- **Pattern search timeout**: The `search_for_pattern` tool now has a 60-second timeout to prevent runaway searches from blocking analysis indefinitely.
-
-- **Per-file timeout tracking**: Symbol extraction now correctly tracks which individual files timed out. Previously, per-file timeouts were swallowed, preventing accurate reporting in `getDirectorySymbols`.
-
-- **Cancellation sentinel detection**: The analysis orchestrator now detects when the analysis provider returns a cancellation sentinel message and properly throws a cancellation error, preventing "Analysis complete" from showing after user cancellation.
-
-- **Consistent path normalization for gitignore**: Directory exclusion now normalizes paths to POSIX format before gitignore checks, matching the behavior of file filters.
-
-- **Unhandled promise rejection warnings eliminated**: Fixed async utilities where cancellation promises could reject after `Promise.race` settled, causing Node.js warning messages. Cancellation promises are now silently handled.
-
-### Added
-
-- **Better timeout error handling**: Tools now use a consistent `TimeoutError` class for all timeout scenarios, enabling more reliable detection and user-friendly messages.
-
-- **Timeout logging**: When operations time out, the system logs details to help diagnose slow language servers.
-
-- **Debug logging for skipped files**: Silent error catches in symbol extraction now log at debug level for easier troubleshooting.
+- **Cancelled analyses show correct status**: Previously, cancelling mid-analysis could show "Analysis complete" instead of acknowledging the cancellation.
 
 ## [0.1.10] - 2026-01-05
 

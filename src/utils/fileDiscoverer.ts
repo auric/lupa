@@ -40,10 +40,10 @@ export interface FileDiscoveryOptions {
     timeoutMs?: number;
 
     /**
-     * External abort signal for cancellation (e.g., from user cancellation).
-     * When provided, will be combined with internal timeout-based abort.
+     * VS Code CancellationToken for user-initiated cancellation.
+     * Internally converted to AbortSignal for fdir compatibility.
      */
-    abortSignal?: AbortSignal;
+    cancellationToken?: vscode.CancellationToken;
 }
 
 export interface FileDiscoveryResult {
@@ -87,14 +87,14 @@ export class FileDiscoverer {
             respectGitignore = true,
             maxResults = this.DEFAULT_MAX_RESULTS,
             timeoutMs = this.DEFAULT_TIMEOUT,
-            abortSignal: externalSignal,
+            cancellationToken,
         } = options;
 
         if (!gitRepo) {
             throw new Error('Git repository not found');
         }
 
-        if (externalSignal?.aborted) {
+        if (cancellationToken?.isCancellationRequested) {
             throw new vscode.CancellationError();
         }
 
@@ -103,14 +103,31 @@ export class FileDiscoverer {
         const gitRootDirectory = gitRepo.rootUri.fsPath;
         const targetPath = path.join(gitRootDirectory, sanitizedPath);
 
+        // Create AbortController for timeout
         const timeoutController = new AbortController();
         const timeoutId = setTimeout(() => {
             Log.warn(`[Timeout] File discovery aborted after ${timeoutMs}ms`);
             timeoutController.abort();
         }, timeoutMs);
 
-        const combinedSignal = externalSignal
-            ? AbortSignal.any([timeoutController.signal, externalSignal])
+        // Convert CancellationToken to AbortController for fdir compatibility
+        let cancellationController: AbortController | undefined;
+        let cancellationDisposable: vscode.Disposable | undefined;
+        if (cancellationToken) {
+            cancellationController = new AbortController();
+            cancellationDisposable = cancellationToken.onCancellationRequested(
+                () => {
+                    cancellationController!.abort();
+                }
+            );
+        }
+
+        // Combine timeout and cancellation signals
+        const combinedSignal = cancellationController
+            ? AbortSignal.any([
+                  timeoutController.signal,
+                  cancellationController.signal,
+              ])
             : timeoutController.signal;
 
         try {
@@ -125,7 +142,8 @@ export class FileDiscoverer {
             });
             return result;
         } catch (error) {
-            if (externalSignal?.aborted) {
+            // Check cancellation first (user-initiated takes priority)
+            if (cancellationToken?.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
             if (timeoutController.signal.aborted) {
@@ -136,6 +154,7 @@ export class FileDiscoverer {
             );
         } finally {
             clearTimeout(timeoutId);
+            cancellationDisposable?.dispose();
         }
     }
 
