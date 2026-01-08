@@ -121,14 +121,24 @@ Pass `cancellationToken` to long-running operations (symbol extraction, LSP call
 
 ### Timeout Handling
 
-Use consistent patterns for timeout and cancellation:
+**Centralized error handling in ToolExecutor** - tools don't need to handle these errors individually:
 
-- **TimeoutError class**: Use `TimeoutError.create(operation, timeoutMs)` for all timeout scenarios
-- **Type guards**: Use `isTimeoutError(error)` and `isCancellationError(error)` from `asyncUtils.ts`
+- **CancellationError**: ToolExecutor rethrows to propagate cancellation up the stack
+- **TimeoutError**: ToolExecutor catches and returns a generic helpful message to the LLM
+
+**When tools SHOULD handle errors themselves**:
+
+- Returning partial results on timeout (e.g., truncated symbol list with a note)
+- Graceful degradation (e.g., `symbolRangeExpander` falls back to heuristic on timeout)
+- Continuing on non-fatal errors (e.g., `findUsagesTool` continues if one definition check times out)
+
+**Other patterns**:
+
+- **TimeoutError class**: Use `TimeoutError.create(operation, timeoutMs)` for timeout scenarios
 - **Async file discovery**: Use `fdir.crawl().withPromise()` instead of `.sync()` to keep VS Code responsive
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
-- **AbortSignal conversion**: Use `createAbortControllerFromToken(token)` from `asyncUtils.ts` to convert a VS Code `CancellationToken` to an `AbortController` for APIs that require `AbortSignal`
-- **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token. Cancel the linked source on timeout to ensure the child process is killed, not just abandoned (see `SearchForPatternTool`)
+- **AbortSignal conversion**: Use `createAbortControllerFromToken(token)` from `asyncUtils.ts`
+- **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
 
 ### New Services
 
@@ -146,6 +156,7 @@ Use consistent patterns for timeout and cancellation:
     - `createMockWorkspaceSettings()` - WorkspaceSettingsService
     - `createMockFdirInstance()` - fdir file discovery
     - `createMockGitRepository()` - Git repository
+    - `createMockPosition()` / `createMockRange()` - VS Code Position/Range with proper methods
 - **Vitest 4**: Constructor mocks require `function` syntax, not arrow functions
 
 ---

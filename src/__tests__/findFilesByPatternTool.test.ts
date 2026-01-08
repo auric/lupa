@@ -4,6 +4,7 @@ import { fdir } from 'fdir';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
+import { createMockFdirInstance } from './testUtils/mockFactories';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -85,28 +86,6 @@ vi.mock('../utils/pathSanitizer', () => ({
         sanitizePath: vi.fn((path) => (path === '' ? '.' : path)),
     },
 }));
-
-// Test utility functions for DRY mocks
-function createMockFdirInstance(syncReturnValue: string[] = []) {
-    const crawlResult = {
-        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
-        sync: vi.fn().mockReturnValue(syncReturnValue),
-    };
-    return {
-        withGlobFunction: vi.fn().mockReturnThis(),
-        glob: vi.fn().mockReturnThis(),
-        globWithOptions: vi.fn().mockReturnThis(),
-        withRelativePaths: vi.fn().mockReturnThis(),
-        withFullPaths: vi.fn().mockReturnThis(),
-        withAbortSignal: vi.fn().mockReturnThis(),
-        exclude: vi.fn().mockReturnThis(),
-        filter: vi.fn().mockReturnThis(),
-        crawl: vi.fn().mockReturnValue(crawlResult),
-        // Also expose these for test assertions
-        withPromise: crawlResult.withPromise,
-        sync: crawlResult.sync,
-    } as any;
-}
 
 describe('FindFileTool', () => {
     let findFileTool: FindFilesByPatternTool;

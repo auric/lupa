@@ -123,32 +123,21 @@ Requires file_path where the symbol is defined as starting point.`;
         }
 
         // Use VS Code's reference provider to find all references (with timeout and cancellation)
-        let references: vscode.Location[] | undefined;
-        try {
-            references = await withCancellableTimeout(
-                Promise.resolve(
-                    vscode.commands.executeCommand<vscode.Location[]>(
-                        'vscode.executeReferenceProvider',
-                        document.uri,
-                        symbolPosition,
-                        {
-                            includeDeclaration:
-                                should_include_declaration || false,
-                        }
-                    )
-                ),
-                LSP_OPERATION_TIMEOUT,
-                `Reference search for ${sanitizedSymbolName}`,
-                context?.cancellationToken
-            );
-        } catch (error) {
-            if (isTimeoutError(error)) {
-                return toolError(
-                    `Reference search timed out. The language server may be slow or the codebase too large.`
-                );
-            }
-            throw error;
-        }
+        const references = await withCancellableTimeout(
+            Promise.resolve(
+                vscode.commands.executeCommand<vscode.Location[]>(
+                    'vscode.executeReferenceProvider',
+                    document.uri,
+                    symbolPosition,
+                    {
+                        includeDeclaration: should_include_declaration || false,
+                    }
+                )
+            ),
+            LSP_OPERATION_TIMEOUT,
+            `Reference search for ${sanitizedSymbolName}`,
+            context?.cancellationToken
+        );
 
         if (!references || references.length === 0) {
             return toolError(

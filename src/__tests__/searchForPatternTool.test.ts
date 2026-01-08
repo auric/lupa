@@ -563,18 +563,16 @@ describe('SearchForPatternTool', () => {
             );
         });
 
-        it('should return timeout error when search times out', async () => {
+        it('should throw timeout error when search times out', async () => {
             // Simulate timeout by rejecting with TimeoutError
+            // TimeoutError now propagates to ToolExecutor for centralized handling
             mockRipgrepService.search.mockRejectedValue(
                 TimeoutError.create('Pattern search', 60000)
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'test',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('timed out');
+            await expect(
+                searchForPatternTool.execute({ pattern: 'test' })
+            ).rejects.toThrow(TimeoutError);
         });
     });
 });

@@ -7,7 +7,7 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
-import { withCancellableTimeout, isTimeoutError } from '../utils/asyncUtils';
+import { withCancellableTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
@@ -95,69 +95,60 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             );
         }
 
-        try {
-            const {
-                path: relativePath,
-                max_depth: maxDepth,
-                include_body: includeBody,
-                include_kinds: includeKindsStrings,
-                exclude_kinds: excludeKindsStrings,
-                max_symbols: maxSymbols,
-                show_hierarchy: showHierarchy,
-            } = validationResult.data;
+        const {
+            path: relativePath,
+            max_depth: maxDepth,
+            include_body: includeBody,
+            include_kinds: includeKindsStrings,
+            exclude_kinds: excludeKindsStrings,
+            max_symbols: maxSymbols,
+            show_hierarchy: showHierarchy,
+        } = validationResult.data;
 
-            // Convert string kinds to numbers
-            const includeKinds = includeKindsStrings
-                ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
-                .filter((k) => k !== undefined) as number[] | undefined;
-            const excludeKinds = excludeKindsStrings
-                ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
-                .filter((k) => k !== undefined) as number[] | undefined;
+        // Convert string kinds to numbers
+        const includeKinds = includeKindsStrings
+            ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
+            .filter((k) => k !== undefined) as number[] | undefined;
+        const excludeKinds = excludeKindsStrings
+            ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
+            .filter((k) => k !== undefined) as number[] | undefined;
 
-            // Sanitize the relative path to prevent directory traversal attacks
-            const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
+        // Sanitize the relative path to prevent directory traversal attacks
+        const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
 
-            const effectiveMaxSymbols = maxSymbols || 100;
+        const effectiveMaxSymbols = maxSymbols || 100;
 
-            // Get symbols overview using enhanced utilities (with cancellable timeout)
-            const token = context?.cancellationToken;
-            const { content, symbolCount, truncated } =
-                await withCancellableTimeout(
-                    this.getEnhancedSymbolsOverview(
-                        sanitizedPath,
-                        {
-                            maxDepth: maxDepth || 0,
-                            showHierarchy: showHierarchy ?? true,
-                            includeBody: includeBody || false,
-                            maxSymbols: effectiveMaxSymbols,
-                            includeKinds,
-                            excludeKinds,
-                        },
-                        token
-                    ),
-                    LSP_OPERATION_TIMEOUT,
-                    `Symbol overview for ${sanitizedPath}`,
+        // Get symbols overview using enhanced utilities (with cancellable timeout)
+        const token = context?.cancellationToken;
+        const { content, symbolCount, truncated } =
+            await withCancellableTimeout(
+                this.getEnhancedSymbolsOverview(
+                    sanitizedPath,
+                    {
+                        maxDepth: maxDepth || 0,
+                        showHierarchy: showHierarchy ?? true,
+                        includeBody: includeBody || false,
+                        maxSymbols: effectiveMaxSymbols,
+                        includeKinds,
+                        excludeKinds,
+                    },
                     token
-                );
+                ),
+                LSP_OPERATION_TIMEOUT,
+                `Symbol overview for ${sanitizedPath}`,
+                token
+            );
 
-            if (symbolCount === 0) {
-                return toolError(`No symbols found in '${sanitizedPath}'`);
-            }
-
-            let result = content;
-            if (truncated) {
-                result += `\n\n[Output limited to ${effectiveMaxSymbols} symbols. Use more specific path or filters to see more.]`;
-            }
-
-            return toolSuccess(result);
-        } catch (error) {
-            if (isTimeoutError(error)) {
-                return toolError(
-                    `Symbol extraction timed out. Try a specific file path instead of a directory, or use filters.`
-                );
-            }
-            throw error;
+        if (symbolCount === 0) {
+            return toolError(`No symbols found in '${sanitizedPath}'`);
         }
+
+        let result = content;
+        if (truncated) {
+            result += `\n\n[Output limited to ${effectiveMaxSymbols} symbols. Use more specific path or filters to see more.]`;
+        }
+
+        return toolSuccess(result);
     }
 
     /**

@@ -6,7 +6,6 @@ import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { TimeoutError } from '../types/errorTypes';
-import { isTimeoutError } from '../utils/asyncUtils';
 
 /** Maximum time for pattern search operations */
 const PATTERN_SEARCH_TIMEOUT = 60_000; // 60 seconds
@@ -119,95 +118,80 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             );
         }
 
+        const {
+            pattern,
+            lines_before = 0,
+            lines_after = 0,
+            include_files = '',
+            exclude_files = '',
+            search_path = '.',
+            only_code_files = false,
+            case_sensitive = false,
+        } = validationResult.data;
+
+        const gitRepo = this.gitOperationsManager.getRepository();
+        if (!gitRepo) {
+            return toolError('Git repository not found');
+        }
+
+        const gitRootDirectory = gitRepo.rootUri.fsPath;
+
+        // Create a linked cancellation token source that will be cancelled on:
+        // 1. User cancellation (original token)
+        // 2. Timeout (we cancel it ourselves)
+        // This ensures ripgrep process is killed on timeout, not just abandoned.
+        const linkedTokenSource = new vscode.CancellationTokenSource();
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let userCancellationDisposable: vscode.Disposable | undefined;
+
+        if (context?.cancellationToken) {
+            userCancellationDisposable =
+                context.cancellationToken.onCancellationRequested(() => {
+                    linkedTokenSource.cancel();
+                });
+        }
+
         try {
-            const {
+            const searchPromise = this.ripgrepService.search({
                 pattern,
-                lines_before = 0,
-                lines_after = 0,
-                include_files = '',
-                exclude_files = '',
-                search_path = '.',
-                only_code_files = false,
-                case_sensitive = false,
-            } = validationResult.data;
+                cwd: gitRootDirectory,
+                searchPath: search_path !== '.' ? search_path : undefined,
+                linesBefore: lines_before,
+                linesAfter: lines_after,
+                caseSensitive: case_sensitive,
+                includeGlob: include_files || undefined,
+                excludeGlob: exclude_files || undefined,
+                codeFilesOnly: only_code_files,
+                multiline: true,
+                token: linkedTokenSource.token,
+            });
 
-            const gitRepo = this.gitOperationsManager.getRepository();
-            if (!gitRepo) {
-                return toolError('Git repository not found');
-            }
-
-            const gitRootDirectory = gitRepo.rootUri.fsPath;
-
-            // Create a linked cancellation token source that will be cancelled on:
-            // 1. User cancellation (original token)
-            // 2. Timeout (we cancel it ourselves)
-            // This ensures ripgrep process is killed on timeout, not just abandoned.
-            const linkedTokenSource = new vscode.CancellationTokenSource();
-            let timeoutId: ReturnType<typeof setTimeout> | undefined;
-            let userCancellationDisposable: vscode.Disposable | undefined;
-
-            if (context?.cancellationToken) {
-                userCancellationDisposable =
-                    context.cancellationToken.onCancellationRequested(() => {
-                        linkedTokenSource.cancel();
-                    });
-            }
-
-            try {
-                const searchPromise = this.ripgrepService.search({
-                    pattern,
-                    cwd: gitRootDirectory,
-                    searchPath: search_path !== '.' ? search_path : undefined,
-                    linesBefore: lines_before,
-                    linesAfter: lines_after,
-                    caseSensitive: case_sensitive,
-                    includeGlob: include_files || undefined,
-                    excludeGlob: exclude_files || undefined,
-                    codeFilesOnly: only_code_files,
-                    multiline: true,
-                    token: linkedTokenSource.token,
-                });
-
-                const timeoutPromise = new Promise<never>((_, reject) => {
-                    timeoutId = setTimeout(() => {
-                        linkedTokenSource.cancel(); // This kills the ripgrep process
-                        reject(
-                            TimeoutError.create(
-                                'Pattern search',
-                                PATTERN_SEARCH_TIMEOUT
-                            )
-                        );
-                    }, PATTERN_SEARCH_TIMEOUT);
-                });
-
-                const results = await Promise.race([
-                    searchPromise,
-                    timeoutPromise,
-                ]);
-
-                if (results.length === 0) {
-                    return toolError(
-                        `No matches found for pattern '${pattern}'`
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    linkedTokenSource.cancel(); // This kills the ripgrep process
+                    reject(
+                        TimeoutError.create(
+                            'Pattern search',
+                            PATTERN_SEARCH_TIMEOUT
+                        )
                     );
-                }
+                }, PATTERN_SEARCH_TIMEOUT);
+            });
 
-                const formattedResult =
-                    this.ripgrepService.formatResults(results);
-                return toolSuccess(formattedResult);
-            } finally {
-                if (timeoutId !== undefined) {
-                    clearTimeout(timeoutId);
-                }
-                userCancellationDisposable?.dispose();
-                linkedTokenSource.dispose();
+            const results = await Promise.race([searchPromise, timeoutPromise]);
+
+            if (results.length === 0) {
+                return toolError(`No matches found for pattern '${pattern}'`);
             }
-        } catch (error) {
-            if (isTimeoutError(error)) {
-                return toolError(
-                    `Pattern search timed out. Try a more specific pattern or use search_path to limit the scope.`
-                );
+
+            const formattedResult = this.ripgrepService.formatResults(results);
+            return toolSuccess(formattedResult);
+        } finally {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
             }
-            throw error;
+            userCancellationDisposable?.dispose();
+            linkedTokenSource.dispose();
         }
     }
 }

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
-import { createMockCancellationTokenSource } from './testUtils/mockFactories';
+import { createMockRange } from './testUtils/mockFactories';
 
 // Mock the readGitignore function
 vi.mock('../utils/gitUtils', () => ({
@@ -515,75 +515,9 @@ describe('FindSymbolTool (Integration Tests)', () => {
             expect(result.error).toContain("Symbol 'test' not found");
         });
 
-        it('should rethrow CancellationError from workspace symbol search', async () => {
-            const tokenSource = createMockCancellationTokenSource();
-
-            vi.mocked(vscode.commands.executeCommand).mockImplementation(
-                (command) => {
-                    if (command === 'vscode.executeWorkspaceSymbolProvider') {
-                        return Promise.reject(new vscode.CancellationError());
-                    }
-                    return Promise.resolve([]);
-                }
-            );
-
-            await expect(
-                findSymbolTool.execute(
-                    { name_path: 'MyClass' },
-                    { cancellationToken: tokenSource.token }
-                )
-            ).rejects.toThrow(vscode.CancellationError);
-        });
-
-        it('should rethrow CancellationError from formatSymbolResults body extraction', async () => {
-            const tokenSource = createMockCancellationTokenSource();
-
-            const mockWorkspaceSymbol = {
-                name: 'MyClass',
-                kind: vscode.SymbolKind.Class,
-                location: {
-                    uri: {
-                        toString: () => 'file:///mock/repo/root/test.ts',
-                        fsPath: '/mock/repo/root/test.ts',
-                    },
-                    range: {
-                        start: { line: 0, character: 0 },
-                        end: { line: 0, character: 10 },
-                    },
-                },
-            };
-
-            vi.mocked(vscode.commands.executeCommand).mockImplementation(
-                (command) => {
-                    if (command === 'vscode.executeWorkspaceSymbolProvider') {
-                        return Promise.resolve([mockWorkspaceSymbol]);
-                    }
-                    if (command === 'vscode.executeDocumentSymbolProvider') {
-                        return Promise.reject(new vscode.CancellationError());
-                    }
-                    return Promise.resolve([]);
-                }
-            );
-
-            const mockDocument = {
-                getText: vi.fn(() => {
-                    throw new vscode.CancellationError();
-                }),
-                uri: mockWorkspaceSymbol.location.uri,
-                lineCount: 10,
-            };
-
-            vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(
-                mockDocument as any
-            );
-
-            await expect(
-                findSymbolTool.execute(
-                    { name_path: 'MyClass', include_body: true },
-                    { cancellationToken: tokenSource.token }
-                )
-            ).rejects.toThrow(vscode.CancellationError);
-        });
+        // Note: CancellationError propagation is tested at the ToolExecutor level.
+        // Tools no longer explicitly handle CancellationError - they let it bubble up naturally,
+        // and ToolExecutor rethrows it to cancel the analysis.
 
         it('should surface truncation info in results for directory search', async () => {
             const mockFileUri = {
@@ -886,10 +820,7 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 kind: vscode.SymbolKind.Class,
                 location: {
                     uri: mockFileUri,
-                    range: {
-                        start: { line: 0, character: 6 },
-                        end: { line: 0, character: 13 },
-                    },
+                    range: createMockRange(0, 6, 0, 13),
                 },
             };
 
@@ -897,42 +828,21 @@ describe('FindSymbolTool (Integration Tests)', () => {
             const mockDocumentSymbol = {
                 name: 'MyClass',
                 kind: vscode.SymbolKind.Class,
-                range: {
-                    start: { line: 0, character: 6 },
-                    end: { line: 3, character: 1 },
-                    contains: vi.fn().mockReturnValue(true),
-                },
-                selectionRange: {
-                    start: { line: 0, character: 6 },
-                    end: { line: 0, character: 13 },
-                },
+                range: createMockRange(0, 6, 3, 1),
+                selectionRange: createMockRange(0, 6, 0, 13),
                 children: [
                     {
                         name: 'method1()',
                         kind: vscode.SymbolKind.Method,
-                        range: {
-                            start: { line: 1, character: 2 },
-                            end: { line: 1, character: 13 },
-                            contains: vi.fn().mockReturnValue(false),
-                        },
-                        selectionRange: {
-                            start: { line: 1, character: 2 },
-                            end: { line: 1, character: 9 },
-                        },
+                        range: createMockRange(1, 2, 1, 13),
+                        selectionRange: createMockRange(1, 2, 1, 9),
                         children: [],
                     },
                     {
                         name: 'method2()',
                         kind: vscode.SymbolKind.Method,
-                        range: {
-                            start: { line: 2, character: 2 },
-                            end: { line: 2, character: 13 },
-                            contains: vi.fn().mockReturnValue(false),
-                        },
-                        selectionRange: {
-                            start: { line: 2, character: 2 },
-                            end: { line: 2, character: 9 },
-                        },
+                        range: createMockRange(2, 2, 2, 13),
+                        selectionRange: createMockRange(2, 2, 2, 9),
                         children: [],
                     },
                 ],
@@ -1374,28 +1284,50 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 lineCount: 4,
             };
 
+            // Mock SymbolInformation from workspace search
+            const mockSymbolInformation = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                location: {
+                    uri: mockFileUri,
+                    range: createMockRange(0, 6, 0, 13),
+                },
+            };
+
+            // Mock DocumentSymbol with children (fetched when include_children is true)
+            const mockDocumentSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                range: createMockRange(0, 6, 3, 1),
+                selectionRange: createMockRange(0, 6, 0, 13),
+                children: [
+                    {
+                        name: 'method1()',
+                        kind: vscode.SymbolKind.Method,
+                        range: createMockRange(1, 2, 1, 13),
+                        selectionRange: createMockRange(1, 2, 1, 9),
+                        children: [],
+                    },
+                    {
+                        name: 'method2()',
+                        kind: vscode.SymbolKind.Method,
+                        range: createMockRange(2, 2, 2, 13),
+                        selectionRange: createMockRange(2, 2, 2, 9),
+                        children: [],
+                    },
+                ],
+            };
+
             vi.mocked(vscode.workspace.openTextDocument).mockResolvedValue(
                 mockDocument as any
             );
             vi.mocked(vscode.commands.executeCommand).mockImplementation(
                 (command, ..._args) => {
-                    expect(command).toBe(
-                        'vscode.executeWorkspaceSymbolProvider'
-                    );
                     if (command === 'vscode.executeWorkspaceSymbolProvider') {
-                        return Promise.resolve([
-                            {
-                                name: 'MyClass',
-                                kind: vscode.SymbolKind.Class,
-                                location: {
-                                    uri: mockFileUri,
-                                    range: {
-                                        start: { line: 0, character: 6 },
-                                        end: { line: 0, character: 13 },
-                                    },
-                                },
-                            },
-                        ]);
+                        return Promise.resolve([mockSymbolInformation]);
+                    }
+                    if (command === 'vscode.executeDocumentSymbolProvider') {
+                        return Promise.resolve([mockDocumentSymbol]);
                     }
                     return Promise.resolve([]);
                 }

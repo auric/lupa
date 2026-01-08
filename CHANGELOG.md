@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
 
+- **Simplified tool error handling**: Timeout and cancellation errors now propagate to a central handler instead of being duplicated in each tool. Tools that need custom behavior (like returning partial results) can still handle errors themselves.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added

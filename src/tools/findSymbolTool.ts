@@ -1,6 +1,7 @@
 import * as z from 'zod';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { SymbolRangeExpander } from './symbolRangeExpander';
 import { DefinitionFormatter } from './definitionFormatter';
@@ -15,7 +16,7 @@ import { withCancellableTimeout, isTimeoutError } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
-import ignore from 'ignore';
+import { isCancellationError } from '../utils/asyncUtils';
 
 const SYMBOL_SEARCH_TIMEOUT = 5000; // 5 seconds total
 const FILE_PROCESSING_TIMEOUT = 500; // 500ms per file
@@ -110,79 +111,70 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             );
         }
 
-        try {
-            const {
-                name_path: namePath,
-                relative_path: relativePath,
-                include_body: includeBody,
-                include_children: includeChildren,
-                include_kinds: includeKindsStrings,
-                exclude_kinds: excludeKindsStrings,
-            } = validationResult.data;
+        const {
+            name_path: namePath,
+            relative_path: relativePath,
+            include_body: includeBody,
+            include_children: includeChildren,
+            include_kinds: includeKindsStrings,
+            exclude_kinds: excludeKindsStrings,
+        } = validationResult.data;
 
-            const includeKinds = includeKindsStrings
-                ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
-                .filter((k) => k !== undefined) as number[] | undefined;
-            const excludeKinds = excludeKindsStrings
-                ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
-                .filter((k) => k !== undefined) as number[] | undefined;
+        const includeKinds = includeKindsStrings
+            ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
+            .filter((k) => k !== undefined) as number[] | undefined;
+        const excludeKinds = excludeKindsStrings
+            ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
+            .filter((k) => k !== undefined) as number[] | undefined;
 
-            const pathSegments = this.parseNamePath(namePath);
-            if (pathSegments.length === 0) {
-                return toolError('Symbol name cannot be empty');
-            }
+        const pathSegments = this.parseNamePath(namePath);
+        if (pathSegments.length === 0) {
+            return toolError('Symbol name cannot be empty');
+        }
 
-            const token = context?.cancellationToken;
-            let searchResult: SymbolSearchResult;
+        const token = context?.cancellationToken;
+        let searchResult: SymbolSearchResult;
 
-            if (relativePath && relativePath !== '.') {
-                // Path B: Specific path search with time-controlled processing
-                searchResult = await this.findSymbolsInPath(
-                    pathSegments,
-                    relativePath,
-                    includeKinds,
-                    excludeKinds,
-                    token
-                );
-            } else {
-                // Path A: Workspace search using VS Code's optimized indexing
-                searchResult = await this.findSymbolsInWorkspace(
-                    pathSegments,
-                    includeKinds,
-                    excludeKinds,
-                    token
-                );
-            }
-
-            if (searchResult.symbols.length === 0) {
-                return toolError(`Symbol '${namePath}' not found`);
-            }
-
-            const formattedResults = await this.formatSymbolResults(
-                searchResult.symbols,
-                includeBody ?? false,
-                includeChildren ?? false,
+        if (relativePath && relativePath !== '.') {
+            // Path B: Specific path search with time-controlled processing
+            searchResult = await this.findSymbolsInPath(
+                pathSegments,
+                relativePath,
                 includeKinds,
                 excludeKinds,
                 token
             );
-
-            // Surface truncation/timeout info to user
-            let finalResult = formattedResults;
-            if (searchResult.truncated || searchResult.timedOut) {
-                const reason = searchResult.timedOut ? 'timeout' : 'file limit';
-                finalResult += `\n\n[Note: Results may be incomplete due to ${reason}. Consider narrowing search scope with relative_path.]`;
-            }
-
-            return toolSuccess(finalResult);
-        } catch (error) {
-            if (isTimeoutError(error)) {
-                return toolError(
-                    `Symbol search timed out. Try a more specific path with relative_path.`
-                );
-            }
-            throw error;
+        } else {
+            // Path A: Workspace search using VS Code's optimized indexing
+            searchResult = await this.findSymbolsInWorkspace(
+                pathSegments,
+                includeKinds,
+                excludeKinds,
+                token
+            );
         }
+
+        if (searchResult.symbols.length === 0) {
+            return toolError(`Symbol '${namePath}' not found`);
+        }
+
+        const formattedResults = await this.formatSymbolResults(
+            searchResult.symbols,
+            includeBody ?? false,
+            includeChildren ?? false,
+            includeKinds,
+            excludeKinds,
+            token
+        );
+
+        // Surface truncation/timeout info to user
+        let finalResult = formattedResults;
+        if (searchResult.truncated || searchResult.timedOut) {
+            const reason = searchResult.timedOut ? 'timeout' : 'file limit';
+            finalResult += `\n\n[Note: Results may be incomplete due to ${reason}. Consider narrowing search scope with relative_path.]`;
+        }
+
+        return toolSuccess(finalResult);
     }
 
     /**
@@ -296,7 +288,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         token
                     )) || [];
             } catch (error) {
-                if (error instanceof vscode.CancellationError) {
+                if (isCancellationError(error)) {
                     throw error;
                 }
                 Log.warn('Workspace symbol search failed:', error);
@@ -344,7 +336,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                         matches.push(match);
                     }
                 } catch (error) {
-                    if (error instanceof vscode.CancellationError) {
+                    if (isCancellationError(error)) {
                         throw error;
                     }
                     if (isTimeoutError(error)) {
@@ -361,9 +353,6 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             const truncated = filteredSymbols.length > 50;
             return { symbols: matches, truncated, timedOut };
         } catch (error) {
-            if (error instanceof vscode.CancellationError) {
-                throw error;
-            }
             Log.warn('Workspace symbol search completely failed:', error);
             return {
                 symbols: [],
@@ -405,9 +394,6 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     symbol.location.uri
                 );
             } catch (error) {
-                if (error instanceof vscode.CancellationError) {
-                    throw error;
-                }
                 Log.debug(
                     `Failed to open document for symbol ${symbol.name}:`,
                     error
@@ -421,9 +407,6 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 filePath: this.getGitRelativePath(symbol.location.uri),
             };
         } catch (error) {
-            if (error instanceof vscode.CancellationError) {
-                throw error;
-            }
             Log.debug(
                 `Error processing workspace symbol ${symbol.name}:`,
                 error
@@ -758,9 +741,6 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     bodyLines = rawBody.split('\n');
                     startLine = finalRange.start.line + 1;
                 } catch (error) {
-                    if (error instanceof vscode.CancellationError) {
-                        throw error;
-                    }
                     Log.debug(
                         `Failed to extract body for symbol ${match.symbol.name}:`,
                         error
@@ -827,9 +807,6 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                                 childStartLine =
                                     childSymbolRange.start.line + 1;
                             } catch (error) {
-                                if (error instanceof vscode.CancellationError) {
-                                    throw error;
-                                }
                                 Log.debug(
                                     `Failed to extract body for child symbol ${childSymbol.symbol.name}:`,
                                     error

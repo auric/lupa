@@ -2,7 +2,6 @@ import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
-import { isTimeoutError } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -50,43 +49,34 @@ export class FindFilesByPatternTool extends BaseTool {
         args: z.infer<typeof this.schema>,
         context?: ExecutionContext
     ): Promise<ToolResult> {
-        try {
-            const { pattern, search_directory: searchPath } = args;
+        const { pattern, search_directory: searchPath } = args;
 
-            const gitRepo = this.gitOperationsManager.getRepository();
-            if (!gitRepo) {
-                return toolError('Git repository not found');
-            }
-
-            // FileDiscoverer handles timeout and cancellation internally
-            const result = await FileDiscoverer.discoverFiles(gitRepo, {
-                searchPath: searchPath || '.',
-                includePattern: pattern,
-                respectGitignore: true,
-                timeoutMs: FILE_SEARCH_TIMEOUT,
-                cancellationToken: context?.cancellationToken,
-            });
-
-            if (result.files.length === 0) {
-                return toolError(
-                    `No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'. Did you forget to add '**/' for recursive search in subdirectories?`
-                );
-            }
-
-            let output = result.files.join('\n');
-
-            if (result.truncated) {
-                output += `\n\n[Found ${result.totalFound} files, showing first ${result.files.length}. Consider using a more specific pattern.]`;
-            }
-
-            return toolSuccess(output);
-        } catch (error) {
-            if (isTimeoutError(error)) {
-                return toolError(
-                    `File search timed out. Try a more specific pattern or search in a smaller directory.`
-                );
-            }
-            throw error;
+        const gitRepo = this.gitOperationsManager.getRepository();
+        if (!gitRepo) {
+            return toolError('Git repository not found');
         }
+
+        // FileDiscoverer handles timeout and cancellation internally
+        const result = await FileDiscoverer.discoverFiles(gitRepo, {
+            searchPath: searchPath || '.',
+            includePattern: pattern,
+            respectGitignore: true,
+            timeoutMs: FILE_SEARCH_TIMEOUT,
+            cancellationToken: context?.cancellationToken,
+        });
+
+        if (result.files.length === 0) {
+            return toolError(
+                `No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'. Did you forget to add '**/' for recursive search in subdirectories?`
+            );
+        }
+
+        let output = result.files.join('\n');
+
+        if (result.truncated) {
+            output += `\n\n[Found ${result.totalFound} files, showing first ${result.files.length}. Consider using a more specific pattern.]`;
+        }
+
+        return toolSuccess(output);
     }
 }
