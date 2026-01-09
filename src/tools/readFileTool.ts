@@ -5,7 +5,7 @@ import { BaseTool } from './baseTool';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { withTimeout } from '../utils/asyncUtils';
+import { withCancellableTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { OutputFormatter, FileContentOptions } from '../utils/outputFormatter';
@@ -65,7 +65,7 @@ export class ReadFileTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         try {
             const { file_path, start_line, end_line, line_count } = args;
@@ -82,10 +82,11 @@ export class ReadFileTool extends BaseTool {
             const fileUri = vscode.Uri.file(absoluteFilePath);
 
             try {
-                await withTimeout(
+                await withCancellableTimeout(
                     Promise.resolve(vscode.workspace.fs.stat(fileUri)),
                     FILE_OPERATION_TIMEOUT,
-                    `File stat for ${sanitizedPath}`
+                    `File stat for ${sanitizedPath}`,
+                    context?.cancellationToken
                 );
             } catch {
                 return toolError(`File not found: ${sanitizedPath}`);
@@ -93,10 +94,11 @@ export class ReadFileTool extends BaseTool {
 
             let fileContent: string;
             try {
-                const contentBytes = await withTimeout(
+                const contentBytes = await withCancellableTimeout(
                     Promise.resolve(vscode.workspace.fs.readFile(fileUri)),
                     FILE_OPERATION_TIMEOUT,
-                    `File read for ${sanitizedPath}`
+                    `File read for ${sanitizedPath}`,
+                    context?.cancellationToken
                 );
                 fileContent = Buffer.from(contentBytes).toString('utf8');
             } catch (error) {

@@ -5,7 +5,7 @@ import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { withTimeout } from '../utils/asyncUtils';
+import { withCancellableTimeout } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -39,7 +39,7 @@ export class ListDirTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         try {
             const { relative_path, recursive } = args;
@@ -47,11 +47,12 @@ export class ListDirTool extends BaseTool {
             // Sanitize the relative path to prevent directory traversal attacks
             const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
 
-            // List directory contents with ignore pattern support (with timeout)
-            const result = await withTimeout(
+            // List directory contents with ignore pattern support (with timeout + cancellation)
+            const result = await withCancellableTimeout(
                 this.callListDir(sanitizedPath, recursive),
                 DIRECTORY_OPERATION_TIMEOUT,
-                `Directory listing for ${sanitizedPath}`
+                `Directory listing for ${sanitizedPath}`,
+                context?.cancellationToken
             );
 
             // Format the output as a single string

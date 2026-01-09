@@ -353,6 +353,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             const truncated = filteredSymbols.length > 50;
             return { symbols: matches, truncated, timedOut };
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             Log.warn('Workspace symbol search completely failed:', error);
             return {
                 symbols: [],

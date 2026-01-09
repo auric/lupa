@@ -81,14 +81,19 @@ describe('FileDiscoverer', () => {
                 capturedSignal = signal;
                 return this;
             });
-            // Simulate fdir that responds to abort signal
+            // Simulate fdir that returns partial results when aborted (NOT reject)
+            // Per DeepWiki: fdir resolves with partial results on abort, never throws
             mockFdirInstance.withPromise.mockImplementation(() => {
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     // Simulate slow crawl, but respond to abort signal
-                    const slowTimeout = setTimeout(() => resolve([]), 60000);
+                    const slowTimeout = setTimeout(
+                        () => resolve(['/test/git-repo/file.ts']),
+                        60000
+                    );
                     capturedSignal?.addEventListener('abort', () => {
                         clearTimeout(slowTimeout);
-                        reject(new DOMException('Aborted', 'AbortError'));
+                        // fdir resolves with partial results, doesn't reject
+                        resolve([]);
                     });
                 });
             });
@@ -121,15 +126,14 @@ describe('FileDiscoverer', () => {
             const tokenSource = createMockCancellationTokenSource();
             const mockFdirInstance = createMockFdirInstance([]);
 
-            // Simulate fdir rejecting with AbortError when abort signal fires
-            mockFdirInstance.withPromise.mockRejectedValue(
-                new DOMException('Aborted', 'AbortError')
-            );
+            // Simulate fdir resolving with partial results when cancelled (NOT reject)
+            // Per DeepWiki: fdir resolves with partial results on abort, never throws
+            mockFdirInstance.withPromise.mockResolvedValue([]);
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;
             } as any);
 
-            // Cancel immediately - the mock rejects with AbortError
+            // Cancel immediately - fdir returns empty array, then we check cancellation
             tokenSource.cancel();
 
             await expect(
@@ -155,16 +159,17 @@ describe('FileDiscoverer', () => {
                 return this;
             });
 
-            // Simulate fdir that rejects with AbortError when signal fires mid-flight
+            // Simulate fdir that resolves with partial results when signal fires mid-flight
+            // Per DeepWiki: fdir resolves with partial results on abort, never throws
             mockFdirInstance.withPromise.mockImplementation(() => {
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     // Cancel AFTER the promise starts (mid-flight)
                     setTimeout(() => {
                         tokenSource.cancel();
                     }, 5);
-                    // Listen for abort and reject with AbortError (like real fdir)
+                    // Listen for abort and resolve with empty (partial) results
                     capturedSignal?.addEventListener('abort', () => {
-                        reject(new DOMException('Aborted', 'AbortError'));
+                        resolve([]);
                     });
                 });
             });
@@ -204,10 +209,9 @@ describe('FileDiscoverer', () => {
             const tokenSource = createMockCancellationTokenSource();
             const mockFdirInstance = createMockFdirInstance([]);
 
-            // Simulate fdir rejecting with AbortError
-            mockFdirInstance.withPromise.mockRejectedValue(
-                new DOMException('Aborted', 'AbortError')
-            );
+            // Simulate fdir resolving with partial results (NOT reject)
+            // Per DeepWiki: fdir resolves with partial results on abort, never throws
+            mockFdirInstance.withPromise.mockResolvedValue([]);
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;
             } as any);

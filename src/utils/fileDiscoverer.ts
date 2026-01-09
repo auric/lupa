@@ -9,7 +9,7 @@ import { readGitignore } from './gitUtils';
 import { Repository } from '../types/vscodeGitExtension';
 import { TimeoutError } from '../types/errorTypes';
 import { Log } from '../services/loggingService';
-import { isCancellationError } from './asyncUtils';
+import { isCancellationError, isTimeoutError } from './asyncUtils';
 
 export interface FileDiscoveryOptions {
     /**
@@ -153,17 +153,12 @@ export class FileDiscoverer {
 
             return result;
         } catch (error) {
-            if (isCancellationError(error)) {
+            // Rethrow CancellationError and TimeoutError directly
+            if (isCancellationError(error) || isTimeoutError(error)) {
                 throw error;
             }
-            // Check cancellation BEFORE timeout - user cancellation takes priority.
-            // This handles mid-flight AbortError from fdir when cancellation fires.
-            if (cancellationToken?.isCancellationRequested) {
-                throw new vscode.CancellationError();
-            }
-            if (timeoutController.signal.aborted) {
-                throw TimeoutError.create('File discovery', timeoutMs);
-            }
+            // Note: fdir never throws on abort - it resolves with partial results.
+            // This catch block handles errors from other operations (readGitignore, etc.)
             throw new Error(
                 `File discovery failed: ${error instanceof Error ? error.message : String(error)}`
             );
