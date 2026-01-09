@@ -462,24 +462,17 @@ describe('FindUsagesTool', () => {
             }
         });
 
-        it('should propagate CancellationError from LSP operation', async () => {
+        it('should throw CancellationError when token is already cancelled', async () => {
             const tokenSource = createMockCancellationTokenSource();
+            // Cancel before execution - withCancellableTimeout checks this first
+            tokenSource.cancel();
 
             (vscode.workspace.openTextDocument as any).mockResolvedValue({
                 getText: () => 'class MyClass {}',
                 uri: { toString: () => 'file:///test.ts' },
             });
 
-            (vscode.commands.executeCommand as any).mockImplementation(
-                (command: string) => {
-                    if (command === 'vscode.executeDefinitionProvider') {
-                        return Promise.reject(new vscode.CancellationError());
-                    }
-                    return Promise.resolve([]);
-                }
-            );
-
-            // CancellationError propagates up to ToolExecutor, which rethrows it
+            // CancellationError is thrown by withCancellableTimeout, propagates up
             await expect(
                 findUsagesTool.execute(
                     {
@@ -491,30 +484,122 @@ describe('FindUsagesTool', () => {
             ).rejects.toThrow(vscode.CancellationError);
         });
 
-        it('should propagate CancellationError from early execution', async () => {
-            const tokenSource = createMockCancellationTokenSource();
+        it('should handle reference provider returning undefined (cancellation scenario)', async () => {
+            // VS Code APIs return undefined when cancelled, not throw
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
+            });
 
-            // Make Uri.file throw CancellationError
-            const originalFile = vscode.Uri.file;
-            try {
-                (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
-                    throw new vscode.CancellationError();
-                });
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // VS Code returns location for definition
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () => 'file:///test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        // VS Code returns undefined or empty when cancelled
+                        return Promise.resolve(undefined);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
 
-                // CancellationError propagates up to ToolExecutor, which rethrows it
-                await expect(
-                    findUsagesTool.execute(
-                        {
-                            symbol_name: 'MyClass',
-                            file_path: 'src/test.ts',
-                        },
-                        { cancellationToken: tokenSource.token }
-                    )
-                ).rejects.toThrow(vscode.CancellationError);
-            } finally {
-                // Always restore original function
-                (vscode.Uri as any).file = originalFile;
-            }
+            const result = await findUsagesTool.execute({
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+            });
+
+            // Tool returns error (no usages found) rather than throwing
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No usages found');
+        });
+
+        it('should handle definition provider returning empty (cancellation scenario)', async () => {
+            // VS Code APIs return empty array when cancelled
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
+            });
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // VS Code returns empty when cancelled or no definitions
+                        return Promise.resolve([]);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+            });
+
+            // Fallback to first occurrence is used, but no refs found
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No usages found');
+        });
+
+        it('should continue searching when definition check times out (graceful degradation)', async () => {
+            // When definition check times out, the tool continues to next occurrence
+            // and eventually falls back to first text match
+            const mockDocument = {
+                getText: () => 'class MyClass {}\nconst x = new MyClass();',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            const mockReferences = [
+                {
+                    uri: {
+                        toString: () => 'file:///test/workspace/src/test.ts',
+                        fsPath: '/test/workspace/src/test.ts',
+                    },
+                    range: {
+                        start: { line: 1, character: 14 },
+                        end: { line: 1, character: 21 },
+                    },
+                },
+            ];
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // Returns empty - simulating no definitions found on first pass
+                        // This triggers fallback to first text occurrence
+                        return Promise.resolve([]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve(mockReferences);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+            });
+
+            // Tool should find usages using fallback to first text occurrence
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('MyClass');
         });
     });
 

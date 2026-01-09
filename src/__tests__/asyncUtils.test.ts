@@ -5,6 +5,7 @@ import {
     withCancellableTimeout,
     isTimeoutError,
     isCancellationError,
+    rethrowIfCancellationOrTimeout,
 } from '../utils/asyncUtils';
 import { TimeoutError } from '../types/errorTypes';
 
@@ -314,6 +315,40 @@ describe('asyncUtils', () => {
         it('should return false for TimeoutError instances', () => {
             const error = TimeoutError.create('test', 1000);
             expect(isCancellationError(error)).toBe(false);
+        });
+    });
+
+    describe('rethrowIfCancellationOrTimeout', () => {
+        it('should rethrow CancellationError', () => {
+            const error = new vscode.CancellationError();
+            expect(() => rethrowIfCancellationOrTimeout(error)).toThrow(
+                vscode.CancellationError
+            );
+        });
+
+        it('should rethrow TimeoutError', () => {
+            const error = TimeoutError.create('test', 1000);
+            expect(() => rethrowIfCancellationOrTimeout(error)).toThrow(
+                TimeoutError
+            );
+        });
+
+        it('should not throw for regular Error instances', () => {
+            const error = new Error('test');
+            expect(() => rethrowIfCancellationOrTimeout(error)).not.toThrow();
+        });
+
+        it('should not throw for null/undefined', () => {
+            expect(() => rethrowIfCancellationOrTimeout(null)).not.toThrow();
+            expect(() =>
+                rethrowIfCancellationOrTimeout(undefined)
+            ).not.toThrow();
+        });
+
+        it('should not throw for string errors', () => {
+            expect(() =>
+                rethrowIfCancellationOrTimeout('some error')
+            ).not.toThrow();
         });
     });
 });

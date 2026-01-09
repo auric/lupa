@@ -142,3 +142,24 @@ export function isCancellationError(
 ): error is vscode.CancellationError {
     return error instanceof vscode.CancellationError;
 }
+
+/**
+ * Rethrow CancellationError and TimeoutError, otherwise return the error.
+ * Use this in catch blocks to ensure these errors propagate to ToolExecutor
+ * while still allowing tool-specific error handling for other errors.
+ *
+ * @example
+ * ```typescript
+ * try {
+ *     await withCancellableTimeout(...);
+ * } catch (error) {
+ *     rethrowIfCancellationOrTimeout(error);
+ *     return toolError(`Failed: ${error instanceof Error ? error.message : String(error)}`);
+ * }
+ * ```
+ */
+export function rethrowIfCancellationOrTimeout(error: unknown): void {
+    if (isCancellationError(error) || isTimeoutError(error)) {
+        throw error;
+    }
+}

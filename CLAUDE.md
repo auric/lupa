@@ -132,6 +132,19 @@ Pass `cancellationToken` to long-running operations (symbol extraction, LSP call
 - Graceful degradation (e.g., `symbolRangeExpander` falls back to heuristic on timeout)
 - Continuing on non-fatal errors (e.g., `findUsagesTool` continues if one definition check times out)
 
+**Important: VS Code API behavior**:
+
+- **VS Code APIs don't throw CancellationError** - they return `undefined` or empty results when cancelled
+- **Only `withCancellableTimeout` throws CancellationError** - when the token fires before the operation completes
+- **Tests should NOT mock VS Code APIs to throw CancellationError** - instead, test with pre-cancelled tokens or simulate slow responses
+
+**Error handling contract**:
+
+1. Tools catch errors ONLY when they need tool-specific error messages or partial results
+2. Use `rethrowIfCancellationOrTimeout(error)` at the start of catch blocks to let these errors propagate
+3. For partial results on timeout, check `isTimeoutError(error)` explicitly instead of using the helper
+4. ToolExecutor is the safety net, not a replacement for proper tool-level handling
+
 **Other patterns**:
 
 - **TimeoutError class**: Use `TimeoutError.create(operation, timeoutMs)` for timeout scenarios

@@ -7,7 +7,7 @@ import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import {
     withCancellableTimeout,
-    isCancellationError,
+    rethrowIfCancellationOrTimeout,
 } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -92,9 +92,7 @@ export class ReadFileTool extends BaseTool {
                     context?.cancellationToken
                 );
             } catch (error) {
-                if (isCancellationError(error)) {
-                    throw error;
-                }
+                rethrowIfCancellationOrTimeout(error);
                 return toolError(`File not found: ${sanitizedPath}`);
             }
 
@@ -108,9 +106,7 @@ export class ReadFileTool extends BaseTool {
                 );
                 fileContent = Buffer.from(contentBytes).toString('utf8');
             } catch (error) {
-                if (isCancellationError(error)) {
-                    throw error;
-                }
+                rethrowIfCancellationOrTimeout(error);
                 const message =
                     error instanceof Error ? error.message : String(error);
                 return toolError(
@@ -157,9 +153,7 @@ export class ReadFileTool extends BaseTool {
 
             return toolSuccess(formattedContent);
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
+            rethrowIfCancellationOrTimeout(error);
             return toolError(
                 `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
             );

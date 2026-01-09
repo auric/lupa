@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ripgrep race condition fixed**: Late rejections from the ripgrep search process after timeout are now properly suppressed, preventing unhandled rejection warnings.
 
+- **Test mocking now matches VS Code API reality**: Fixed tests that incorrectly assumed VS Code APIs throw CancellationError. In practice, VS Code APIs return undefined/empty when cancelled; only `withCancellableTimeout` throws CancellationError.
+
 ### Changed
 
 - **Tools incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.

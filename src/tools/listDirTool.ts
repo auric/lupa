@@ -7,7 +7,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import {
     withCancellableTimeout,
-    isCancellationError,
+    rethrowIfCancellationOrTimeout,
 } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
@@ -64,9 +64,7 @@ export class ListDirTool extends BaseTool {
             // Empty directory is a valid state (success)
             return toolSuccess(output || '(empty directory)');
         } catch (error) {
-            if (isCancellationError(error)) {
-                throw error;
-            }
+            rethrowIfCancellationOrTimeout(error);
             const message =
                 error instanceof Error ? error.message : String(error);
             return toolError(`Error listing directory: ${message}`);
