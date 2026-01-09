@@ -28,8 +28,17 @@ export async function withTimeout<T>(
         }, timeoutMs);
     });
 
-    // Suppress late rejections from underlying promise after timeout wins
-    promise.catch(() => {});
+    // Suppress late rejections from underlying promise after timeout wins.
+    // Log at debug level for diagnostics, but don't fail if logging unavailable (e.g., in tests).
+    promise.catch((error) => {
+        try {
+            Log.debug(
+                `[Timeout] Late rejection from ${operation}: ${error instanceof Error ? error.message : String(error)}`
+            );
+        } catch {
+            // Logging service unavailable (e.g., test teardown) - silently ignore
+        }
+    });
 
     try {
         return await Promise.race([promise, timeoutPromise]);
@@ -80,8 +89,17 @@ export async function withCancellableTimeout<T>(
         }, timeoutMs);
     });
 
-    // Suppress late rejections from underlying promise after timeout/cancellation wins
-    promise.catch(() => {});
+    // Suppress late rejections from underlying promise after timeout/cancellation wins.
+    // Log at debug level for diagnostics, but don't fail if logging unavailable (e.g., in tests).
+    promise.catch((error) => {
+        try {
+            Log.debug(
+                `[Timeout] Late rejection from ${operation}: ${error instanceof Error ? error.message : String(error)}`
+            );
+        } catch {
+            // Logging service unavailable (e.g., test teardown) - silently ignore
+        }
+    });
 
     const racers: Promise<T | never>[] = [promise, timeoutPromise];
 

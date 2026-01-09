@@ -5,7 +5,10 @@ import { BaseTool } from './baseTool';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { TokenConstants } from '../models/tokenConstants';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { withCancellableTimeout } from '../utils/asyncUtils';
+import {
+    withCancellableTimeout,
+    isCancellationError,
+} from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { OutputFormatter, FileContentOptions } from '../utils/outputFormatter';
@@ -88,7 +91,10 @@ export class ReadFileTool extends BaseTool {
                     `File stat for ${sanitizedPath}`,
                     context?.cancellationToken
                 );
-            } catch {
+            } catch (error) {
+                if (isCancellationError(error)) {
+                    throw error;
+                }
                 return toolError(`File not found: ${sanitizedPath}`);
             }
 
@@ -102,6 +108,9 @@ export class ReadFileTool extends BaseTool {
                 );
                 fileContent = Buffer.from(contentBytes).toString('utf8');
             } catch (error) {
+                if (isCancellationError(error)) {
+                    throw error;
+                }
                 const message =
                     error instanceof Error ? error.message : String(error);
                 return toolError(
@@ -148,6 +157,9 @@ export class ReadFileTool extends BaseTool {
 
             return toolSuccess(formattedContent);
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             return toolError(
                 `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
             );

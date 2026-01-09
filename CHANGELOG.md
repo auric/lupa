@@ -19,11 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **File discovery now returns partial results on timeout**: Instead of throwing away files found before timeout, FileDiscoverer now returns partial results with a `truncated: true` flag. This gives the LLM useful data even when time limits are hit.
 
+- **Cancellation now properly propagates through all tools**: `ReadFileTool`, `ListDirTool`, and `FindFilesByPatternTool` now correctly rethrow `CancellationError` instead of swallowing it. This ensures the Stop button works reliably in all scenarios.
+
+- **File search timeout now distinguished from "no matches"**: When a file pattern search times out before finding any files, you now get a clear message explaining the timeout instead of the misleading "No files found" message.
+
+- **Ripgrep race condition fixed**: Late rejections from the ripgrep search process after timeout are now properly suppressed, preventing unhandled rejection warnings.
+
 ### Changed
 
 - **Tools incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
 
 - **Simplified tool error handling**: Timeout and cancellation errors now propagate to a central handler instead of being duplicated in each tool. Tools that need custom behavior (like returning partial results) can still handle errors themselves.
+
+- **Consistent logging throughout**: Replaced `console.log`/`console.warn` with centralized `Log` service in SymbolExtractor for consistent log output.
+
+- **Debug logging for timeout diagnostics**: Late rejections from underlying operations after timeout are now logged at debug level to aid troubleshooting.
 
 ### Testing
 
@@ -32,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FileDiscoverer mid-flight cancellation test**: Added test for cancellation that occurs after discovery starts (mid-flight), not just the early-cancel path.
 
 - **FileDiscoverer partial results on timeout test**: Added test verifying partial results are returned with truncated flag when timeout occurs during discovery.
+
+- **Improved CancellationError mock**: VS Code mock now properly supports `instanceof` checks for CancellationError.
 
 ## [0.1.10] - 2026-01-05
 

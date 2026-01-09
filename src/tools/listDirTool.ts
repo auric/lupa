@@ -5,7 +5,10 @@ import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { withCancellableTimeout } from '../utils/asyncUtils';
+import {
+    withCancellableTimeout,
+    isCancellationError,
+} from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -61,6 +64,9 @@ export class ListDirTool extends BaseTool {
             // Empty directory is a valid state (success)
             return toolSuccess(output || '(empty directory)');
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             const message =
                 error instanceof Error ? error.message : String(error);
             return toolError(`Error listing directory: ${message}`);

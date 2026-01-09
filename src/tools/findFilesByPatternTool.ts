@@ -66,6 +66,12 @@ export class FindFilesByPatternTool extends BaseTool {
         });
 
         if (result.files.length === 0) {
+            // Distinguish between "no matches" vs "timed out before finding anything"
+            if (result.truncated) {
+                return toolError(
+                    `Search timed out before finding any files matching pattern '${pattern}' in directory '${searchPath || '.'}'. The directory may be very large or the filesystem slow. Try a more specific search path.`
+                );
+            }
             return toolError(
                 `No files found matching pattern '${pattern}' in directory '${searchPath || '.'}'. Did you forget to add '**/' for recursive search in subdirectories?`
             );

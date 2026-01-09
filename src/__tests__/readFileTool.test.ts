@@ -4,18 +4,21 @@ import { ReadFileTool } from '../tools/readFileTool';
 import { TokenConstants } from '../models/tokenConstants';
 import { PathSanitizer } from '../utils/pathSanitizer';
 
-// Mock VS Code
-vi.mock('vscode', () => ({
-    Uri: {
-        file: vi.fn((path: string) => ({ fsPath: path })),
-    },
-    workspace: {
-        fs: {
-            stat: vi.fn(),
-            readFile: vi.fn(),
+vi.mock('vscode', async (importOriginal) => {
+    const vscodeMock = await importOriginal<typeof vscode>();
+    return {
+        ...vscodeMock,
+        Uri: {
+            file: vi.fn((path: string) => ({ fsPath: path })),
         },
-    },
-}));
+        workspace: {
+            fs: {
+                stat: vi.fn(),
+                readFile: vi.fn(),
+            },
+        },
+    };
+});
 
 // Mock PathSanitizer
 vi.mock('../utils/pathSanitizer', () => ({

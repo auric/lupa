@@ -129,14 +129,14 @@ export class SymbolExtractor {
         const ig = ignore().add(gitignoreContent);
 
         if (gitignoreContent.trim()) {
-            console.log(
-                `[SymbolExtractor] Loaded gitignore patterns:`,
-                gitignoreContent
+            Log.debug(
+                `Loaded gitignore patterns: ${gitignoreContent
                     .split('\n')
                     .filter((line) => line.trim() && !line.startsWith('#'))
+                    .join(', ')}`
             );
         } else {
-            console.log(`[SymbolExtractor] No gitignore patterns found`);
+            Log.debug(`No gitignore patterns found`);
         }
 
         const files = await this.getAllFiles(
@@ -283,14 +283,17 @@ export class SymbolExtractor {
                         }
                     } catch (error) {
                         // Log gitignore check failures for debugging but continue processing
-                        console.warn(
-                            `Failed to check gitignore for path "${fullPath}":`,
-                            error
+                        const message =
+                            error instanceof Error
+                                ? error.message
+                                : String(error);
+                        Log.warn(
+                            `Failed to check gitignore for path "${fullPath}": ${message}`
                         );
                     }
                 } else {
                     // Log invalid paths for debugging
-                    console.warn(
+                    Log.warn(
                         `Invalid path format for gitignore check: "${fullPath}"`
                     );
                 }
