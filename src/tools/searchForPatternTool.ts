@@ -166,6 +166,14 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
                 token: linkedTokenSource.token,
             });
 
+            // Suppress late rejections from searchPromise after timeout wins.
+            // When timeout fires, we cancel the token which kills ripgrep,
+            // causing searchPromise to reject with CancellationError. Without
+            // this catch, that rejection would be unhandled.
+            searchPromise.catch(() => {
+                // Intentionally empty - rejection handled by timeout path
+            });
+
             const timeoutPromise = new Promise<never>((_, reject) => {
                 timeoutId = setTimeout(() => {
                     linkedTokenSource.cancel(); // This kills the ripgrep process

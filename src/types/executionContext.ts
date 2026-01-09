@@ -38,6 +38,7 @@ export interface ExecutionContext {
      * Cancellation token for the current analysis.
      * Tools should pass this to long-running operations (symbol extraction, LSP calls)
      * to enable responsive cancellation when user stops the analysis.
+     * Optional for test scenarios; production code should always provide a token.
      */
-    cancellationToken: vscode.CancellationToken;
+    cancellationToken?: vscode.CancellationToken;
 }

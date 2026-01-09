@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Mid-flight cancellation now properly detected**: When file discovery is cancelled while actively crawling (not just before it starts), the cancellation is now correctly detected and converted to a proper cancellation error. Previously, mid-flight cancellation could appear as a generic failure.
 
+- **TimeoutError preserved in parallel tool execution**: When a tool times out during parallel execution via `executeTools`, the TimeoutError type is now preserved instead of being wrapped in a generic Error.
+
+- **File discovery now returns partial results on timeout**: Instead of throwing away files found before timeout, FileDiscoverer now returns partial results with a `truncated: true` flag. This gives the LLM useful data even when time limits are hit.
+
 ### Changed
 
 - **Tools incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
@@ -26,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GetSymbolsOverviewTool timeout/truncation tests**: Added tests verifying timeout info is surfaced when directory symbols have timed-out files, and truncation messages appear when max_symbols is exceeded.
 
 - **FileDiscoverer mid-flight cancellation test**: Added test for cancellation that occurs after discovery starts (mid-flight), not just the early-cancel path.
+
+- **FileDiscoverer partial results on timeout test**: Added test verifying partial results are returned with truncated flag when timeout occurs during discovery.
 
 ## [0.1.10] - 2026-01-05
 

@@ -261,7 +261,20 @@ export class ToolExecutor {
             );
             return results;
         } catch (error) {
-            // This shouldn't happen since executeTool catches errors,
+            // CancellationError must propagate to stop the entire analysis.
+            // Check first to preserve the error type (don't wrap in generic Error).
+            if (isCancellationError(error)) {
+                Log.debug('Parallel tool execution cancelled');
+                throw error;
+            }
+
+            // TimeoutError should also propagate with its type preserved
+            if (isTimeoutError(error)) {
+                Log.debug('Parallel tool execution timed out');
+                throw error;
+            }
+
+            // This shouldn't happen since executeTool catches other errors,
             // but just in case, handle any unexpected errors
             throw new Error(
                 `Unexpected error during parallel tool execution: ${error instanceof Error ? error.message : String(error)}`

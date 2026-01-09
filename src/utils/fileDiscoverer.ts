@@ -7,9 +7,8 @@ import ignore from 'ignore';
 import { PathSanitizer } from './pathSanitizer';
 import { readGitignore } from './gitUtils';
 import { Repository } from '../types/vscodeGitExtension';
-import { TimeoutError } from '../types/errorTypes';
 import { Log } from '../services/loggingService';
-import { isCancellationError, isTimeoutError } from './asyncUtils';
+import { isCancellationError } from './asyncUtils';
 
 export interface FileDiscoveryOptions {
     /**
@@ -143,18 +142,28 @@ export class FileDiscoverer {
             });
 
             // fdir resolves with partial results when aborted (does not reject).
-            // Check abort state and throw appropriate error type.
+            // Return partial results with truncated flag instead of throwing,
+            // so LLM gets useful data even when timeout/cancellation occurs.
             if (cancellationToken?.isCancellationRequested) {
+                // User cancellation still throws to stop the analysis
                 throw new vscode.CancellationError();
             }
             if (timeoutController.signal.aborted) {
-                throw TimeoutError.create('File discovery', timeoutMs);
+                // Timeout: return partial results with truncated=true
+                Log.info(
+                    `File discovery timed out, returning ${result.files.length} partial results`
+                );
+                return {
+                    files: result.files,
+                    truncated: true,
+                    totalFound: result.totalFound,
+                };
             }
 
             return result;
         } catch (error) {
-            // Rethrow CancellationError and TimeoutError directly
-            if (isCancellationError(error) || isTimeoutError(error)) {
+            // Rethrow CancellationError directly - user cancelled the operation
+            if (isCancellationError(error)) {
                 throw error;
             }
             // Note: fdir never throws on abort - it resolves with partial results.

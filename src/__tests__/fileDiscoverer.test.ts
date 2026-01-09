@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { fdir } from 'fdir';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
-import { TimeoutError } from '../types/errorTypes';
 import type { Repository } from '../types/vscodeGitExtension';
 import {
     createMockCancellationTokenSource,
@@ -70,7 +69,7 @@ describe('FileDiscoverer', () => {
             expect(result.totalFound).toBe(150);
         });
 
-        it('should throw TimeoutError when discovery times out', async () => {
+        it('should return partial results with truncated flag when discovery times out', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
             // Track the abort signal passed to fdir
             let capturedSignal: AbortSignal | undefined;
@@ -83,6 +82,7 @@ describe('FileDiscoverer', () => {
             });
             // Simulate fdir that returns partial results when aborted (NOT reject)
             // Per DeepWiki: fdir resolves with partial results on abort, never throws
+            const partialFiles = ['/test/git-repo/partial-file.ts'];
             mockFdirInstance.withPromise.mockImplementation(() => {
                 return new Promise((resolve) => {
                     // Simulate slow crawl, but respond to abort signal
@@ -93,7 +93,7 @@ describe('FileDiscoverer', () => {
                     capturedSignal?.addEventListener('abort', () => {
                         clearTimeout(slowTimeout);
                         // fdir resolves with partial results, doesn't reject
-                        resolve([]);
+                        resolve(partialFiles);
                     });
                 });
             });
@@ -102,12 +102,15 @@ describe('FileDiscoverer', () => {
             } as any);
 
             // 20ms timeout - will fire before the mock resolves
-            await expect(
-                FileDiscoverer.discoverFiles(mockGitRepo, {
-                    includePattern: '*.ts',
-                    timeoutMs: 20,
-                })
-            ).rejects.toThrow(TimeoutError);
+            const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
+                includePattern: '*.ts',
+                timeoutMs: 20,
+            });
+
+            // Should return partial results with truncated flag
+            expect(result.files).toEqual(['partial-file.ts']);
+            expect(result.truncated).toBe(true);
+            expect(result.totalFound).toBe(1);
         });
 
         it('should throw CancellationError when already cancelled', async () => {
