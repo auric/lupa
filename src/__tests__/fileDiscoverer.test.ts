@@ -141,6 +141,48 @@ describe('FileDiscoverer', () => {
             ).rejects.toThrow(vscode.CancellationError);
         });
 
+        it('should throw CancellationError when cancelled mid-flight (after discoverFiles called)', async () => {
+            const tokenSource = createMockCancellationTokenSource();
+            const mockFdirInstance = createMockFdirInstance([]);
+
+            // Track the abort signal and simulate mid-flight cancellation
+            let capturedSignal: AbortSignal | undefined;
+            mockFdirInstance.withAbortSignal.mockImplementation(function (
+                this: ReturnType<typeof createMockFdirInstance>,
+                signal: AbortSignal
+            ) {
+                capturedSignal = signal;
+                return this;
+            });
+
+            // Simulate fdir that rejects with AbortError when signal fires mid-flight
+            mockFdirInstance.withPromise.mockImplementation(() => {
+                return new Promise((resolve, reject) => {
+                    // Cancel AFTER the promise starts (mid-flight)
+                    setTimeout(() => {
+                        tokenSource.cancel();
+                    }, 5);
+                    // Listen for abort and reject with AbortError (like real fdir)
+                    capturedSignal?.addEventListener('abort', () => {
+                        reject(new DOMException('Aborted', 'AbortError'));
+                    });
+                });
+            });
+            vi.mocked(fdir).mockImplementation(function () {
+                return mockFdirInstance;
+            } as any);
+
+            // Token is NOT cancelled when discoverFiles is called
+            // Cancellation happens mid-flight inside withPromise
+            await expect(
+                FileDiscoverer.discoverFiles(mockGitRepo, {
+                    includePattern: '*.ts',
+                    timeoutMs: 30000, // Long timeout so timeout doesn't interfere
+                    cancellationToken: tokenSource.token,
+                })
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
         it('should pass abort signal to fdir for proper cancellation', async () => {
             const mockFdirInstance = createMockFdirInstance([
                 '/test/git-repo/file.ts',

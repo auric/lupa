@@ -156,6 +156,11 @@ export class FileDiscoverer {
             if (isCancellationError(error)) {
                 throw error;
             }
+            // Check cancellation BEFORE timeout - user cancellation takes priority.
+            // This handles mid-flight AbortError from fdir when cancellation fires.
+            if (cancellationToken?.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
             if (timeoutController.signal.aborted) {
                 throw TimeoutError.create('File discovery', timeoutMs);
             }

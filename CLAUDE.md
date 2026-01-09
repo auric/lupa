@@ -137,7 +137,6 @@ Pass `cancellationToken` to long-running operations (symbol extraction, LSP call
 - **TimeoutError class**: Use `TimeoutError.create(operation, timeoutMs)` for timeout scenarios
 - **Async file discovery**: Use `fdir.crawl().withPromise()` instead of `.sync()` to keep VS Code responsive
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
-- **AbortSignal conversion**: Use `createAbortControllerFromToken(token)` from `asyncUtils.ts`
 - **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
 
 ### New Services
