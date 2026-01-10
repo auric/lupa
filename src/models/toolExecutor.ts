@@ -262,17 +262,14 @@ export class ToolExecutor {
             return results;
         } catch (error) {
             // CancellationError must propagate to stop the entire analysis.
-            // Check first to preserve the error type (don't wrap in generic Error).
+            // executeTool rethrows CancellationError, so it reaches here via Promise.all rejection.
             if (isCancellationError(error)) {
                 Log.debug('Parallel tool execution cancelled');
                 throw error;
             }
 
-            // TimeoutError should also propagate with its type preserved
-            if (isTimeoutError(error)) {
-                Log.debug('Parallel tool execution timed out');
-                throw error;
-            }
+            // Note: TimeoutError is handled inside executeTool (converted to toolError result),
+            // so it won't propagate here. Only CancellationError bubbles up from tools.
 
             // This shouldn't happen since executeTool catches other errors,
             // but just in case, handle any unexpected errors

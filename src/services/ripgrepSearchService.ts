@@ -178,6 +178,7 @@ export class RipgrepSearchService {
             });
 
             let cancellationDisposable: vscode.Disposable | undefined;
+            let sigkillTimeout: ReturnType<typeof setTimeout> | undefined;
             if (options.token) {
                 cancellationDisposable = options.token.onCancellationRequested(
                     () => {
@@ -185,6 +186,15 @@ export class RipgrepSearchService {
                             '[Ripgrep] Search cancelled by user - killing process'
                         );
                         rg.kill('SIGTERM');
+                        // Fallback to SIGKILL if SIGTERM doesn't work within 500ms
+                        sigkillTimeout = setTimeout(() => {
+                            if (!rg.killed) {
+                                Log.debug(
+                                    '[Ripgrep] SIGTERM did not terminate process, sending SIGKILL'
+                                );
+                                rg.kill('SIGKILL');
+                            }
+                        }, 500);
                     }
                 );
             }
@@ -216,6 +226,9 @@ export class RipgrepSearchService {
 
             rg.on('close', (code: number | null) => {
                 cancellationDisposable?.dispose();
+                if (sigkillTimeout) {
+                    clearTimeout(sigkillTimeout);
+                }
 
                 // Process remaining buffer
                 if (buffer.trim()) {
@@ -250,6 +263,9 @@ export class RipgrepSearchService {
 
             rg.on('error', (err: Error) => {
                 cancellationDisposable?.dispose();
+                if (sigkillTimeout) {
+                    clearTimeout(sigkillTimeout);
+                }
                 reject(new Error(`Failed to spawn ripgrep: ${err.message}`));
             });
         });

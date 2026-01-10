@@ -216,7 +216,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             }
         } else if (stat.type === vscode.FileType.Directory) {
             // Directory - get symbols from all files using SymbolExtractor
-            // Uses LSP_OPERATION_TIMEOUT since outer withTimeout already wraps this
+            // Uses LSP_OPERATION_TIMEOUT since outer withCancellableTimeout already wraps this
             const {
                 results: directoryResults,
                 truncated: dirTruncated,

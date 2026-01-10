@@ -91,11 +91,13 @@ export class SubagentExecutor {
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
-            // No ExecutionContext passed intentionally - SubagentLimits.DISALLOWED_TOOLS
-            // filters out all tools that require context (run_subagent, update_plan, etc.)
+            // Pass cancellationToken so subagent tools can observe cancellation.
+            // Note: planManager and subagentExecutor are NOT passed - SubagentLimits.DISALLOWED_TOOLS
+            // filters out run_subagent and update_plan which require those dependencies.
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
-                this.workspaceSettings
+                this.workspaceSettings,
+                { cancellationToken: token }
             );
             const conversationRunner = new ConversationRunner(
                 this.modelManager,

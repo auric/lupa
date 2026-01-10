@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **TimeoutError preserved in parallel tool execution**: When a tool times out during parallel execution via `executeTools`, the TimeoutError type is now preserved instead of being wrapped in a generic Error.
 
+- **Subagent tools can now be cancelled**: The SubagentExecutor now properly passes the cancellation token to its ToolExecutor, enabling cancellation of subagent tool invocations. Previously, stopping a parent analysis didn't reliably stop subagent work.
+
+- **Ripgrep SIGKILL fallback**: When cancelling a search, if the ripgrep process doesn't respond to SIGTERM within 500ms, SIGKILL is now sent as a fallback to ensure the process terminates.
+
 - **File discovery now returns partial results on timeout**: Instead of throwing away files found before timeout, FileDiscoverer now returns partial results with a `truncated: true` flag. This gives the LLM useful data even when time limits are hit.
 
 - **Cancellation now properly propagates through all tools**: `ReadFileTool`, `ListDirTool`, and `FindFilesByPatternTool` now correctly rethrow `CancellationError` instead of swallowing it. This ensures the Stop button works reliably in all scenarios.
