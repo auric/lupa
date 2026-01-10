@@ -134,6 +134,55 @@ describe('asyncUtils', () => {
             ).rejects.toThrow(vscode.CancellationError);
         });
 
+        it('should not cause unhandled rejection when token is pre-cancelled and promise rejects later', async () => {
+            // This test verifies the fix for the unhandled rejection bug:
+            // When token is already cancelled, we throw CancellationError early,
+            // but the underlying promise may still reject later. The .catch() handler
+            // must be attached BEFORE the early throw to suppress this rejection.
+            const unhandledRejections: unknown[] = [];
+            const originalListener = process.listeners('unhandledRejection');
+            process.removeAllListeners('unhandledRejection');
+            process.on('unhandledRejection', (reason) => {
+                unhandledRejections.push(reason);
+            });
+
+            try {
+                const token = {
+                    isCancellationRequested: true,
+                    onCancellationRequested: vi.fn(() => ({
+                        dispose: vi.fn(),
+                    })),
+                } as unknown as vscode.CancellationToken;
+
+                // Promise that rejects after a delay
+                const slowRejectingPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('late rejection')), 1000);
+                });
+
+                // This should throw CancellationError immediately
+                await expect(
+                    withCancellableTimeout(
+                        slowRejectingPromise,
+                        5000,
+                        'test operation',
+                        token
+                    )
+                ).rejects.toThrow(vscode.CancellationError);
+
+                // Trigger the late rejection
+                vi.advanceTimersByTime(1001);
+                await vi.runAllTimersAsync();
+
+                // No unhandled rejections should have occurred
+                expect(unhandledRejections).toHaveLength(0);
+            } finally {
+                process.removeAllListeners('unhandledRejection');
+                for (const listener of originalListener) {
+                    process.on('unhandledRejection', listener);
+                }
+            }
+        });
+
         it('should throw CancellationError when token is cancelled during operation', async () => {
             let cancelCallback: () => void = () => {};
 

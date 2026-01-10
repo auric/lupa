@@ -98,12 +98,38 @@ export class LoggingService implements vscode.Disposable {
     /**
      * Format an argument for logging output.
      * Handles Error objects specially since JSON.stringify returns {} for them.
+     * Also handles error-like objects (with message/code properties) that may come
+     * from VS Code APIs like LanguageModelError.
      */
     private formatArg(arg: unknown): string {
         if (arg instanceof Error) {
-            return arg.stack ?? `${arg.name}: ${arg.message}`;
+            // Include code property if present (e.g., LanguageModelError.code)
+            const code = (arg as Error & { code?: string }).code;
+            const codeStr = code ? ` [${code}]` : '';
+            return arg.stack ?? `${arg.name}${codeStr}: ${arg.message}`;
         }
         if (typeof arg === 'object' && arg !== null) {
+            // Check for error-like objects (VS Code API errors may not be Error instances)
+            const errorLike = arg as {
+                message?: string;
+                code?: string;
+                name?: string;
+                stack?: string;
+            };
+            if (errorLike.message || errorLike.code) {
+                const parts: string[] = [];
+                if (errorLike.name) {
+                    parts.push(errorLike.name);
+                }
+                if (errorLike.code) {
+                    parts.push(`[${errorLike.code}]`);
+                }
+                const prefix = parts.length > 0 ? `${parts.join(' ')}: ` : '';
+                if (errorLike.stack) {
+                    return `${prefix}${errorLike.message ?? '(no message)'}\n${errorLike.stack}`;
+                }
+                return `${prefix}${errorLike.message ?? '(no message)'}`;
+            }
             return JSON.stringify(arg, null, 2);
         }
         return String(arg);
@@ -150,24 +176,27 @@ export class LoggingService implements vscode.Disposable {
             logMessage = message;
         }
 
+        // Format args for proper error display
+        const formattedArgs = args.map((arg) => this.formatArg(arg));
         const formattedMessage = this.formatMessage(level, logMessage, ...args);
 
         const output =
             this.outputTarget === 'channel' ? this.outputChannel : console;
         if (this.outputTarget === 'channel') {
             // Use native VS Code log methods for colored output
+            // Pass formatted args to ensure Error objects display properly
             switch (level) {
                 case 'debug':
-                    output.debug(logMessage, ...args);
+                    output.debug(logMessage, ...formattedArgs);
                     break;
                 case 'info':
-                    output.info(logMessage, ...args);
+                    output.info(logMessage, ...formattedArgs);
                     break;
                 case 'warn':
-                    output.warn(logMessage, ...args);
+                    output.warn(logMessage, ...formattedArgs);
                     break;
                 case 'error':
-                    output.error(logMessage, ...args);
+                    output.error(logMessage, ...formattedArgs);
                     break;
             }
         } else {

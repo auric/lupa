@@ -234,6 +234,49 @@ describe('ModelRequestHandler', () => {
             ).rejects.toThrow();
         });
 
+        it('should suppress late rejections when token is pre-cancelled', async () => {
+            // This test verifies the fix for the unhandled rejection bug:
+            // When token is already cancelled, we throw CancellationError early,
+            // but the underlying thenable may still reject later. The .catch() handler
+            // must be attached BEFORE the early throw to suppress this rejection.
+            let unhandledRejection = false;
+            const handler = () => {
+                unhandledRejection = true;
+            };
+            process.on('unhandledRejection', handler);
+
+            try {
+                // Create a thenable that rejects after a delay
+                let rejectThenable: (reason: unknown) => void;
+                const thenable = new Promise<string>((_, reject) => {
+                    rejectThenable = reject;
+                });
+
+                // Pre-cancel the token
+                cancellationTokenSource.cancel();
+
+                // This should throw CancellationError immediately
+                await expect(
+                    ModelRequestHandler.withTimeout(
+                        thenable,
+                        5000,
+                        cancellationTokenSource.token
+                    )
+                ).rejects.toThrow();
+
+                // Now reject the thenable after the early exit
+                rejectThenable!(new Error('late rejection'));
+
+                // Give event loop time to process the rejection
+                await new Promise((resolve) => setTimeout(resolve, 50));
+
+                // Should not have caused an unhandled rejection
+                expect(unhandledRejection).toBe(false);
+            } finally {
+                process.off('unhandledRejection', handler);
+            }
+        });
+
         it('should reject if token is cancelled during execution', async () => {
             const thenable = new Promise(() => {}); // Never resolves
 
@@ -477,6 +520,72 @@ describe('ModelRequestHandler', () => {
                     50 // 50ms timeout
                 )
             ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
+        }, 1000);
+
+        it('should timeout when stream consumption stalls', async () => {
+            // Mock a stream that stalls during iteration
+            const mockStream = {
+                async *[Symbol.asyncIterator]() {
+                    yield new vscode.LanguageModelTextPart('First chunk');
+                    // Stall indefinitely - simulating poor network
+                    await new Promise(() => {});
+                },
+            };
+
+            mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
+
+            const request: ToolCallRequest = {
+                messages: [{ role: 'user', content: 'test' }],
+                tools: [],
+            };
+
+            await expect(
+                ModelRequestHandler.sendRequest(
+                    mockModel,
+                    request,
+                    cancellationTokenSource.token,
+                    50 // 50ms timeout should catch the stalled stream
+                )
+            ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
+        }, 1000);
+
+        it('should cancel during stream consumption when token fires', async () => {
+            let yieldCount = 0;
+
+            // Mock a stream that yields slowly
+            const mockStream = {
+                async *[Symbol.asyncIterator]() {
+                    while (yieldCount < 10) {
+                        yieldCount++;
+                        yield new vscode.LanguageModelTextPart(
+                            `Chunk ${yieldCount}`
+                        );
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                    }
+                },
+            };
+
+            mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
+
+            const request: ToolCallRequest = {
+                messages: [{ role: 'user', content: 'test' }],
+                tools: [],
+            };
+
+            // Cancel after 30ms - should stop after a few chunks
+            setTimeout(() => cancellationTokenSource.cancel(), 30);
+
+            await expect(
+                ModelRequestHandler.sendRequest(
+                    mockModel,
+                    request,
+                    cancellationTokenSource.token,
+                    5000 // Long timeout - cancellation should trigger first
+                )
+            ).rejects.toThrow();
+
+            // Should have processed only a few chunks before cancellation
+            expect(yieldCount).toBeLessThan(10);
         }, 1000);
 
         it('should propagate errors from model', async () => {

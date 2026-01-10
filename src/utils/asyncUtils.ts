@@ -71,26 +71,11 @@ export async function withCancellableTimeout<T>(
     operation: string,
     token?: vscode.CancellationToken
 ): Promise<T> {
-    // Early exit if already cancelled
-    if (token?.isCancellationRequested) {
-        Log.debug(`[Cancellation] ${operation} skipped - already cancelled`);
-        throw new vscode.CancellationError();
-    }
-
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let cancellationDisposable: vscode.Disposable | undefined;
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-            Log.warn(
-                `[Timeout] ${operation} abandoned after ${timeoutMs}ms - underlying operation may continue running`
-            );
-            reject(TimeoutError.create(operation, timeoutMs));
-        }, timeoutMs);
-    });
-
-    // Suppress late rejections from underlying promise after timeout/cancellation wins.
-    // Log at debug level for diagnostics, but don't fail if logging unavailable (e.g., in tests).
+    // Suppress late rejections from underlying promise FIRST, before any early exit.
+    // This prevents unhandled rejections if we throw CancellationError before entering the race.
     promise.catch((error) => {
         try {
             Log.debug(
@@ -101,9 +86,10 @@ export async function withCancellableTimeout<T>(
         }
     });
 
-    const racers: Promise<T | never>[] = [promise, timeoutPromise];
+    const racers: Promise<T | never>[] = [promise];
 
-    // Add cancellation promise if token provided
+    // Register cancellation listener BEFORE checking state to avoid race condition.
+    // If we checked first, cancellation could fire between the check and listener registration.
     if (token) {
         const cancellationPromise = new Promise<never>((_, reject) => {
             cancellationDisposable = token.onCancellationRequested(() => {
@@ -114,7 +100,27 @@ export async function withCancellableTimeout<T>(
         // Prevent unhandled rejection if token fires after race settles
         cancellationPromise.catch(() => {});
         racers.push(cancellationPromise);
+
+        // Now safe to check: if already cancelled, listener would have fired synchronously
+        // during registration, but we still check for immediate exit
+        if (token.isCancellationRequested) {
+            cancellationDisposable?.dispose();
+            Log.debug(
+                `[Cancellation] ${operation} skipped - already cancelled`
+            );
+            throw new vscode.CancellationError();
+        }
     }
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            Log.warn(
+                `[Timeout] ${operation} abandoned after ${timeoutMs}ms - underlying operation may continue running`
+            );
+            reject(TimeoutError.create(operation, timeoutMs));
+        }, timeoutMs);
+    });
+    racers.push(timeoutPromise);
 
     try {
         return await Promise.race(racers);

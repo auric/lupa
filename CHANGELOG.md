@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **"Stop" button now works instantly**: Clicking Stop immediately halts all analysis activity. Previously, searches and symbol lookups continued running in the background even after cancellation.
 
+- **Cancellation works even on slow networks**: Previously, cancelling during slow or stalled network conditions could take 5+ minutes because only the initial LLM request was wrapped in timeout—not the response stream consumption. Now the entire operation (request + response stream) is wrapped in timeout, so cancellation responds within seconds even when the connection is stalled.
+
 - **No more analysis hangs**: Analyses could previously get stuck for 9+ minutes waiting for slow language servers or long searches. All operations now have timeouts—symbol lookups (5s per file), pattern searches (60s)—so analysis always makes progress.
 
 - **Mid-flight cancellation now properly detected**: When file discovery is cancelled while actively crawling (not just before it starts), the cancellation is now correctly detected and converted to a proper cancellation error. Previously, mid-flight cancellation could appear as a generic failure.
@@ -20,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Subagent tools can now be cancelled**: The SubagentExecutor now properly passes the cancellation token to its ToolExecutor, enabling cancellation of subagent tool invocations. Previously, stopping a parent analysis didn't reliably stop subagent work.
 
 - **Ripgrep SIGKILL fallback**: When cancelling a search, if the ripgrep process doesn't respond to SIGTERM within 500ms, SIGKILL is now sent as a fallback to ensure the process terminates.
+
+- **Directory listing respects cancellation during recursion**: The `list_directory` tool now checks for cancellation during recursive directory scans and properly propagates cancellation/timeout errors instead of swallowing them.
+
+- **Better error messages when Copilot models unavailable**: Improved logging to properly format error objects, so you see actual error messages instead of just the model identifier when models are unavailable.
+
+- **Fixed race condition in cancellation setup**: The cancellation listener is now registered before checking the token state, eliminating a tiny window where cancellation could be missed.
+
+- **Fixed spurious "unhandled rejection" warnings on early cancellation**: When you click Stop at the exact moment an analysis is starting, late rejections from underlying operations are now properly suppressed instead of appearing as unhandled rejection warnings.
 
 - **File discovery now returns partial results on timeout**: Instead of throwing away files found before timeout, FileDiscoverer now returns partial results with a `truncated: true` flag. This gives the LLM useful data even when time limits are hit.
 
@@ -42,6 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Debug logging for timeout diagnostics**: Late rejections from underlying operations after timeout are now logged at debug level to aid troubleshooting.
 
 ### Testing
+
+- **Stream consumption timeout tests**: Added tests verifying that stalled LLM response streams are caught by timeout, and that cancellation works between stream chunks.
 
 - **GetSymbolsOverviewTool timeout/truncation tests**: Added tests verifying timeout info is surfaced when directory symbols have timed-out files, and truncation messages appear when max_symbols is exceeded.
 

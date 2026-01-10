@@ -109,6 +109,13 @@ export class ModelRequestHandler {
         timeoutMs: number,
         token: vscode.CancellationToken
     ): Promise<T> {
+        // Wrap thenable in a promise FIRST, before any early exit.
+        // This ensures we can attach suppression handler before throwing.
+        const thenablePromise = Promise.resolve(thenable);
+        // Suppress late rejections from underlying thenable after timeout/cancellation wins.
+        // Must be attached before any early throw to prevent unhandled rejections.
+        thenablePromise.catch(() => {});
+
         if (token.isCancellationRequested) {
             throw new vscode.CancellationError();
         }
@@ -129,11 +136,6 @@ export class ModelRequestHandler {
         });
         // Prevent unhandled rejection if token fires after race settles
         cancellationPromise.catch(() => {});
-
-        // Wrap thenable in a promise we can attach catch handler to
-        const thenablePromise = Promise.resolve(thenable);
-        // Suppress late rejections from underlying thenable after timeout/cancellation wins
-        thenablePromise.catch(() => {});
 
         try {
             return await Promise.race([
@@ -177,16 +179,42 @@ export class ModelRequestHandler {
             tools: request.tools || [],
         };
 
-        const response = await ModelRequestHandler.withTimeout(
-            model.sendRequest(messages, options, token),
+        // Wrap the ENTIRE operation (request + stream consumption) with timeout.
+        // This ensures stream hangs on poor network are cancelled within the timeout.
+        return ModelRequestHandler.withTimeout(
+            ModelRequestHandler.sendAndConsumeStream(
+                model,
+                messages,
+                options,
+                token
+            ),
             timeoutMs,
             token
         );
+    }
+
+    /**
+     * Internal method that sends the request and consumes the entire response stream.
+     * Separated from sendRequest to allow the entire operation to be wrapped in timeout.
+     */
+    private static async sendAndConsumeStream(
+        model: vscode.LanguageModelChat,
+        messages: vscode.LanguageModelChatMessage[],
+        options: vscode.LanguageModelChatRequestOptions,
+        token: vscode.CancellationToken
+    ): Promise<ToolCallResponse> {
+        const response = await model.sendRequest(messages, options, token);
 
         let responseText = '';
         const toolCalls: ToolCall[] = [];
 
         for await (const chunk of response.stream) {
+            // Check cancellation between chunks for responsive cancellation
+            // on slow networks where chunks arrive infrequently
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             if (chunk instanceof vscode.LanguageModelTextPart) {
                 responseText += chunk.value;
             } else if (chunk instanceof vscode.LanguageModelToolCallPart) {
