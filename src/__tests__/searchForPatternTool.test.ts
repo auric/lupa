@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+import * as vscode from 'vscode';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import {
@@ -573,6 +574,27 @@ describe('SearchForPatternTool', () => {
             await expect(
                 searchForPatternTool.execute({ pattern: 'test' })
             ).rejects.toThrow(TimeoutError);
+        });
+
+        it('should throw CancellationError when already cancelled', async () => {
+            const context = {
+                cancellationToken: {
+                    isCancellationRequested: true, // Pre-cancelled
+                    onCancellationRequested: vi.fn().mockReturnValue({
+                        dispose: vi.fn(),
+                    }),
+                },
+            };
+
+            await expect(
+                searchForPatternTool.execute(
+                    { pattern: 'test' },
+                    context as any
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Ripgrep should never be called
+            expect(mockRipgrepService.search).not.toHaveBeenCalled();
         });
     });
 });

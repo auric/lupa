@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Definition expansion respects cancellation**: When expanding symbol definitions to get full code context, CancellationError now propagates instead of falling back to heuristic expansion.
 
+- **Directory symbol extraction throws on cancellation**: `SymbolExtractor.getDirectorySymbols()` now throws CancellationError immediately when cancelled, consistent with FileDiscoverer behavior. Previously it returned partial results, causing the analysis to continue with incomplete data.
+
+- **Pattern search pre-cancel check**: `SearchForPatternTool` now checks for cancellation before setting up ripgrep, avoiding unnecessary work when already cancelled.
+
+- **Symbol lookup timeout increased to 5 seconds**: Document symbol lookups now have a 5-second timeout (up from 500ms), consistent with other symbol providers. This prevents false "symbol not found" results with slower language servers (Python, Java, C++).
+
 - **Improved SymbolExtractor documentation**: Doc comments now accurately describe timeout and cancellation behavior, making the codebase easier to maintain.
 
 ### Changed
@@ -58,6 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Consistent logging throughout**: Replaced `console.log`/`console.warn` with centralized `Log` service in SymbolExtractor for consistent log output.
 
 - **Debug logging for timeout diagnostics**: Late rejections from underlying operations after timeout are now logged at debug level to aid troubleshooting.
+
+- **SIGTERM grace period constant**: The 500ms delay before SIGKILL fallback is now a named constant (`SIGTERM_GRACE_PERIOD_MS`) for code clarity.
 
 ### Testing
 

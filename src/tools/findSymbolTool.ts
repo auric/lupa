@@ -24,7 +24,7 @@ import { isCancellationError } from '../utils/asyncUtils';
 
 const SYMBOL_SEARCH_TIMEOUT = 5000; // 5 seconds total
 const FILE_PROCESSING_TIMEOUT = 500; // 500ms per file
-const DOCUMENT_SYMBOL_TIMEOUT = 500; // 500ms for fetching document symbols
+const DOCUMENT_SYMBOL_TIMEOUT = 5_000; // 5s, consistent with other symbol providers
 
 /** Result of symbol search with metadata about truncation */
 interface SymbolSearchResult {

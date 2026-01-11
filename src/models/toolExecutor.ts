@@ -230,6 +230,14 @@ export class ToolExecutor {
 
     /**
      * Execute multiple tools in parallel.
+     *
+     * Cancellation behavior: When any tool throws CancellationError, Promise.all rejects
+     * immediately and the error propagates up to stop the analysis. Other in-flight tools
+     * continue running but their results are discarded. This is intentional—tools observe
+     * the shared cancellation token and clean up their own resources (e.g., ripgrep kills
+     * child processes, withCancellableTimeout races against the token). Forcibly aborting
+     * promises isn't possible in JavaScript; cancellation is cooperative.
+     *
      * @param requests Array of tool execution requests
      * @returns Promise resolving to an array of tool execution results
      */

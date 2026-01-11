@@ -129,6 +129,10 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             case_sensitive = false,
         } = validationResult.data;
 
+        if (context?.cancellationToken?.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const gitRepo = this.gitOperationsManager.getRepository();
         if (!gitRepo) {
             return toolError('Git repository not found');

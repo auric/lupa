@@ -53,6 +53,13 @@ function getVSCodeRipgrepPath(): string {
 }
 
 /**
+ * Grace period in milliseconds to wait for SIGTERM to terminate the ripgrep
+ * process before escalating to SIGKILL. 500ms is sufficient for ripgrep to
+ * clean up while avoiding noticeable delay in cancellation feedback.
+ */
+const SIGTERM_GRACE_PERIOD_MS = 500;
+
+/**
  * Validates that the VS Code ripgrep binary exists at the expected path.
  * @returns true if the binary exists, false otherwise
  */
@@ -186,7 +193,7 @@ export class RipgrepSearchService {
                             '[Ripgrep] Search cancelled by user - killing process'
                         );
                         rg.kill('SIGTERM');
-                        // Fallback to SIGKILL if SIGTERM doesn't work within 500ms
+                        // Fallback to SIGKILL if SIGTERM doesn't terminate in time
                         sigkillTimeout = setTimeout(() => {
                             if (!rg.killed) {
                                 Log.debug(
@@ -194,7 +201,7 @@ export class RipgrepSearchService {
                                 );
                                 rg.kill('SIGKILL');
                             }
-                        }, 500);
+                        }, SIGTERM_GRACE_PERIOD_MS);
                     }
                 );
             }

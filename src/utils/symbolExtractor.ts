@@ -128,7 +128,7 @@ export class SymbolExtractor {
         let timedOutFiles = 0;
 
         if (token?.isCancellationRequested) {
-            return { results, truncated: true, timedOutFiles };
+            throw new vscode.CancellationError();
         }
 
         const repository = this.gitOperationsManager.getRepository();
@@ -171,8 +171,7 @@ export class SymbolExtractor {
                 Log.debug(
                     `Directory symbol extraction cancelled after processing ${results.length} files`
                 );
-                truncated = true;
-                break;
+                throw new vscode.CancellationError();
             }
 
             const gitRootDirectory =
