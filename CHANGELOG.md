@@ -41,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Test mocking now matches VS Code API reality**: Fixed tests that incorrectly assumed VS Code APIs throw CancellationError. In practice, VS Code APIs return undefined/empty when cancelled; only `withCancellableTimeout` throws CancellationError.
 
+- **Cancellation now properly stops the entire analysis**: Previously, clicking Stop during an analysis or subagent investigation would swallow the cancellation and convert it to an error message. Now CancellationError properly propagates through all layers, ensuring the Stop button immediately halts all work.
+
+- **Symbol searches stop immediately when cancelled**: The `find_symbol` tool now properly propagates CancellationError in all catch blocks instead of swallowing it. Symbol searches stop immediately when you click Stop.
+
+- **Definition expansion respects cancellation**: When expanding symbol definitions to get full code context, CancellationError now propagates instead of falling back to heuristic expansion.
+
+- **Improved SymbolExtractor documentation**: Doc comments now accurately describe timeout and cancellation behavior, making the codebase easier to maintain.
+
 ### Changed
 
 - **Tools incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
@@ -62,6 +70,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FileDiscoverer partial results on timeout test**: Added test verifying partial results are returned with truncated flag when timeout occurs during discovery.
 
 - **Improved CancellationError mock**: VS Code mock now properly supports `instanceof` checks for CancellationError.
+
+- **SymbolRangeExpander cancellation test**: Added test verifying CancellationError propagates instead of falling back to heuristic expansion.
 
 ## [0.1.10] - 2026-01-05
 

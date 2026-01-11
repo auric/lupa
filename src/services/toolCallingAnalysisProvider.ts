@@ -18,6 +18,7 @@ import type {
 import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
+import { isCancellationError } from '../utils/asyncUtils';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
@@ -237,6 +238,9 @@ export class ToolCallingAnalysisProvider {
             );
             Log.info('Analysis completed successfully');
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             analysisError =
                 error instanceof Error ? error.message : String(error);
             const errorMessage = `Error during analysis: ${analysisError}`;

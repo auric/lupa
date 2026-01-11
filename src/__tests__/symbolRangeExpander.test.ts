@@ -144,5 +144,17 @@ describe('SymbolRangeExpander', () => {
             expect(result.start.line).toBe(0);
             expect(result.end.line).toBe(4);
         });
+
+        it('should propagate CancellationError instead of falling back to heuristic', async () => {
+            vi.mocked(vscode.commands.executeCommand).mockRejectedValue(
+                new vscode.CancellationError()
+            );
+
+            const inputRange = new vscode.Range(0, 0, 0, 15);
+
+            await expect(
+                expander.getFullSymbolRange(mockDocument, inputRange)
+            ).rejects.toThrow(vscode.CancellationError);
+        });
     });
 });

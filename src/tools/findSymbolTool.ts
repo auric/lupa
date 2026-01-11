@@ -12,7 +12,11 @@ import { SymbolMatcher, type SymbolMatch } from '../utils/symbolMatcher';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
 import { readGitignore } from '../utils/gitUtils';
-import { withCancellableTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    rethrowIfCancellationOrTimeout,
+} from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -540,6 +544,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 };
             }
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             if (isTimeoutError(error)) {
                 Log.debug(
                     `Symbol search in ${relativePath} timed out - returning empty results`
@@ -620,6 +627,8 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             return matches;
         } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
+
             Log.debug(
                 `Failed to find symbols in ${fileUri.fsPath}:`,
                 error instanceof Error ? error.message : String(error)

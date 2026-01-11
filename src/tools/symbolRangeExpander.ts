@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
-import { withCancellableTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    isCancellationError,
+} from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 
 /** Timeout for document symbol provider call */
@@ -49,6 +53,9 @@ export class SymbolRangeExpander {
             // Fallback: try to expand the range intelligently based on code structure
             return this.expandRangeForSymbol(document, symbolRange);
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             if (isTimeoutError(error)) {
                 Log.debug(
                     `Document symbol provider timed out for ${document.fileName} - using heuristic expansion`

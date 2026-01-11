@@ -17,6 +17,7 @@ import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '@/types/toolResultTypes';
 import { Log } from './loggingService';
+import { isCancellationError } from '../utils/asyncUtils';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
@@ -218,6 +219,10 @@ export class SubagentExecutor {
                 toolCalls,
             };
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
             const errorMessage =
                 error instanceof Error ? error.message : String(error);
             Log.error(`${logLabel} Failed: ${errorMessage}`);

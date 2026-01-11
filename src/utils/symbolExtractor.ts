@@ -61,7 +61,10 @@ export class SymbolExtractor {
      * Extract symbols from a single file using VS Code LSP API with timeout protection.
      * @param fileUri - VS Code URI of the file
      * @param token - Optional cancellation token
-     * @returns Array of DocumentSymbols or SymbolInformation, or empty array if extraction fails/times out
+     * @returns Array of DocumentSymbols or SymbolInformation
+     * @throws CancellationError if cancelled
+     * @throws TimeoutError if extraction times out
+     * @returns Empty array for other LSP errors (non-fatal)
      */
     async getFileSymbols(
         fileUri: vscode.Uri,
@@ -103,6 +106,10 @@ export class SymbolExtractor {
     /**
      * Extract symbols from all files in a directory, respecting .gitignore.
      * Has built-in timeout protection and returns partial results if stopped early.
+     *
+     * Design note: Returns truncated partial results on pre-cancellation or timeout
+     * (rather than throwing) to give the LLM useful data even when interrupted.
+     * However, CancellationError from individual getFileSymbols calls will propagate.
      *
      * @param targetPath - Absolute path to the directory
      * @param relativePath - Relative path for context
