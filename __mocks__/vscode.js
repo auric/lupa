@@ -250,16 +250,14 @@ vscodeMock.ExtensionKind = {
     Workspace: 2,
 };
 
-// Match VS Code's actual CancellationError: both name and message are 'Canceled'
+// Match VS Code's actual CancellationError: extends Error, both name and message are 'Canceled'
 // See: https://github.com/microsoft/vscode/blob/main/src/vs/base/common/errors.ts
-vscodeMock.CancellationError = vi.fn().mockImplementation(function () {
-    this.name = 'Canceled';
-    this.message = 'Canceled';
-    this.stack = new Error().stack;
-    this.toString = function () {
-        return `${this.name}: ${this.message}`;
-    };
-});
+vscodeMock.CancellationError = class CancellationError extends Error {
+    constructor() {
+        super('Canceled');
+        this.name = 'Canceled';
+    }
+};
 
 vscodeMock.CancellationTokenSource = vi.fn(function () {
     // Using function() instead of arrow function so 'this' refers to the instance

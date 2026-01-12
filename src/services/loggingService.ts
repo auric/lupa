@@ -130,7 +130,11 @@ export class LoggingService implements vscode.Disposable {
                 }
                 return `${prefix}${errorLike.message ?? '(no message)'}`;
             }
-            return JSON.stringify(arg, null, 2);
+            try {
+                return JSON.stringify(arg, null, 2);
+            } catch {
+                return '[unable to serialize object]';
+            }
         }
         return String(arg);
     }

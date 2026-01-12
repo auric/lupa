@@ -753,6 +753,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     bodyLines = rawBody.split('\n');
                     startLine = finalRange.start.line + 1;
                 } catch (error) {
+                    rethrowIfCancellationOrTimeout(error);
                     Log.debug(
                         `Failed to extract body for symbol ${match.symbol.name}:`,
                         error
@@ -819,6 +820,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                                 childStartLine =
                                     childSymbolRange.start.line + 1;
                             } catch (error) {
+                                rethrowIfCancellationOrTimeout(error);
                                 Log.debug(
                                     `Failed to extract body for child symbol ${childSymbol.symbol.name}:`,
                                     error
@@ -969,6 +971,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 targetRange
             );
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
             if (isTimeoutError(error)) {
                 Log.debug(`Document symbol fetch timed out, skipping`);
                 return undefined;

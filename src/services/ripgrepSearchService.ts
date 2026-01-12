@@ -194,8 +194,10 @@ export class RipgrepSearchService {
                         );
                         rg.kill('SIGTERM');
                         // Fallback to SIGKILL if SIGTERM doesn't terminate in time
+                        // Note: rg.killed only indicates kill() was called, not that
+                        // the process exited. Use exitCode to check actual termination.
                         sigkillTimeout = setTimeout(() => {
-                            if (!rg.killed) {
+                            if (rg.exitCode === null) {
                                 Log.debug(
                                     '[Ripgrep] SIGTERM did not terminate process, sending SIGKILL'
                                 );

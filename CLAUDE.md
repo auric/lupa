@@ -138,6 +138,11 @@ Pass `cancellationToken` to long-running operations (symbol extraction, LSP call
 - **Only `withCancellableTimeout` throws CancellationError** - when the token fires before the operation completes
 - **Tests should NOT mock VS Code APIs to throw CancellationError** - instead, test with pre-cancelled tokens or simulate slow responses
 
+**Acceptable patterns for testing CancellationError propagation**:
+
+1. Pre-cancel the token before calling the function under test (preferred)
+2. When testing ToolExecutor/middleware that needs to handle CancellationError from tools, you MAY create a mock tool that throws CancellationError (testing internal propagation, not mocking VS Code APIs)
+
 **Error handling contract**:
 
 1. Tools catch errors ONLY when they need tool-specific error messages or partial results

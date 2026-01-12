@@ -9,77 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **"Stop" button now works instantly**: Clicking Stop immediately halts all analysis activity. Previously, searches and symbol lookups continued running in the background even after cancellation.
+#### Stop Button & Cancellation
 
-- **Cancellation works even on slow networks**: Previously, cancelling during slow or stalled network conditions could take 5+ minutes because only the initial LLM request was wrapped in timeout—not the response stream consumption. Now the entire operation (request + response stream) is wrapped in timeout, so cancellation responds within seconds even when the connection is stalled.
+- **Stop button now works instantly**: Clicking Stop immediately halts all analysis activity—searches, symbol lookups, and subagent investigations all stop within seconds.
+- **Works on slow/stalled connections**: Cancellation now responds quickly even when network conditions are poor, instead of potentially waiting 5+ minutes.
+- **No more "unhandled rejection" warnings**: Spurious error messages when clicking Stop at certain moments are now suppressed.
 
-- **No more analysis hangs**: Analyses could previously get stuck for 9+ minutes waiting for slow language servers or long searches. All operations now have timeouts—symbol lookups (5s per file), pattern searches (60s)—so analysis always makes progress.
+#### Analysis Reliability
 
-- **Mid-flight cancellation now properly detected**: When file discovery is cancelled while actively crawling (not just before it starts), the cancellation is now correctly detected and converted to a proper cancellation error. Previously, mid-flight cancellation could appear as a generic failure.
+- **No more analysis hangs**: All operations now have appropriate timeouts. Symbol lookups (5s per file) and pattern searches (60s) ensure analysis always makes progress instead of getting stuck.
+- **Partial results on timeout**: When file discovery times out, you now get the files found so far instead of losing all progress.
+- **Better timeout messages**: When a file search times out, you get a clear explanation instead of a confusing "No files found" message.
 
-- **TimeoutError preserved in parallel tool execution**: When a tool times out during parallel execution via `executeTools`, the TimeoutError type is now preserved instead of being wrapped in a generic Error.
+#### Error Messages
 
-- **Subagent tools can now be cancelled**: The SubagentExecutor now properly passes the cancellation token to its ToolExecutor, enabling cancellation of subagent tool invocations. Previously, stopping a parent analysis didn't reliably stop subagent work.
-
-- **Ripgrep SIGKILL fallback**: When cancelling a search, if the ripgrep process doesn't respond to SIGTERM within 500ms, SIGKILL is now sent as a fallback to ensure the process terminates.
-
-- **Directory listing respects cancellation during recursion**: The `list_directory` tool now checks for cancellation during recursive directory scans and properly propagates cancellation/timeout errors instead of swallowing them.
-
-- **Better error messages when Copilot models unavailable**: Improved logging to properly format error objects, so you see actual error messages instead of just the model identifier when models are unavailable.
-
-- **Fixed race condition in cancellation setup**: The cancellation listener is now registered before checking the token state, eliminating a tiny window where cancellation could be missed.
-
-- **Fixed spurious "unhandled rejection" warnings on early cancellation**: When you click Stop at the exact moment an analysis is starting, late rejections from underlying operations are now properly suppressed instead of appearing as unhandled rejection warnings.
-
-- **File discovery now returns partial results on timeout**: Instead of throwing away files found before timeout, FileDiscoverer now returns partial results with a `truncated: true` flag. This gives the LLM useful data even when time limits are hit.
-
-- **Cancellation now properly propagates through all tools**: `ReadFileTool`, `ListDirTool`, and `FindFilesByPatternTool` now correctly rethrow `CancellationError` instead of swallowing it. This ensures the Stop button works reliably in all scenarios.
-
-- **File search timeout now distinguished from "no matches"**: When a file pattern search times out before finding any files, you now get a clear message explaining the timeout instead of the misleading "No files found" message.
-
-- **Ripgrep race condition fixed**: Late rejections from the ripgrep search process after timeout are now properly suppressed, preventing unhandled rejection warnings.
-
-- **Test mocking now matches VS Code API reality**: Fixed tests that incorrectly assumed VS Code APIs throw CancellationError. In practice, VS Code APIs return undefined/empty when cancelled; only `withCancellableTimeout` throws CancellationError.
-
-- **Cancellation now properly stops the entire analysis**: Previously, clicking Stop during an analysis or subagent investigation would swallow the cancellation and convert it to an error message. Now CancellationError properly propagates through all layers, ensuring the Stop button immediately halts all work.
-
-- **Symbol searches stop immediately when cancelled**: The `find_symbol` tool now properly propagates CancellationError in all catch blocks instead of swallowing it. Symbol searches stop immediately when you click Stop.
-
-- **Definition expansion respects cancellation**: When expanding symbol definitions to get full code context, CancellationError now propagates instead of falling back to heuristic expansion.
-
-- **Directory symbol extraction throws on cancellation**: `SymbolExtractor.getDirectorySymbols()` now throws CancellationError immediately when cancelled, consistent with FileDiscoverer behavior. Previously it returned partial results, causing the analysis to continue with incomplete data.
-
-- **Pattern search pre-cancel check**: `SearchForPatternTool` now checks for cancellation before setting up ripgrep, avoiding unnecessary work when already cancelled.
-
-- **Symbol lookup timeout increased to 5 seconds**: Document symbol lookups now have a 5-second timeout (up from 500ms), consistent with other symbol providers. This prevents false "symbol not found" results with slower language servers (Python, Java, C++).
-
-- **Improved SymbolExtractor documentation**: Doc comments now accurately describe timeout and cancellation behavior, making the codebase easier to maintain.
+- **Clearer Copilot model errors**: When models are unavailable, you now see the actual error message instead of just the model name.
 
 ### Changed
 
-- **Tools incomplete search results are now labeled**: When a symbol search hits time or file limits, results include a note explaining they may be incomplete and suggesting how to narrow the search.
-
-- **Simplified tool error handling**: Timeout and cancellation errors now propagate to a central handler instead of being duplicated in each tool. Tools that need custom behavior (like returning partial results) can still handle errors themselves.
-
-- **Consistent logging throughout**: Replaced `console.log`/`console.warn` with centralized `Log` service in SymbolExtractor for consistent log output.
-
-- **Debug logging for timeout diagnostics**: Late rejections from underlying operations after timeout are now logged at debug level to aid troubleshooting.
-
-- **SIGTERM grace period constant**: The 500ms delay before SIGKILL fallback is now a named constant (`SIGTERM_GRACE_PERIOD_MS`) for code clarity.
+- **Incomplete results are labeled**: When a search hits time or file limits, results now include a note explaining they may be incomplete with suggestions for narrowing the search.
 
 ### Testing
 
-- **Stream consumption timeout tests**: Added tests verifying that stalled LLM response streams are caught by timeout, and that cancellation works between stream chunks.
-
-- **GetSymbolsOverviewTool timeout/truncation tests**: Added tests verifying timeout info is surfaced when directory symbols have timed-out files, and truncation messages appear when max_symbols is exceeded.
-
-- **FileDiscoverer mid-flight cancellation test**: Added test for cancellation that occurs after discovery starts (mid-flight), not just the early-cancel path.
-
-- **FileDiscoverer partial results on timeout test**: Added test verifying partial results are returned with truncated flag when timeout occurs during discovery.
-
-- **Improved CancellationError mock**: VS Code mock now properly supports `instanceof` checks for CancellationError.
-
-- **SymbolRangeExpander cancellation test**: Added test verifying CancellationError propagates instead of falling back to heuristic expansion.
+- Comprehensive test coverage added for cancellation, timeout, and partial result scenarios.
 
 ## [0.1.10] - 2026-01-05
 

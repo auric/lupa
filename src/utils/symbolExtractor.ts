@@ -105,16 +105,18 @@ export class SymbolExtractor {
 
     /**
      * Extract symbols from all files in a directory, respecting .gitignore.
-     * Has built-in timeout protection and returns partial results if stopped early.
+     * Has built-in timeout protection for the overall operation.
      *
-     * Design note: Returns truncated partial results on pre-cancellation or timeout
-     * (rather than throwing) to give the LLM useful data even when interrupted.
-     * However, CancellationError from individual getFileSymbols calls will propagate.
+     * Behavior:
+     * - **Timeout**: Returns partial results with `truncated: true`
+     * - **Cancellation**: Throws CancellationError (pre-cancellation or mid-loop)
+     * - **Per-file timeout**: Increments `timedOutFiles` counter and continues
      *
      * @param targetPath - Absolute path to the directory
      * @param relativePath - Relative path for context
      * @param options - Directory extraction options (including timeoutMs and token)
      * @returns Directory symbol results with truncation metadata
+     * @throws CancellationError if token is cancelled before or during extraction
      */
     async getDirectorySymbols(
         targetPath: string,

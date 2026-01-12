@@ -4,7 +4,11 @@ import * as path from 'path';
 import { BaseTool } from './baseTool';
 import { UsageFormatter } from './usageFormatter';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { withCancellableTimeout, isTimeoutError } from '../utils/asyncUtils';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    rethrowIfCancellationOrTimeout,
+} from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
@@ -176,6 +180,7 @@ Requires file_path where the symbol is defined as starting point.`;
 
                 formattedUsages.push(formattedUsage);
             } catch (error) {
+                rethrowIfCancellationOrTimeout(error);
                 const relativeFilePath = path
                     .relative(gitRootDirectory, reference.uri.fsPath)
                     .replace(/\\/g, '/');
