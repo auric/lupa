@@ -145,15 +145,32 @@ describe('SymbolRangeExpander', () => {
             expect(result.end.line).toBe(4);
         });
 
-        it('should propagate CancellationError instead of falling back to heuristic', async () => {
-            vi.mocked(vscode.commands.executeCommand).mockRejectedValue(
-                new vscode.CancellationError()
+        it('should propagate CancellationError when token is cancelled during execution', async () => {
+            // VS Code APIs don't throw CancellationError - they return undefined/empty.
+            // Only withCancellableTimeout throws CancellationError when the token fires.
+            // Use a pre-cancelled token to trigger this behavior.
+            const cancelledToken: vscode.CancellationToken = {
+                isCancellationRequested: true,
+                onCancellationRequested: vi.fn((listener) => {
+                    // Fire immediately since already cancelled
+                    listener();
+                    return { dispose: vi.fn() };
+                }),
+            };
+
+            // Mock a slow response that won't complete before cancellation check
+            vi.mocked(vscode.commands.executeCommand).mockImplementation(
+                () => new Promise((resolve) => setTimeout(resolve, 10000))
             );
 
             const inputRange = new vscode.Range(0, 0, 0, 15);
 
             await expect(
-                expander.getFullSymbolRange(mockDocument, inputRange)
+                expander.getFullSymbolRange(
+                    mockDocument,
+                    inputRange,
+                    cancelledToken
+                )
             ).rejects.toThrow(vscode.CancellationError);
         });
     });

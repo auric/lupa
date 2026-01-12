@@ -121,34 +121,39 @@ Pass `cancellationToken` to long-running operations (symbol extraction, LSP call
 
 ### Timeout Handling
 
-**Centralized error handling in ToolExecutor** - tools don't need to handle these errors individually:
+**ToolExecutor is the centralized error handler** - most tools don't need try-catch blocks at all:
 
 - **CancellationError**: ToolExecutor rethrows to propagate cancellation up the stack
 - **TimeoutError**: ToolExecutor catches and returns a generic helpful message to the LLM
+- **Other errors**: ToolExecutor converts to `toolError(message)` for the LLM
 
-**When tools SHOULD handle errors themselves**:
+**When tools should NOT have try-catch**:
 
-- Returning partial results on timeout (e.g., truncated symbol list with a note)
-- Graceful degradation (e.g., `symbolRangeExpander` falls back to heuristic on timeout)
-- Continuing on non-fatal errors (e.g., `findUsagesTool` continues if one definition check times out)
+Most tools should let errors propagate to ToolExecutor. Don't wrap your execute method in try-catch just to call `rethrowIfCancellationOrTimeout` and then `toolError()` — that's exactly what ToolExecutor already does.
 
-**Important: VS Code API behavior**:
+**When tools SHOULD have try-catch**:
+
+- **Specific error messages**: Inner catches that provide context (e.g., "File not found" vs generic error)
+- **Partial results on timeout**: Return what you found before timeout occurred
+- **Graceful degradation**: Fall back to alternative behavior (e.g., `symbolRangeExpander` uses heuristic on timeout)
+- **Continue-on-error loops**: Skip failed items and continue processing (e.g., `findUsagesTool` continues if one definition check times out)
+
+**VS Code API behavior**:
 
 - **VS Code APIs don't throw CancellationError** - they return `undefined` or empty results when cancelled
 - **Only `withCancellableTimeout` throws CancellationError** - when the token fires before the operation completes
-- **Tests should NOT mock VS Code APIs to throw CancellationError** - instead, test with pre-cancelled tokens or simulate slow responses
+- **Tests should NOT mock VS Code APIs to throw CancellationError** - use pre-cancelled tokens instead
 
-**Acceptable patterns for testing CancellationError propagation**:
+**Testing CancellationError propagation**:
 
 1. Pre-cancel the token before calling the function under test (preferred)
-2. When testing ToolExecutor/middleware that needs to handle CancellationError from tools, you MAY create a mock tool that throws CancellationError (testing internal propagation, not mocking VS Code APIs)
+2. When testing ToolExecutor/middleware, you MAY create a mock tool that throws CancellationError
 
-**Error handling contract**:
+**Error handling helpers**:
 
-1. Tools catch errors ONLY when they need tool-specific error messages or partial results
-2. Use `rethrowIfCancellationOrTimeout(error)` at the start of catch blocks to let these errors propagate
-3. For partial results on timeout, check `isTimeoutError(error)` explicitly instead of using the helper
-4. ToolExecutor is the safety net, not a replacement for proper tool-level handling
+- `rethrowIfCancellationOrTimeout(error)` - Use in catch blocks when you need to handle other errors but let cancel/timeout propagate
+- `isTimeoutError(error)` - Check explicitly when you want to return partial results on timeout
+- `isCancellationError(error)` - Rarely needed; just let it propagate
 
 **Other patterns**:
 

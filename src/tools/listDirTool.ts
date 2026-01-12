@@ -7,7 +7,7 @@ import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { rethrowIfCancellationOrTimeout } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
-import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -39,32 +39,23 @@ export class ListDirTool extends BaseTool {
         args: z.infer<typeof this.schema>,
         context?: ExecutionContext
     ): Promise<ToolResult> {
-        try {
-            const { relative_path, recursive } = args;
+        const { relative_path, recursive } = args;
 
-            // Sanitize the relative path to prevent directory traversal attacks
-            const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
+        const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
 
-            // List directory contents with ignore pattern support
-            // No timeout wrapper needed - vscode.workspace.fs.readDirectory is inherently fast
-            // and callListDir checks cancellation token during iteration
-            const result = await this.callListDir(
-                sanitizedPath,
-                recursive,
-                context?.cancellationToken
-            );
+        // List directory contents with ignore pattern support
+        // No timeout wrapper needed - vscode.workspace.fs.readDirectory is inherently fast
+        // and callListDir checks cancellation token during iteration
+        const result = await this.callListDir(
+            sanitizedPath,
+            recursive,
+            context?.cancellationToken
+        );
 
-            // Format the output as a single string
-            const output = this.formatOutput(result);
+        const output = this.formatOutput(result);
 
-            // Empty directory is a valid state (success)
-            return toolSuccess(output || '(empty directory)');
-        } catch (error) {
-            rethrowIfCancellationOrTimeout(error);
-            const message =
-                error instanceof Error ? error.message : String(error);
-            return toolError(`Error listing directory: ${message}`);
-        }
+        // Empty directory is a valid state (success)
+        return toolSuccess(output || '(empty directory)');
     }
 
     /**
@@ -76,7 +67,6 @@ export class ListDirTool extends BaseTool {
         token?: vscode.CancellationToken
     ): Promise<{ dirs: string[]; files: string[] }> {
         try {
-            // Check for cancellation before doing any work
             if (token?.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
@@ -95,7 +85,6 @@ export class ListDirTool extends BaseTool {
             const files: string[] = [];
 
             for (const [name, type] of entries) {
-                // Check for cancellation during iteration
                 if (token?.isCancellationRequested) {
                     throw new vscode.CancellationError();
                 }
@@ -112,7 +101,6 @@ export class ListDirTool extends BaseTool {
                 if (type === vscode.FileType.Directory) {
                     dirs.push(fullPath);
 
-                    // If recursive, scan subdirectories
                     if (recursive) {
                         try {
                             const subResult = await this.callListDir(
@@ -123,7 +111,6 @@ export class ListDirTool extends BaseTool {
                             dirs.push(...subResult.dirs);
                             files.push(...subResult.files);
                         } catch (error) {
-                            // Let cancellation and timeout errors propagate
                             rethrowIfCancellationOrTimeout(error);
                             // Skip directories that can't be read for other errors
                         }
@@ -135,7 +122,6 @@ export class ListDirTool extends BaseTool {
 
             return { dirs, files };
         } catch (error) {
-            // Let cancellation errors propagate (user clicked Stop)
             rethrowIfCancellationOrTimeout(error);
 
             throw new Error(
@@ -150,13 +136,11 @@ export class ListDirTool extends BaseTool {
     private formatOutput(result: { dirs: string[]; files: string[] }): string {
         const output: string[] = [];
 
-        // Add directories first, sorted
         const sortedDirs = result.dirs.sort();
         for (const dir of sortedDirs) {
             output.push(`${dir}/`);
         }
 
-        // Add files, sorted
         const sortedFiles = result.files.sort();
         for (const file of sortedFiles) {
             output.push(file);

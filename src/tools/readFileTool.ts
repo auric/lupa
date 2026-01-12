@@ -70,94 +70,84 @@ export class ReadFileTool extends BaseTool {
         args: z.infer<typeof this.schema>,
         context?: ExecutionContext
     ): Promise<ToolResult> {
+        const { file_path, start_line, end_line, line_count } = args;
+
+        const sanitizedPath = PathSanitizer.sanitizePath(file_path);
+
+        const gitRootDirectory =
+            this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
+        if (!gitRootDirectory) {
+            return toolError('Git repository not found');
+        }
+
+        const absoluteFilePath = path.join(gitRootDirectory, sanitizedPath);
+        const fileUri = vscode.Uri.file(absoluteFilePath);
+
         try {
-            const { file_path, start_line, end_line, line_count } = args;
-
-            const sanitizedPath = PathSanitizer.sanitizePath(file_path);
-
-            const gitRootDirectory =
-                this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
-            if (!gitRootDirectory) {
-                return toolError('Git repository not found');
-            }
-
-            const absoluteFilePath = path.join(gitRootDirectory, sanitizedPath);
-            const fileUri = vscode.Uri.file(absoluteFilePath);
-
-            try {
-                await withCancellableTimeout(
-                    Promise.resolve(vscode.workspace.fs.stat(fileUri)),
-                    FILE_OPERATION_TIMEOUT,
-                    `File stat for ${sanitizedPath}`,
-                    context?.cancellationToken
-                );
-            } catch (error) {
-                rethrowIfCancellationOrTimeout(error);
-                return toolError(`File not found: ${sanitizedPath}`);
-            }
-
-            let fileContent: string;
-            try {
-                const contentBytes = await withCancellableTimeout(
-                    Promise.resolve(vscode.workspace.fs.readFile(fileUri)),
-                    FILE_OPERATION_TIMEOUT,
-                    `File read for ${sanitizedPath}`,
-                    context?.cancellationToken
-                );
-                fileContent = Buffer.from(contentBytes).toString('utf8');
-            } catch (error) {
-                rethrowIfCancellationOrTimeout(error);
-                const message =
-                    error instanceof Error ? error.message : String(error);
-                return toolError(
-                    `Failed to read file ${sanitizedPath}: ${message}`
-                );
-            }
-
-            const lines = fileContent.split('\n');
-            const totalLines = lines.length;
-
-            const readRange = this.calculateReadRange({
-                startLine: start_line,
-                endLine: end_line,
-                lineCount: line_count,
-                totalLines,
-            });
-
-            if (!readRange.success) {
-                return toolError(readRange.error!);
-            }
-
-            const { actualStartLine, actualEndLine, wasTruncated } = readRange;
-            const selectedLines = lines.slice(
-                actualStartLine - 1,
-                actualEndLine
+            await withCancellableTimeout(
+                Promise.resolve(vscode.workspace.fs.stat(fileUri)),
+                FILE_OPERATION_TIMEOUT,
+                `File stat for ${sanitizedPath}`,
+                context?.cancellationToken
             );
-
-            const estimatedSize = selectedLines.join('\n').length + 200;
-            if (estimatedSize > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
-                return toolError(
-                    `Selected content too large (${estimatedSize} characters, max: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}). ` +
-                        `Reduce the range or use start_line=${actualStartLine}, line_count=${Math.floor(TokenConstants.MAX_TOOL_RESPONSE_CHARS / 100)} for smaller chunks.`
-                );
-            }
-
-            const formattedContent = this.formatFileContentWithMetadata(
-                sanitizedPath,
-                selectedLines,
-                actualStartLine,
-                actualEndLine,
-                totalLines,
-                wasTruncated
-            );
-
-            return toolSuccess(formattedContent);
         } catch (error) {
             rethrowIfCancellationOrTimeout(error);
+            return toolError(`File not found: ${sanitizedPath}`);
+        }
+
+        let fileContent: string;
+        try {
+            const contentBytes = await withCancellableTimeout(
+                Promise.resolve(vscode.workspace.fs.readFile(fileUri)),
+                FILE_OPERATION_TIMEOUT,
+                `File read for ${sanitizedPath}`,
+                context?.cancellationToken
+            );
+            fileContent = Buffer.from(contentBytes).toString('utf8');
+        } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
+            const message =
+                error instanceof Error ? error.message : String(error);
             return toolError(
-                `Unexpected error: ${error instanceof Error ? error.message : String(error)}`
+                `Failed to read file ${sanitizedPath}: ${message}`
             );
         }
+
+        const lines = fileContent.split('\n');
+        const totalLines = lines.length;
+
+        const readRange = this.calculateReadRange({
+            startLine: start_line,
+            endLine: end_line,
+            lineCount: line_count,
+            totalLines,
+        });
+
+        if (!readRange.success) {
+            return toolError(readRange.error!);
+        }
+
+        const { actualStartLine, actualEndLine, wasTruncated } = readRange;
+        const selectedLines = lines.slice(actualStartLine - 1, actualEndLine);
+
+        const estimatedSize = selectedLines.join('\n').length + 200;
+        if (estimatedSize > TokenConstants.MAX_TOOL_RESPONSE_CHARS) {
+            return toolError(
+                `Selected content too large (${estimatedSize} characters, max: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}). ` +
+                    `Reduce the range or use start_line=${actualStartLine}, line_count=${Math.floor(TokenConstants.MAX_TOOL_RESPONSE_CHARS / 100)} for smaller chunks.`
+            );
+        }
+
+        const formattedContent = this.formatFileContentWithMetadata(
+            sanitizedPath,
+            selectedLines,
+            actualStartLine,
+            actualEndLine,
+            totalLines,
+            wasTruncated
+        );
+
+        return toolSuccess(formattedContent);
     }
 
     private calculateReadRange(params: {
