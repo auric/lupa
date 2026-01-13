@@ -316,5 +316,27 @@ describe('RunSubagentTool', () => {
 
             expect(result.success).toBe(false);
         });
+
+        it('should propagate CancellationError instead of converting to error message', async () => {
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockRejectedValue(new vscode.CancellationError()),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await expect(
+                tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    context
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+        });
     });
 });

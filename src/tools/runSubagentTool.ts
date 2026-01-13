@@ -7,6 +7,7 @@ import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /**
  * Tool that spawns isolated subagent investigations.
@@ -141,6 +142,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             });
         } catch (error) {
             clearTimeout(timeoutHandle);
+
+            if (isCancellationError(error)) {
+                throw error;
+            }
 
             if (cancelledByTimeout) {
                 return toolError(SubagentErrors.timeout(timeoutMs));

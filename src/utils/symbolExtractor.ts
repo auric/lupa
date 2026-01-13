@@ -51,6 +51,16 @@ export interface DirectorySymbolsResult {
 }
 
 /**
+ * Result from file discovery with explicit truncation tracking
+ */
+interface FileDiscoveryResult {
+    /** Array of relative file paths found */
+    files: string[];
+    /** True if discovery was stopped early due to timeout */
+    truncated: boolean;
+}
+
+/**
  * Utility class for extracting symbols from files and directories using VS Code LSP.
  * Handles Git repository context, .gitignore patterns, and recursive directory traversal.
  */
@@ -148,7 +158,7 @@ export class SymbolExtractor {
             Log.debug(`No gitignore patterns found`);
         }
 
-        const files = await this.getAllFiles(
+        const discoveryResult = await this.getAllFiles(
             targetPath,
             relativePath,
             ig,
@@ -158,7 +168,14 @@ export class SymbolExtractor {
             timeoutMs
         );
 
-        let truncated = false;
+        const { files, truncated: discoveryTruncated } = discoveryResult;
+        let truncated = discoveryTruncated;
+        if (truncated) {
+            Log.debug(
+                `File discovery hit timeout - processing ${files.length} files found so far`
+            );
+        }
+
         for (const filePath of files) {
             const elapsed = Date.now() - startTime;
             if (elapsed > timeoutMs) {
@@ -216,7 +233,8 @@ export class SymbolExtractor {
      * @param currentDepth - Current recursion depth
      * @param startTime - Start time for timeout tracking (passed from getDirectorySymbols)
      * @param timeoutMs - Timeout in milliseconds for entire traversal
-     * @returns Array of relative file paths (may be partial if timeout/cancelled)
+     * @returns File discovery result with explicit truncation flag
+     * @throws CancellationError if cancelled
      */
     async getAllFiles(
         targetPath: string,
@@ -226,7 +244,7 @@ export class SymbolExtractor {
         currentDepth: number = 0,
         startTime: number = Date.now(),
         timeoutMs: number = DIRECTORY_SYMBOL_TIMEOUT
-    ): Promise<string[]> {
+    ): Promise<FileDiscoveryResult> {
         const {
             maxDepth = 10,
             includeHidden = false,
@@ -235,22 +253,19 @@ export class SymbolExtractor {
         } = options;
         const files: string[] = [];
 
-        // Check timeout before starting directory traversal
         if (Date.now() - startTime > timeoutMs) {
             Log.warn(
                 `File discovery stopped after timeout - found ${files.length} files so far`
             );
-            return files;
+            return { files, truncated: true };
         }
 
-        // Check cancellation before starting directory traversal
         if (token?.isCancellationRequested) {
-            return files;
+            throw new vscode.CancellationError();
         }
 
-        // Prevent infinite recursion by limiting depth
         if (currentDepth > maxDepth) {
-            return files;
+            return { files, truncated: false };
         }
 
         try {
@@ -258,19 +273,16 @@ export class SymbolExtractor {
             const entries = await vscode.workspace.fs.readDirectory(targetUri);
 
             for (const [name, type] of entries) {
-                // Check timeout between entries (important for large directories)
                 if (Date.now() - startTime > timeoutMs) {
                     Log.warn(
                         `File discovery stopped after timeout - found ${files.length} files so far`
                     );
-                    return files;
+                    return { files, truncated: true };
                 }
 
-                // Check cancellation between entries (important for large directories)
                 if (token?.isCancellationRequested) {
-                    return files;
+                    throw new vscode.CancellationError();
                 }
-                // Skip hidden files/directories unless explicitly included
                 if (!includeHidden && name.startsWith('.')) {
                     continue;
                 }
@@ -281,7 +293,6 @@ export class SymbolExtractor {
                         ? name
                         : path.posix.join(relativePath, name);
 
-                // Validate path format before checking gitignore patterns
                 if (ignore.isPathValid(fullPath)) {
                     try {
                         // Check if this entry should be ignored by .gitignore using full path
@@ -300,17 +311,14 @@ export class SymbolExtractor {
                         );
                     }
                 } else {
-                    // Log invalid paths for debugging
                     Log.warn(
                         `Invalid path format for gitignore check: "${fullPath}"`
                     );
                 }
 
                 if (type === vscode.FileType.File) {
-                    // Check if it's a code file
                     let shouldInclude = CodeFileUtils.isCodeFile(name);
 
-                    // Apply additional file pattern filter if provided
                     if (shouldInclude && filePattern) {
                         shouldInclude = filePattern.test(name);
                     }
@@ -319,9 +327,8 @@ export class SymbolExtractor {
                         files.push(fullPath);
                     }
                 } else if (type === vscode.FileType.Directory) {
-                    // Recursively process subdirectories with depth and timeout tracking
                     const subPath = path.join(targetPath, name);
-                    const subFiles = await this.getAllFiles(
+                    const subResult = await this.getAllFiles(
                         subPath,
                         fullPath,
                         ignorePatterns,
@@ -330,7 +337,10 @@ export class SymbolExtractor {
                         startTime,
                         timeoutMs
                     );
-                    files.push(...subFiles);
+                    files.push(...subResult.files);
+                    if (subResult.truncated) {
+                        return { files, truncated: true };
+                    }
                 }
             }
         } catch (error) {
@@ -339,7 +349,7 @@ export class SymbolExtractor {
             Log.debug(`Cannot read directory ${targetPath}: ${message}`);
         }
 
-        return files;
+        return { files, truncated: false };
     }
 
     /**

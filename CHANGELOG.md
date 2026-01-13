@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Stop Button & Cancellation
 
-- **Stop button now works instantly**: Clicking Stop immediately halts all analysis activity—searches, symbol lookups, and subagent investigations all stop within seconds.
+- **Stop button now works reliably everywhere**: Clicking Stop immediately halts all analysis activity—file searches, symbol lookups, and subagent investigations all stop within seconds, even during long-running operations.
 - **Works on slow/stalled connections**: Cancellation now responds quickly even when network conditions are poor, instead of potentially waiting 5+ minutes.
 - **No more "unhandled rejection" warnings**: Spurious error messages when clicking Stop at certain moments are now suppressed.
 
