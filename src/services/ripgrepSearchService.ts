@@ -199,10 +199,10 @@ export class RipgrepSearchService {
                                 `[Ripgrep] SIGTERM failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
                             );
                         }
-                        // Fallback to SIGKILL if SIGTERM doesn't terminate in time
-                        // Note: rg.killed only indicates kill() was called, not that
-                        // the process exited. Use exitCode to check actual termination.
                         sigkillTimeout = setTimeout(() => {
+                            // Fallback to SIGKILL if SIGTERM doesn't terminate in time
+                            // Note: rg.killed only indicates kill() was called, not that
+                            // the process exited. Use exitCode to check actual termination.
                             if (rg.exitCode === null) {
                                 Log.debug(
                                     '[Ripgrep] SIGTERM did not terminate process, sending SIGKILL'
