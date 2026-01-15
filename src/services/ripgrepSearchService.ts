@@ -60,6 +60,13 @@ function getVSCodeRipgrepPath(): string {
 const SIGTERM_GRACE_PERIOD_MS = 500;
 
 /**
+ * Final watchdog timeout after SIGKILL. If the process still hasn't exited
+ * after this period, force-reject the promise to prevent indefinite hangs.
+ * This is a safety net for edge cases where the process is unresponsive.
+ */
+const SIGKILL_FINAL_WATCHDOG_MS = 5000;
+
+/**
  * Validates that the VS Code ripgrep binary exists at the expected path.
  * @returns true if the binary exists, false otherwise
  */
@@ -170,6 +177,9 @@ export class RipgrepSearchService {
         const args = this.buildArgs(options);
 
         return new Promise((resolve, reject) => {
+            // Settled flag prevents double resolution/rejection in edge cases
+            let settled = false;
+
             if (options.token?.isCancellationRequested) {
                 Log.debug('[Ripgrep] Search skipped - already cancelled');
                 reject(new vscode.CancellationError());
@@ -186,6 +196,24 @@ export class RipgrepSearchService {
 
             let cancellationDisposable: vscode.Disposable | undefined;
             let sigkillTimeout: ReturnType<typeof setTimeout> | undefined;
+            let finalWatchdogTimeout: ReturnType<typeof setTimeout> | undefined;
+
+            /**
+             * Clears all timers and disposables. Called from close/error handlers
+             * and from final watchdog to ensure consistent cleanup.
+             */
+            const clearAllTimersAndDisposables = () => {
+                cancellationDisposable?.dispose();
+                if (sigkillTimeout) {
+                    clearTimeout(sigkillTimeout);
+                    sigkillTimeout = undefined;
+                }
+                if (finalWatchdogTimeout) {
+                    clearTimeout(finalWatchdogTimeout);
+                    finalWatchdogTimeout = undefined;
+                }
+            };
+
             if (options.token) {
                 cancellationDisposable = options.token.onCancellationRequested(
                     () => {
@@ -214,6 +242,24 @@ export class RipgrepSearchService {
                                         `[Ripgrep] SIGKILL failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
                                     );
                                 }
+
+                                // Final watchdog: if process STILL doesn't exit after SIGKILL,
+                                // force-reject to prevent indefinite hangs. This handles rare
+                                // edge cases where the 'close' event never fires.
+                                finalWatchdogTimeout = setTimeout(() => {
+                                    if (rg.exitCode === null && !settled) {
+                                        Log.error(
+                                            '[Ripgrep] Process unresponsive after SIGKILL, forcing rejection'
+                                        );
+                                        settled = true;
+                                        clearAllTimersAndDisposables();
+                                        reject(
+                                            new Error(
+                                                'ripgrep process did not respond to termination signals'
+                                            )
+                                        );
+                                    }
+                                }, SIGKILL_FINAL_WATCHDOG_MS);
                             }
                         }, SIGTERM_GRACE_PERIOD_MS);
                     }
@@ -246,10 +292,11 @@ export class RipgrepSearchService {
             });
 
             rg.on('close', (code: number | null) => {
-                cancellationDisposable?.dispose();
-                if (sigkillTimeout) {
-                    clearTimeout(sigkillTimeout);
+                if (settled) {
+                    return; // Already settled by final watchdog
                 }
+                settled = true;
+                clearAllTimersAndDisposables();
 
                 // Process remaining buffer
                 if (buffer.trim()) {
@@ -283,10 +330,11 @@ export class RipgrepSearchService {
             });
 
             rg.on('error', (err: Error) => {
-                cancellationDisposable?.dispose();
-                if (sigkillTimeout) {
-                    clearTimeout(sigkillTimeout);
+                if (settled) {
+                    return; // Already settled by final watchdog or close handler
                 }
+                settled = true;
+                clearAllTimersAndDisposables();
                 reject(new Error(`Failed to spawn ripgrep: ${err.message}`));
             });
         });

@@ -195,6 +195,11 @@ Three timeout strategies based on operation type:
 - `ModelRequestHandler` actively cancels stream consumption on timeout using a linked `CancellationTokenSource`
 - Prevents resource leaks where streams continued running in background after timeout
 
+**Final Watchdog for Child Processes**:
+
+- `RipgrepSearchService` uses a final watchdog (5s after SIGKILL) to force-reject the promise if a spawned process ignores termination signals
+- Pattern: Track settlement state with a `settled` flag, set a final timeout after the kill escalation, clear on normal settlement
+
 ### New Services
 
 1. Implement `vscode.Disposable`

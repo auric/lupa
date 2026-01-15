@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Analysis Reliability
 
 - **No more analysis hangs**: All operations now have appropriate timeouts. Symbol lookups (5s per file) and pattern searches (60s) ensure analysis always makes progress instead of getting stuck.
+- **Search processes cannot stall analysis**: Added safety net to ensure pattern searches always complete, even if the underlying search process becomes unresponsive to termination signals.
 - **Partial results on timeout**: When file discovery times out, you now get the files found so far instead of losing all progress.
 - **Better timeout messages**: When a file search times out, you get a clear explanation instead of a confusing "No files found" message.
 

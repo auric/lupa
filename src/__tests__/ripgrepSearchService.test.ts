@@ -186,5 +186,97 @@ describe('RipgrepSearchService', () => {
 
             clearTimeoutSpy.mockRestore();
         });
+
+        it('should force-reject if process ignores SIGKILL (final watchdog)', async () => {
+            const { RipgrepSearchService } =
+                await import('../services/ripgrepSearchService');
+
+            const service = new RipgrepSearchService();
+
+            let cancellationCallback: (() => void) | undefined;
+            const mockToken = {
+                isCancellationRequested: false,
+                onCancellationRequested: vi.fn((callback) => {
+                    cancellationCallback = callback;
+                    return { dispose: vi.fn() };
+                }),
+            };
+
+            const searchPromise = service.search({
+                pattern: 'test',
+                cwd: '/test',
+                multiline: false,
+                token: mockToken as vscode.CancellationToken,
+            });
+
+            // Suppress unhandled rejection for cleanup
+            searchPromise.catch(() => {});
+
+            // Trigger cancellation
+            mockToken.isCancellationRequested = true;
+            cancellationCallback!();
+
+            // Verify SIGTERM was called
+            expect(mockProcess.killCalls).toContain('SIGTERM');
+
+            // Advance past SIGTERM grace period (500ms) - SIGKILL is sent
+            await vi.advanceTimersByTimeAsync(500);
+            expect(mockProcess.killCalls).toContain('SIGKILL');
+
+            // Process ignores SIGKILL - exitCode stays null, no 'close' event
+            // Advance past final watchdog (5000ms)
+            await vi.advanceTimersByTimeAsync(5000);
+
+            // Search should reject with termination error
+            await expect(searchPromise).rejects.toThrow(
+                'ripgrep process did not respond to termination signals'
+            );
+        });
+
+        it('should not trigger final watchdog if process closes after SIGKILL', async () => {
+            const { RipgrepSearchService } =
+                await import('../services/ripgrepSearchService');
+
+            const service = new RipgrepSearchService();
+
+            let cancellationCallback: (() => void) | undefined;
+            const mockToken = {
+                isCancellationRequested: false,
+                onCancellationRequested: vi.fn((callback) => {
+                    cancellationCallback = callback;
+                    return { dispose: vi.fn() };
+                }),
+            };
+
+            const searchPromise = service.search({
+                pattern: 'test',
+                cwd: '/test',
+                multiline: false,
+                token: mockToken as vscode.CancellationToken,
+            });
+
+            // Trigger cancellation
+            mockToken.isCancellationRequested = true;
+            cancellationCallback!();
+
+            // Advance past SIGTERM grace period - SIGKILL is sent
+            await vi.advanceTimersByTimeAsync(500);
+            expect(mockProcess.killCalls).toContain('SIGKILL');
+
+            // Process closes after SIGKILL but before final watchdog
+            await vi.advanceTimersByTimeAsync(1000);
+            mockProcess.simulateClose(null);
+
+            // Should reject with CancellationError, not termination error
+            await expect(searchPromise).rejects.toThrow();
+            // Verify it's not the termination error
+            try {
+                await searchPromise;
+            } catch (err) {
+                expect((err as Error).message).not.toContain(
+                    'did not respond to termination'
+                );
+            }
+        });
     });
 });
