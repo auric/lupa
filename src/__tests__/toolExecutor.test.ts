@@ -658,4 +658,55 @@ describe('ToolExecutor', () => {
             expect(result.error).toContain('more specific query');
         });
     });
+
+    describe('Cancellation Precedence', () => {
+        it('should throw CancellationError even when rate limit is exceeded', async () => {
+            // Create an executor with a low limit and a pre-cancelled token
+            const mockCancelledContext = {
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: () => ({ dispose: () => {} }),
+                },
+            };
+
+            const limitedExecutor = new ToolExecutor(
+                toolRegistry,
+                createMockSettings(1), // Very low limit
+                mockCancelledContext as any
+            );
+
+            // Make calls that would exceed the rate limit
+            // First call should throw CancellationError, NOT increment count and return rate-limit error
+            await expect(
+                limitedExecutor.executeTool('success_tool', {
+                    message: 'test1',
+                })
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Call count should NOT have been incremented (cancellation checked before count)
+            expect(limitedExecutor.getToolCallCount()).toBe(0);
+        });
+
+        it('should prioritize cancellation over rate limit when both would apply', async () => {
+            // Create an executor with limit already exceeded AND cancelled token
+            const mockCancelledContext = {
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: () => ({ dispose: () => {} }),
+                },
+            };
+
+            const limitedExecutor = new ToolExecutor(
+                toolRegistry,
+                createMockSettings(0), // Zero limit - any call would hit rate limit
+                mockCancelledContext as any
+            );
+
+            // This would hit rate limit immediately if cancellation wasn't checked first
+            // But cancellation should take precedence and throw CancellationError
+            await expect(
+                limitedExecutor.executeTool('success_tool', { message: 'test' })
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+    });
 });

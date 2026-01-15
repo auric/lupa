@@ -221,6 +221,12 @@ export class SymbolExtractor {
             }
         }
 
+        // If any files timed out, results are incomplete - set truncated flag
+        // This centralizes "results incomplete" semantics and reduces duplication in callers
+        if (timedOutFiles > 0) {
+            truncated = true;
+        }
+
         return { results, truncated, timedOutFiles };
     }
 

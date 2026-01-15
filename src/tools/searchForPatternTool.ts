@@ -170,13 +170,12 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
                 token: linkedTokenSource.token,
             });
 
-            // Suppress late rejections from searchPromise after timeout wins.
-            // When timeout fires, we cancel the token which kills ripgrep,
-            // causing searchPromise to reject with CancellationError. Without
-            // this catch, that rejection would be unhandled.
-            searchPromise.catch(() => {
-                // Intentionally empty - rejection handled by timeout path
-            });
+            // Suppress late CancellationError rejections from searchPromise after timeout wins.
+            // When timeout fires, we cancel the linked token which kills the ripgrep process,
+            // causing searchPromise to reject with CancellationError. The TimeoutError is
+            // handled by Promise.race() below; this catch prevents the CancellationError
+            // from becoming an unhandled rejection.
+            searchPromise.catch(() => {});
 
             const timeoutPromise = new Promise<never>((_, reject) => {
                 timeoutId = setTimeout(() => {

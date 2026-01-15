@@ -88,6 +88,15 @@ export class ToolExecutor {
     async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
         const startTime = Date.now();
 
+        // Defensive cancellation check FIRST - before any other logic.
+        // This ensures cancellation takes precedence over rate limiting,
+        // preventing the case where a cancelled analysis continues because
+        // rate-limit error masked the cancellation.
+        if (this.executionContext?.cancellationToken?.isCancellationRequested) {
+            Log.debug(`Tool '${name}' skipped - analysis was cancelled`);
+            throw new vscode.CancellationError();
+        }
+
         // Count BEFORE validation intentionally - rate limit protects against attempts,
         // not just successful executions. A model making many invalid calls is broken
         // and should be stopped. Like password lockout, we count all attempts.
@@ -107,13 +116,6 @@ export class ToolExecutor {
                     this.toolCallCount
                 ),
             };
-        }
-
-        // Defensive cancellation check - tools should check themselves, but this
-        // prevents starting new work if cancellation was requested between calls
-        if (this.executionContext?.cancellationToken?.isCancellationRequested) {
-            Log.debug(`Tool '${name}' skipped - analysis was cancelled`);
-            throw new vscode.CancellationError();
         }
 
         try {
