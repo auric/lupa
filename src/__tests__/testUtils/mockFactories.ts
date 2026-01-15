@@ -329,11 +329,11 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
  * Creates a mock fdir instance for file discovery tests.
  * Returns an object that mimics fdir's fluent API with crawl() returning a separate result object.
  */
-export function createMockFdirInstance(syncReturnValue: string[] = []) {
+export function createMockFdirInstance(returnValue: string[] = []) {
     // The crawl result has withPromise/sync methods
     const crawlResult = {
-        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
-        sync: vi.fn().mockReturnValue(syncReturnValue),
+        withPromise: vi.fn().mockResolvedValue(returnValue),
+        sync: vi.fn().mockReturnValue(returnValue),
     };
     const instance = {
         withGlobFunction: vi.fn().mockReturnThis(),
