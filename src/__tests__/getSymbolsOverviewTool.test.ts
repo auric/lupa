@@ -337,20 +337,19 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
         });
 
         it('should propagate path not found error to ToolExecutor', async () => {
-            // With centralized error handling, path not found errors bubble up to ToolExecutor
-            vi.mocked(vscode.workspace.fs.stat).mockRejectedValue(
-                new Error('File not found')
-            );
+            // Path not found returns toolError (consistent with other tools)
+            mockSymbolExtractor.getPathStat.mockResolvedValue(null);
 
-            await expect(
-                getSymbolsOverviewTool.execute({
-                    path: 'nonexistent/path',
-                })
-            ).rejects.toThrow("Path 'nonexistent/path' not found");
+            const result = await getSymbolsOverviewTool.execute({
+                path: 'nonexistent/path',
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe("Path 'nonexistent/path' not found");
         });
 
-        it('should propagate git repository not found to ToolExecutor', async () => {
-            // With centralized error handling, git repository errors bubble up
+        it('should return toolError for git repository not found', async () => {
+            // Git repository not found returns toolError (consistent with other tools)
             const mockGitOpsWithoutRepo = {
                 getRepository: vi.fn().mockReturnValue(null),
             } as any;
@@ -368,11 +367,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 mockSymbolExtractorWithoutRepo
             );
 
-            await expect(
-                toolWithoutRepo.execute({
-                    path: 'src/test.ts',
-                })
-            ).rejects.toThrow('Git repository not found');
+            const result = await toolWithoutRepo.execute({
+                path: 'src/test.ts',
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('Git repository not found');
         });
 
         it('should filter code files correctly', async () => {

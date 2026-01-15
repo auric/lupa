@@ -118,12 +118,26 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
         const effectiveMaxSymbols = maxSymbols || 100;
 
+        // Check git repo and path existence before the expensive symbol extraction
+        const gitRootDirectory = this.symbolExtractor.getGitRootPath();
+        if (!gitRootDirectory) {
+            return toolError('Git repository not found');
+        }
+
+        const targetPath = path.join(gitRootDirectory, sanitizedPath);
+        const stat = await this.symbolExtractor.getPathStat(targetPath);
+        if (!stat) {
+            return toolError(`Path '${sanitizedPath}' not found`);
+        }
+
         // Get symbols overview using enhanced utilities (with cancellable timeout)
         const token = context?.cancellationToken;
         const { content, symbolCount, truncated } =
             await withCancellableTimeout(
                 this.getEnhancedSymbolsOverview(
                     sanitizedPath,
+                    gitRootDirectory,
+                    stat,
                     {
                         maxDepth: maxDepth || 0,
                         showHierarchy: showHierarchy ?? true,
@@ -152,10 +166,13 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
     }
 
     /**
-     * Get enhanced symbols overview for the specified path using new utilities
+     * Get enhanced symbols overview for the specified path using new utilities.
+     * Pre-conditions: gitRootDirectory and stat are already validated.
      */
     private async getEnhancedSymbolsOverview(
         relativePath: string,
+        gitRootDirectory: string,
+        stat: vscode.FileStat,
         options: {
             maxDepth: number;
             showHierarchy: boolean;
@@ -166,17 +183,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
         },
         token?: vscode.CancellationToken
     ): Promise<{ content: string; symbolCount: number; truncated: boolean }> {
-        const gitRootDirectory = this.symbolExtractor.getGitRootPath();
-        if (!gitRootDirectory) {
-            throw new Error('Git repository not found');
-        }
-
         const targetPath = path.join(gitRootDirectory, relativePath);
-        const stat = await this.symbolExtractor.getPathStat(targetPath);
-
-        if (!stat) {
-            throw new Error(`Path '${relativePath}' not found`);
-        }
 
         const allResults: string[] = [];
         let totalSymbolCount = 0;

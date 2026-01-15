@@ -195,6 +195,8 @@ export class ModelRequestHandler {
             options,
             linkedTokenSource.token
         );
+        // Suppress late rejections from stream consumption if timeout/cancellation wins the race.
+        // Must be attached before any early throws to prevent unhandled rejections.
         streamPromise.catch(() => {});
 
         try {
