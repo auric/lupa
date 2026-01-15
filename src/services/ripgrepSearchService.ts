@@ -192,7 +192,13 @@ export class RipgrepSearchService {
                         Log.debug(
                             '[Ripgrep] Search cancelled by user - killing process'
                         );
-                        rg.kill('SIGTERM');
+                        try {
+                            rg.kill('SIGTERM');
+                        } catch (err) {
+                            Log.debug(
+                                `[Ripgrep] SIGTERM failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
+                            );
+                        }
                         // Fallback to SIGKILL if SIGTERM doesn't terminate in time
                         // Note: rg.killed only indicates kill() was called, not that
                         // the process exited. Use exitCode to check actual termination.
@@ -201,7 +207,13 @@ export class RipgrepSearchService {
                                 Log.debug(
                                     '[Ripgrep] SIGTERM did not terminate process, sending SIGKILL'
                                 );
-                                rg.kill('SIGKILL');
+                                try {
+                                    rg.kill('SIGKILL');
+                                } catch (err) {
+                                    Log.debug(
+                                        `[Ripgrep] SIGKILL failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
+                                    );
+                                }
                             }
                         }, SIGTERM_GRACE_PERIOD_MS);
                     }

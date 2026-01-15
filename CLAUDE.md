@@ -163,6 +163,38 @@ Most tools should let errors propagate to ToolExecutor. Don't wrap your execute 
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
 - **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
 
+### Timeout Patterns
+
+Three timeout strategies based on operation type:
+
+| Pattern                  | Use When                                        | Default            | Example                                 |
+| ------------------------ | ----------------------------------------------- | ------------------ | --------------------------------------- |
+| **Graceful Degradation** | Exploratory; LLM can work with partial data     | 15s                | `FileDiscoverer.discoverFiles()`        |
+| **Per-Item Tracking**    | Processing many items; some failures acceptable | 5s/file, 60s total | `SymbolExtractor.getDirectorySymbols()` |
+| **Hard Timeout**         | Must complete or fail; no partial results       | Operation-specific | LSP operations, single file reads       |
+
+**Graceful Degradation**:
+
+- Return partial results with `truncated: true` on timeout
+- Use `AbortController`, check signal state after operation completes
+- fdir resolves with partial results on abort—never throws
+
+**Per-Item Tracking**:
+
+- Timeout on single item, increment counter, continue loop
+- Use try-catch with `isTimeoutError()` check to skip failed items
+- Report count of skipped items in result
+
+**Hard Timeout**:
+
+- Throw `TimeoutError` via `withCancellableTimeout()`
+- Let ToolExecutor handle the error (converts to helpful message for LLM)
+
+**Stream Cancellation**:
+
+- `ModelRequestHandler` actively cancels stream consumption on timeout using a linked `CancellationTokenSource`
+- Prevents resource leaks where streams continued running in background after timeout
+
 ### New Services
 
 1. Implement `vscode.Disposable`

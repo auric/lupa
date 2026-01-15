@@ -6,6 +6,7 @@ import type {
     ToolCallMessage,
 } from '../types/modelTypes';
 import { TimeoutError } from '../types/errorTypes';
+import { Log } from '../services/loggingService';
 
 /**
  * Static utility class for handling language model requests.
@@ -160,6 +161,7 @@ export class ModelRequestHandler {
      * - Message conversion to VS Code format
      * - Request execution with timeout
      * - Response stream parsing for text and tool calls
+     * - Active stream cancellation on timeout (prevents resource leaks)
      *
      * @param model - The language model to send the request to
      * @param request - The request containing messages and optional tools
@@ -179,18 +181,52 @@ export class ModelRequestHandler {
             tools: request.tools || [],
         };
 
-        // Wrap the ENTIRE operation (request + stream consumption) with timeout.
-        // This ensures stream hangs on poor network are cancelled within the timeout.
-        return ModelRequestHandler.withTimeout(
-            ModelRequestHandler.sendAndConsumeStream(
-                model,
-                messages,
-                options,
-                token
-            ),
-            timeoutMs,
-            token
+        // Create a linked CancellationTokenSource that cancels when:
+        // 1. User cancellation token fires (user action)
+        // 2. Timeout expires (we cancel it to stop stream consumption)
+        // This ensures the stream consumer loop exits on timeout, preventing resource leaks.
+        const linkedTokenSource = new vscode.CancellationTokenSource();
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let userCancellationDisposable: vscode.Disposable | undefined;
+
+        const streamPromise = ModelRequestHandler.sendAndConsumeStream(
+            model,
+            messages,
+            options,
+            linkedTokenSource.token
         );
+        streamPromise.catch(() => {});
+
+        try {
+            userCancellationDisposable = token.onCancellationRequested(() => {
+                linkedTokenSource.cancel();
+            });
+
+            if (token.isCancellationRequested) {
+                linkedTokenSource.cancel();
+                throw new vscode.CancellationError();
+            }
+
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    Log.warn(
+                        `[Timeout] LLM request abandoned after ${timeoutMs}ms - cancelling stream consumption`
+                    );
+                    linkedTokenSource.cancel();
+                    reject(TimeoutError.create('LLM request', timeoutMs));
+                }, timeoutMs);
+            });
+
+            // Race the stream consumption against timeout
+            // When timeout wins, it also cancels the linked token to stop the stream
+            return await Promise.race([streamPromise, timeoutPromise]);
+        } finally {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+            userCancellationDisposable?.dispose();
+            linkedTokenSource.dispose();
+        }
     }
 
     /**
