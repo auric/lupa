@@ -143,6 +143,16 @@ Requires file_path where the symbol is defined as starting point.`;
             context?.cancellationToken
         );
 
+        // VS Code's reference provider may return undefined when cancelled internally.
+        // Check cancellation token to properly propagate CancellationError instead of
+        // returning "No usages found" which would hide the cancellation from callers.
+        if (
+            references === undefined &&
+            context?.cancellationToken?.isCancellationRequested
+        ) {
+            throw new vscode.CancellationError();
+        }
+
         if (!references || references.length === 0) {
             return toolError(
                 `No usages found for symbol '${sanitizedSymbolName}' in file '${sanitizedFilePath}'`

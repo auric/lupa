@@ -485,7 +485,10 @@ describe('FindUsagesTool', () => {
         });
 
         it('should handle reference provider returning undefined (cancellation scenario)', async () => {
-            // VS Code APIs return undefined when cancelled, not throw
+            // When reference provider returns undefined AND token is cancelled,
+            // should throw CancellationError to properly propagate cancellation
+            const tokenSource = createMockCancellationTokenSource();
+
             (vscode.workspace.openTextDocument as any).mockResolvedValue({
                 getText: () => 'class MyClass {}',
                 uri: { toString: () => 'file:///test.ts' },
@@ -506,7 +509,49 @@ describe('FindUsagesTool', () => {
                         ]);
                     }
                     if (command === 'vscode.executeReferenceProvider') {
-                        // VS Code returns undefined or empty when cancelled
+                        // Simulate cancellation: provider returns undefined and token is cancelled
+                        tokenSource.cancel();
+                        return Promise.resolve(undefined);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            // Should throw CancellationError, not return "No usages found"
+            await expect(
+                findUsagesTool.execute(
+                    {
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    },
+                    { cancellationToken: tokenSource.token }
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should return no usages error when reference provider returns undefined without cancellation', async () => {
+            // When reference provider returns undefined but token is NOT cancelled,
+            // this is a legitimate "no usages found" case
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
+            });
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () => 'file:///test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        // Provider returns undefined without cancellation
                         return Promise.resolve(undefined);
                     }
                     return Promise.resolve([]);
@@ -518,7 +563,7 @@ describe('FindUsagesTool', () => {
                 file_path: 'src/test.ts',
             });
 
-            // Tool returns error (no usages found) rather than throwing
+            // Tool returns error (no usages found) - this is correct behavior
             expect(result.success).toBe(false);
             expect(result.error).toContain('No usages found');
         });

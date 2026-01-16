@@ -214,6 +214,17 @@ export class RipgrepSearchService {
                 }
             };
 
+            /**
+             * Removes all process event listeners. Called from final watchdog
+             * to prevent resource leaks when force-rejecting.
+             */
+            const removeAllProcessListeners = () => {
+                rg.stdout?.removeAllListeners('data');
+                rg.stderr?.removeAllListeners('data');
+                rg.removeAllListeners('close');
+                rg.removeAllListeners('error');
+            };
+
             if (options.token) {
                 cancellationDisposable = options.token.onCancellationRequested(
                     () => {
@@ -253,6 +264,9 @@ export class RipgrepSearchService {
                                         );
                                         settled = true;
                                         clearAllTimersAndDisposables();
+                                        // Remove process listeners to prevent resource leaks
+                                        // since the process may still be alive
+                                        removeAllProcessListeners();
                                         reject(
                                             new Error(
                                                 'ripgrep process did not respond to termination signals'
