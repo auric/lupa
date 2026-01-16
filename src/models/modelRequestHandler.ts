@@ -189,25 +189,28 @@ export class ModelRequestHandler {
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let userCancellationDisposable: vscode.Disposable | undefined;
 
-        const streamPromise = ModelRequestHandler.sendAndConsumeStream(
-            model,
-            messages,
-            options,
-            linkedTokenSource.token
-        );
-        // Suppress late rejections from stream consumption if timeout/cancellation wins the race.
-        // Must be attached before any early throws to prevent unhandled rejections.
-        streamPromise.catch(() => {});
-
         try {
-            userCancellationDisposable = token.onCancellationRequested(() => {
-                linkedTokenSource.cancel();
-            });
-
+            // Pre-check cancellation FIRST before any async work
             if (token.isCancellationRequested) {
                 linkedTokenSource.cancel();
                 throw new vscode.CancellationError();
             }
+
+            // Register user cancellation listener BEFORE starting stream
+            // to avoid race where cancellation fires during stream creation
+            userCancellationDisposable = token.onCancellationRequested(() => {
+                linkedTokenSource.cancel();
+            });
+
+            const streamPromise = ModelRequestHandler.sendAndConsumeStream(
+                model,
+                messages,
+                options,
+                linkedTokenSource.token
+            );
+            // Suppress late rejections from stream consumption if timeout/cancellation wins the race.
+            // Must be attached before any early throws to prevent unhandled rejections.
+            streamPromise.catch(() => {});
 
             const timeoutPromise = new Promise<never>((_, reject) => {
                 timeoutId = setTimeout(() => {

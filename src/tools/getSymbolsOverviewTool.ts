@@ -7,11 +7,15 @@ import { PathSanitizer } from '../utils/pathSanitizer';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { SymbolFormatter } from '../utils/symbolFormatter';
 import { OutputFormatter } from '../utils/outputFormatter';
-import { withCancellableTimeout } from '../utils/asyncUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
-const LSP_OPERATION_TIMEOUT = 30_000; // 30 seconds for language server operations
+/**
+ * Timeout for directory symbol extraction operations.
+ * This is passed to getDirectorySymbols which handles graceful timeout internally,
+ * returning partial results with truncated=true instead of throwing.
+ */
+const SYMBOL_EXTRACTION_TIMEOUT = 30_000; // 30 seconds
 
 /**
  * Enhanced tool that provides a configurable overview of symbols in a file or directory.
@@ -105,7 +109,6 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             show_hierarchy: showHierarchy,
         } = validationResult.data;
 
-        // Convert string kinds to numbers
         const includeKinds = includeKindsStrings
             ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
             .filter((k) => k !== undefined) as number[] | undefined;
@@ -113,12 +116,10 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             ?.map((kind) => SymbolFormatter.convertKindStringToNumber(kind))
             .filter((k) => k !== undefined) as number[] | undefined;
 
-        // Sanitize the relative path to prevent directory traversal attacks
         const sanitizedPath = PathSanitizer.sanitizePath(relativePath);
 
         const effectiveMaxSymbols = maxSymbols || 100;
 
-        // Check git repo and path existence before the expensive symbol extraction
         const gitRootDirectory = this.symbolExtractor.getGitRootPath();
         if (!gitRootDirectory) {
             return toolError('Git repository not found');
@@ -130,26 +131,25 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             return toolError(`Path '${sanitizedPath}' not found`);
         }
 
-        // Get symbols overview using enhanced utilities (with cancellable timeout)
         const token = context?.cancellationToken;
+
+        // No outer withCancellableTimeout wrapper needed here because:
+        // - For directories: getDirectorySymbols has internal timeout with graceful partial results
+        // - For single files: getFileSymbols has per-file timeout (5s)
+        // - User can always cancel via Stop button for edge cases
         const { content, symbolCount, truncated } =
-            await withCancellableTimeout(
-                this.getEnhancedSymbolsOverview(
-                    sanitizedPath,
-                    gitRootDirectory,
-                    stat,
-                    {
-                        maxDepth: maxDepth || 0,
-                        showHierarchy: showHierarchy ?? true,
-                        includeBody: includeBody || false,
-                        maxSymbols: effectiveMaxSymbols,
-                        includeKinds,
-                        excludeKinds,
-                    },
-                    token
-                ),
-                LSP_OPERATION_TIMEOUT,
-                `Symbol overview for ${sanitizedPath}`,
+            await this.getEnhancedSymbolsOverview(
+                sanitizedPath,
+                gitRootDirectory,
+                stat,
+                {
+                    maxDepth: maxDepth || 0,
+                    showHierarchy: showHierarchy ?? true,
+                    includeBody: includeBody || false,
+                    maxSymbols: effectiveMaxSymbols,
+                    includeKinds,
+                    excludeKinds,
+                },
                 token
             );
 
@@ -190,7 +190,6 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
         let anyTruncated = false;
 
         if (stat.type === vscode.FileType.File) {
-            // Single file - get its symbols with enhanced formatting
             const fileUri = vscode.Uri.file(targetPath);
             const { symbols, document } =
                 await this.symbolExtractor.extractSymbolsWithContext(
@@ -223,7 +222,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             }
         } else if (stat.type === vscode.FileType.Directory) {
             // Directory - get symbols from all files using SymbolExtractor
-            // Uses LSP_OPERATION_TIMEOUT since outer withCancellableTimeout already wraps this
+            // getDirectorySymbols handles timeout internally with graceful partial results
             const {
                 results: directoryResults,
                 truncated: dirTruncated,
@@ -231,14 +230,13 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             } = await this.symbolExtractor.getDirectorySymbols(
                 targetPath,
                 relativePath,
-                { timeoutMs: LSP_OPERATION_TIMEOUT, token }
+                { timeoutMs: SYMBOL_EXTRACTION_TIMEOUT, token }
             );
 
             if (dirTruncated || timedOutFiles > 0) {
                 anyTruncated = true;
             }
 
-            // Sort results by file path for consistent output
             const sortedResults = directoryResults.sort((a, b) =>
                 a.filePath.localeCompare(b.filePath)
             );
@@ -252,7 +250,6 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
                     break;
                 }
 
-                // Get document for body extraction if needed
                 const fullPath = path.join(gitRootDirectory, filePath);
                 const fileUri = vscode.Uri.file(fullPath);
                 const document = options.includeBody

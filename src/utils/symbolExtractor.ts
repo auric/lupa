@@ -8,6 +8,7 @@ import {
     withCancellableTimeout,
     isTimeoutError,
     isCancellationError,
+    rethrowIfCancellationOrTimeout,
 } from './asyncUtils';
 import { Log } from '../services/loggingService';
 
@@ -293,7 +294,6 @@ export class SymbolExtractor {
                     continue;
                 }
 
-                // Build full path relative to git root for gitignore checking
                 const fullPath =
                     relativePath === '.'
                         ? name
@@ -307,7 +307,6 @@ export class SymbolExtractor {
                             continue;
                         }
                     } catch (error) {
-                        // Log gitignore check failures for debugging but continue processing
                         const message =
                             error instanceof Error
                                 ? error.message
@@ -350,6 +349,8 @@ export class SymbolExtractor {
                 }
             }
         } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
+
             const message =
                 error instanceof Error ? error.message : String(error);
             Log.debug(`Cannot read directory ${targetPath}: ${message}`);

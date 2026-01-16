@@ -1093,7 +1093,7 @@ describe('ChatParticipantService', () => {
                     isInitialized: vi.fn().mockReturnValue(true),
                     compareBranches: vi.fn().mockImplementation(async () => {
                         mockToken.isCancellationRequested = true;
-                        throw new Error('Operation cancelled');
+                        throw new vscode.CancellationError();
                     }),
                 };
                 vi.mocked(GitService.getInstance).mockReturnValue(
@@ -1137,7 +1137,7 @@ describe('ChatParticipantService', () => {
                         .fn()
                         .mockImplementation(async () => {
                             mockToken.isCancellationRequested = true;
-                            throw new Error('Operation cancelled');
+                            throw new vscode.CancellationError();
                         }),
                 };
                 vi.mocked(GitService.getInstance).mockReturnValue(
@@ -1577,7 +1577,7 @@ describe('ChatParticipantService', () => {
             ) {
                 this.run = vi.fn().mockImplementation(async () => {
                     mockToken.isCancellationRequested = true;
-                    throw new Error('Operation cancelled');
+                    throw new vscode.CancellationError();
                 });
                 this.reset = vi.fn();
             });

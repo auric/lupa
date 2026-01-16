@@ -153,7 +153,7 @@ Most tools should let errors propagate to ToolExecutor. Don't wrap your execute 
 
 - `rethrowIfCancellationOrTimeout(error)` - Use in catch blocks when you need to handle other errors but let cancel/timeout propagate
 - `isTimeoutError(error)` - Check explicitly when you want to return partial results on timeout
-- `isCancellationError(error)` - Rarely needed; just let it propagate
+- `isCancellationError(error)` - Use in catch blocks to detect cancellation; **prefer this over checking `token.isCancellationRequested`** since the token state may not be set yet when the error is thrown
 
 **Other patterns**:
 
