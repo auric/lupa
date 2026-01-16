@@ -159,6 +159,16 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         }
 
         if (searchResult.symbols.length === 0) {
+            if (searchResult.timedOut) {
+                return toolError(
+                    `Symbol '${namePath}' search timed out with no results. Try narrowing search scope with relative_path.`
+                );
+            }
+            if (searchResult.truncated) {
+                return toolError(
+                    `Symbol '${namePath}' not found in searched files (search was limited due to file count). Try narrowing search scope with relative_path.`
+                );
+            }
             return toolError(`Symbol '${namePath}' not found`);
         }
 

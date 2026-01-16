@@ -117,10 +117,6 @@ export class ModelRequestHandler {
         // Must be attached before any early throw to prevent unhandled rejections.
         thenablePromise.catch(() => {});
 
-        if (token.isCancellationRequested) {
-            throw new vscode.CancellationError();
-        }
-
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let cancellationDisposable: vscode.Disposable | undefined;
 
@@ -130,6 +126,8 @@ export class ModelRequestHandler {
             }, timeoutMs);
         });
 
+        // Register cancellation listener BEFORE pre-check to avoid race window
+        // where cancellation fires between check and listener registration.
         const cancellationPromise = new Promise<never>((_, reject) => {
             cancellationDisposable = token.onCancellationRequested(() => {
                 reject(new vscode.CancellationError());
@@ -137,6 +135,13 @@ export class ModelRequestHandler {
         });
         // Prevent unhandled rejection if token fires after race settles
         cancellationPromise.catch(() => {});
+
+        // Check after listener is attached to avoid missing synchronous cancellation
+        if (token.isCancellationRequested) {
+            cancellationDisposable?.dispose();
+            clearTimeout(timeoutId);
+            throw new vscode.CancellationError();
+        }
 
         try {
             return await Promise.race([

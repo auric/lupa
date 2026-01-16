@@ -154,6 +154,11 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             );
 
         if (symbolCount === 0) {
+            if (truncated) {
+                return toolError(
+                    `No symbols found in '${sanitizedPath}' (search was limited due to timeout or file count). Try a more specific path.`
+                );
+            }
             return toolError(`No symbols found in '${sanitizedPath}'`);
         }
 

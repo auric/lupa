@@ -279,4 +279,28 @@ describe('RipgrepSearchService', () => {
             }
         });
     });
+
+    describe('pre-cancelled token', () => {
+        it('should throw CancellationError without spawning when token is already cancelled', async () => {
+            const { RipgrepSearchService } =
+                await import('../services/ripgrepSearchService');
+
+            const service = new RipgrepSearchService();
+
+            // Create a pre-cancelled token
+            const tokenSource = new vscode.CancellationTokenSource();
+            tokenSource.cancel();
+
+            await expect(
+                service.search({
+                    pattern: 'test',
+                    cwd: '/workspace',
+                    token: tokenSource.token,
+                })
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // spawn should NOT have been called since token was already cancelled
+            expect(mockSpawn).not.toHaveBeenCalled();
+        });
+    });
 });
