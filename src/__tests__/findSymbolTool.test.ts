@@ -640,6 +640,52 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 '[Note: Results may be incomplete due to timeout'
             );
         });
+
+        it('should propagate CancellationError during workspace symbol processing', async () => {
+            // Setup: Make workspace symbol search return results
+            const mockWorkspaceSymbol = {
+                name: 'MyClass',
+                kind: vscode.SymbolKind.Class,
+                containerName: '',
+                location: {
+                    uri: {
+                        toString: () => 'file:///mock/repo/root/src/test.ts',
+                        fsPath: '/mock/repo/root/src/test.ts',
+                    },
+                    range: {
+                        start: { line: 0, character: 0 },
+                        end: { line: 0, character: 10 },
+                    },
+                },
+            };
+
+            mockSymbolExtractor.getGitRootPath.mockReturnValue(
+                '/mock/repo/root'
+            );
+            mockSymbolExtractor.getGitRelativePathFromUri.mockReturnValue(
+                'src/test.ts'
+            );
+
+            // Path A is used when no relative_path specified
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeWorkspaceSymbolProvider') {
+                        return Promise.resolve([mockWorkspaceSymbol]);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            // Simulate CancellationError when opening document
+            vi.mocked(vscode.workspace.openTextDocument).mockRejectedValue(
+                new vscode.CancellationError()
+            );
+
+            // Should propagate CancellationError, not swallow it
+            await expect(
+                findSymbolTool.execute({ name_path: 'MyClass' })
+            ).rejects.toThrow(vscode.CancellationError);
+        });
     });
 
     describe('Type Discrimination Corner Cases', () => {

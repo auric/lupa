@@ -411,6 +411,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     symbol.location.uri
                 );
             } catch (error) {
+                rethrowIfCancellationOrTimeout(error);
                 Log.debug(
                     `Failed to open document for symbol ${symbol.name}:`,
                     error
@@ -424,6 +425,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 filePath: this.getGitRelativePath(symbol.location.uri),
             };
         } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
             Log.debug(
                 `Error processing workspace symbol ${symbol.name}:`,
                 error
