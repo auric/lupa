@@ -4,6 +4,7 @@ import { Log } from './loggingService';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import type { ToolResult } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /** Full input type derived from tool's Zod schema - no artificial limitations. */
 type GetSymbolsOverviewInput = z.infer<GetSymbolsOverviewTool['schema']>;
@@ -80,6 +81,10 @@ export class LanguageModelToolProvider implements vscode.Disposable {
                 ]);
             }
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
             const message =
                 error instanceof Error ? error.message : String(error);
             Log.error(

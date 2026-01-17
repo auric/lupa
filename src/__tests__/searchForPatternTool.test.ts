@@ -7,7 +7,10 @@ import {
     RipgrepFileResult,
 } from '../services/ripgrepSearchService';
 import { TimeoutError } from '../types/errorTypes';
-import { createMockExecutionContext } from './testUtils/mockFactories';
+import {
+    createMockExecutionContext,
+    createCancelledExecutionContext,
+} from './testUtils/mockFactories';
 
 // Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');
@@ -629,20 +632,10 @@ describe('SearchForPatternTool', () => {
         });
 
         it('should throw CancellationError when already cancelled', async () => {
-            const context = {
-                cancellationToken: {
-                    isCancellationRequested: true, // Pre-cancelled
-                    onCancellationRequested: vi.fn().mockReturnValue({
-                        dispose: vi.fn(),
-                    }),
-                },
-            };
+            const context = createCancelledExecutionContext();
 
             await expect(
-                searchForPatternTool.execute(
-                    { pattern: 'test' },
-                    context as any
-                )
+                searchForPatternTool.execute({ pattern: 'test' }, context)
             ).rejects.toThrow(vscode.CancellationError);
 
             // Ripgrep should never be called

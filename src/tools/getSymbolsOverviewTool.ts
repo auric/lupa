@@ -186,7 +186,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             includeKinds?: number[];
             excludeKinds?: number[];
         },
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<{ content: string; symbolCount: number; truncated: boolean }> {
         const targetPath = path.join(gitRootDirectory, relativePath);
 

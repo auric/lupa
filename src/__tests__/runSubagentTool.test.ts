@@ -12,6 +12,7 @@ import {
     createMockWorkspaceSettings,
     createMockExecutionContext,
 } from './testUtils/mockFactories';
+import { TimeoutError } from '../types/errorTypes';
 
 const createMockExecutor = (
     result: Partial<SubagentResult> = {}
@@ -26,14 +27,17 @@ const createMockExecutor = (
         }),
     }) as unknown as SubagentExecutor;
 
-const createExecutionContext = (
+/**
+ * Creates an ExecutionContext with subagent dependencies using the standard mock factories.
+ */
+const createSubagentExecutionContext = (
     executor: SubagentExecutor,
     sessionManager: SubagentSessionManager
-): ExecutionContext => ({
-    subagentExecutor: executor,
-    subagentSessionManager: sessionManager,
-    cancellationToken: new vscode.CancellationTokenSource().token,
-});
+): ExecutionContext =>
+    createMockExecutionContext({
+        subagentExecutor: executor,
+        subagentSessionManager: sessionManager,
+    });
 
 describe('RunSubagentTool', () => {
     let sessionManager: SubagentSessionManager;
@@ -70,7 +74,7 @@ describe('RunSubagentTool', () => {
         it('should reject tasks that are too short', async () => {
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -84,7 +88,7 @@ describe('RunSubagentTool', () => {
         it('should accept tasks of minimum length', async () => {
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -98,7 +102,7 @@ describe('RunSubagentTool', () => {
         it('should accept optional context parameter', async () => {
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -125,7 +129,7 @@ describe('RunSubagentTool', () => {
         it('should track spawned subagents', async () => {
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -143,7 +147,7 @@ describe('RunSubagentTool', () => {
         it('should pass subagent ID to executor', async () => {
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -166,7 +170,7 @@ describe('RunSubagentTool', () => {
             const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -196,7 +200,7 @@ describe('RunSubagentTool', () => {
                 toolCallsMade: 8,
             });
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -225,7 +229,7 @@ describe('RunSubagentTool', () => {
                 toolCallsMade: 3,
             });
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -283,7 +287,7 @@ describe('RunSubagentTool', () => {
                 execute: vi.fn().mockRejectedValue(new Error('Internal error')),
             } as unknown as SubagentExecutor;
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -307,7 +311,7 @@ describe('RunSubagentTool', () => {
                 toolCallsMade: 2,
             });
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -329,7 +333,7 @@ describe('RunSubagentTool', () => {
                     .mockRejectedValue(new vscode.CancellationError()),
             } as unknown as SubagentExecutor;
             const tool = new RunSubagentTool(workspaceSettings);
-            const context = createExecutionContext(
+            const context = createSubagentExecutionContext(
                 mockExecutor,
                 sessionManager
             );
@@ -342,6 +346,86 @@ describe('RunSubagentTool', () => {
                     context
                 )
             ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should handle TimeoutError from executor without crashing', async () => {
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockRejectedValue(TimeoutError.create('subagent', 60000)),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // TimeoutError should be converted to error result, not crash the subagent
+            expect(result.success).toBe(false);
+            // Error message contains the TimeoutError message
+            expect(result.error).toContain('Subagent failed');
+            expect(result.error).toContain('timed out');
+        });
+
+        it('should continue working after a tool inside subagent times out', async () => {
+            // Simulates the case where a tool INSIDE the subagent times out
+            // The subagent executor should handle this gracefully and return a result
+            const mockExecutor = createMockExecutor({
+                success: true,
+                response: 'Partial findings before timeout occurred',
+                toolCallsMade: 3,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Subagent should return whatever partial results it collected
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('Partial findings');
+        });
+
+        it('should not propagate pre-cancelled token as error if executor handles it', async () => {
+            // When context is pre-cancelled, the executor might return a cancelled result
+            // The tool wraps this in toolSuccess with formatted failure message
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'Analysis was cancelled',
+                toolCallsMade: 0,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Tool returns success=true with formatted failure message
+            // (so the parent LLM can interpret the cancellation gracefully)
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('Failed');
         });
     });
 });

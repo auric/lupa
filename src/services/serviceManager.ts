@@ -82,6 +82,8 @@ export class ServiceManager implements vscode.Disposable {
     private services: Partial<IServiceRegistry> = {};
     private initialized = false;
     private disposed = false;
+    /** Token source for utility ToolExecutor - disposed on shutdown */
+    private utilityTokenSource: vscode.CancellationTokenSource | undefined;
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -178,9 +180,10 @@ export class ServiceManager implements vscode.Disposable {
         // For actual analysis sessions, ToolCallingAnalysisProvider and ChatParticipantService
         // create per-analysis ToolExecutor instances with proper ExecutionContext to ensure
         // concurrent-safety and per-session state isolation.
-        const utilityTokenSource = new vscode.CancellationTokenSource();
+        // The token is long-lived and non-cancellable - disposed on extension shutdown.
+        this.utilityTokenSource = new vscode.CancellationTokenSource();
         const utilityContext: ExecutionContext = {
-            cancellationToken: utilityTokenSource.token,
+            cancellationToken: this.utilityTokenSource.token,
         };
         this.services.toolExecutor = new ToolExecutor(
             this.services.toolRegistry,
@@ -325,6 +328,11 @@ export class ServiceManager implements vscode.Disposable {
     public dispose(): void {
         if (this.disposed) {
             return;
+        }
+
+        // Dispose utility token source first
+        if (this.utilityTokenSource) {
+            this.utilityTokenSource.dispose();
         }
 
         const servicesToDispose = [

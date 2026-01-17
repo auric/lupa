@@ -292,6 +292,10 @@ export function createMockSymbolInformation(options: {
  * Creates a mock CancellationTokenSource that properly tracks cancellation state.
  * The returned token supports listeners and manual cancellation for testing.
  * Vitest 4 requires function syntax for constructor mocks.
+ *
+ * Behavior matches VS Code's CancellationToken:
+ * - If already cancelled when listener subscribes, listener is invoked immediately
+ * - Listeners are cleared after firing to prevent double-calls
  */
 export function createMockCancellationTokenSource(): vscode.CancellationTokenSource {
     const listeners: Array<(e: any) => any> = [];
@@ -302,7 +306,12 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
             return isCancelled;
         },
         onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
-            listeners.push(listener);
+            // If already cancelled, invoke listener immediately (matches VS Code behavior)
+            if (isCancelled) {
+                queueMicrotask(() => listener(undefined));
+            } else {
+                listeners.push(listener);
+            }
             return {
                 dispose: vi.fn(function () {
                     const index = listeners.indexOf(listener);
@@ -317,8 +326,13 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
     return {
         token,
         cancel: vi.fn(function () {
+            if (isCancelled) {
+                return; // Prevent double-firing
+            }
             isCancelled = true;
-            [...listeners].forEach(function (listener) {
+            const toFire = [...listeners];
+            listeners.length = 0; // Clear listeners after firing
+            toFire.forEach(function (listener) {
                 listener(undefined);
             });
         }),

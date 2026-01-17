@@ -265,9 +265,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
      */
     private async findSymbolsInWorkspace(
         pathSegments: string[],
-        includeKinds?: number[],
-        excludeKinds?: number[],
-        token?: vscode.CancellationToken
+        includeKinds: number[] | undefined,
+        excludeKinds: number[] | undefined,
+        token: vscode.CancellationToken
     ): Promise<SymbolSearchResult> {
         let timedOut = false;
         try {
@@ -440,9 +440,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     private async findSymbolsInPath(
         pathSegments: string[],
         relativePath: string,
-        includeKinds?: number[],
-        excludeKinds?: number[],
-        token?: vscode.CancellationToken
+        includeKinds: number[] | undefined,
+        excludeKinds: number[] | undefined,
+        token: vscode.CancellationToken
     ): Promise<SymbolSearchResult> {
         const gitRootDirectory = this.symbolExtractor.getGitRootPath();
         if (!gitRootDirectory) {
@@ -579,9 +579,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         fileUri: vscode.Uri,
         pathSegments: string[],
         symbolName: string,
-        includeKinds?: number[],
-        excludeKinds?: number[],
-        token?: vscode.CancellationToken
+        includeKinds: number[] | undefined,
+        excludeKinds: number[] | undefined,
+        token: vscode.CancellationToken
     ): Promise<SymbolMatch[]> {
         try {
             // Quick text pre-check before expensive symbol analysis
@@ -734,7 +734,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         includeChildren: boolean,
         includeKinds: number[] | undefined,
         excludeKinds: number[] | undefined,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<string> {
         const formattedBlocks: string[] = [];
 
@@ -959,7 +959,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     private async fetchDocumentSymbolForRange(
         document: vscode.TextDocument,
         targetRange: vscode.Range,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<vscode.DocumentSymbol | undefined> {
         try {
             const documentSymbols = await withCancellableTimeout(

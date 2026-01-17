@@ -240,7 +240,7 @@ Requires file_path where the symbol is defined as starting point.`;
     private async findSymbolPosition(
         document: vscode.TextDocument,
         symbolName: string,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<vscode.Position | null> {
         const text = document.getText();
         const lines = text.split('\n');
