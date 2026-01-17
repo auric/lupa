@@ -5,6 +5,8 @@ import type {
     AnalysisProgressCallback,
 } from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
+import { isCancellationError } from '../utils/asyncUtils';
+import { CANCELLATION_MESSAGE } from '../config/constants';
 
 /**
  * AnalysisOrchestrator handles the core PR analysis workflow.
@@ -82,7 +84,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
             // Run the analysis with a progress notification
             await this.runAnalysisWithProgress(diffText, refName);
         } catch (error) {
-            if (error instanceof Error && error.message.includes('cancelled')) {
+            if (isCancellationError(error)) {
                 this.services.statusBar.showTemporaryMessage(
                     'Analysis cancelled',
                     3000,
@@ -145,6 +147,10 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                             cancellationTokenSource.token,
                             progressCallback
                         );
+
+                    if (result.analysis === CANCELLATION_MESSAGE) {
+                        throw new vscode.CancellationError();
+                    }
 
                     const analysis = result.analysis;
                     const toolCallsData: ToolCallsData | undefined =

@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
+import * as vscode from 'vscode';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import {
     RipgrepSearchService,
     RipgrepFileResult,
 } from '../services/ripgrepSearchService';
+import { TimeoutError } from '../types/errorTypes';
 
 // Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');
@@ -314,32 +316,30 @@ describe('SearchForPatternTool', () => {
     });
 
     describe('Error Handling', () => {
-        it('should handle ripgrep errors for invalid regex patterns', async () => {
+        it('should propagate ripgrep errors to ToolExecutor', async () => {
+            // With centralized error handling, ripgrep errors bubble up to ToolExecutor
             mockRipgrepService.search.mockRejectedValue(
                 new Error('ripgrep error: regex parse error')
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: '[invalid regex',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toBeDefined();
-            expect(result.error).toContain('Pattern search failed');
+            await expect(
+                searchForPatternTool.execute({
+                    pattern: '[invalid regex',
+                })
+            ).rejects.toThrow('ripgrep error: regex parse error');
         });
 
-        it('should handle ripgrep spawn errors', async () => {
+        it('should propagate ripgrep spawn errors to ToolExecutor', async () => {
+            // With centralized error handling, spawn errors bubble up to ToolExecutor
             mockRipgrepService.search.mockRejectedValue(
                 new Error('Failed to spawn ripgrep')
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'test',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toBeDefined();
-            expect(result.error).toContain('Pattern search failed');
+            await expect(
+                searchForPatternTool.execute({
+                    pattern: 'test',
+                })
+            ).rejects.toThrow('Failed to spawn ripgrep');
         });
 
         it('should handle git repository access errors', async () => {
@@ -497,6 +497,104 @@ describe('SearchForPatternTool', () => {
             expect(mockRipgrepService.search).toHaveBeenCalledWith(
                 expect.objectContaining({ searchPath: undefined })
             );
+        });
+    });
+
+    describe('Timeout and Cancellation', () => {
+        it('should use linked token that gets cancelled on timeout', async () => {
+            // Simulate a slow search that never resolves
+            mockRipgrepService.search.mockImplementation(
+                () =>
+                    new Promise((resolve) => {
+                        setTimeout(() => resolve([]), 100000);
+                    })
+            );
+
+            // Create a mock execution context
+            const context = {
+                cancellationToken: {
+                    isCancellationRequested: false,
+                    onCancellationRequested: vi.fn().mockReturnValue({
+                        dispose: vi.fn(),
+                    }),
+                },
+            };
+
+            // Replace the timeout constant for testing by running with short time
+            // The actual timeout is 60s but we can check the token was linked
+            void searchForPatternTool.execute(
+                { pattern: 'test' },
+                context as any
+            );
+
+            // Verify the linked token was set up with onCancellationRequested
+            expect(
+                context.cancellationToken.onCancellationRequested
+            ).toHaveBeenCalled();
+
+            // Cleanup - cancel to stop the hanging promise
+            mockRipgrepService.search.mockResolvedValue([]);
+        });
+
+        it('should pass linked token to ripgrep service', async () => {
+            mockRipgrepService.search.mockResolvedValue([
+                {
+                    filePath: 'test.ts',
+                    matches: [
+                        {
+                            filePath: 'test.ts',
+                            lineNumber: 1,
+                            content: 'test',
+                            isContext: false,
+                        },
+                    ],
+                },
+            ]);
+            mockRipgrepService.formatResults.mockReturnValue(
+                '=== test.ts ===\n1: test'
+            );
+
+            await searchForPatternTool.execute({ pattern: 'test' });
+
+            // Verify ripgrep was called with a token
+            expect(mockRipgrepService.search).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    token: expect.any(Object),
+                })
+            );
+        });
+
+        it('should throw timeout error when search times out', async () => {
+            // Simulate timeout by rejecting with TimeoutError
+            // TimeoutError now propagates to ToolExecutor for centralized handling
+            mockRipgrepService.search.mockRejectedValue(
+                TimeoutError.create('Pattern search', 60000)
+            );
+
+            await expect(
+                searchForPatternTool.execute({ pattern: 'test' })
+            ).rejects.toThrow(TimeoutError);
+        });
+
+        it('should throw CancellationError when already cancelled', async () => {
+            const context = {
+                cancellationToken: {
+                    isCancellationRequested: true, // Pre-cancelled
+                    onCancellationRequested: vi.fn().mockReturnValue({
+                        dispose: vi.fn(),
+                    }),
+                },
+            };
+
+            await expect(
+                searchForPatternTool.execute(
+                    { pattern: 'test' },
+                    context as any
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Ripgrep should never be called
+            expect(mockRipgrepService.search).not.toHaveBeenCalled();
         });
     });
 });

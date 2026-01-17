@@ -41,14 +41,21 @@ vi.mock('vscode', async (importOriginal) => {
 // Mock fdir - Vitest 4 requires function/class for mocks used as constructors
 vi.mock('fdir', () => ({
     fdir: vi.fn().mockImplementation(function () {
+        // crawl() returns a separate result object with withPromise/sync
+        const crawlResult = {
+            withPromise: vi.fn().mockResolvedValue([]),
+            sync: vi.fn().mockReturnValue([]),
+        };
         return {
             withGlobFunction: vi.fn().mockReturnThis(),
             glob: vi.fn().mockReturnThis(),
+            globWithOptions: vi.fn().mockReturnThis(),
             withRelativePaths: vi.fn().mockReturnThis(),
+            withFullPaths: vi.fn().mockReturnThis(),
+            withAbortSignal: vi.fn().mockReturnThis(),
             exclude: vi.fn().mockReturnThis(),
             filter: vi.fn().mockReturnThis(),
-            crawl: vi.fn().mockReturnThis(),
-            withPromise: vi.fn(),
+            crawl: vi.fn().mockReturnValue(crawlResult),
         };
     }),
 }));
@@ -154,10 +161,11 @@ describe('FindFileTool Integration Tests', () => {
         });
 
         it('should handle tool execution errors gracefully', async () => {
+            // With centralized error handling, ToolExecutor catches errors and returns them as toolError
             const mockFdirInstance = createMockFdirInstance([]);
-            mockFdirInstance.sync.mockImplementation(function () {
-                throw new Error('Permission denied');
-            });
+            mockFdirInstance.withPromise.mockRejectedValue(
+                new Error('Permission denied')
+            );
             // Vitest 4: use mockImplementation with function syntax for constructor mocks
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;
@@ -175,7 +183,7 @@ describe('FindFileTool Integration Tests', () => {
 
             expect(toolCallResults[0].name).toBe('find_files_by_pattern');
             expect(toolCallResults[0].success).toBe(false);
-            expect(toolCallResults[0].error).toContain('Unable to find files');
+            // ToolExecutor returns the error message directly from the exception chain
             expect(toolCallResults[0].error).toContain('Permission denied');
         });
     });

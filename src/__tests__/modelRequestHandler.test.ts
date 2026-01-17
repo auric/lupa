@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ModelRequestHandler } from '../models/modelRequestHandler';
 import type { ToolCallRequest, ToolCallMessage } from '../types/modelTypes';
+import { TimeoutError } from '../types/errorTypes';
+import { isTimeoutError } from '../utils/asyncUtils';
 
 describe('ModelRequestHandler', () => {
     let mockModel: any;
@@ -197,19 +199,24 @@ describe('ModelRequestHandler', () => {
                     50, // 50ms timeout
                     cancellationTokenSource.token
                 )
-            ).rejects.toThrow('LLM request timed out after');
+            ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
         }, 1000);
 
-        it('should include helpful message in timeout error', async () => {
+        it('should include operation details in timeout error', async () => {
             const thenable = new Promise(() => {});
 
-            await expect(
-                ModelRequestHandler.withTimeout(
+            try {
+                await ModelRequestHandler.withTimeout(
                     thenable,
                     50,
                     cancellationTokenSource.token
-                )
-            ).rejects.toThrow('The model may be overloaded. Please try again.');
+                );
+                expect.fail('Should have thrown');
+            } catch (error) {
+                expect(isTimeoutError(error)).toBe(true);
+                expect((error as TimeoutError).operation).toBe('LLM request');
+                expect((error as TimeoutError).timeoutMs).toBe(50);
+            }
         }, 1000);
 
         it('should reject immediately if token is cancelled', async () => {
@@ -225,6 +232,49 @@ describe('ModelRequestHandler', () => {
                     cancellationTokenSource.token
                 )
             ).rejects.toThrow();
+        });
+
+        it('should suppress late rejections when token is pre-cancelled', async () => {
+            // This test verifies the fix for the unhandled rejection bug:
+            // When token is already cancelled, we throw CancellationError early,
+            // but the underlying thenable may still reject later. The .catch() handler
+            // must be attached BEFORE the early throw to suppress this rejection.
+            let unhandledRejection = false;
+            const handler = () => {
+                unhandledRejection = true;
+            };
+            process.on('unhandledRejection', handler);
+
+            try {
+                // Create a thenable that rejects after a delay
+                let rejectThenable: (reason: unknown) => void;
+                const thenable = new Promise<string>((_, reject) => {
+                    rejectThenable = reject;
+                });
+
+                // Pre-cancel the token
+                cancellationTokenSource.cancel();
+
+                // This should throw CancellationError immediately
+                await expect(
+                    ModelRequestHandler.withTimeout(
+                        thenable,
+                        5000,
+                        cancellationTokenSource.token
+                    )
+                ).rejects.toThrow();
+
+                // Now reject the thenable after the early exit
+                rejectThenable!(new Error('late rejection'));
+
+                // Give event loop time to process the rejection
+                await new Promise((resolve) => setTimeout(resolve, 50));
+
+                // Should not have caused an unhandled rejection
+                expect(unhandledRejection).toBe(false);
+            } finally {
+                process.off('unhandledRejection', handler);
+            }
         });
 
         it('should reject if token is cancelled during execution', async () => {
@@ -282,6 +332,44 @@ describe('ModelRequestHandler', () => {
 
             expect(clearTimeoutSpy).toHaveBeenCalled();
             clearTimeoutSpy.mockRestore();
+        });
+
+        it('should suppress late rejections from thenable after timeout', async () => {
+            // Track unhandled rejections
+            let unhandledRejection = false;
+            const handler = () => {
+                unhandledRejection = true;
+            };
+            process.on('unhandledRejection', handler);
+
+            // Create a thenable that rejects after the timeout
+            let rejectThenable: (reason: any) => void;
+            const thenable = new Promise<string>((_, reject) => {
+                rejectThenable = reject;
+            });
+
+            // Race with timeout
+            const promise = ModelRequestHandler.withTimeout(
+                thenable,
+                10, // Very short timeout
+                cancellationTokenSource.token
+            );
+
+            // Wait for timeout
+            await expect(promise).rejects.toSatisfy((error: unknown) =>
+                isTimeoutError(error)
+            );
+
+            // Now reject the thenable after timeout has won
+            rejectThenable!(new Error('Late rejection'));
+
+            // Give event loop time to process the rejection
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            // Should not have caused an unhandled rejection
+            expect(unhandledRejection).toBe(false);
+
+            process.off('unhandledRejection', handler);
         });
     });
 
@@ -431,7 +519,73 @@ describe('ModelRequestHandler', () => {
                     cancellationTokenSource.token,
                     50 // 50ms timeout
                 )
-            ).rejects.toThrow('LLM request timed out after');
+            ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
+        }, 1000);
+
+        it('should timeout when stream consumption stalls', async () => {
+            // Mock a stream that stalls during iteration
+            const mockStream = {
+                async *[Symbol.asyncIterator]() {
+                    yield new vscode.LanguageModelTextPart('First chunk');
+                    // Stall indefinitely - simulating poor network
+                    await new Promise(() => {});
+                },
+            };
+
+            mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
+
+            const request: ToolCallRequest = {
+                messages: [{ role: 'user', content: 'test' }],
+                tools: [],
+            };
+
+            await expect(
+                ModelRequestHandler.sendRequest(
+                    mockModel,
+                    request,
+                    cancellationTokenSource.token,
+                    50 // 50ms timeout should catch the stalled stream
+                )
+            ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
+        }, 1000);
+
+        it('should cancel during stream consumption when token fires', async () => {
+            let yieldCount = 0;
+
+            // Mock a stream that yields slowly
+            const mockStream = {
+                async *[Symbol.asyncIterator]() {
+                    while (yieldCount < 10) {
+                        yieldCount++;
+                        yield new vscode.LanguageModelTextPart(
+                            `Chunk ${yieldCount}`
+                        );
+                        await new Promise((resolve) => setTimeout(resolve, 20));
+                    }
+                },
+            };
+
+            mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
+
+            const request: ToolCallRequest = {
+                messages: [{ role: 'user', content: 'test' }],
+                tools: [],
+            };
+
+            // Cancel after 30ms - should stop after a few chunks
+            setTimeout(() => cancellationTokenSource.cancel(), 30);
+
+            await expect(
+                ModelRequestHandler.sendRequest(
+                    mockModel,
+                    request,
+                    cancellationTokenSource.token,
+                    5000 // Long timeout - cancellation should trigger first
+                )
+            ).rejects.toThrow();
+
+            // Should have processed only a few chunks before cancellation
+            expect(yieldCount).toBeLessThan(10);
         }, 1000);
 
         it('should propagate errors from model', async () => {
@@ -509,7 +663,7 @@ describe('ModelRequestHandler', () => {
             expect(mockModel.sendRequest).toHaveBeenCalledWith(
                 expect.any(Array), // messages
                 expect.objectContaining({ tools: [mockTool] }), // options
-                cancellationTokenSource.token
+                expect.any(Object) // linked CancellationToken (not the original)
             );
         });
 
@@ -538,5 +692,58 @@ describe('ModelRequestHandler', () => {
 
             expect(response.content).toBe('Hello, world!');
         });
+
+        it('should actively stop stream consumption on timeout (no resource leak)', async () => {
+            // This test verifies that when timeout fires, the stream consumer
+            // actually stops iterating, preventing resource leaks.
+            let yieldCount = 0;
+            let streamExited = false;
+
+            // Mock a stream that yields slowly but would continue forever
+            const mockStream = {
+                async *[Symbol.asyncIterator]() {
+                    try {
+                        while (yieldCount < 100) {
+                            yieldCount++;
+                            yield new vscode.LanguageModelTextPart(
+                                `Chunk ${yieldCount}`
+                            );
+                            // Each chunk takes 30ms, timeout is 50ms
+                            await new Promise((resolve) =>
+                                setTimeout(resolve, 30)
+                            );
+                        }
+                    } finally {
+                        // This runs when the iterator is aborted
+                        streamExited = true;
+                    }
+                },
+            };
+
+            mockModel.sendRequest.mockResolvedValue({ stream: mockStream });
+
+            const request: ToolCallRequest = {
+                messages: [{ role: 'user', content: 'test' }],
+                tools: [],
+            };
+
+            // Short timeout - should trigger before stream finishes
+            await expect(
+                ModelRequestHandler.sendRequest(
+                    mockModel,
+                    request,
+                    cancellationTokenSource.token,
+                    50
+                )
+            ).rejects.toSatisfy((error: unknown) => isTimeoutError(error));
+
+            // Wait a bit for the stream to be cleaned up
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
+            // Stream should have exited (not continuing in background)
+            expect(streamExited).toBe(true);
+            // Should have processed only a few chunks before timeout cancelled it
+            expect(yieldCount).toBeLessThan(10);
+        }, 2000);
     });
 });

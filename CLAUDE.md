@@ -27,8 +27,6 @@ npx vitest run src/__tests__/file.test.ts  # Single test
 
 **Context window warning:** `npm run test` output is massive and will overwhelm context. After running tests, read only the last ~50 lines for the summary. Prefer running specific test files over the full suite.
 
-**Terminal note:** This project uses PowerShell on Windows.
-
 ## Architecture
 
 ### Layers
@@ -115,8 +113,92 @@ interface ExecutionContext {
     planManager?: PlanSessionManager;
     subagentSessionManager?: SubagentSessionManager;
     subagentExecutor?: SubagentExecutor;
+    cancellationToken?: vscode.CancellationToken;
 }
 ```
+
+Pass `cancellationToken` to long-running operations (symbol extraction, LSP calls) for responsive cancellation.
+
+### Timeout Handling
+
+**ToolExecutor is the centralized error handler** - most tools don't need try-catch blocks at all:
+
+- **CancellationError**: ToolExecutor rethrows to propagate cancellation up the stack
+- **TimeoutError**: ToolExecutor catches and returns a generic helpful message to the LLM
+- **Other errors**: ToolExecutor converts to `toolError(message)` for the LLM
+
+**When tools should NOT have try-catch**:
+
+Most tools should let errors propagate to ToolExecutor. Don't wrap your execute method in try-catch just to call `rethrowIfCancellationOrTimeout` and then `toolError()` — that's exactly what ToolExecutor already does.
+
+**When tools SHOULD have try-catch**:
+
+- **Specific error messages**: Inner catches that provide context (e.g., "File not found" vs generic error)
+- **Partial results on timeout**: Return what you found before timeout occurred
+- **Graceful degradation**: Fall back to alternative behavior (e.g., `symbolRangeExpander` uses heuristic on timeout)
+- **Continue-on-error loops**: Skip failed items and continue processing (e.g., `findUsagesTool` continues if one definition check times out)
+
+**VS Code API behavior**:
+
+- **VS Code APIs don't throw CancellationError** - they return `undefined` or empty results when cancelled
+- **Only `withCancellableTimeout` throws CancellationError** - when the token fires before the operation completes
+- **Tests should NOT mock VS Code APIs to throw CancellationError** - use pre-cancelled tokens instead
+
+**Testing CancellationError propagation**:
+
+1. Pre-cancel the token before calling the function under test (preferred)
+2. When testing ToolExecutor/middleware, you MAY create a mock tool that throws CancellationError
+
+**Error handling helpers**:
+
+- `rethrowIfCancellationOrTimeout(error)` - Use in catch blocks when you need to handle other errors but let cancel/timeout propagate
+- `isTimeoutError(error)` - Check explicitly when you want to return partial results on timeout
+- `isCancellationError(error)` - Use in catch blocks to detect cancellation; **prefer this over checking `token.isCancellationRequested`** since the token state may not be set yet when the error is thrown
+
+**Other patterns**:
+
+- **TimeoutError class**: Use `TimeoutError.create(operation, timeoutMs)` for timeout scenarios
+- **Async file discovery**: Use `fdir.crawl().withPromise()` instead of `.sync()` to keep VS Code responsive
+- **fdir abort behavior**: fdir resolves with partial results on AbortSignal, never throws. Check signal state AFTER fdir resolves and throw appropriate error (see `FileDiscoverer`)
+- **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
+- **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
+
+### Timeout Patterns
+
+Three timeout strategies based on operation type:
+
+| Pattern                  | Use When                                        | Default            | Example                                 |
+| ------------------------ | ----------------------------------------------- | ------------------ | --------------------------------------- |
+| **Graceful Degradation** | Exploratory; LLM can work with partial data     | 15s                | `FileDiscoverer.discoverFiles()`        |
+| **Per-Item Tracking**    | Processing many items; some failures acceptable | 5s/file, 60s total | `SymbolExtractor.getDirectorySymbols()` |
+| **Hard Timeout**         | Must complete or fail; no partial results       | Operation-specific | LSP operations, single file reads       |
+
+**Graceful Degradation**:
+
+- Return partial results with `truncated: true` on timeout
+- Use `AbortController`, check signal state after operation completes
+- fdir resolves with partial results on abort—never throws
+
+**Per-Item Tracking**:
+
+- Timeout on single item, increment counter, continue loop
+- Use try-catch with `isTimeoutError()` check to skip failed items
+- Report count of skipped items in result
+
+**Hard Timeout**:
+
+- Throw `TimeoutError` via `withCancellableTimeout()`
+- Let ToolExecutor handle the error (converts to helpful message for LLM)
+
+**Stream Cancellation**:
+
+- `ModelRequestHandler` actively cancels stream consumption on timeout using a linked `CancellationTokenSource`
+- Prevents resource leaks where streams continued running in background after timeout
+
+**Final Watchdog for Child Processes**:
+
+- `RipgrepSearchService` uses a final watchdog (5s after SIGKILL) to force-reject the promise if a spawned process ignores termination signals
+- Pattern: Track settlement state with a `settled` flag, set a final timeout after the kill escalation, clear on normal settlement
 
 ### New Services
 
@@ -134,6 +216,7 @@ interface ExecutionContext {
     - `createMockWorkspaceSettings()` - WorkspaceSettingsService
     - `createMockFdirInstance()` - fdir file discovery
     - `createMockGitRepository()` - Git repository
+    - `createMockPosition()` / `createMockRange()` - VS Code Position/Range with proper methods
 - **Vitest 4**: Constructor mocks require `function` syntax, not arrow functions
 
 ---

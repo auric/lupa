@@ -118,6 +118,7 @@ describe('SearchForPatternTool Integration Tests', () => {
 
         it('should handle error cases gracefully', async () => {
             // Test RipgrepSearchService error
+            // With centralized error handling, ToolExecutor catches errors and returns them as toolError
             mockRipgrepService.search.mockRejectedValue(
                 new Error('ripgrep error')
             );
@@ -133,7 +134,8 @@ describe('SearchForPatternTool Integration Tests', () => {
             expect(results[0].name).toBe('search_for_pattern');
             expect(results[0].success).toBe(false);
             expect(results[0].error).toBeDefined();
-            expect(results[0].error).toContain('Pattern search failed');
+            // ToolExecutor returns the error message directly
+            expect(results[0].error).toContain('ripgrep error');
         });
     });
 

@@ -22,6 +22,7 @@ import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
+import { isCancellationError } from '../utils/asyncUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
@@ -263,7 +264,11 @@ export class ChatParticipantService implements vscode.Disposable {
             const toolExecutor = new ToolExecutor(
                 this.deps.toolRegistry,
                 this.deps.workspaceSettings,
-                { subagentSessionManager, subagentExecutor }
+                {
+                    subagentSessionManager,
+                    subagentExecutor,
+                    cancellationToken: token,
+                }
             );
 
             const timeoutMs =
@@ -347,7 +352,9 @@ export class ChatParticipantService implements vscode.Disposable {
                 } satisfies ChatAnalysisMetadata,
             };
         } catch (error) {
-            if (token.isCancellationRequested) {
+            // Check error type rather than token state to avoid race conditions
+            // where the error is already thrown before we can check the token
+            if (isCancellationError(error)) {
                 return this.handleCancellation(stream);
             }
 
@@ -454,7 +461,9 @@ export class ChatParticipantService implements vscode.Disposable {
                 finalScopeLabel
             );
         } catch (error) {
-            if (token.isCancellationRequested) {
+            // Check error type rather than token state to avoid race conditions
+            // where the error is already thrown before we can check the token
+            if (isCancellationError(error)) {
                 return this.handleCancellation(stream);
             }
 
@@ -511,7 +520,12 @@ export class ChatParticipantService implements vscode.Disposable {
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
             this.deps!.workspaceSettings,
-            { planManager, subagentSessionManager, subagentExecutor }
+            {
+                planManager,
+                subagentSessionManager,
+                subagentExecutor,
+                cancellationToken: token,
+            }
         );
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);

@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CodeFileDetector } from '../utils/codeFileDetector';
+import { Log } from './loggingService';
 
 /**
  * Gets the path to ripgrep binary bundled with VS Code.
@@ -52,6 +53,20 @@ function getVSCodeRipgrepPath(): string {
 }
 
 /**
+ * Grace period in milliseconds to wait for SIGTERM to terminate the ripgrep
+ * process before escalating to SIGKILL. 500ms is sufficient for ripgrep to
+ * clean up while avoiding noticeable delay in cancellation feedback.
+ */
+const SIGTERM_GRACE_PERIOD_MS = 500;
+
+/**
+ * Final watchdog timeout after SIGKILL. If the process still hasn't exited
+ * after this period, force-reject the promise to prevent indefinite hangs.
+ * This is a safety net for edge cases where the process is unresponsive.
+ */
+const SIGKILL_FINAL_WATCHDOG_MS = 5000;
+
+/**
  * Validates that the VS Code ripgrep binary exists at the expected path.
  * @returns true if the binary exists, false otherwise
  */
@@ -82,6 +97,8 @@ export interface RipgrepSearchOptions {
     excludeGlob?: string;
     codeFilesOnly?: boolean;
     multiline: boolean;
+    /** Optional cancellation token to abort the search */
+    token?: vscode.CancellationToken;
 }
 
 interface RipgrepJsonMessage {
@@ -160,6 +177,15 @@ export class RipgrepSearchService {
         const args = this.buildArgs(options);
 
         return new Promise((resolve, reject) => {
+            // Settled flag prevents double resolution/rejection in edge cases
+            let settled = false;
+
+            if (options.token?.isCancellationRequested) {
+                Log.debug('[Ripgrep] Search skipped - already cancelled');
+                reject(new vscode.CancellationError());
+                return;
+            }
+
             const results = new Map<string, RipgrepMatch[]>();
             let stderr = '';
 
@@ -167,6 +193,92 @@ export class RipgrepSearchService {
                 cwd: options.cwd,
                 stdio: ['ignore', 'pipe', 'pipe'],
             });
+
+            let cancellationDisposable: vscode.Disposable | undefined;
+            let sigkillTimeout: ReturnType<typeof setTimeout> | undefined;
+            let finalWatchdogTimeout: ReturnType<typeof setTimeout> | undefined;
+
+            /**
+             * Clears all timers and disposables. Called from close/error handlers
+             * and from final watchdog to ensure consistent cleanup.
+             */
+            const clearAllTimersAndDisposables = () => {
+                cancellationDisposable?.dispose();
+                if (sigkillTimeout) {
+                    clearTimeout(sigkillTimeout);
+                    sigkillTimeout = undefined;
+                }
+                if (finalWatchdogTimeout) {
+                    clearTimeout(finalWatchdogTimeout);
+                    finalWatchdogTimeout = undefined;
+                }
+            };
+
+            /**
+             * Removes all process event listeners. Called from final watchdog
+             * to prevent resource leaks when force-rejecting.
+             */
+            const removeAllProcessListeners = () => {
+                rg.stdout?.removeAllListeners('data');
+                rg.stderr?.removeAllListeners('data');
+                rg.removeAllListeners('close');
+                rg.removeAllListeners('error');
+            };
+
+            if (options.token) {
+                cancellationDisposable = options.token.onCancellationRequested(
+                    () => {
+                        Log.debug(
+                            '[Ripgrep] Search cancelled by user - killing process'
+                        );
+                        try {
+                            rg.kill('SIGTERM');
+                        } catch (err) {
+                            Log.debug(
+                                `[Ripgrep] SIGTERM failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
+                            );
+                        }
+                        sigkillTimeout = setTimeout(() => {
+                            // Fallback to SIGKILL if SIGTERM doesn't terminate in time
+                            // Note: rg.killed only indicates kill() was called, not that
+                            // the process exited. Use exitCode to check actual termination.
+                            if (rg.exitCode === null) {
+                                Log.debug(
+                                    '[Ripgrep] SIGTERM did not terminate process, sending SIGKILL'
+                                );
+                                try {
+                                    rg.kill('SIGKILL');
+                                } catch (err) {
+                                    Log.debug(
+                                        `[Ripgrep] SIGKILL failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
+                                    );
+                                }
+
+                                // Final watchdog: if process STILL doesn't exit after SIGKILL,
+                                // force-reject to prevent indefinite hangs. This handles rare
+                                // edge cases where the 'close' event never fires.
+                                finalWatchdogTimeout = setTimeout(() => {
+                                    if (rg.exitCode === null && !settled) {
+                                        Log.error(
+                                            '[Ripgrep] Process unresponsive after SIGKILL, forcing rejection'
+                                        );
+                                        settled = true;
+                                        clearAllTimersAndDisposables();
+                                        // Remove process listeners to prevent resource leaks
+                                        // since the process may still be alive
+                                        removeAllProcessListeners();
+                                        reject(
+                                            new Error(
+                                                'ripgrep process did not respond to termination signals'
+                                            )
+                                        );
+                                    }
+                                }, SIGKILL_FINAL_WATCHDOG_MS);
+                            }
+                        }, SIGTERM_GRACE_PERIOD_MS);
+                    }
+                );
+            }
 
             let buffer = '';
 
@@ -194,6 +306,12 @@ export class RipgrepSearchService {
             });
 
             rg.on('close', (code: number | null) => {
+                if (settled) {
+                    return; // Already settled by final watchdog
+                }
+                settled = true;
+                clearAllTimersAndDisposables();
+
                 // Process remaining buffer
                 if (buffer.trim()) {
                     try {
@@ -204,6 +322,11 @@ export class RipgrepSearchService {
                     } catch {
                         // Skip malformed JSON
                     }
+                }
+
+                if (options.token?.isCancellationRequested) {
+                    reject(new vscode.CancellationError());
+                    return;
                 }
 
                 // ripgrep exit codes: 0 = matches found, 1 = no matches, 2 = error
@@ -221,6 +344,11 @@ export class RipgrepSearchService {
             });
 
             rg.on('error', (err: Error) => {
+                if (settled) {
+                    return; // Already settled by final watchdog or close handler
+                }
+                settled = true;
+                clearAllTimersAndDisposables();
                 reject(new Error(`Failed to spawn ripgrep: ${err.message}`));
             });
         });

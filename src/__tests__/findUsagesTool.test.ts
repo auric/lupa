@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FindUsagesTool } from '../tools/findUsagesTool';
-import { createMockGitOperationsManager } from './testUtils/mockFactories';
+import {
+    createMockGitOperationsManager,
+    createMockCancellationTokenSource,
+} from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -232,7 +235,8 @@ describe('FindUsagesTool', () => {
             expect(result.data).not.toContain('"location"');
         });
 
-        it('should handle reference provider errors gracefully', async () => {
+        it('should propagate reference provider errors to ToolExecutor', async () => {
+            // With centralized error handling, reference provider errors bubble up to ToolExecutor
             (vscode.workspace.openTextDocument as any).mockResolvedValue({
                 getText: () => 'class MyClass {}',
                 uri: { toString: () => 'file:///test.ts' },
@@ -247,15 +251,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain(
-                'Error executing reference provider'
-            );
+            // Error bubbles up to ToolExecutor which converts it to toolError
+            await expect(
+                findUsagesTool.execute({
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                })
+            ).rejects.toThrow('Reference provider failed');
         });
 
         it('should deduplicate references correctly', async () => {
@@ -439,23 +441,210 @@ describe('FindUsagesTool', () => {
     });
 
     describe('error handling', () => {
-        it('should handle general execution errors', async () => {
+        it('should propagate unexpected errors to ToolExecutor', async () => {
             // Mock a general error by making Uri.file throw
+            // With centralized error handling, uncaught errors bubble up to ToolExecutor
             const originalFile = vscode.Uri.file;
-            (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
-                throw new Error('Unexpected error in Uri.file');
+            try {
+                (vscode.Uri as any).file = vi.fn().mockImplementation(() => {
+                    throw new Error('Unexpected error in Uri.file');
+                });
+
+                await expect(
+                    findUsagesTool.execute({
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    })
+                ).rejects.toThrow('Unexpected error in Uri.file');
+            } finally {
+                // Always restore original function
+                (vscode.Uri as any).file = originalFile;
+            }
+        });
+
+        it('should throw CancellationError when token is already cancelled', async () => {
+            const tokenSource = createMockCancellationTokenSource();
+            // Cancel before execution - withCancellableTimeout checks this first
+            tokenSource.cancel();
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
             });
+
+            // CancellationError is thrown by withCancellableTimeout, propagates up
+            await expect(
+                findUsagesTool.execute(
+                    {
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    },
+                    { cancellationToken: tokenSource.token }
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should handle reference provider returning undefined (cancellation scenario)', async () => {
+            // When reference provider returns undefined AND token is cancelled,
+            // should throw CancellationError to properly propagate cancellation
+            const tokenSource = createMockCancellationTokenSource();
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
+            });
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // VS Code returns location for definition
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () => 'file:///test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        // Simulate cancellation: provider returns undefined and token is cancelled
+                        tokenSource.cancel();
+                        return Promise.resolve(undefined);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            // Should throw CancellationError, not return "No usages found"
+            await expect(
+                findUsagesTool.execute(
+                    {
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    },
+                    { cancellationToken: tokenSource.token }
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should return no usages error when reference provider returns undefined without cancellation', async () => {
+            // When reference provider returns undefined but token is NOT cancelled,
+            // this is a legitimate "no usages found" case
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
+            });
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () => 'file:///test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        // Provider returns undefined without cancellation
+                        return Promise.resolve(undefined);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
 
             const result = await findUsagesTool.execute({
                 symbol_name: 'MyClass',
                 file_path: 'src/test.ts',
             });
 
-            // Restore original function
-            (vscode.Uri as any).file = originalFile;
-
+            // Tool returns error (no usages found) - this is correct behavior
             expect(result.success).toBe(false);
-            expect(result.error).toContain('Error finding symbol usages');
+            expect(result.error).toContain('No usages found');
+        });
+
+        it('should handle definition provider returning empty (cancellation scenario)', async () => {
+            // VS Code APIs return empty array when cancelled
+            (vscode.workspace.openTextDocument as any).mockResolvedValue({
+                getText: () => 'class MyClass {}',
+                uri: { toString: () => 'file:///test.ts' },
+            });
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // VS Code returns empty when cancelled or no definitions
+                        return Promise.resolve([]);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+            });
+
+            // Fallback to first occurrence is used, but no refs found
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No usages found');
+        });
+
+        it('should continue searching when definition check times out (graceful degradation)', async () => {
+            // When definition check times out, the tool continues to next occurrence
+            // and eventually falls back to first text match
+            const mockDocument = {
+                getText: () => 'class MyClass {}\nconst x = new MyClass();',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            const mockReferences = [
+                {
+                    uri: {
+                        toString: () => 'file:///test/workspace/src/test.ts',
+                        fsPath: '/test/workspace/src/test.ts',
+                    },
+                    range: {
+                        start: { line: 1, character: 14 },
+                        end: { line: 1, character: 21 },
+                    },
+                },
+            ];
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // Returns empty - simulating no definitions found on first pass
+                        // This triggers fallback to first text occurrence
+                        return Promise.resolve([]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve(mockReferences);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute({
+                symbol_name: 'MyClass',
+                file_path: 'src/test.ts',
+            });
+
+            // Tool should find usages using fallback to first text occurrence
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('MyClass');
         });
     });
 

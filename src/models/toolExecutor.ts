@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { ToolRegistry } from './toolRegistry';
 import type { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
@@ -6,6 +7,7 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
+import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 
 /**
  * Interface for tool execution requests
@@ -85,6 +87,15 @@ export class ToolExecutor {
      */
     async executeTool(name: string, args: any): Promise<ToolExecutionResult> {
         const startTime = Date.now();
+
+        // Defensive cancellation check FIRST - before any other logic.
+        // This ensures cancellation takes precedence over rate limiting,
+        // preventing the case where a cancelled analysis continues because
+        // rate-limit error masked the cancellation.
+        if (this.executionContext?.cancellationToken?.isCancellationRequested) {
+            Log.debug(`Tool '${name}' skipped - analysis was cancelled`);
+            throw new vscode.CancellationError();
+        }
 
         // Count BEFORE validation intentionally - rate limit protects against attempts,
         // not just successful executions. A model making many invalid calls is broken
@@ -186,7 +197,26 @@ export class ToolExecutor {
                 metadata: toolResult.metadata,
             };
         } catch (error) {
+            // CancellationError must propagate to stop the entire analysis
+            if (isCancellationError(error)) {
+                Log.debug(`Tool '${name}' cancelled`);
+                throw error;
+            }
+
             const elapsed = Date.now() - startTime;
+
+            // TimeoutError gets a helpful message for the LLM
+            if (isTimeoutError(error)) {
+                Log.warn(
+                    `Tool '${name}' timed out [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
+                );
+                return {
+                    name,
+                    success: false,
+                    error: `Operation timed out. Try a more specific query or limit the search scope.`,
+                };
+            }
+
             const errorMsg =
                 error instanceof Error ? error.message : String(error);
             Log.error(
@@ -202,6 +232,14 @@ export class ToolExecutor {
 
     /**
      * Execute multiple tools in parallel.
+     *
+     * Cancellation behavior: When any tool throws CancellationError, Promise.all rejects
+     * immediately and the error propagates up to stop the analysis. Other in-flight tools
+     * continue running but their results are discarded. This is intentional—tools observe
+     * the shared cancellation token and clean up their own resources (e.g., ripgrep kills
+     * child processes, withCancellableTimeout races against the token). Forcibly aborting
+     * promises isn't possible in JavaScript; cancellation is cooperative.
+     *
      * @param requests Array of tool execution requests
      * @returns Promise resolving to an array of tool execution results
      */
@@ -233,7 +271,17 @@ export class ToolExecutor {
             );
             return results;
         } catch (error) {
-            // This shouldn't happen since executeTool catches errors,
+            // CancellationError must propagate to stop the entire analysis.
+            // executeTool rethrows CancellationError, so it reaches here via Promise.all rejection.
+            if (isCancellationError(error)) {
+                Log.debug('Parallel tool execution cancelled');
+                throw error;
+            }
+
+            // Note: TimeoutError is handled inside executeTool (converted to toolError result),
+            // so it won't propagate here. Only CancellationError bubbles up from tools.
+
+            // This shouldn't happen since executeTool catches other errors,
             // but just in case, handle any unexpected errors
             throw new Error(
                 `Unexpected error during parallel tool execution: ${error instanceof Error ? error.message : String(error)}`

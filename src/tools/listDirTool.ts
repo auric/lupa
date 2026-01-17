@@ -5,12 +5,10 @@ import ignore from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { withTimeout } from '../utils/asyncUtils';
+import { rethrowIfCancellationOrTimeout } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
-import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
-
-const DIRECTORY_OPERATION_TIMEOUT = 15000; // 15 seconds for directory operations
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -39,36 +37,25 @@ export class ListDirTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
-        try {
-            const { relative_path, recursive } = args;
+        const { relative_path, recursive } = args;
 
-            // Sanitize the relative path to prevent directory traversal attacks
-            const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
+        const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
 
-            // List directory contents with ignore pattern support (with timeout)
-            const result = await withTimeout(
-                this.callListDir(sanitizedPath, recursive),
-                DIRECTORY_OPERATION_TIMEOUT,
-                `Directory listing for ${sanitizedPath}`
-            );
+        // List directory contents with ignore pattern support
+        // No timeout wrapper needed - vscode.workspace.fs.readDirectory is inherently fast
+        // and callListDir checks cancellation token during iteration
+        const result = await this.callListDir(
+            sanitizedPath,
+            recursive,
+            context?.cancellationToken
+        );
 
-            // Format the output as a single string
-            const output = this.formatOutput(result);
+        const output = this.formatOutput(result);
 
-            // Empty directory is a valid state (success)
-            return toolSuccess(output || '(empty directory)');
-        } catch (error) {
-            const message =
-                error instanceof Error ? error.message : String(error);
-            if (message.includes('timed out')) {
-                return toolError(
-                    `Directory listing timed out. Try listing a smaller directory or disable recursion.`
-                );
-            }
-            return toolError(`Error listing directory: ${message}`);
-        }
+        // Empty directory is a valid state (success)
+        return toolSuccess(output || '(empty directory)');
     }
 
     /**
@@ -76,9 +63,14 @@ export class ListDirTool extends BaseTool {
      */
     private async callListDir(
         relativePath: string,
-        recursive: boolean
+        recursive: boolean,
+        token?: vscode.CancellationToken
     ): Promise<{ dirs: string[]; files: string[] }> {
         try {
+            if (token?.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             const ig = ignore().add(
                 await readGitignore(this.gitOperationsManager.getRepository())
             );
@@ -93,6 +85,10 @@ export class ListDirTool extends BaseTool {
             const files: string[] = [];
 
             for (const [name, type] of entries) {
+                if (token?.isCancellationRequested) {
+                    throw new vscode.CancellationError();
+                }
+
                 if (ig.checkIgnore(name).ignored) {
                     continue;
                 }
@@ -105,17 +101,18 @@ export class ListDirTool extends BaseTool {
                 if (type === vscode.FileType.Directory) {
                     dirs.push(fullPath);
 
-                    // If recursive, scan subdirectories
                     if (recursive) {
                         try {
                             const subResult = await this.callListDir(
                                 fullPath,
-                                recursive
+                                recursive,
+                                token
                             );
                             dirs.push(...subResult.dirs);
                             files.push(...subResult.files);
-                        } catch {
-                            // Skip directories that can't be read
+                        } catch (error) {
+                            rethrowIfCancellationOrTimeout(error);
+                            // Skip directories that can't be read for other errors
                         }
                     }
                 } else if (type === vscode.FileType.File) {
@@ -125,6 +122,8 @@ export class ListDirTool extends BaseTool {
 
             return { dirs, files };
         } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
+
             throw new Error(
                 `Failed to read directory '${relativePath}': ${error instanceof Error ? error.message : String(error)}`
             );
@@ -137,13 +136,11 @@ export class ListDirTool extends BaseTool {
     private formatOutput(result: { dirs: string[]; files: string[] }): string {
         const output: string[] = [];
 
-        // Add directories first, sorted
         const sortedDirs = result.dirs.sort();
         for (const dir of sortedDirs) {
             output.push(`${dir}/`);
         }
 
-        // Add files, sorted
         const sortedFiles = result.files.sort();
         for (const file of sortedFiles) {
             output.push(file);

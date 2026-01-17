@@ -1,9 +1,14 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { TimeoutError } from '../types/errorTypes';
+
+/** Maximum time for pattern search operations */
+const PATTERN_SEARCH_TIMEOUT = 60_000; // 60 seconds
 
 /**
  * High-performance tool for searching regex patterns in the codebase using ripgrep.
@@ -104,7 +109,7 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context?: ExecutionContext
     ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
@@ -113,26 +118,45 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             );
         }
 
+        const {
+            pattern,
+            lines_before = 0,
+            lines_after = 0,
+            include_files = '',
+            exclude_files = '',
+            search_path = '.',
+            only_code_files = false,
+            case_sensitive = false,
+        } = validationResult.data;
+
+        if (context?.cancellationToken?.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
+        const gitRepo = this.gitOperationsManager.getRepository();
+        if (!gitRepo) {
+            return toolError('Git repository not found');
+        }
+
+        const gitRootDirectory = gitRepo.rootUri.fsPath;
+
+        // Create a linked cancellation token source that will be cancelled on:
+        // 1. User cancellation (original token)
+        // 2. Timeout (we cancel it ourselves)
+        // This ensures ripgrep process is killed on timeout, not just abandoned.
+        const linkedTokenSource = new vscode.CancellationTokenSource();
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let userCancellationDisposable: vscode.Disposable | undefined;
+
+        if (context?.cancellationToken) {
+            userCancellationDisposable =
+                context.cancellationToken.onCancellationRequested(() => {
+                    linkedTokenSource.cancel();
+                });
+        }
+
         try {
-            const {
-                pattern,
-                lines_before = 0,
-                lines_after = 0,
-                include_files = '',
-                exclude_files = '',
-                search_path = '.',
-                only_code_files = false,
-                case_sensitive = false,
-            } = validationResult.data;
-
-            const gitRepo = this.gitOperationsManager.getRepository();
-            if (!gitRepo) {
-                return toolError('Git repository not found');
-            }
-
-            const gitRootDirectory = gitRepo.rootUri.fsPath;
-
-            const results = await this.ripgrepService.search({
+            const searchPromise = this.ripgrepService.search({
                 pattern,
                 cwd: gitRootDirectory,
                 searchPath: search_path !== '.' ? search_path : undefined,
@@ -143,7 +167,29 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
                 excludeGlob: exclude_files || undefined,
                 codeFilesOnly: only_code_files,
                 multiline: true,
+                token: linkedTokenSource.token,
             });
+
+            // Suppress late CancellationError rejections from searchPromise after timeout wins.
+            // When timeout fires, we cancel the linked token which kills the ripgrep process,
+            // causing searchPromise to reject with CancellationError. The TimeoutError is
+            // handled by Promise.race() below; this catch prevents the CancellationError
+            // from becoming an unhandled rejection.
+            searchPromise.catch(() => {});
+
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    linkedTokenSource.cancel(); // This kills the ripgrep process
+                    reject(
+                        TimeoutError.create(
+                            'Pattern search',
+                            PATTERN_SEARCH_TIMEOUT
+                        )
+                    );
+                }, PATTERN_SEARCH_TIMEOUT);
+            });
+
+            const results = await Promise.race([searchPromise, timeoutPromise]);
 
             if (results.length === 0) {
                 return toolError(`No matches found for pattern '${pattern}'`);
@@ -151,10 +197,12 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
 
             const formattedResult = this.ripgrepService.formatResults(results);
             return toolSuccess(formattedResult);
-        } catch (error) {
-            return toolError(
-                `Pattern search failed: ${error instanceof Error ? error.message : String(error)}`
-            );
+        } finally {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+            userCancellationDisposable?.dispose();
+            linkedTokenSource.dispose();
         }
     }
 }

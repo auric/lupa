@@ -123,15 +123,12 @@ describe('ListDirTool', () => {
             ];
 
             for (const maliciousPath of traversalPaths) {
-                const result = await listDirTool.execute({
-                    relative_path: maliciousPath,
-                    recursive: false,
-                });
-
-                expect(result.success).toBe(false);
-                expect(result.error).toContain(
-                    'Invalid path: Directory traversal detected'
-                );
+                await expect(
+                    listDirTool.execute({
+                        relative_path: maliciousPath,
+                        recursive: false,
+                    })
+                ).rejects.toThrow('Invalid path: Directory traversal detected');
             }
         });
 
@@ -144,13 +141,12 @@ describe('ListDirTool', () => {
             ];
 
             for (const absolutePath of absolutePaths) {
-                const result = await listDirTool.execute({
-                    relative_path: absolutePath,
-                    recursive: false,
-                });
-
-                expect(result.success).toBe(false);
-                expect(result.error).toContain(
+                await expect(
+                    listDirTool.execute({
+                        relative_path: absolutePath,
+                        recursive: false,
+                    })
+                ).rejects.toThrow(
                     'Invalid path: Absolute paths are not allowed, only relative paths'
                 );
             }
@@ -167,13 +163,12 @@ describe('ListDirTool', () => {
             ];
 
             for (const absolutePath of absolutePaths) {
-                const result = await listDirTool.execute({
-                    relative_path: absolutePath,
-                    recursive: false,
-                });
-
-                expect(result.success).toBe(false);
-                expect(result.error).toContain(
+                await expect(
+                    listDirTool.execute({
+                        relative_path: absolutePath,
+                        recursive: false,
+                    })
+                ).rejects.toThrow(
                     'Invalid path: Absolute paths are not allowed, only relative paths'
                 );
             }
@@ -191,13 +186,12 @@ describe('ListDirTool', () => {
             ];
 
             for (const uncPath of uncPaths) {
-                const result = await listDirTool.execute({
-                    relative_path: uncPath,
-                    recursive: false,
-                });
-
-                expect(result.success).toBe(false);
-                expect(result.error).toContain(
+                await expect(
+                    listDirTool.execute({
+                        relative_path: uncPath,
+                        recursive: false,
+                    })
+                ).rejects.toThrow(
                     'Invalid path: Absolute paths are not allowed, only relative paths'
                 );
             }
@@ -315,27 +309,24 @@ describe('ListDirTool', () => {
         it('should handle directory read errors gracefully', async () => {
             mockReadDirectory.mockRejectedValue(new Error('Permission denied'));
 
-            const result = await listDirTool.execute({
-                relative_path: 'src',
-                recursive: false,
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Error listing directory');
-            expect(result.error).toContain('Permission denied');
+            await expect(
+                listDirTool.execute({
+                    relative_path: 'src',
+                    recursive: false,
+                })
+            ).rejects.toThrow('Permission denied');
         });
 
         it('should handle missing git repository', async () => {
             // Mock GitOperationsManager to return null repository
             mockGetRepository.mockReturnValueOnce(null);
 
-            const result = await listDirTool.execute({
-                relative_path: 'src',
-                recursive: false,
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Error listing directory');
+            await expect(
+                listDirTool.execute({
+                    relative_path: 'src',
+                    recursive: false,
+                })
+            ).rejects.toThrow();
         });
 
         it('should handle subdirectory read errors in recursive mode', async () => {

@@ -4,6 +4,7 @@ import { fdir } from 'fdir';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
+import { createMockFdirInstance } from './testUtils/mockFactories';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -34,14 +35,21 @@ vi.mock('vscode', async () => {
 // Mock fdir - Vitest 4 requires function syntax for constructor mocks
 vi.mock('fdir', () => ({
     fdir: vi.fn().mockImplementation(function () {
+        // crawl() returns a separate result object with withPromise/sync
+        const crawlResult = {
+            withPromise: vi.fn().mockResolvedValue([]),
+            sync: vi.fn().mockReturnValue([]),
+        };
         return {
             withGlobFunction: vi.fn().mockReturnThis(),
             glob: vi.fn().mockReturnThis(),
+            globWithOptions: vi.fn().mockReturnThis(),
             withRelativePaths: vi.fn().mockReturnThis(),
+            withFullPaths: vi.fn().mockReturnThis(),
+            withAbortSignal: vi.fn().mockReturnThis(),
             exclude: vi.fn().mockReturnThis(),
             filter: vi.fn().mockReturnThis(),
-            crawl: vi.fn().mockReturnThis(),
-            withPromise: vi.fn(),
+            crawl: vi.fn().mockReturnValue(crawlResult),
         };
     }),
 }));
@@ -78,22 +86,6 @@ vi.mock('../utils/pathSanitizer', () => ({
         sanitizePath: vi.fn((path) => (path === '' ? '.' : path)),
     },
 }));
-
-// Test utility functions for DRY mocks
-function createMockFdirInstance(syncReturnValue: string[] = []) {
-    return {
-        withGlobFunction: vi.fn().mockReturnThis(),
-        glob: vi.fn().mockReturnThis(),
-        globWithOptions: vi.fn().mockReturnThis(),
-        withRelativePaths: vi.fn().mockReturnThis(),
-        withFullPaths: vi.fn().mockReturnThis(),
-        exclude: vi.fn().mockReturnThis(),
-        filter: vi.fn().mockReturnThis(),
-        crawl: vi.fn().mockReturnThis(),
-        withPromise: vi.fn().mockResolvedValue(syncReturnValue),
-        sync: vi.fn().mockReturnValue(syncReturnValue),
-    } as any;
-}
 
 describe('FindFileTool', () => {
     let findFileTool: FindFilesByPatternTool;
@@ -208,7 +200,7 @@ describe('FindFileTool', () => {
 
             // Verify basic fdir setup and execution
             expect(vi.mocked(fdir)).toHaveBeenCalled();
-            expect(mockFdirInstance.sync).toHaveBeenCalled();
+            expect(mockFdirInstance.withPromise).toHaveBeenCalled();
             expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(
                 ['*.js'],
                 expect.any(Object)
@@ -280,37 +272,35 @@ describe('FindFileTool', () => {
             expect(result.error).toContain('Git repository not found');
         });
 
-        it('should handle fdir errors', async () => {
+        it('should propagate fdir errors to ToolExecutor', async () => {
+            // With centralized error handling, fdir errors bubble up to ToolExecutor
             const mockFdirInstance = createMockFdirInstance([]);
-            mockFdirInstance.sync.mockImplementation(() => {
-                throw new Error('Directory not found');
-            });
+            mockFdirInstance.withPromise.mockRejectedValue(
+                new Error('Directory not found')
+            );
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;
             } as any);
 
-            const result = await findFileTool.execute({ pattern: '*.js' });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Unable to find files');
-            expect(result.error).toContain('Directory not found');
+            await expect(
+                findFileTool.execute({ pattern: '*.js' })
+            ).rejects.toThrow('Directory not found');
         });
 
-        it('should handle path sanitization errors', async () => {
+        it('should propagate path sanitization errors to ToolExecutor', async () => {
+            // With centralized error handling, path sanitization errors bubble up
             vi.mocked(PathSanitizer.sanitizePath).mockImplementation(() => {
                 throw new Error(
                     'Invalid search_directory: Directory traversal detected'
                 );
             });
 
-            const result = await findFileTool.execute({
-                pattern: '*.js',
-                search_directory: '../evil',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Unable to find files');
-            expect(result.error).toContain('Directory traversal detected');
+            await expect(
+                findFileTool.execute({
+                    pattern: '*.js',
+                    search_directory: '../evil',
+                })
+            ).rejects.toThrow('Directory traversal detected');
         });
     });
 
@@ -381,21 +371,20 @@ describe('FindFileTool', () => {
         it('should handle actual picomatch/fdir integration errors', async () => {
             const mockFdirInstance = createMockFdirInstance([]);
             // Simulate real fdir error that could occur with complex patterns
-            mockFdirInstance.sync.mockImplementation(() => {
-                throw new Error('ENOENT: no such file or directory, scandir');
-            });
+            mockFdirInstance.withPromise.mockRejectedValue(
+                new Error('ENOENT: no such file or directory, scandir')
+            );
             vi.mocked(fdir).mockImplementation(function () {
                 return mockFdirInstance;
             } as any);
 
-            const result = await findFileTool.execute({
-                pattern: '**/*.js',
-                search_directory: 'nonexistent',
-            });
-
-            expect(result.success).toBe(false);
-            expect(result.error).toContain('Unable to find files');
-            expect(result.error).toContain('ENOENT: no such file or directory');
+            // With centralized error handling, file discovery errors bubble up to ToolExecutor
+            await expect(
+                findFileTool.execute({
+                    pattern: '**/*.js',
+                    search_directory: 'nonexistent',
+                })
+            ).rejects.toThrow('ENOENT: no such file or directory');
         });
     });
 });

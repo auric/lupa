@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as vscode from 'vscode';
 import { RunSubagentTool } from '../tools/runSubagentTool';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
@@ -28,6 +29,7 @@ const createExecutionContext = (
 ): ExecutionContext => ({
     subagentExecutor: executor,
     subagentSessionManager: sessionManager,
+    cancellationToken: new vscode.CancellationTokenSource().token,
 });
 
 describe('RunSubagentTool', () => {
@@ -313,6 +315,28 @@ describe('RunSubagentTool', () => {
             );
 
             expect(result.success).toBe(false);
+        });
+
+        it('should propagate CancellationError instead of converting to error message', async () => {
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockRejectedValue(new vscode.CancellationError()),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await expect(
+                tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    context
+                )
+            ).rejects.toThrow(vscode.CancellationError);
         });
     });
 });

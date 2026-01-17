@@ -12,6 +12,11 @@ VS Code extension for PR analysis using GitHub Copilot.
 - **Tests**: Vitest with VS Code mocks
 - **UI**: React 19, shadcn/ui, Tailwind CSS v4
 
+## Environment
+
+- **Terminal note:** This project uses PowerShell on Windows
+- **Test output**: Massive—read only last ~50 lines for summary
+
 ## Quick Reference
 
 ```bash
@@ -47,7 +52,7 @@ npm run package        # Production build
 
 When the user asks you to use a specific skill, you **must** use it. Skills are `SKILL.md` files located in:
 
-- `.claude/skills/` folder
-- `.github/skills/` folder
+- `.claude/skills/` subdirectories
+- `.github/skills/` subdirectories (if present)
 
 Read the skill file first, then follow its instructions for the task at hand.

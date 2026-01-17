@@ -17,6 +17,7 @@ import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '@/types/toolResultTypes';
 import { Log } from './loggingService';
+import { isCancellationError } from '../utils/asyncUtils';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
@@ -91,11 +92,13 @@ export class SubagentExecutor {
             const filteredTools = this.filterTools();
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
-            // No ExecutionContext passed intentionally - SubagentLimits.DISALLOWED_TOOLS
-            // filters out all tools that require context (run_subagent, update_plan, etc.)
+            // Pass cancellationToken so subagent tools can observe cancellation.
+            // Note: planManager and subagentExecutor are NOT passed - SubagentLimits.DISALLOWED_TOOLS
+            // filters out run_subagent and update_plan which require those dependencies.
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
-                this.workspaceSettings
+                this.workspaceSettings,
+                { cancellationToken: token }
             );
             const conversationRunner = new ConversationRunner(
                 this.modelManager,
@@ -216,6 +219,10 @@ export class SubagentExecutor {
                 toolCalls,
             };
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
             const errorMessage =
                 error instanceof Error ? error.message : String(error);
             Log.error(`${logLabel} Failed: ${errorMessage}`);

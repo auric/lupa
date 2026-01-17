@@ -216,14 +216,12 @@ vscodeMock.workspace = {
         readFile: vi.fn().mockResolvedValue(Buffer.from('')),
         writeFile: vi.fn().mockResolvedValue(),
         // Update stat mock to use FileType.File
-        stat: vi
-            .fn()
-            .mockResolvedValue({
-                type: vscodeMock.FileType.File,
-                ctime: 0,
-                mtime: 0,
-                size: 0,
-            }),
+        stat: vi.fn().mockResolvedValue({
+            type: vscodeMock.FileType.File,
+            ctime: 0,
+            mtime: 0,
+            size: 0,
+        }),
         copy: vi.fn().mockResolvedValue(),
         createDirectory: vi.fn().mockResolvedValue(),
         delete: vi.fn().mockResolvedValue(),
@@ -252,14 +250,14 @@ vscodeMock.ExtensionKind = {
     Workspace: 2,
 };
 
-vscodeMock.CancellationError = vi.fn().mockImplementation(function () {
-    this.name = 'CancellationError';
-    this.message = 'The operation was cancelled.';
-    this.stack = new Error().stack;
-    this.toString = function () {
-        return `${this.name}: ${this.message}`;
-    };
-});
+// Match VS Code's actual CancellationError: extends Error, both name and message are 'Canceled'
+// See: https://github.com/microsoft/vscode/blob/main/src/vs/base/common/errors.ts
+vscodeMock.CancellationError = class CancellationError extends Error {
+    constructor() {
+        super('Canceled');
+        this.name = 'Canceled';
+    }
+};
 
 vscodeMock.CancellationTokenSource = vi.fn(function () {
     // Using function() instead of arrow function so 'this' refers to the instance

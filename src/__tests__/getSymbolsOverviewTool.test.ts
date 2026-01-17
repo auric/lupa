@@ -236,24 +236,28 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 size: 0,
             } as any);
 
-            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
-                {
-                    filePath: 'src/test1.ts',
-                    symbols: [
-                        createSymbol('Class1', vscode.SymbolKind.Class, 0),
-                    ],
-                },
-                {
-                    filePath: 'src/test2.js',
-                    symbols: [
-                        createSymbol(
-                            'function1',
-                            vscode.SymbolKind.Function,
-                            0
-                        ),
-                    ],
-                },
-            ] as any);
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/test1.ts',
+                        symbols: [
+                            createSymbol('Class1', vscode.SymbolKind.Class, 0),
+                        ],
+                    },
+                    {
+                        filePath: 'src/test2.js',
+                        symbols: [
+                            createSymbol(
+                                'function1',
+                                vscode.SymbolKind.Function,
+                                0
+                            ),
+                        ],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 0,
+            } as any);
 
             const result = await getSymbolsOverviewTool.execute({
                 path: 'src',
@@ -274,18 +278,22 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 size: 0,
             } as any);
 
-            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
-                {
-                    filePath: 'src/services/service1.ts',
-                    symbols: [
-                        createSymbol(
-                            'ServiceClass',
-                            vscode.SymbolKind.Class,
-                            0
-                        ),
-                    ],
-                },
-            ] as any);
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/services/service1.ts',
+                        symbols: [
+                            createSymbol(
+                                'ServiceClass',
+                                vscode.SymbolKind.Class,
+                                0
+                            ),
+                        ],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 0,
+            } as any);
 
             const result = await getSymbolsOverviewTool.execute({
                 path: 'src',
@@ -328,20 +336,20 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             );
         });
 
-        it('should handle path not found error', async () => {
-            vi.mocked(vscode.workspace.fs.stat).mockRejectedValue(
-                new Error('File not found')
-            );
+        it('should propagate path not found error to ToolExecutor', async () => {
+            // Path not found returns toolError (consistent with other tools)
+            mockSymbolExtractor.getPathStat.mockResolvedValue(null);
 
             const result = await getSymbolsOverviewTool.execute({
                 path: 'nonexistent/path',
             });
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain("Path 'nonexistent/path' not found");
+            expect(result.error).toBe("Path 'nonexistent/path' not found");
         });
 
-        it('should handle git repository not found', async () => {
+        it('should return toolError for git repository not found', async () => {
+            // Git repository not found returns toolError (consistent with other tools)
             const mockGitOpsWithoutRepo = {
                 getRepository: vi.fn().mockReturnValue(null),
             } as any;
@@ -364,7 +372,7 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             });
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain('Git repository not found');
+            expect(result.error).toBe('Git repository not found');
         });
 
         it('should filter code files correctly', async () => {
@@ -377,20 +385,32 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
             } as any);
 
             // Mock directory symbols - SymbolExtractor should already filter code files
-            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue([
-                {
-                    filePath: 'src/component.ts',
-                    symbols: [
-                        createSymbol('Component', vscode.SymbolKind.Class, 0),
-                    ],
-                },
-                {
-                    filePath: 'src/script.js',
-                    symbols: [
-                        createSymbol('script', vscode.SymbolKind.Function, 0),
-                    ],
-                },
-            ] as any);
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/component.ts',
+                        symbols: [
+                            createSymbol(
+                                'Component',
+                                vscode.SymbolKind.Class,
+                                0
+                            ),
+                        ],
+                    },
+                    {
+                        filePath: 'src/script.js',
+                        symbols: [
+                            createSymbol(
+                                'script',
+                                vscode.SymbolKind.Function,
+                                0
+                            ),
+                        ],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 0,
+            } as any);
 
             const result = await getSymbolsOverviewTool.execute({
                 path: 'src',
@@ -401,6 +421,106 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 '=== src/component.ts ===\n1: Component (class)\n\n=== src/script.js ===\n1: script (function)'
             );
         });
+    });
+
+    describe('timeout and truncation handling', () => {
+        it('should surface truncation info when directory symbols have timedOutFiles', async () => {
+            mockSymbolExtractor.getPathStat.mockResolvedValue({
+                type: vscode.FileType.Directory,
+                ctime: 0,
+                mtime: 0,
+                size: 0,
+            } as any);
+
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/test.ts',
+                        symbols: [
+                            createSymbol('MyClass', vscode.SymbolKind.Class, 0),
+                        ],
+                    },
+                ],
+                truncated: false,
+                timedOutFiles: 3, // Simulate some files timing out
+            } as any);
+
+            const result = await getSymbolsOverviewTool.execute({
+                path: 'src',
+            });
+
+            expect(result.success).toBe(true);
+            // When timedOutFiles > 0, the truncated flag should be set,
+            // which appends the output limit message
+            expect(result.data).toContain('MyClass');
+            expect(result.data).toContain('[Output limited to');
+        });
+
+        it('should append truncation message when max_symbols exceeded', async () => {
+            mockSymbolExtractor.getPathStat.mockResolvedValue({
+                type: vscode.FileType.File,
+                ctime: 0,
+                mtime: 0,
+                size: 0,
+            } as any);
+
+            const mockDocument: any = {
+                getText: vi.fn().mockReturnValue('test content'),
+            };
+
+            // Create many symbols to trigger truncation with low max_symbols
+            const manySymbols = Array.from({ length: 10 }, (_, i) =>
+                createSymbol(`Symbol${i}`, vscode.SymbolKind.Function, i)
+            );
+
+            mockSymbolExtractor.extractSymbolsWithContext.mockResolvedValue({
+                symbols: manySymbols,
+                document: mockDocument,
+                relativePath: 'src/many.ts',
+            });
+
+            const result = await getSymbolsOverviewTool.execute({
+                path: 'src/many.ts',
+                max_symbols: 3, // Low limit to trigger truncation
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('[Output limited to 3 symbols');
+        });
+
+        it('should append truncation message when directory is truncated', async () => {
+            mockSymbolExtractor.getPathStat.mockResolvedValue({
+                type: vscode.FileType.Directory,
+                ctime: 0,
+                mtime: 0,
+                size: 0,
+            } as any);
+
+            mockSymbolExtractor.getDirectorySymbols.mockResolvedValue({
+                results: [
+                    {
+                        filePath: 'src/test.ts',
+                        symbols: [
+                            createSymbol('MyClass', vscode.SymbolKind.Class, 0),
+                        ],
+                    },
+                ],
+                truncated: true, // Directory was truncated due to file limit
+                timedOutFiles: 0,
+            } as any);
+
+            const result = await getSymbolsOverviewTool.execute({
+                path: 'src',
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('MyClass');
+            expect(result.data).toContain('[Output limited to');
+        });
+
+        // Note: CancellationError/TimeoutError propagation is tested at the ToolExecutor level.
+        // Tools don't explicitly handle these - they bubble up through withCancellableTimeout,
+        // and ToolExecutor handles them centrally.
     });
 
     describe('symbol type mapping', () => {

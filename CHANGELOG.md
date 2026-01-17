@@ -5,6 +5,36 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-01-09
+
+### Fixed
+
+#### Stop Button & Cancellation
+
+- **Stop button now works reliably everywhere**: Clicking Stop immediately halts all analysis activity—file searches, symbol lookups, and subagent investigations all stop within seconds, even during long-running operations.
+- **Works on slow/stalled connections**: Cancellation now responds quickly even when network conditions are poor, instead of potentially waiting 5+ minutes.
+- **No more "unhandled rejection" warnings**: Spurious error messages when clicking Stop at certain moments are now suppressed.
+- **LLM streams properly cleaned up**: When requests timeout or are cancelled, the underlying stream consumption is now actively stopped, preventing background resource usage.
+
+#### Analysis Reliability
+
+- **No more analysis hangs**: All operations now have appropriate timeouts. Symbol lookups (5s per file) and pattern searches (60s) ensure analysis always makes progress instead of getting stuck.
+- **Search processes cannot stall analysis**: Added safety net to ensure pattern searches always complete, even if the underlying search process becomes unresponsive to termination signals.
+- **Partial results on timeout**: When file discovery times out, you now get the files found so far instead of losing all progress.
+- **Better timeout messages**: When a file search times out, you get a clear explanation instead of a confusing "No files found" message.
+
+#### Error Messages
+
+- **Clearer Copilot model errors**: When models are unavailable, you now see the actual error message instead of just the model name.
+
+### Changed
+
+- **Incomplete results are labeled**: When a search hits time or file limits, results now include a note explaining they may be incomplete with suggestions for narrowing the search.
+
+### Testing
+
+- Comprehensive test coverage added for cancellation, timeout, and partial result scenarios.
+
 ## [0.1.10] - 2026-01-05
 
 ### Added
@@ -356,6 +386,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.11]: https://github.com/auric/lupa/releases/tag/v0.1.11
 [0.1.10]: https://github.com/auric/lupa/releases/tag/v0.1.10
 [0.1.9]: https://github.com/auric/lupa/releases/tag/v0.1.9
 [0.1.8]: https://github.com/auric/lupa/releases/tag/v0.1.8

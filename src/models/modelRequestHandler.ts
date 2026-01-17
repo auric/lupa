@@ -5,6 +5,8 @@ import type {
     ToolCall,
     ToolCallMessage,
 } from '../types/modelTypes';
+import { TimeoutError } from '../types/errorTypes';
+import { Log } from '../services/loggingService';
 
 /**
  * Static utility class for handling language model requests.
@@ -108,33 +110,42 @@ export class ModelRequestHandler {
         timeoutMs: number,
         token: vscode.CancellationToken
     ): Promise<T> {
-        if (token.isCancellationRequested) {
-            throw new vscode.CancellationError();
-        }
+        // Wrap thenable in a promise FIRST, before any early exit.
+        // This ensures we can attach suppression handler before throwing.
+        const thenablePromise = Promise.resolve(thenable);
+        // Suppress late rejections from underlying thenable after timeout/cancellation wins.
+        // Must be attached before any early throw to prevent unhandled rejections.
+        thenablePromise.catch(() => {});
 
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let cancellationDisposable: vscode.Disposable | undefined;
 
         const timeoutPromise = new Promise<never>((_, reject) => {
             timeoutId = setTimeout(() => {
-                reject(
-                    new Error(
-                        `LLM request timed out after ${timeoutMs / 1000} seconds. ` +
-                            `The model may be overloaded. Please try again.`
-                    )
-                );
+                reject(TimeoutError.create('LLM request', timeoutMs));
             }, timeoutMs);
         });
 
+        // Register cancellation listener BEFORE pre-check to avoid race window
+        // where cancellation fires between check and listener registration.
         const cancellationPromise = new Promise<never>((_, reject) => {
             cancellationDisposable = token.onCancellationRequested(() => {
                 reject(new vscode.CancellationError());
             });
         });
+        // Prevent unhandled rejection if token fires after race settles
+        cancellationPromise.catch(() => {});
+
+        // Check after listener is attached to avoid missing synchronous cancellation
+        if (token.isCancellationRequested) {
+            cancellationDisposable?.dispose();
+            clearTimeout(timeoutId);
+            throw new vscode.CancellationError();
+        }
 
         try {
             return await Promise.race([
-                Promise.resolve(thenable),
+                thenablePromise,
                 timeoutPromise,
                 cancellationPromise,
             ]);
@@ -155,6 +166,7 @@ export class ModelRequestHandler {
      * - Message conversion to VS Code format
      * - Request execution with timeout
      * - Response stream parsing for text and tool calls
+     * - Active stream cancellation on timeout (prevents resource leaks)
      *
      * @param model - The language model to send the request to
      * @param request - The request containing messages and optional tools
@@ -174,16 +186,81 @@ export class ModelRequestHandler {
             tools: request.tools || [],
         };
 
-        const response = await ModelRequestHandler.withTimeout(
-            model.sendRequest(messages, options, token),
-            timeoutMs,
-            token
-        );
+        // Create a linked CancellationTokenSource that cancels when:
+        // 1. User cancellation token fires (user action)
+        // 2. Timeout expires (we cancel it to stop stream consumption)
+        // This ensures the stream consumer loop exits on timeout, preventing resource leaks.
+        const linkedTokenSource = new vscode.CancellationTokenSource();
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let userCancellationDisposable: vscode.Disposable | undefined;
+
+        try {
+            // Pre-check cancellation FIRST before any async work
+            if (token.isCancellationRequested) {
+                linkedTokenSource.cancel();
+                throw new vscode.CancellationError();
+            }
+
+            // Register user cancellation listener BEFORE starting stream
+            // to avoid race where cancellation fires during stream creation
+            userCancellationDisposable = token.onCancellationRequested(() => {
+                linkedTokenSource.cancel();
+            });
+
+            const streamPromise = ModelRequestHandler.sendAndConsumeStream(
+                model,
+                messages,
+                options,
+                linkedTokenSource.token
+            );
+            // Suppress late rejections from stream consumption if timeout/cancellation wins the race.
+            // Must be attached before any early throws to prevent unhandled rejections.
+            streamPromise.catch(() => {});
+
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    Log.warn(
+                        `[Timeout] LLM request abandoned after ${timeoutMs}ms - cancelling stream consumption`
+                    );
+                    linkedTokenSource.cancel();
+                    reject(TimeoutError.create('LLM request', timeoutMs));
+                }, timeoutMs);
+            });
+
+            // Race the stream consumption against timeout
+            // When timeout wins, it also cancels the linked token to stop the stream
+            return await Promise.race([streamPromise, timeoutPromise]);
+        } finally {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+            }
+            userCancellationDisposable?.dispose();
+            linkedTokenSource.dispose();
+        }
+    }
+
+    /**
+     * Internal method that sends the request and consumes the entire response stream.
+     * Separated from sendRequest to allow the entire operation to be wrapped in timeout.
+     */
+    private static async sendAndConsumeStream(
+        model: vscode.LanguageModelChat,
+        messages: vscode.LanguageModelChatMessage[],
+        options: vscode.LanguageModelChatRequestOptions,
+        token: vscode.CancellationToken
+    ): Promise<ToolCallResponse> {
+        const response = await model.sendRequest(messages, options, token);
 
         let responseText = '';
         const toolCalls: ToolCall[] = [];
 
         for await (const chunk of response.stream) {
+            // Check cancellation between chunks for responsive cancellation
+            // on slow networks where chunks arrive infrequently
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             if (chunk instanceof vscode.LanguageModelTextPart) {
                 responseText += chunk.value;
             } else if (chunk instanceof vscode.LanguageModelToolCallPart) {

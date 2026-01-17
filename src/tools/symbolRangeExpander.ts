@@ -1,4 +1,13 @@
 import * as vscode from 'vscode';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    isCancellationError,
+} from '../utils/asyncUtils';
+import { Log } from '../services/loggingService';
+
+/** Timeout for document symbol provider call */
+const SYMBOL_PROVIDER_TIMEOUT = 5_000; // 5 seconds
 
 /**
  * Utility class for expanding symbol ranges to include full symbol definitions.
@@ -9,20 +18,27 @@ export class SymbolRangeExpander {
      * Get the full range of a symbol definition (e.g., entire function, class, or variable declaration)
      * @param document The text document containing the symbol
      * @param symbolRange The initial range returned by the definition provider
+     * @param token Optional cancellation token for aborting the operation
      * @returns A range that encompasses the full symbol definition
      */
     async getFullSymbolRange(
         document: vscode.TextDocument,
-        symbolRange: vscode.Range
+        symbolRange: vscode.Range,
+        token?: vscode.CancellationToken
     ): Promise<vscode.Range> {
         try {
-            // Try to use DocumentSymbolProvider to get the full symbol range
-            const symbols = await vscode.commands.executeCommand<
+            const symbolsPromise = vscode.commands.executeCommand<
                 vscode.DocumentSymbol[]
             >('vscode.executeDocumentSymbolProvider', document.uri);
 
+            const symbols = await withCancellableTimeout(
+                Promise.resolve(symbolsPromise),
+                SYMBOL_PROVIDER_TIMEOUT,
+                `Document symbols for ${document.fileName}`,
+                token
+            );
+
             if (symbols && symbols.length > 0) {
-                // Find the symbol that contains our target position
                 const targetPosition = symbolRange.start;
                 const containingSymbol = this.findContainingSymbol(
                     symbols,
@@ -30,15 +46,28 @@ export class SymbolRangeExpander {
                 );
 
                 if (containingSymbol) {
-                    // Return the full range of the containing symbol
                     return containingSymbol.range;
                 }
             }
 
             // Fallback: try to expand the range intelligently based on code structure
             return this.expandRangeForSymbol(document, symbolRange);
-        } catch {
-            // Fallback to expanded range if symbol provider fails
+        } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+            if (isTimeoutError(error)) {
+                Log.debug(
+                    `Document symbol provider timed out for ${document.fileName} - using heuristic expansion`
+                );
+            } else {
+                const message =
+                    error instanceof Error ? error.message : String(error);
+                Log.debug(
+                    `Document symbol provider failed for ${document.fileName}: ${message}`
+                );
+            }
+            // Fallback to expanded range if symbol provider fails or times out
             return this.expandRangeForSymbol(document, symbolRange);
         }
     }

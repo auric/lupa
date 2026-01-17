@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import * as vscode from 'vscode';
 import * as z from 'zod';
 import { ToolExecutor, ToolExecutionRequest } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
@@ -10,6 +11,7 @@ import {
 } from '../models/workspaceSettingsSchema';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { TokenConstants } from '../models/tokenConstants';
+import { TimeoutError } from '../types/errorTypes';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
@@ -572,6 +574,139 @@ describe('ToolExecutor', () => {
             );
 
             expect(capturedContext).toBeUndefined();
+        });
+
+        it('should throw CancellationError when token is cancelled before execution', async () => {
+            const slowTool: ITool = {
+                name: 'slow_tool',
+                description: 'A slow tool',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'slow_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> => {
+                    // This should never be called
+                    return toolSuccess('should not reach');
+                },
+            };
+
+            toolRegistry.registerTool(slowTool);
+
+            const mockCancelledContext = {
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: () => ({ dispose: () => {} }),
+                },
+            };
+
+            const toolExecutorWithCancelledToken = new ToolExecutor(
+                toolRegistry,
+                mockSettings,
+                mockCancelledContext as any
+            );
+
+            await expect(
+                toolExecutorWithCancelledToken.executeTool('slow_tool', {})
+            ).rejects.toThrow();
+        });
+
+        it('should rethrow CancellationError when tool throws it during execution', async () => {
+            const cancellingTool: ITool = {
+                name: 'cancelling_tool',
+                description: 'A tool that throws CancellationError',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'cancelling_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> => {
+                    throw new vscode.CancellationError();
+                },
+            };
+
+            toolRegistry.registerTool(cancellingTool);
+
+            await expect(
+                toolExecutor.executeTool('cancelling_tool', {})
+            ).rejects.toThrow(vscode.CancellationError);
+        });
+
+        it('should convert TimeoutError to structured error result', async () => {
+            const timeoutTool: ITool = {
+                name: 'timeout_tool',
+                description: 'A tool that times out',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'timeout_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                execute: async (): Promise<ToolResult> => {
+                    throw TimeoutError.create('test operation', 5000);
+                },
+            };
+
+            toolRegistry.registerTool(timeoutTool);
+
+            const result = await toolExecutor.executeTool('timeout_tool', {});
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('timed out');
+            expect(result.error).toContain('more specific query');
+        });
+    });
+
+    describe('Cancellation Precedence', () => {
+        it('should throw CancellationError even when rate limit is exceeded', async () => {
+            // Create an executor with a low limit and a pre-cancelled token
+            const mockCancelledContext = {
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: () => ({ dispose: () => {} }),
+                },
+            };
+
+            const limitedExecutor = new ToolExecutor(
+                toolRegistry,
+                createMockSettings(1), // Very low limit
+                mockCancelledContext as any
+            );
+
+            // Make calls that would exceed the rate limit
+            // First call should throw CancellationError, NOT increment count and return rate-limit error
+            await expect(
+                limitedExecutor.executeTool('success_tool', {
+                    message: 'test1',
+                })
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Call count should NOT have been incremented (cancellation checked before count)
+            expect(limitedExecutor.getToolCallCount()).toBe(0);
+        });
+
+        it('should prioritize cancellation over rate limit when both would apply', async () => {
+            // Create an executor with limit already exceeded AND cancelled token
+            const mockCancelledContext = {
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: () => ({ dispose: () => {} }),
+                },
+            };
+
+            const limitedExecutor = new ToolExecutor(
+                toolRegistry,
+                createMockSettings(0), // Zero limit - any call would hit rate limit
+                mockCancelledContext as any
+            );
+
+            // This would hit rate limit immediately if cancellation wasn't checked first
+            // But cancellation should take precedence and throw CancellationError
+            await expect(
+                limitedExecutor.executeTool('success_tool', { message: 'test' })
+            ).rejects.toThrow(vscode.CancellationError);
         });
     });
 });

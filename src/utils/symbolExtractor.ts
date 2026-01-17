@@ -4,6 +4,19 @@ import ignore from 'ignore';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { readGitignore } from '../utils/gitUtils';
 import { CodeFileUtils } from './codeFileUtils';
+import {
+    withCancellableTimeout,
+    isTimeoutError,
+    isCancellationError,
+    rethrowIfCancellationOrTimeout,
+} from './asyncUtils';
+import { Log } from '../services/loggingService';
+
+/** Timeout for extracting symbols from a single file */
+const FILE_SYMBOL_TIMEOUT = 5_000; // 5 seconds per file
+
+/** Maximum time for entire directory symbol extraction */
+const DIRECTORY_SYMBOL_TIMEOUT = 60_000; // 60 seconds total
 
 /**
  * Options for directory symbol extraction
@@ -12,6 +25,10 @@ export interface DirectorySymbolOptions {
     maxDepth?: number;
     includeHidden?: boolean;
     filePattern?: RegExp;
+    /** Maximum time in milliseconds for entire directory scan. Defaults to DIRECTORY_SYMBOL_TIMEOUT. */
+    timeoutMs?: number;
+    /** Cancellation token to abort the operation early */
+    token?: vscode.CancellationToken;
 }
 
 /**
@@ -23,6 +40,28 @@ export interface FileSymbolResult {
 }
 
 /**
+ * Result structure for directory symbol extraction with truncation metadata
+ */
+export interface DirectorySymbolsResult {
+    /** Array of file symbol results */
+    results: FileSymbolResult[];
+    /** True if extraction was stopped early due to timeout or cancellation */
+    truncated: boolean;
+    /** Number of files that timed out during symbol extraction */
+    timedOutFiles: number;
+}
+
+/**
+ * Result from file discovery with explicit truncation tracking
+ */
+interface FileDiscoveryResult {
+    /** Array of relative file paths found */
+    files: string[];
+    /** True if discovery was stopped early due to timeout */
+    truncated: boolean;
+}
+
+/**
  * Utility class for extracting symbols from files and directories using VS Code LSP.
  * Handles Git repository context, .gitignore patterns, and recursive directory traversal.
  */
@@ -30,82 +69,166 @@ export class SymbolExtractor {
     constructor(private readonly gitOperationsManager: GitOperationsManager) {}
 
     /**
-     * Extract symbols from a single file using VS Code LSP API
+     * Extract symbols from a single file using VS Code LSP API with timeout protection.
      * @param fileUri - VS Code URI of the file
-     * @returns Array of DocumentSymbols or SymbolInformation, or empty array if extraction fails
+     * @param token - Optional cancellation token
+     * @returns Array of DocumentSymbols or SymbolInformation
+     * @throws CancellationError if cancelled
+     * @throws TimeoutError if extraction times out
+     * @returns Empty array for other LSP errors (non-fatal)
      */
     async getFileSymbols(
-        fileUri: vscode.Uri
+        fileUri: vscode.Uri,
+        token?: vscode.CancellationToken
     ): Promise<vscode.DocumentSymbol[] | vscode.SymbolInformation[]> {
         try {
-            const symbols = await vscode.commands.executeCommand<
+            const symbolsPromise = vscode.commands.executeCommand<
                 vscode.DocumentSymbol[] | vscode.SymbolInformation[]
             >('vscode.executeDocumentSymbolProvider', fileUri);
+
+            const symbols = await withCancellableTimeout(
+                Promise.resolve(symbolsPromise),
+                FILE_SYMBOL_TIMEOUT,
+                `Symbol extraction for ${path.basename(fileUri.fsPath)}`,
+                token
+            );
+
             return symbols || [];
-        } catch {
-            // Return empty array if no symbols or provider not available
+        } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+            if (isTimeoutError(error)) {
+                Log.debug(
+                    `Symbol extraction timed out for ${fileUri.fsPath} - language server may be slow`
+                );
+                throw error;
+            }
+            // Other errors (LSP failures, etc.) return empty - don't abort entire directory scan
+            const message =
+                error instanceof Error ? error.message : String(error);
+            Log.warn(
+                `Symbol extraction failed for ${fileUri.fsPath}: ${message}`
+            );
             return [];
         }
     }
 
     /**
-     * Extract symbols from all files in a directory, respecting .gitignore
+     * Extract symbols from all files in a directory, respecting .gitignore.
+     * Has built-in timeout protection for the overall operation.
+     *
+     * Behavior:
+     * - **Timeout**: Returns partial results with `truncated: true`
+     * - **Cancellation**: Throws CancellationError (pre-cancellation or mid-loop)
+     * - **Per-file timeout**: Increments `timedOutFiles` counter and continues
+     *
      * @param targetPath - Absolute path to the directory
      * @param relativePath - Relative path for context
-     * @param options - Directory extraction options
-     * @returns Array of file symbol results
+     * @param options - Directory extraction options (including timeoutMs and token)
+     * @returns Directory symbol results with truncation metadata
+     * @throws CancellationError if token is cancelled before or during extraction
      */
     async getDirectorySymbols(
         targetPath: string,
         relativePath: string,
         options: DirectorySymbolOptions = {}
-    ): Promise<FileSymbolResult[]> {
+    ): Promise<DirectorySymbolsResult> {
         const results: FileSymbolResult[] = [];
+        const startTime = Date.now();
+        const timeoutMs = options.timeoutMs ?? DIRECTORY_SYMBOL_TIMEOUT;
+        const token = options.token;
+        let timedOutFiles = 0;
 
-        // Read .gitignore patterns
+        if (token?.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const repository = this.gitOperationsManager.getRepository();
         const gitignoreContent = await readGitignore(repository);
         const ig = ignore().add(gitignoreContent);
 
-        // Debug: Log gitignore patterns loaded
         if (gitignoreContent.trim()) {
-            console.log(
-                `[SymbolExtractor] Loaded gitignore patterns:`,
-                gitignoreContent
+            Log.debug(
+                `Loaded gitignore patterns: ${gitignoreContent
                     .split('\n')
                     .filter((line) => line.trim() && !line.startsWith('#'))
+                    .join(', ')}`
             );
         } else {
-            console.log(`[SymbolExtractor] No gitignore patterns found`);
+            Log.debug(`No gitignore patterns found`);
         }
 
-        // Get all files in directory recursively
-        const files = await this.getAllFiles(
+        const discoveryResult = await this.getAllFiles(
             targetPath,
             relativePath,
             ig,
-            options
+            options,
+            0,
+            startTime,
+            timeoutMs
         );
 
-        // Get symbols for each file
+        const { files, truncated: discoveryTruncated } = discoveryResult;
+        let truncated = discoveryTruncated;
+        if (truncated) {
+            Log.debug(
+                `File discovery hit timeout - processing ${files.length} files found so far`
+            );
+        }
+
         for (const filePath of files) {
+            const elapsed = Date.now() - startTime;
+            if (elapsed > timeoutMs) {
+                Log.warn(
+                    `Directory symbol extraction stopped after ${elapsed}ms (limit: ${timeoutMs}ms) - processed ${results.length} files with symbols`
+                );
+                truncated = true;
+                break;
+            }
+
+            if (token?.isCancellationRequested) {
+                Log.debug(
+                    `Directory symbol extraction cancelled after processing ${results.length} files`
+                );
+                throw new vscode.CancellationError();
+            }
+
             const gitRootDirectory =
                 this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
             const fullPath = path.join(gitRootDirectory, filePath);
             const fileUri = vscode.Uri.file(fullPath);
 
             try {
-                const symbols = await this.getFileSymbols(fileUri);
+                // getFileSymbols now has its own per-file timeout
+                const symbols = await this.getFileSymbols(fileUri, token);
                 if (symbols.length > 0) {
                     results.push({ filePath, symbols });
                 }
-            } catch {
-                // Skip files that can't be processed
+            } catch (error) {
+                if (isCancellationError(error)) {
+                    Log.debug(`Symbol extraction cancelled for ${filePath}`);
+                    throw error;
+                }
+
+                if (isTimeoutError(error)) {
+                    timedOutFiles++;
+                }
+
+                const message =
+                    error instanceof Error ? error.message : String(error);
+                Log.debug(`Skipping file ${filePath}: ${message}`);
                 continue;
             }
         }
 
-        return results;
+        // If any files timed out, results are incomplete - set truncated flag
+        // This centralizes "results incomplete" semantics and reduces duplication in callers
+        if (timedOutFiles > 0) {
+            truncated = true;
+        }
+
+        return { results, truncated, timedOutFiles };
     }
 
     /**
@@ -115,21 +238,41 @@ export class SymbolExtractor {
      * @param ignorePatterns - Ignore patterns from .gitignore
      * @param options - Directory traversal options
      * @param currentDepth - Current recursion depth
-     * @returns Array of relative file paths
+     * @param startTime - Start time for timeout tracking (passed from getDirectorySymbols)
+     * @param timeoutMs - Timeout in milliseconds for entire traversal
+     * @returns File discovery result with explicit truncation flag
+     * @throws CancellationError if cancelled
      */
     async getAllFiles(
         targetPath: string,
         relativePath: string,
         ignorePatterns: ReturnType<typeof ignore>,
         options: DirectorySymbolOptions = {},
-        currentDepth: number = 0
-    ): Promise<string[]> {
-        const { maxDepth = 10, includeHidden = false, filePattern } = options;
+        currentDepth: number = 0,
+        startTime: number = Date.now(),
+        timeoutMs: number = DIRECTORY_SYMBOL_TIMEOUT
+    ): Promise<FileDiscoveryResult> {
+        const {
+            maxDepth = 10,
+            includeHidden = false,
+            filePattern,
+            token,
+        } = options;
         const files: string[] = [];
 
-        // Prevent infinite recursion by limiting depth
+        if (Date.now() - startTime > timeoutMs) {
+            Log.warn(
+                `File discovery stopped after timeout - found ${files.length} files so far`
+            );
+            return { files, truncated: true };
+        }
+
+        if (token?.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         if (currentDepth > maxDepth) {
-            return files;
+            return { files, truncated: false };
         }
 
         try {
@@ -137,18 +280,25 @@ export class SymbolExtractor {
             const entries = await vscode.workspace.fs.readDirectory(targetUri);
 
             for (const [name, type] of entries) {
-                // Skip hidden files/directories unless explicitly included
+                if (Date.now() - startTime > timeoutMs) {
+                    Log.warn(
+                        `File discovery stopped after timeout - found ${files.length} files so far`
+                    );
+                    return { files, truncated: true };
+                }
+
+                if (token?.isCancellationRequested) {
+                    throw new vscode.CancellationError();
+                }
                 if (!includeHidden && name.startsWith('.')) {
                     continue;
                 }
 
-                // Build full path relative to git root for gitignore checking
                 const fullPath =
                     relativePath === '.'
                         ? name
                         : path.posix.join(relativePath, name);
 
-                // Validate path format before checking gitignore patterns
                 if (ignore.isPathValid(fullPath)) {
                     try {
                         // Check if this entry should be ignored by .gitignore using full path
@@ -157,24 +307,23 @@ export class SymbolExtractor {
                             continue;
                         }
                     } catch (error) {
-                        // Log gitignore check failures for debugging but continue processing
-                        console.warn(
-                            `Failed to check gitignore for path "${fullPath}":`,
-                            error
+                        const message =
+                            error instanceof Error
+                                ? error.message
+                                : String(error);
+                        Log.warn(
+                            `Failed to check gitignore for path "${fullPath}": ${message}`
                         );
                     }
                 } else {
-                    // Log invalid paths for debugging
-                    console.warn(
+                    Log.warn(
                         `Invalid path format for gitignore check: "${fullPath}"`
                     );
                 }
 
                 if (type === vscode.FileType.File) {
-                    // Check if it's a code file
                     let shouldInclude = CodeFileUtils.isCodeFile(name);
 
-                    // Apply additional file pattern filter if provided
                     if (shouldInclude && filePattern) {
                         shouldInclude = filePattern.test(name);
                     }
@@ -183,23 +332,31 @@ export class SymbolExtractor {
                         files.push(fullPath);
                     }
                 } else if (type === vscode.FileType.Directory) {
-                    // Recursively process subdirectories with depth tracking
                     const subPath = path.join(targetPath, name);
-                    const subFiles = await this.getAllFiles(
+                    const subResult = await this.getAllFiles(
                         subPath,
                         fullPath,
                         ignorePatterns,
                         options,
-                        currentDepth + 1
+                        currentDepth + 1,
+                        startTime,
+                        timeoutMs
                     );
-                    files.push(...subFiles);
+                    files.push(...subResult.files);
+                    if (subResult.truncated) {
+                        return { files, truncated: true };
+                    }
                 }
             }
-        } catch {
-            // Skip directories that can't be read
+        } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
+
+            const message =
+                error instanceof Error ? error.message : String(error);
+            Log.debug(`Cannot read directory ${targetPath}: ${message}`);
         }
 
-        return files;
+        return { files, truncated: false };
     }
 
     /**
@@ -275,12 +432,15 @@ export class SymbolExtractor {
      * @param fileUri - VS Code URI of the file
      * @returns Symbol extraction result with context
      */
-    async extractSymbolsWithContext(fileUri: vscode.Uri): Promise<{
+    async extractSymbolsWithContext(
+        fileUri: vscode.Uri,
+        token?: vscode.CancellationToken
+    ): Promise<{
         symbols: vscode.DocumentSymbol[] | vscode.SymbolInformation[];
         document?: vscode.TextDocument;
         relativePath: string;
     }> {
-        const symbols = await this.getFileSymbols(fileUri);
+        const symbols = await this.getFileSymbols(fileUri, token);
         const document = await this.getTextDocument(fileUri);
         const relativePath = this.getGitRelativePathFromUri(fileUri);
 

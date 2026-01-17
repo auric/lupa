@@ -3,7 +3,7 @@
 **Magnify your code intelligence**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.10-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.11-green.svg)](./CHANGELOG.md)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](./LICENSE)
 
 > ⚠️ **Important: Read before using!**
