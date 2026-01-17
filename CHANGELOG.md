@@ -27,10 +27,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Clearer Copilot model errors**: When models are unavailable, you now see the actual error message instead of just the model name.
 
-### Changed
-
-- **Incomplete results are labeled**: When a search hits time or file limits, results now include a note explaining they may be incomplete with suggestions for narrowing the search.
-
 ## [0.1.10] - 2026-01-05
 
 ### Added
