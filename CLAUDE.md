@@ -286,7 +286,6 @@ Use subagents strategically to preserve context and parallelize work:
 - Provide clear, specific instructions with examples
 - Include relevant context the subagent needs
 - Verify subagent results before trusting them
-- Use `explore` agent for research, `task` agent for execution, `general-purpose` for complex work
 
 **Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
 
