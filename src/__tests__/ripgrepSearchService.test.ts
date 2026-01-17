@@ -202,6 +202,20 @@ describe('RipgrepSearchService', () => {
                 }),
             };
 
+            // Spy on listener removal to verify cleanup
+            const stdoutRemoveAllListenersSpy = vi.spyOn(
+                mockProcess.stdout,
+                'removeAllListeners'
+            );
+            const stderrRemoveAllListenersSpy = vi.spyOn(
+                mockProcess.stderr,
+                'removeAllListeners'
+            );
+            const processRemoveAllListenersSpy = vi.spyOn(
+                mockProcess,
+                'removeAllListeners'
+            );
+
             const searchPromise = service.search({
                 pattern: 'test',
                 cwd: '/test',
@@ -231,6 +245,12 @@ describe('RipgrepSearchService', () => {
             await expect(searchPromise).rejects.toThrow(
                 'ripgrep process did not respond to termination signals'
             );
+
+            // Verify listeners were removed to prevent resource leaks
+            expect(stdoutRemoveAllListenersSpy).toHaveBeenCalledWith('data');
+            expect(stderrRemoveAllListenersSpy).toHaveBeenCalledWith('data');
+            expect(processRemoveAllListenersSpy).toHaveBeenCalledWith('close');
+            expect(processRemoveAllListenersSpy).toHaveBeenCalledWith('error');
         });
 
         it('should not trigger final watchdog if process closes after SIGKILL', async () => {
