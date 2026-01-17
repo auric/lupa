@@ -1084,10 +1084,22 @@ describe('Think Tools Integration', () => {
         const investigationTool = new ThinkAboutInvestigationTool();
 
         const results = await Promise.all([
-            contextTool.execute(createValidContextInput()),
-            taskTool.execute(createValidTaskInput()),
-            completionTool.execute(createValidCompletionInput()),
-            investigationTool.execute(createValidInvestigationInput()),
+            contextTool.execute(
+                createValidContextInput(),
+                createMockExecutionContext()
+            ),
+            taskTool.execute(
+                createValidTaskInput(),
+                createMockExecutionContext()
+            ),
+            completionTool.execute(
+                createValidCompletionInput(),
+                createMockExecutionContext()
+            ),
+            investigationTool.execute(
+                createValidInvestigationInput(),
+                createMockExecutionContext()
+            ),
         ]);
 
         for (const result of results) {
@@ -1156,19 +1168,25 @@ describe('Think Tools Integration', () => {
     it('should all have decision field that affects output', async () => {
         const contextTool = new ThinkAboutContextTool();
 
-        const result1 = await contextTool.execute({
-            files_examined: ['src/file.ts'],
-            key_findings: [],
-            remaining_gaps: [],
-            decision: 'need_more_context',
-        });
+        const result1 = await contextTool.execute(
+            {
+                files_examined: ['src/file.ts'],
+                key_findings: [],
+                remaining_gaps: [],
+                decision: 'need_more_context',
+            },
+            createMockExecutionContext()
+        );
 
-        const result2 = await contextTool.execute({
-            files_examined: ['src/file.ts'],
-            key_findings: [],
-            remaining_gaps: [],
-            decision: 'context_sufficient',
-        });
+        const result2 = await contextTool.execute(
+            {
+                files_examined: ['src/file.ts'],
+                key_findings: [],
+                remaining_gaps: [],
+                decision: 'context_sufficient',
+            },
+            createMockExecutionContext()
+        );
 
         expect(result1.data).not.toBe(result2.data);
         expect(result1.data).toContain('NEED MORE CONTEXT');

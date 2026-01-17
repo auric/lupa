@@ -19,7 +19,7 @@ class MockTool implements ITool {
         };
     }
 
-    async execute(args: any, _context?: ExecutionContext): Promise<ToolResult> {
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
         return {
             success: true,
             data: `Executed with: ${args.input}`,
@@ -40,7 +40,7 @@ class AnotherMockTool implements ITool {
         };
     }
 
-    async execute(args: any, _context?: ExecutionContext): Promise<ToolResult> {
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
         return {
             success: true,
             data: (args.value * 2).toString(),

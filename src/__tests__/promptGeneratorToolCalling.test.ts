@@ -4,6 +4,7 @@ import { ITool } from '../tools/ITool';
 import { DiffHunk } from '../types/contextTypes';
 import * as z from 'zod';
 import * as vscode from 'vscode';
+import type { ExecutionContext } from '../types/executionContext';
 
 // Mock tool for testing
 class MockTool implements ITool {
@@ -22,7 +23,7 @@ class MockTool implements ITool {
         };
     }
 
-    async execute(_args: any): Promise<any> {
+    async execute(_args: any, _context: ExecutionContext): Promise<any> {
         return [];
     }
 }

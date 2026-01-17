@@ -3,6 +3,7 @@ import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPrompt
 import { ITool } from '../tools/ITool';
 import * as z from 'zod';
 import * as vscode from 'vscode';
+import type { ExecutionContext } from '../types/executionContext';
 
 // Mock tools for testing
 class MockFindSymbolTool implements ITool {
@@ -28,7 +29,7 @@ class MockFindSymbolTool implements ITool {
         };
     }
 
-    async execute(_args: any): Promise<any> {
+    async execute(_args: any, _context: ExecutionContext): Promise<any> {
         return [];
     }
 }
@@ -56,7 +57,7 @@ class MockSearchPatternTool implements ITool {
         };
     }
 
-    async execute(_args: any): Promise<any> {
+    async execute(_args: any, _context: ExecutionContext): Promise<any> {
         return [];
     }
 }
