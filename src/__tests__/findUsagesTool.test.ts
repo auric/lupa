@@ -4,6 +4,7 @@ import { FindUsagesTool } from '../tools/findUsagesTool';
 import {
     createMockGitOperationsManager,
     createMockCancellationTokenSource,
+    createMockExecutionContext,
 } from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
@@ -103,30 +104,39 @@ describe('FindUsagesTool', () => {
         });
 
         it('should validate and sanitize input parameters', async () => {
-            const result = await findUsagesTool.execute({
-                symbol_name: '  MyClass  ',
-                file_path: '  src/test.ts  ',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: '  MyClass  ',
+                    file_path: '  src/test.ts  ',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result).toBeDefined();
             expect(result.success).toBeDefined();
         });
 
         it('should handle empty symbol name', async () => {
-            const result = await findUsagesTool.execute({
-                symbol_name: '',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: '',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Symbol name cannot be empty');
         });
 
         it('should handle empty file path', async () => {
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: '',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: '',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('File path cannot be empty');
@@ -135,10 +145,13 @@ describe('FindUsagesTool', () => {
         it('should handle missing git repository', async () => {
             mockGitOperationsManager.getRepository.mockReturnValue(null);
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Git repository not found');
@@ -149,10 +162,13 @@ describe('FindUsagesTool', () => {
                 new Error('File not found')
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'nonexistent.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'nonexistent.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Could not open file');
@@ -165,10 +181,13 @@ describe('FindUsagesTool', () => {
                 uri: { toString: () => 'file:///test.ts' },
             });
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'NonExistentSymbol',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'NonExistentSymbol',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('No usages found for symbol');
@@ -222,11 +241,14 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-                context_line_count: 1,
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                    context_line_count: 1,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -253,10 +275,13 @@ describe('FindUsagesTool', () => {
 
             // Error bubbles up to ToolExecutor which converts it to toolError
             await expect(
-                findUsagesTool.execute({
-                    symbol_name: 'MyClass',
-                    file_path: 'src/test.ts',
-                })
+                findUsagesTool.execute(
+                    {
+                        symbol_name: 'MyClass',
+                        file_path: 'src/test.ts',
+                    },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow('Reference provider failed');
         });
 
@@ -305,10 +330,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             // Should deduplicate and return success with data
             expect(result.success).toBe(true);
@@ -337,11 +365,14 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-                should_include_declaration: true,
-            });
+            await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                    should_include_declaration: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(capturedIncludeDeclaration).toBe(true);
         });
@@ -381,10 +412,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -426,11 +460,14 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-                context_line_count: 1,
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                    context_line_count: 1,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('=== src/test.ts ===');
@@ -451,10 +488,13 @@ describe('FindUsagesTool', () => {
                 });
 
                 await expect(
-                    findUsagesTool.execute({
-                        symbol_name: 'MyClass',
-                        file_path: 'src/test.ts',
-                    })
+                    findUsagesTool.execute(
+                        {
+                            symbol_name: 'MyClass',
+                            file_path: 'src/test.ts',
+                        },
+                        createMockExecutionContext()
+                    )
                 ).rejects.toThrow('Unexpected error in Uri.file');
             } finally {
                 // Always restore original function
@@ -558,10 +598,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             // Tool returns error (no usages found) - this is correct behavior
             expect(result.success).toBe(false);
@@ -585,10 +628,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             // Fallback to first occurrence is used, but no refs found
             expect(result.success).toBe(false);
@@ -637,10 +683,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'MyClass',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             // Tool should find usages using fallback to first text occurrence
             expect(result.success).toBe(true);
@@ -656,10 +705,13 @@ describe('FindUsagesTool', () => {
                 uri: { toString: () => 'file:///test.ts' },
             });
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'get',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'get',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('No usages found for symbol');
@@ -713,10 +765,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'User',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'User',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -771,10 +826,13 @@ describe('FindUsagesTool', () => {
                 }
             );
 
-            const result = await findUsagesTool.execute({
-                symbol_name: '$scope',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: '$scope',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -788,10 +846,13 @@ describe('FindUsagesTool', () => {
                 uri: { toString: () => 'file:///test.ts' },
             });
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'User',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'User',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('No usages found for symbol');
@@ -804,10 +865,13 @@ describe('FindUsagesTool', () => {
                 uri: { toString: () => 'file:///test.ts' },
             });
 
-            const result = await findUsagesTool.execute({
-                symbol_name: 'id',
-                file_path: 'src/test.ts',
-            });
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'id',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('No usages found for symbol');

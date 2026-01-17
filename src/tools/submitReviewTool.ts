@@ -42,7 +42,7 @@ export class SubmitReviewTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        _context: ExecutionContext
     ): Promise<ToolResult> {
         // Return review content as-is - the output format prompt already defines structure
         return toolSuccess(args.review_content, { isCompletion: true });

@@ -3,7 +3,10 @@ import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
-import { createMockRange } from './testUtils/mockFactories';
+import {
+    createMockRange,
+    createMockExecutionContext,
+} from './testUtils/mockFactories';
 
 // Mock the readGitignore function
 vi.mock('../utils/gitUtils', () => ({
@@ -188,10 +191,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                include_body: true,
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    include_body: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('=== test.ts [MyClass - class] ===');
@@ -289,7 +295,10 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({ name_path: 'test' });
+            const result = await findSymbolTool.execute(
+                { name_path: 'test' },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('=== test.ts [test -');
@@ -359,10 +368,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
             );
 
             // Test include_body: false
-            const resultFalse = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                include_body: false,
-            });
+            const resultFalse = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    include_body: false,
+                },
+                createMockExecutionContext()
+            );
 
             expect(resultFalse.success).toBe(true);
             expect(resultFalse.data).toContain(
@@ -372,10 +384,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
             expect(resultFalse.data).not.toContain('1: class MyClass {}');
 
             // Test include_body: true
-            const resultTrue = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                include_body: true,
-            });
+            const resultTrue = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    include_body: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(resultTrue.success).toBe(true);
             expect(resultTrue.data).toContain(
@@ -388,7 +403,10 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
     describe('Error Handling Integration', () => {
         it('should handle input validation errors', async () => {
-            const result = await findSymbolTool.execute({ name_path: '   ' });
+            const result = await findSymbolTool.execute(
+                { name_path: '   ' },
+                createMockExecutionContext()
+            );
             expect(result.success).toBe(false);
             expect(result.error).toContain('Symbol name cannot be empty');
         });
@@ -404,9 +422,12 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'NonExistentSymbol',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'NonExistentSymbol',
+                },
+                createMockExecutionContext()
+            );
             expect(result.success).toBe(false);
             expect(result.error).toContain(
                 "Symbol 'NonExistentSymbol' not found"
@@ -419,9 +440,12 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 new Error('API failed')
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                },
+                createMockExecutionContext()
+            );
             expect(result.success).toBe(false);
             expect(result.error).toContain("Symbol 'MyClass' not found");
         });
@@ -461,9 +485,12 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('=== test.ts [MyClass - class] ===');
@@ -510,7 +537,10 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 lineCount: 1,
             } as any);
 
-            const result = await findSymbolTool.execute({ name_path: 'test' });
+            const result = await findSymbolTool.execute(
+                { name_path: 'test' },
+                createMockExecutionContext()
+            );
             expect(result.success).toBe(false);
             expect(result.error).toContain("Symbol 'test' not found");
         });
@@ -569,10 +599,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 lineCount: 2,
             } as any);
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                relative_path: 'src',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    relative_path: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain(
@@ -630,10 +663,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 lineCount: 2,
             } as any);
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                relative_path: 'src',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    relative_path: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain(
@@ -683,7 +719,10 @@ describe('FindSymbolTool (Integration Tests)', () => {
 
             // Should propagate CancellationError, not swallow it
             await expect(
-                findSymbolTool.execute({ name_path: 'MyClass' })
+                findSymbolTool.execute(
+                    { name_path: 'MyClass' },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow(vscode.CancellationError);
         });
     });
@@ -749,10 +788,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'Shutdown',
-                include_body: true,
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'Shutdown',
+                    include_body: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain(
@@ -833,11 +875,14 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                relative_path: 'test.ts',
-                include_body: true,
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    relative_path: 'test.ts',
+                    include_body: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('=== test.ts [MyClass - class] ===');
@@ -909,10 +954,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                include_children: true,
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    include_children: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('=== test.ts [MyClass - class] ===');
@@ -976,10 +1024,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'FWGCApiModuleImpl/Shutdown',
-                relative_path: 'impl.cpp',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'FWGCApiModuleImpl/Shutdown',
+                    relative_path: 'impl.cpp',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain(
@@ -1059,10 +1110,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'FWGCApiModuleImpl/Shutdown',
-                relative_path: 'header.h',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'FWGCApiModuleImpl/Shutdown',
+                    relative_path: 'header.h',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain(
@@ -1125,10 +1179,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'Service/init',
-                relative_path: 'mixed.cpp',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'Service/init',
+                    relative_path: 'mixed.cpp',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Name Path: Service/init');
@@ -1210,9 +1267,12 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: '/MyClass/method',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: '/MyClass/method',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Name Path: MyClass/method');
@@ -1307,9 +1367,12 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass/method',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass/method',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Name Path: MyClass/method');
@@ -1379,10 +1442,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass',
-                include_children: true,
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass',
+                    include_children: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('=== test.ts [MyClass - class] ===');
@@ -1494,10 +1560,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'method',
-                include_body: true,
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'method',
+                    include_body: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('[method() - method]');
@@ -1564,9 +1633,12 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'helper',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'helper',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Name Path: helper'); // Should not include detail as container when containerName is empty
@@ -1641,10 +1713,13 @@ describe('FindSymbolTool (Integration Tests)', () => {
                 }
             );
 
-            const result = await findSymbolTool.execute({
-                name_path: 'MyClass/method',
-                relative_path: 'test.cpp',
-            });
+            const result = await findSymbolTool.execute(
+                {
+                    name_path: 'MyClass/method',
+                    relative_path: 'test.cpp',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Name Path: MyClass/method');

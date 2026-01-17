@@ -12,6 +12,7 @@ import {
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { TokenConstants } from '../models/tokenConstants';
 import { TimeoutError } from '../types/errorTypes';
+import { createMockExecutionContext } from './testUtils/mockFactories';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
@@ -94,7 +95,11 @@ describe('ToolExecutor', () => {
         mockSettings = createMockSettings(
             ANALYSIS_LIMITS.maxIterations.default
         );
-        toolExecutor = new ToolExecutor(toolRegistry, mockSettings);
+        toolExecutor = new ToolExecutor(
+            toolRegistry,
+            mockSettings,
+            createMockExecutionContext()
+        );
         successTool = new MockSuccessTool();
         errorTool = new MockErrorTool();
         delayTool = new MockDelayTool();
@@ -275,7 +280,8 @@ describe('ToolExecutor', () => {
         it('should allow tool calls under the limit', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(3)
+                createMockSettings(3),
+                createMockExecutionContext()
             );
 
             const result1 = await limitedExecutor.executeTool('success_tool', {
@@ -297,7 +303,8 @@ describe('ToolExecutor', () => {
         it('should reject tool calls exceeding the limit', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(3)
+                createMockSettings(3),
+                createMockExecutionContext()
             );
 
             // Make 3 successful calls
@@ -326,7 +333,8 @@ describe('ToolExecutor', () => {
         it('should track call count correctly', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(10)
+                createMockSettings(10),
+                createMockExecutionContext()
             );
 
             await limitedExecutor.executeTool('success_tool', {
@@ -348,7 +356,8 @@ describe('ToolExecutor', () => {
         it('should use settings with default limit', async () => {
             const defaultExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(ANALYSIS_LIMITS.maxIterations.default)
+                createMockSettings(ANALYSIS_LIMITS.maxIterations.default),
+                createMockExecutionContext()
             );
 
             expect(defaultExecutor.getToolCallCount()).toBe(0);
@@ -523,16 +532,16 @@ describe('ToolExecutor', () => {
 
             toolRegistry.registerTool(contextCaptureTool);
 
-            const mockExecutionContext = {
-                planManager: { someProp: 'testPlan' },
-                subagentSessionManager: { someProp: 'testSession' },
-                subagentExecutor: { someProp: 'testExecutor' },
-            };
+            const mockExecutionContext = createMockExecutionContext({
+                planManager: { someProp: 'testPlan' } as any,
+                subagentSessionManager: { someProp: 'testSession' } as any,
+                subagentExecutor: { someProp: 'testExecutor' } as any,
+            });
 
             const toolExecutorWithContext = new ToolExecutor(
                 toolRegistry,
                 mockSettings,
-                mockExecutionContext as any
+                mockExecutionContext
             );
 
             await toolExecutorWithContext.executeTool(
@@ -543,12 +552,12 @@ describe('ToolExecutor', () => {
             expect(capturedContext).toBe(mockExecutionContext);
         });
 
-        it('should pass undefined context when ToolExecutor created without context', async () => {
+        it('should pass context with non-cancelled token by default', async () => {
             let capturedContext: unknown = 'not-called';
 
             const contextCaptureTool: ITool = {
                 name: 'context_check_tool',
-                description: 'Checks undefined context',
+                description: 'Checks context is passed',
                 schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'context_check_tool',
@@ -563,17 +572,20 @@ describe('ToolExecutor', () => {
 
             toolRegistry.registerTool(contextCaptureTool);
 
-            const toolExecutorWithoutContext = new ToolExecutor(
+            const toolExecutorWithContext = new ToolExecutor(
                 toolRegistry,
-                mockSettings
+                mockSettings,
+                createMockExecutionContext()
             );
 
-            await toolExecutorWithoutContext.executeTool(
-                'context_check_tool',
-                {}
-            );
+            await toolExecutorWithContext.executeTool('context_check_tool', {});
 
-            expect(capturedContext).toBeUndefined();
+            // Context should always be defined and have a cancellation token
+            expect(capturedContext).toBeDefined();
+            expect(
+                (capturedContext as any).cancellationToken
+                    .isCancellationRequested
+            ).toBe(false);
         });
 
         it('should throw CancellationError when token is cancelled before execution', async () => {

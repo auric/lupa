@@ -9,6 +9,7 @@ import {
     SUBAGENT_LIMITS,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
+import type { ExecutionContext } from '../../types/executionContext';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -489,5 +490,65 @@ export function createMockCopilotModelManager() {
             countTokens: vi.fn().mockResolvedValue(100),
             maxInputTokens: 8000,
         }),
+    };
+}
+
+/**
+ * Creates a mock CancellationToken for simple use cases where a full
+ * CancellationTokenSource is not needed.
+ *
+ * @param cancelled Whether the token should be pre-cancelled (default: false)
+ * @returns A mock CancellationToken
+ */
+export function createMockCancellationToken(
+    cancelled = false
+): vscode.CancellationToken {
+    const source = createMockCancellationTokenSource();
+    if (cancelled) {
+        source.cancel();
+    }
+    return source.token;
+}
+
+/**
+ * Creates a standard mock ExecutionContext for tool testing.
+ * Includes a non-cancelled token by default.
+ *
+ * Use this factory in all tool tests to ensure consistent ExecutionContext handling.
+ *
+ * @param overrides Optional partial ExecutionContext to override defaults
+ * @returns A complete ExecutionContext with required cancellationToken
+ */
+export function createMockExecutionContext(
+    overrides: Partial<ExecutionContext> = {}
+): ExecutionContext {
+    const tokenSource = createMockCancellationTokenSource();
+    return {
+        cancellationToken: tokenSource.token,
+        planManager: undefined,
+        subagentSessionManager: undefined,
+        subagentExecutor: undefined,
+        ...overrides,
+    };
+}
+
+/**
+ * Creates a pre-cancelled ExecutionContext for testing cancellation flows.
+ * The cancellationToken.isCancellationRequested will be true.
+ *
+ * @param overrides Optional partial ExecutionContext to override defaults
+ * @returns An ExecutionContext with a cancelled token
+ */
+export function createCancelledExecutionContext(
+    overrides: Partial<ExecutionContext> = {}
+): ExecutionContext {
+    const tokenSource = createMockCancellationTokenSource();
+    tokenSource.cancel();
+    return {
+        cancellationToken: tokenSource.token,
+        planManager: undefined,
+        subagentSessionManager: undefined,
+        subagentExecutor: undefined,
+        ...overrides,
     };
 }

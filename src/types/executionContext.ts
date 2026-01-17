@@ -38,7 +38,10 @@ export interface ExecutionContext {
      * Cancellation token for the current analysis.
      * Tools should pass this to long-running operations (symbol extraction, LSP calls)
      * to enable responsive cancellation when user stops the analysis.
-     * Optional for test scenarios; production code should always provide a token.
+     *
+     * Required: All entry points must provide a token. For tests, use
+     * `createMockExecutionContext()` from testUtils/mockFactories.ts which
+     * provides a non-cancelled token by default.
      */
-    cancellationToken?: vscode.CancellationToken;
+    cancellationToken: vscode.CancellationToken;
 }

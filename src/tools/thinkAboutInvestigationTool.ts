@@ -53,7 +53,7 @@ export class ThinkAboutInvestigationTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        _context: ExecutionContext
     ): Promise<ToolResult> {
         const {
             assigned_task,

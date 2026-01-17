@@ -3,6 +3,7 @@ import { Log } from './loggingService';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
+import type { ExecutionContext } from '../types/executionContext';
 import type {
     OpenFilePayload,
     ThemeUpdatePayload,
@@ -284,9 +285,15 @@ export class ToolTestingWebviewService {
             );
 
             // Create per-request executor for isolation from concurrent analyses
+            // Provide a cancellation token source for potential future cancellation support
+            const tokenSource = new vscode.CancellationTokenSource();
+            const executionContext: ExecutionContext = {
+                cancellationToken: tokenSource.token,
+            };
             const executor = new ToolExecutor(
                 this.toolRegistry,
-                this.workspaceSettings
+                this.workspaceSettings,
+                executionContext
             );
 
             const results = await executor.executeTools([

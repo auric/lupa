@@ -21,6 +21,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
+import type { ExecutionContext } from '../types/executionContext';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { ListDirTool } from '../tools/listDirTool';
@@ -177,9 +178,14 @@ export class ServiceManager implements vscode.Disposable {
         // For actual analysis sessions, ToolCallingAnalysisProvider and ChatParticipantService
         // create per-analysis ToolExecutor instances with proper ExecutionContext to ensure
         // concurrent-safety and per-session state isolation.
+        const utilityTokenSource = new vscode.CancellationTokenSource();
+        const utilityContext: ExecutionContext = {
+            cancellationToken: utilityTokenSource.token,
+        };
         this.services.toolExecutor = new ToolExecutor(
             this.services.toolRegistry,
-            this.services.workspaceSettings!
+            this.services.workspaceSettings!,
+            utilityContext
         );
         this.services.conversationManager = new ConversationManager();
         // Note: SubagentSessionManager and SubagentExecutor are created per-analysis

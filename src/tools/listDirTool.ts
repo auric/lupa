@@ -37,7 +37,7 @@ export class ListDirTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const { relative_path, recursive } = args;
 
@@ -49,7 +49,7 @@ export class ListDirTool extends BaseTool {
         const result = await this.callListDir(
             sanitizedPath,
             recursive,
-            context?.cancellationToken
+            context.cancellationToken
         );
 
         const output = this.formatOutput(result);

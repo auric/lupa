@@ -8,7 +8,10 @@ import { SubagentLimits } from '../models/toolConstants';
 import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
 import type { SubagentResult } from '../types/modelTypes';
 import type { ExecutionContext } from '../types/executionContext';
-import { createMockWorkspaceSettings } from './testUtils/mockFactories';
+import {
+    createMockWorkspaceSettings,
+    createMockExecutionContext,
+} from './testUtils/mockFactories';
 
 const createMockExecutor = (
     result: Partial<SubagentResult> = {}
@@ -242,14 +245,16 @@ describe('RunSubagentTool', () => {
     });
 
     describe('Error Handling', () => {
-        it('should return internal error when ExecutionContext is missing', async () => {
+        it('should return internal error when subagentExecutor and subagentSessionManager are missing', async () => {
             const tool = new RunSubagentTool(workspaceSettings);
+            // Use createMockExecutionContext which has no subagentExecutor/sessionManager by default
+            const minimalContext = createMockExecutionContext();
 
             const result = await tool.execute(
                 {
                     task: 'Investigate the authentication flow thoroughly',
                 },
-                undefined
+                minimalContext
             );
 
             expect(result.success).toBe(false);
@@ -258,9 +263,9 @@ describe('RunSubagentTool', () => {
 
         it('should return internal error when subagentExecutor is missing', async () => {
             const tool = new RunSubagentTool(workspaceSettings);
-            const partialContext = {
+            const partialContext = createMockExecutionContext({
                 subagentSessionManager: sessionManager,
-            } as ExecutionContext;
+            });
 
             const result = await tool.execute(
                 {

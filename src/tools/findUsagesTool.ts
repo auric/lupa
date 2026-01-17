@@ -68,7 +68,7 @@ Requires file_path where the symbol is defined as starting point.`;
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const {
             symbol_name,
@@ -118,7 +118,7 @@ Requires file_path where the symbol is defined as starting point.`;
         const symbolPosition = await this.findSymbolPosition(
             document,
             sanitizedSymbolName,
-            context?.cancellationToken
+            context.cancellationToken
         );
         if (!symbolPosition) {
             return toolError(
@@ -140,7 +140,7 @@ Requires file_path where the symbol is defined as starting point.`;
             ),
             LSP_OPERATION_TIMEOUT,
             `Reference search for ${sanitizedSymbolName}`,
-            context?.cancellationToken
+            context.cancellationToken
         );
 
         // VS Code's reference provider may return undefined when cancelled internally.
@@ -148,7 +148,7 @@ Requires file_path where the symbol is defined as starting point.`;
         // returning "No usages found" which would hide the cancellation from callers.
         if (
             references === undefined &&
-            context?.cancellationToken?.isCancellationRequested
+            context.cancellationToken.isCancellationRequested
         ) {
             throw new vscode.CancellationError();
         }

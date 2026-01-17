@@ -47,11 +47,11 @@ Add notes after items as you complete them (e.g., "- [x] auth.ts - found timing 
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const { plan } = args;
 
-        const planManager = context?.planManager;
+        const planManager = context.planManager;
         if (!planManager) {
             return toolError(
                 'No active analysis session. The update_plan tool is only available during PR analysis.'

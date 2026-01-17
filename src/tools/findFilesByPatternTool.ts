@@ -47,7 +47,7 @@ export class FindFilesByPatternTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const { pattern, search_directory: searchPath } = args;
 
@@ -62,7 +62,7 @@ export class FindFilesByPatternTool extends BaseTool {
             includePattern: pattern,
             respectGitignore: true,
             timeoutMs: FILE_SEARCH_TIMEOUT,
-            cancellationToken: context?.cancellationToken,
+            cancellationToken: context.cancellationToken,
         });
 
         if (result.files.length === 0) {

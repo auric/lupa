@@ -100,24 +100,24 @@ Prefer `param: string | undefined` over `param?: string` for explicit nullabilit
 
 1. Extend `BaseTool`
 2. Define Zod schema
-3. Implement `execute()` returning `ToolResult`
+3. Implement `execute(args, context)` returning `ToolResult` — `context: ExecutionContext` is required
 4. Register in `ServiceManager.initializeTools()`
-5. Access per-analysis dependencies (e.g., `SubagentExecutor`) via `ExecutionContext` parameter
+5. Access per-analysis dependencies (e.g., `SubagentExecutor`, `cancellationToken`) via `ExecutionContext` parameter
 
 ### ExecutionContext
 
-Tools receive an `ExecutionContext` with per-analysis dependencies:
+Tools receive an `ExecutionContext` with per-analysis dependencies. The `context` parameter is **required** for all tool executions:
 
 ```typescript
 interface ExecutionContext {
     planManager?: PlanSessionManager;
     subagentSessionManager?: SubagentSessionManager;
     subagentExecutor?: SubagentExecutor;
-    cancellationToken?: vscode.CancellationToken;
+    cancellationToken: vscode.CancellationToken; // Required
 }
 ```
 
-Pass `cancellationToken` to long-running operations (symbol extraction, LSP calls) for responsive cancellation.
+The `cancellationToken` is always available—pass it to long-running operations (symbol extraction, LSP calls) for responsive cancellation.
 
 ### Timeout Handling
 
@@ -212,6 +212,7 @@ Three timeout strategies based on operation type:
 - Vitest config uses alias: `vscode` → `__mocks__/vscode.js`
 - React tests: `.tsx` with jsdom environment
 - **Shared mock factories**: Use `src/__tests__/testUtils/mockFactories.ts` for common mocks
+    - `createMockExecutionContext()` - ExecutionContext with cancellationToken (required for tool tests)
     - `createMockCancellationTokenSource()` - CancellationToken with proper listener tracking
     - `createMockWorkspaceSettings()` - WorkspaceSettingsService
     - `createMockFdirInstance()` - fdir file discovery

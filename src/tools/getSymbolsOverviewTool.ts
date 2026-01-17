@@ -90,7 +90,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
@@ -131,7 +131,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             return toolError(`Path '${sanitizedPath}' not found`);
         }
 
-        const token = context?.cancellationToken;
+        const token = context.cancellationToken;
 
         // No outer withCancellableTimeout wrapper needed here because:
         // - For directories: getDirectorySymbols has internal timeout with graceful partial results

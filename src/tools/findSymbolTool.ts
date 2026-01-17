@@ -106,7 +106,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
@@ -136,7 +136,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             return toolError('Symbol name cannot be empty');
         }
 
-        const token = context?.cancellationToken;
+        const token = context.cancellationToken;
         let searchResult: SymbolSearchResult;
 
         if (relativePath && relativePath !== '.') {

@@ -45,15 +45,15 @@ export class ToolExecutor {
     /**
      * @param toolRegistry Registry containing available tools
      * @param workspaceSettings Settings for rate limits etc.
-     * @param executionContext Optional context for tools that need it.
-     *   - Main analysis: Provides planManager for update_plan tool
-     *   - Subagents: Typically undefined (subagents can't use plan tools)
-     *   - Tools check for required context and return toolError if missing
+     * @param executionContext Context for tools containing per-analysis dependencies.
+     *   - Main analysis: Full context with planManager, subagentExecutor, etc.
+     *   - Subagents: Minimal context with just cancellationToken
+     *   - Tests: Use createMockExecutionContext() from mockFactories.ts
      */
     constructor(
         private toolRegistry: ToolRegistry,
         private workspaceSettings: WorkspaceSettingsService,
-        private executionContext?: ExecutionContext
+        private executionContext: ExecutionContext
     ) {}
 
     private get maxToolCalls(): number {
@@ -92,7 +92,7 @@ export class ToolExecutor {
         // This ensures cancellation takes precedence over rate limiting,
         // preventing the case where a cancelled analysis continues because
         // rate-limit error masked the cancellation.
-        if (this.executionContext?.cancellationToken?.isCancellationRequested) {
+        if (this.executionContext.cancellationToken.isCancellationRequested) {
             Log.debug(`Tool '${name}' skipped - analysis was cancelled`);
             throw new vscode.CancellationError();
         }

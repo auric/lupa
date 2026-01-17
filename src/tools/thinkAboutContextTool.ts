@@ -48,7 +48,7 @@ export class ThinkAboutContextTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        _context: ExecutionContext
     ): Promise<ToolResult> {
         const { files_examined, key_findings, remaining_gaps, decision } = args;
 

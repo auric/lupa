@@ -64,7 +64,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        _context: ExecutionContext
     ): Promise<ToolResult> {
         const {
             summary_draft,

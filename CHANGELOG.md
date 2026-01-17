@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.11] - 2026-01-09
 
+### Changed
+
+#### API Improvements
+
+- **ExecutionContext now required for all tool executions**: The `context` parameter is now required for `ITool.execute()` and `BaseTool.execute()` methods. This ensures all tools always have access to the `cancellationToken` for responsive cancellation.
+- **CancellationToken always available**: `ExecutionContext.cancellationToken` is now a required property. Tools no longer need to check for undefined tokens.
+- **ToolExecutor requires ExecutionContext**: The `ToolExecutor` constructor now requires an `ExecutionContext` parameter, ensuring cancellation is available throughout tool execution.
+
 ### Fixed
 
 #### Stop Button & Cancellation

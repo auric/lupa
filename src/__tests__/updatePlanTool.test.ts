@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { PlanSessionManager } from '../services/planSessionManager';
 import { ExecutionContext } from '../types/executionContext';
+import { createMockExecutionContext } from './testUtils/mockFactories';
 
 describe('UpdatePlanTool', () => {
     let tool: UpdatePlanTool;
@@ -10,7 +11,7 @@ describe('UpdatePlanTool', () => {
 
     beforeEach(() => {
         planManager = new PlanSessionManager();
-        executionContext = { planManager };
+        executionContext = createMockExecutionContext({ planManager });
 
         tool = new UpdatePlanTool();
     });
@@ -82,10 +83,13 @@ describe('UpdatePlanTool', () => {
         });
 
         it('should return error when no active analysis session', async () => {
-            // No context provided - simulates no active session
-            const result = await tool.execute({
-                plan: '## Plan\n\n### Overview\nThis plan has no active session.\n\n### Checklist\n- [ ] Task',
-            });
+            // Context without planManager - simulates no active session
+            const result = await tool.execute(
+                {
+                    plan: '## Plan\n\n### Overview\nThis plan has no active session.\n\n### Checklist\n- [ ] Task',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('No active analysis session');
@@ -122,12 +126,16 @@ describe('UpdatePlanTool', () => {
 
             // First analysis with its own context
             const manager1 = new PlanSessionManager();
-            const context1: ExecutionContext = { planManager: manager1 };
+            const context1 = createMockExecutionContext({
+                planManager: manager1,
+            });
             await tool.execute({ plan: validPlan1 }, context1);
 
             // Second analysis with different context
             const manager2 = new PlanSessionManager();
-            const context2: ExecutionContext = { planManager: manager2 };
+            const context2 = createMockExecutionContext({
+                planManager: manager2,
+            });
             const result = await tool.execute({ plan: validPlan2 }, context2);
 
             // Should show "created" not "updated" since it's a new context

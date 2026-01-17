@@ -68,7 +68,7 @@ export class ReadFileTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const { file_path, start_line, end_line, line_count } = args;
 
@@ -88,7 +88,7 @@ export class ReadFileTool extends BaseTool {
                 Promise.resolve(vscode.workspace.fs.stat(fileUri)),
                 FILE_OPERATION_TIMEOUT,
                 `File stat for ${sanitizedPath}`,
-                context?.cancellationToken
+                context.cancellationToken
             );
         } catch (error) {
             rethrowIfCancellationOrTimeout(error);
@@ -101,7 +101,7 @@ export class ReadFileTool extends BaseTool {
                 Promise.resolve(vscode.workspace.fs.readFile(fileUri)),
                 FILE_OPERATION_TIMEOUT,
                 `File read for ${sanitizedPath}`,
-                context?.cancellationToken
+                context.cancellationToken
             );
             fileContent = Buffer.from(contentBytes).toString('utf8');
         } catch (error) {

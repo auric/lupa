@@ -4,7 +4,10 @@ import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
-import { createMockWorkspaceSettings } from './testUtils/mockFactories';
+import {
+    createMockWorkspaceSettings,
+    createMockExecutionContext,
+} from './testUtils/mockFactories';
 
 // Mock vscode with more realistic behavior
 vi.mock('vscode', async (importOriginal) => {
@@ -94,7 +97,8 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
         toolRegistry.registerTool(getSymbolsOverviewTool);
         toolExecutor = new ToolExecutor(
             toolRegistry,
-            createMockWorkspaceSettings()
+            createMockWorkspaceSettings(),
+            createMockExecutionContext()
         );
 
         vi.clearAllMocks();
@@ -437,9 +441,12 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
             });
 
             const start = Date.now();
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'large-project',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'large-project',
+                },
+                createMockExecutionContext()
+            );
             const duration = Date.now() - start;
 
             // Should complete in reasonable time (less than 1 second for this test)
