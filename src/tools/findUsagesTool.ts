@@ -166,6 +166,10 @@ Requires file_path where the symbol is defined as starting point.`;
         const formattedUsages: string[] = [];
 
         for (const reference of uniqueReferences) {
+            if (context.cancellationToken.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             try {
                 const refDocument = await vscode.workspace.openTextDocument(
                     reference.uri

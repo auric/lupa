@@ -330,8 +330,8 @@ export class ServiceManager implements vscode.Disposable {
             return;
         }
 
-        // Dispose utility token source first
         if (this.utilityTokenSource) {
+            this.utilityTokenSource.cancel();
             this.utilityTokenSource.dispose();
         }
 

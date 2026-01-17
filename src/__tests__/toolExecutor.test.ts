@@ -12,7 +12,10 @@ import {
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { TokenConstants } from '../models/tokenConstants';
 import { TimeoutError } from '../types/errorTypes';
-import { createMockExecutionContext } from './testUtils/mockFactories';
+import {
+    createMockExecutionContext,
+    createCancelledExecutionContext,
+} from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -607,17 +610,12 @@ describe('ToolExecutor', () => {
 
             toolRegistry.registerTool(slowTool);
 
-            const mockCancelledContext = {
-                cancellationToken: {
-                    isCancellationRequested: true,
-                    onCancellationRequested: () => ({ dispose: () => {} }),
-                },
-            };
+            const cancelledContext = createCancelledExecutionContext();
 
             const toolExecutorWithCancelledToken = new ToolExecutor(
                 toolRegistry,
                 mockSettings,
-                mockCancelledContext as any
+                cancelledContext
             );
 
             await expect(
@@ -675,17 +673,12 @@ describe('ToolExecutor', () => {
     describe('Cancellation Precedence', () => {
         it('should throw CancellationError even when rate limit is exceeded', async () => {
             // Create an executor with a low limit and a pre-cancelled token
-            const mockCancelledContext = {
-                cancellationToken: {
-                    isCancellationRequested: true,
-                    onCancellationRequested: () => ({ dispose: () => {} }),
-                },
-            };
+            const cancelledContext = createCancelledExecutionContext();
 
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
                 createMockSettings(1), // Very low limit
-                mockCancelledContext as any
+                cancelledContext
             );
 
             // Make calls that would exceed the rate limit
@@ -702,17 +695,12 @@ describe('ToolExecutor', () => {
 
         it('should prioritize cancellation over rate limit when both would apply', async () => {
             // Create an executor with limit already exceeded AND cancelled token
-            const mockCancelledContext = {
-                cancellationToken: {
-                    isCancellationRequested: true,
-                    onCancellationRequested: () => ({ dispose: () => {} }),
-                },
-            };
+            const cancelledContext = createCancelledExecutionContext();
 
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
                 createMockSettings(0), // Zero limit - any call would hit rate limit
-                mockCancelledContext as any
+                cancelledContext
             );
 
             // This would hit rate limit immediately if cancellation wasn't checked first

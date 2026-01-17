@@ -276,6 +276,7 @@ export class ToolTestingWebviewService {
         payload: any,
         webview: vscode.Webview
     ): Promise<void> {
+        const tokenSource = new vscode.CancellationTokenSource();
         try {
             const { sessionId, toolName, parameters } = payload;
 
@@ -285,8 +286,6 @@ export class ToolTestingWebviewService {
             );
 
             // Create per-request executor for isolation from concurrent analyses
-            // Provide a cancellation token source for potential future cancellation support
-            const tokenSource = new vscode.CancellationTokenSource();
             const executionContext: ExecutionContext = {
                 cancellationToken: tokenSource.token,
             };
@@ -327,6 +326,8 @@ export class ToolTestingWebviewService {
                             : 'Tool execution failed',
                 },
             });
+        } finally {
+            tokenSource.dispose();
         }
     }
 

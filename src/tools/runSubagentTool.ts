@@ -71,6 +71,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         // Get per-analysis dependencies from ExecutionContext
         const executor = context.subagentExecutor;
         const sessionManager = context.subagentSessionManager;

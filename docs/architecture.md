@@ -360,7 +360,11 @@ export abstract class BaseTool implements ITool {
         };
     }
 
-    abstract execute(args: z.infer<this['schema']>): Promise<ToolResult>;
+    // context: ExecutionContext is REQUIRED for all tool executions
+    abstract execute(
+        args: z.infer<this['schema']>,
+        context: ExecutionContext
+    ): Promise<ToolResult>;
 }
 ```
 

@@ -294,8 +294,9 @@ export function createMockSymbolInformation(options: {
  * Vitest 4 requires function syntax for constructor mocks.
  *
  * Behavior matches VS Code's CancellationToken:
- * - If already cancelled when listener subscribes, listener is invoked immediately
+ * - If already cancelled when listener subscribes, listener is invoked synchronously
  * - Listeners are cleared after firing to prevent double-calls
+ * - cancel() is idempotent - calling twice does not double-fire
  */
 export function createMockCancellationTokenSource(): vscode.CancellationTokenSource {
     const listeners: Array<(e: any) => any> = [];
@@ -306,9 +307,9 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
             return isCancelled;
         },
         onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
-            // If already cancelled, invoke listener immediately (matches VS Code behavior)
+            // If already cancelled, invoke listener synchronously (matches VS Code behavior)
             if (isCancelled) {
-                queueMicrotask(() => listener(undefined));
+                listener(undefined);
             } else {
                 listeners.push(listener);
             }
