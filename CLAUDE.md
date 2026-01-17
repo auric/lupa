@@ -260,10 +260,35 @@ NEVER produce these patterns:
 - When uncertain, investigate rather than guess
 - Propose alternatives if you see a better approach
 - Acknowledge limitations honestly rather than fabricating answers
-- Use subagents for parallel research tasks—break complex work into small, focused subtasks (never delegate the entire task to a single subagent)
-- **Use subagents for bulk similar edits**—when making the same type of change across many files (e.g., updating test files for new API signatures, adding a parameter to multiple functions), delegate the bulk edits to a subagent with clear instructions and examples
-- **Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
 - At session end, provide a ready-to-use git commit message summarizing changes
+
+#### Subagent Usage Guidelines
+
+Use subagents strategically to preserve context and parallelize work:
+
+**When to use subagents:**
+
+- **Parallel research tasks**—break complex exploration into focused subtasks (e.g., "find all usages of X", "understand how Y works")
+- **Bulk similar edits**—repetitive changes across many files (e.g., updating 20+ test files for new API signatures)
+- **Isolated refactoring**—changes that don't require understanding the broader context
+- **Documentation generation**—writing docs from existing code
+
+**When NOT to use subagents:**
+
+- **Simple tasks**—if you can do it in 2-3 tool calls, do it yourself
+- **Context-dependent decisions**—when the change depends on understanding you've already built
+- **Small file counts**—editing 3-5 files is faster to do directly
+- **Complex architectural changes**—where you need to see the full picture
+
+**Subagent best practices:**
+
+- Never delegate the entire task to a single subagent
+- Provide clear, specific instructions with examples
+- Include relevant context the subagent needs
+- Verify subagent results before trusting them
+- Use `explore` agent for research, `task` agent for execution, `general-purpose` for complex work
+
+**Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
 
 ### Quality Checklist
 

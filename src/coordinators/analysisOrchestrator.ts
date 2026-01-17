@@ -127,9 +127,10 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                     new vscode.CancellationTokenSource();
 
                 // Link the VS Code cancellation token to our source
-                token.onCancellationRequested(() => {
-                    cancellationTokenSource.cancel();
-                });
+                const progressCancellationDisposable =
+                    token.onCancellationRequested(() => {
+                        cancellationTokenSource.cancel();
+                    });
 
                 try {
                     const updateProgress = (message: string) => {
@@ -171,6 +172,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                         'check'
                     );
                 } finally {
+                    progressCancellationDisposable.dispose();
                     cancellationTokenSource.dispose();
                 }
             }

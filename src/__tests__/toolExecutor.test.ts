@@ -13,6 +13,7 @@ import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { TokenConstants } from '../models/tokenConstants';
 import { TimeoutError } from '../types/errorTypes';
 import { createMockExecutionContext } from './testUtils/mockFactories';
+import type { ExecutionContext } from '../types/executionContext';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
@@ -40,7 +41,7 @@ class MockSuccessTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<ToolResult> {
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
         return toolSuccess(`Success: ${args.message}`);
     }
 }
@@ -58,7 +59,7 @@ class MockErrorTool implements ITool {
         };
     }
 
-    async execute(_args: any): Promise<ToolResult> {
+    async execute(_args: any, _context: ExecutionContext): Promise<ToolResult> {
         throw new Error('Simulated tool error');
     }
 }
@@ -76,7 +77,7 @@ class MockDelayTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<ToolResult> {
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
         await new Promise((resolve) => setTimeout(resolve, args.delay));
         return toolSuccess(`Delayed by ${args.delay}ms`);
     }
