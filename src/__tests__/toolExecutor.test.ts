@@ -710,4 +710,33 @@ describe('ToolExecutor', () => {
             ).rejects.toThrow(vscode.CancellationError);
         });
     });
+
+    describe('Constructor Validation', () => {
+        it('should throw error when ExecutionContext lacks cancellationToken', () => {
+            // Type assertion to bypass TypeScript's type checking for invalid context
+            const invalidContext = {} as any;
+
+            expect(() => {
+                new ToolExecutor(toolRegistry, mockSettings, invalidContext);
+            }).toThrow(
+                'ToolExecutor requires ExecutionContext with a valid cancellationToken'
+            );
+        });
+
+        it('should throw error when ExecutionContext is undefined', () => {
+            expect(() => {
+                new ToolExecutor(toolRegistry, mockSettings, undefined as any);
+            }).toThrow(
+                'ToolExecutor requires ExecutionContext with a valid cancellationToken'
+            );
+        });
+
+        it('should accept valid ExecutionContext with cancellationToken', () => {
+            const validContext = createMockExecutionContext();
+
+            expect(() => {
+                new ToolExecutor(toolRegistry, mockSettings, validContext);
+            }).not.toThrow();
+        });
+    });
 });

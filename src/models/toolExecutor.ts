@@ -54,7 +54,14 @@ export class ToolExecutor {
         private toolRegistry: ToolRegistry,
         private workspaceSettings: WorkspaceSettingsService,
         private executionContext: ExecutionContext
-    ) {}
+    ) {
+        // Fail fast if ExecutionContext lacks cancellationToken - catches misconfigured callers early
+        if (!executionContext?.cancellationToken) {
+            throw new Error(
+                'ToolExecutor requires ExecutionContext with a valid cancellationToken'
+            );
+        }
+    }
 
     private get maxToolCalls(): number {
         return this.workspaceSettings.getMaxIterations();

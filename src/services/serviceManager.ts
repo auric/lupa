@@ -180,7 +180,11 @@ export class ServiceManager implements vscode.Disposable {
         // For actual analysis sessions, ToolCallingAnalysisProvider and ChatParticipantService
         // create per-analysis ToolExecutor instances with proper ExecutionContext to ensure
         // concurrent-safety and per-session state isolation.
-        // The token is long-lived and non-cancellable - disposed on extension shutdown.
+        //
+        // IMPORTANT: utilityTokenSource is long-lived and should NEVER be cancelled during
+        // extension lifetime. External code must not call cancel() on this token, as it would
+        // break all utility tool executions. It is only disposed on extension shutdown via
+        // the dispose() method. For cancellable operations, create a separate CancellationTokenSource.
         this.utilityTokenSource = new vscode.CancellationTokenSource();
         const utilityContext: ExecutionContext = {
             cancellationToken: this.utilityTokenSource.token,
