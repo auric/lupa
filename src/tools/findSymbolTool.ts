@@ -499,6 +499,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 }
 
                 for (const { filePath, symbols } of directoryResults) {
+                    if (token.isCancellationRequested) {
+                        throw new vscode.CancellationError();
+                    }
+
                     // Time-based execution control (secondary safety check)
                     if (Date.now() - startTime > SYMBOL_SEARCH_TIMEOUT) {
                         timedOut = true;
@@ -584,12 +588,20 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         token: vscode.CancellationToken
     ): Promise<SymbolMatch[]> {
         try {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             // Quick text pre-check before expensive symbol analysis
             const fileContent = await vscode.workspace.fs.readFile(fileUri);
             const text = fileContent.toString();
 
             if (!text.includes(symbolName)) {
                 return []; // Skip files that don't contain the symbol name
+            }
+
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
             }
 
             const document = await vscode.workspace.openTextDocument(fileUri);

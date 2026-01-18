@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SymbolRangeExpander } from '../tools/symbolRangeExpander';
+import { createMockCancellationTokenSource } from './testUtils/mockFactories';
 
 vi.mock('vscode');
 
@@ -149,14 +150,9 @@ describe('SymbolRangeExpander', () => {
             // VS Code APIs don't throw CancellationError - they return undefined/empty.
             // Only withCancellableTimeout throws CancellationError when the token fires.
             // Use a pre-cancelled token to trigger this behavior.
-            const cancelledToken: vscode.CancellationToken = {
-                isCancellationRequested: true,
-                onCancellationRequested: vi.fn((listener) => {
-                    // Fire immediately since already cancelled
-                    listener();
-                    return { dispose: vi.fn() };
-                }),
-            };
+            const cancelledTokenSource = createMockCancellationTokenSource();
+            cancelledTokenSource.cancel();
+            const cancelledToken = cancelledTokenSource.token;
 
             // Mock a slow response that won't complete before cancellation check
             vi.mocked(vscode.commands.executeCommand).mockImplementation(

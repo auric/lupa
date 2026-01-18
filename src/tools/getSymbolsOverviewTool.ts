@@ -247,6 +247,10 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             );
 
             for (const { filePath, symbols } of sortedResults) {
+                if (token.isCancellationRequested) {
+                    throw new vscode.CancellationError();
+                }
+
                 if (symbols.length === 0) {
                     continue;
                 }

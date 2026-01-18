@@ -251,6 +251,10 @@ Requires file_path where the symbol is defined as starting point.`;
 
         // Look for the symbol in the document
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             const line = lines[lineIndex];
             if (!line) {
                 continue;
@@ -303,6 +307,10 @@ Requires file_path where the symbol is defined as starting point.`;
 
         // If no definition found, return the first occurrence as fallback
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             const line = lines[lineIndex];
             if (!line) {
                 continue;

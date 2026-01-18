@@ -559,22 +559,12 @@ describe('SearchForPatternTool', () => {
                     })
             );
 
-            // Create a mock execution context
-            const context = {
-                cancellationToken: {
-                    isCancellationRequested: false,
-                    onCancellationRequested: vi.fn().mockReturnValue({
-                        dispose: vi.fn(),
-                    }),
-                },
-            };
+            // Create a mock execution context using the standard factory
+            const context = createMockExecutionContext();
 
             // Replace the timeout constant for testing by running with short time
             // The actual timeout is 60s but we can check the token was linked
-            void searchForPatternTool.execute(
-                { pattern: 'test' },
-                context as any
-            );
+            void searchForPatternTool.execute({ pattern: 'test' }, context);
 
             // Verify the linked token was set up with onCancellationRequested
             expect(
