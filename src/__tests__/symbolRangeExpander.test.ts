@@ -8,6 +8,7 @@ vi.mock('vscode');
 describe('SymbolRangeExpander', () => {
     let expander: SymbolRangeExpander;
     let mockDocument: any;
+    let mockToken: vscode.CancellationToken;
 
     beforeEach(() => {
         expander = new SymbolRangeExpander();
@@ -19,6 +20,8 @@ describe('SymbolRangeExpander', () => {
             getText: vi.fn(),
             lineCount: 20,
         };
+
+        mockToken = createMockCancellationTokenSource().token;
     });
 
     describe('getFullSymbolRange', () => {
@@ -46,7 +49,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(2, 0, 2, 10);
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
@@ -74,7 +78,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(0, 0, 0, 15);
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             // Should expand to include the full class
@@ -115,7 +120,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(2, 5, 2, 15); // Inside constructor
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             // Should return the constructor range, not the class range
@@ -138,7 +144,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(2, 0, 2, 20);
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             // Should include comments and decorators

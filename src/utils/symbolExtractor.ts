@@ -430,11 +430,12 @@ export class SymbolExtractor {
     /**
      * Extract symbols with full context (document + git-relative paths)
      * @param fileUri - VS Code URI of the file
+     * @param token - Cancellation token for aborting the operation
      * @returns Symbol extraction result with context
      */
     async extractSymbolsWithContext(
         fileUri: vscode.Uri,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<{
         symbols: vscode.DocumentSymbol[] | vscode.SymbolInformation[];
         document?: vscode.TextDocument;

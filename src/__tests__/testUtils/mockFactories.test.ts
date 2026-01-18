@@ -126,6 +126,20 @@ describe('createMockExecutionContext', () => {
 
         expect(context.planManager).toBe(mockPlanManager);
     });
+
+    it('should allow overriding cancellationToken with custom token', () => {
+        // Create a pre-cancelled token source
+        const customTokenSource = createMockCancellationTokenSource();
+        customTokenSource.cancel();
+
+        const context = createMockExecutionContext({
+            cancellationToken: customTokenSource.token,
+        });
+
+        // The custom (pre-cancelled) token should be used instead of default
+        expect(context.cancellationToken).toBe(customTokenSource.token);
+        expect(context.cancellationToken.isCancellationRequested).toBe(true);
+    });
 });
 
 describe('createCancelledExecutionContext', () => {

@@ -18,13 +18,13 @@ export class SymbolRangeExpander {
      * Get the full range of a symbol definition (e.g., entire function, class, or variable declaration)
      * @param document The text document containing the symbol
      * @param symbolRange The initial range returned by the definition provider
-     * @param token Optional cancellation token for aborting the operation
+     * @param token Cancellation token for aborting the operation
      * @returns A range that encompasses the full symbol definition
      */
     async getFullSymbolRange(
         document: vscode.TextDocument,
         symbolRange: vscode.Range,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<vscode.Range> {
         try {
             const symbolsPromise = vscode.commands.executeCommand<
