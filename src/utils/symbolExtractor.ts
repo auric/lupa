@@ -27,8 +27,8 @@ export interface DirectorySymbolOptions {
     filePattern?: RegExp;
     /** Maximum time in milliseconds for entire directory scan. Defaults to DIRECTORY_SYMBOL_TIMEOUT. */
     timeoutMs?: number;
-    /** Cancellation token to abort the operation early */
-    token?: vscode.CancellationToken;
+    /** Cancellation token to abort the operation early. Required for responsive cancellation. */
+    token: vscode.CancellationToken;
 }
 
 /**
@@ -132,7 +132,7 @@ export class SymbolExtractor {
     async getDirectorySymbols(
         targetPath: string,
         relativePath: string,
-        options: DirectorySymbolOptions = {}
+        options: DirectorySymbolOptions
     ): Promise<DirectorySymbolsResult> {
         const results: FileSymbolResult[] = [];
         const startTime = Date.now();
@@ -140,7 +140,7 @@ export class SymbolExtractor {
         const token = options.token;
         let timedOutFiles = 0;
 
-        if (token?.isCancellationRequested) {
+        if (token.isCancellationRequested) {
             throw new vscode.CancellationError();
         }
 
@@ -187,7 +187,7 @@ export class SymbolExtractor {
                 break;
             }
 
-            if (token?.isCancellationRequested) {
+            if (token.isCancellationRequested) {
                 Log.debug(
                     `Directory symbol extraction cancelled after processing ${results.length} files`
                 );
@@ -247,7 +247,7 @@ export class SymbolExtractor {
         targetPath: string,
         relativePath: string,
         ignorePatterns: ReturnType<typeof ignore>,
-        options: DirectorySymbolOptions = {},
+        options: DirectorySymbolOptions,
         currentDepth: number = 0,
         startTime: number = Date.now(),
         timeoutMs: number = DIRECTORY_SYMBOL_TIMEOUT
@@ -267,7 +267,7 @@ export class SymbolExtractor {
             return { files, truncated: true };
         }
 
-        if (token?.isCancellationRequested) {
+        if (token.isCancellationRequested) {
             throw new vscode.CancellationError();
         }
 
@@ -287,7 +287,7 @@ export class SymbolExtractor {
                     return { files, truncated: true };
                 }
 
-                if (token?.isCancellationRequested) {
+                if (token.isCancellationRequested) {
                     throw new vscode.CancellationError();
                 }
                 if (!includeHidden && name.startsWith('.')) {

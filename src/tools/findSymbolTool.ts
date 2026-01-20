@@ -328,6 +328,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             const matches: SymbolMatch[] = [];
 
             for (const symbol of filteredSymbols.slice(0, 50)) {
+                if (token.isCancellationRequested) {
+                    throw new vscode.CancellationError();
+                }
+
                 if (excludeKinds?.includes(symbol.kind)) {
                     continue;
                 }

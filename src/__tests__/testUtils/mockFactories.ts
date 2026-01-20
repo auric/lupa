@@ -334,7 +334,13 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
             const toFire = [...listeners];
             listeners.length = 0; // Clear listeners after firing
             toFire.forEach(function (listener) {
-                listener(undefined);
+                // Wrap in try/catch to ensure one listener's exception
+                // doesn't prevent subsequent listeners from firing
+                try {
+                    listener(undefined);
+                } catch {
+                    // Swallow errors from listeners to match VS Code behavior
+                }
             });
         }),
         dispose: vi.fn(),

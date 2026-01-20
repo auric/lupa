@@ -42,8 +42,9 @@ export interface FileDiscoveryOptions {
     /**
      * VS Code CancellationToken for user-initiated cancellation.
      * Internally converted to AbortSignal for fdir compatibility.
+     * Required for responsive cancellation.
      */
-    cancellationToken?: vscode.CancellationToken;
+    cancellationToken: vscode.CancellationToken;
 }
 
 export interface FileDiscoveryResult {

@@ -97,8 +97,8 @@ export interface RipgrepSearchOptions {
     excludeGlob?: string;
     codeFilesOnly?: boolean;
     multiline: boolean;
-    /** Optional cancellation token to abort the search */
-    token?: vscode.CancellationToken;
+    /** Cancellation token to abort the search. Required for responsive cancellation. */
+    token: vscode.CancellationToken;
 }
 
 interface RipgrepJsonMessage {

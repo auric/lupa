@@ -16,6 +16,9 @@ import { safeJsonStringify } from '../utils/safeJson';
  * Creates per-request ToolExecutor instances to ensure isolation from analysis sessions.
  */
 export class ToolTestingWebviewService {
+    /** Track active token sources to cancel in-flight requests when panel is disposed */
+    private activeTokenSources = new Set<vscode.CancellationTokenSource>();
+
     constructor(
         private readonly extensionContext: vscode.ExtensionContext,
         private readonly gitRepositoryRoot: string,
@@ -56,9 +59,14 @@ export class ToolTestingWebviewService {
             }
         );
 
-        // Clean up theme listener when panel is disposed
+        // Clean up theme listener and cancel in-flight requests when panel is disposed
         panel.onDidDispose(() => {
             themeChangeDisposable.dispose();
+            for (const tokenSource of this.activeTokenSources) {
+                tokenSource.cancel();
+                tokenSource.dispose();
+            }
+            this.activeTokenSources.clear();
         });
 
         return panel;
@@ -277,6 +285,7 @@ export class ToolTestingWebviewService {
         webview: vscode.Webview
     ): Promise<void> {
         const tokenSource = new vscode.CancellationTokenSource();
+        this.activeTokenSources.add(tokenSource);
         try {
             const { sessionId, toolName, parameters } = payload;
 
@@ -327,6 +336,7 @@ export class ToolTestingWebviewService {
                 },
             });
         } finally {
+            this.activeTokenSources.delete(tokenSource);
             tokenSource.dispose();
         }
     }

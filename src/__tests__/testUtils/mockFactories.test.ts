@@ -85,6 +85,24 @@ describe('createMockCancellationTokenSource', () => {
             // This is implicitly tested by the idempotent test above
             expect(listener).toHaveBeenCalledTimes(1);
         });
+
+        it('should not let one listener exception prevent other listeners from firing', () => {
+            const source = createMockCancellationTokenSource();
+            const throwingListener = vi.fn(() => {
+                throw new Error('Listener error');
+            });
+            const successListener = vi.fn();
+
+            source.token.onCancellationRequested(throwingListener);
+            source.token.onCancellationRequested(successListener);
+
+            // cancel() should not throw even though first listener throws
+            expect(() => source.cancel()).not.toThrow();
+
+            // Both listeners should have been called
+            expect(throwingListener).toHaveBeenCalledTimes(1);
+            expect(successListener).toHaveBeenCalledTimes(1);
+        });
     });
 
     describe('dispose behavior', () => {
