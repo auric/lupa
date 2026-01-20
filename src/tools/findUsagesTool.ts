@@ -113,6 +113,7 @@ Requires file_path where the symbol is defined as starting point.`;
         try {
             document = await vscode.workspace.openTextDocument(absolutePath);
         } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
             return toolError(
                 `Could not open file '${sanitizedFilePath}': ${error instanceof Error ? error.message : String(error)}`
             );
