@@ -10,6 +10,7 @@ import type {
 } from '../types/webviewMessages';
 import type { ToolInfo } from '../webview/types/toolTestingTypes';
 import { safeJsonStringify } from '../utils/safeJson';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /**
  * ToolTestingWebviewService handles the tool testing webview functionality.
@@ -324,17 +325,27 @@ export class ToolTestingWebviewService {
                 },
             });
         } catch (error) {
-            Log.error('Error executing tool:', error);
-            webview.postMessage({
-                type: 'toolExecutionError',
-                payload: {
-                    sessionId: payload.sessionId,
-                    error:
-                        error instanceof Error
-                            ? error.message
-                            : 'Tool execution failed',
-                },
-            });
+            if (isCancellationError(error)) {
+                Log.debug('Tool execution cancelled:', payload.toolName);
+                webview.postMessage({
+                    type: 'toolExecutionCancelled',
+                    payload: {
+                        sessionId: payload.sessionId,
+                    },
+                });
+            } else {
+                Log.error('Error executing tool:', error);
+                webview.postMessage({
+                    type: 'toolExecutionError',
+                    payload: {
+                        sessionId: payload.sessionId,
+                        error:
+                            error instanceof Error
+                                ? error.message
+                                : 'Tool execution failed',
+                    },
+                });
+            }
         } finally {
             this.activeTokenSources.delete(tokenSource);
             tokenSource.dispose();

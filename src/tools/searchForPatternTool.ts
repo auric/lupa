@@ -6,6 +6,8 @@ import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { TimeoutError } from '../types/errorTypes';
+import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
+import { Log } from '../services/loggingService';
 
 /** Maximum time for pattern search operations */
 const PATTERN_SEARCH_TIMEOUT = 60_000; // 60 seconds
@@ -171,7 +173,11 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             // causing searchPromise to reject with CancellationError. The TimeoutError is
             // handled by Promise.race() below; this catch prevents the CancellationError
             // from becoming an unhandled rejection.
-            searchPromise.catch(() => {});
+            searchPromise.catch((err) => {
+                if (!isCancellationError(err) && !isTimeoutError(err)) {
+                    Log.debug('Unexpected late ripgrep rejection:', err);
+                }
+            });
 
             const timeoutPromise = new Promise<never>((_, reject) => {
                 timeoutId = setTimeout(() => {

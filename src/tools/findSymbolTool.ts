@@ -108,6 +108,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(

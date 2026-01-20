@@ -39,6 +39,10 @@ export class ListDirTool extends BaseTool {
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const { relative_path, recursive } = args;
 
         const sanitizedPath = PathSanitizer.sanitizePath(relative_path);

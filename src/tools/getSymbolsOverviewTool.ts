@@ -92,6 +92,10 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(

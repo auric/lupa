@@ -70,6 +70,10 @@ export class ReadFileTool extends BaseTool {
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const { file_path, start_line, end_line, line_count } = args;
 
         const sanitizedPath = PathSanitizer.sanitizePath(file_path);

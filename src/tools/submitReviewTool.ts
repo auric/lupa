@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -42,8 +43,12 @@ export class SubmitReviewTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         // Return review content as-is - the output format prompt already defines structure
         return toolSuccess(args.review_content, { isCompletion: true });
     }

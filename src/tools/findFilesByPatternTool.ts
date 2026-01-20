@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
@@ -49,6 +50,10 @@ export class FindFilesByPatternTool extends BaseTool {
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const { pattern, search_directory: searchPath } = args;
 
         const gitRepo = this.gitOperationsManager.getRepository();

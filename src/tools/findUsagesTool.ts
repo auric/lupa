@@ -70,6 +70,10 @@ Requires file_path where the symbol is defined as starting point.`;
         args: z.infer<typeof this.schema>,
         context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const {
             symbol_name,
             file_path,
