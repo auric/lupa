@@ -294,6 +294,7 @@ function process(param?: string): void; // Avoid
 5. Access per-analysis dependencies via `ExecutionContext` (cancellationToken, planManager, etc.)
 
 ```typescript
+import * as vscode from 'vscode';
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';

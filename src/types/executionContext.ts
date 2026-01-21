@@ -40,7 +40,7 @@ export interface ExecutionContext {
      * to enable responsive cancellation when user stops the analysis.
      *
      * Required: All entry points must provide a token. For tests, use
-     * `createMockExecutionContext()` from testUtils/mockFactories.ts which
+     * `createMockExecutionContext()` from `src/__tests__/testUtils/mockFactories.ts` which
      * provides a non-cancelled token by default.
      */
     cancellationToken: vscode.CancellationToken;
