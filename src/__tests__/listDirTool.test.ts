@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ListDirTool } from '../tools/listDirTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { createMockExecutionContext } from './testUtils/mockFactories';
+import * as gitUtils from '../utils/gitUtils';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -38,6 +39,10 @@ vi.mock('vscode', async () => {
 // Mock GitOperationsManager
 vi.mock('../services/gitOperationsManager');
 
+vi.mock('../utils/gitUtils', () => ({
+    readGitignore: vi.fn().mockResolvedValue(''),
+}));
+
 describe('ListDirTool', () => {
     let listDirTool: ListDirTool;
     let mockReadDirectory: ReturnType<typeof vi.fn>;
@@ -71,6 +76,9 @@ describe('ListDirTool', () => {
                 fsPath: '/test/git-repo',
             },
         });
+
+        // Default: no gitignore patterns
+        vi.mocked(gitUtils.readGitignore).mockResolvedValue('');
     });
 
     afterEach(() => {
@@ -387,6 +395,80 @@ describe('ListDirTool', () => {
             expect(result.data).toContain('gooddir/');
             expect(result.data).toContain('gooddir/subfile.js');
             expect(result.data).toContain('file1.ts');
+        });
+    });
+
+    describe('Gitignore Handling', () => {
+        it('should exclude files matching path-based gitignore patterns', async () => {
+            // Mock gitignore with path-based pattern
+            vi.mocked(gitUtils.readGitignore).mockResolvedValue('src/*.log');
+
+            // Mock directory listing with files in src/
+            mockReadDirectory.mockResolvedValue([
+                ['app.ts', vscode.FileType.File],
+                ['debug.log', vscode.FileType.File],
+                ['error.log', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: 'src',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            // debug.log and error.log in src/ should be excluded by src/*.log pattern
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('src/app.ts');
+            expect(result.data).not.toContain('debug.log');
+            expect(result.data).not.toContain('error.log');
+        });
+
+        it('should exclude directories matching path-based patterns', async () => {
+            // Mock gitignore with directory pattern - exclude all temp dirs under build
+            vi.mocked(gitUtils.readGitignore).mockResolvedValue('build/temp');
+
+            // Mock build directory containing temp subdirectory
+            mockReadDirectory.mockResolvedValue([
+                ['output.js', vscode.FileType.File],
+                ['temp', vscode.FileType.Directory],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: 'build',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('build/output.js');
+            // build/temp should be excluded by build/temp pattern
+            expect(result.data).not.toContain('temp');
+        });
+
+        it('should handle wildcard patterns in subdirectories', async () => {
+            // Mock gitignore with double-star pattern
+            vi.mocked(gitUtils.readGitignore).mockResolvedValue('**/*.tmp');
+
+            mockReadDirectory.mockResolvedValue([
+                ['data.json', vscode.FileType.File],
+                ['cache.tmp', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: 'deep/nested/path',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('data.json');
+            expect(result.data).not.toContain('cache.tmp');
         });
     });
 });

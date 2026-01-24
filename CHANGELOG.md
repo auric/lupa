@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **No more "unhandled rejection" warnings**: Spurious error messages when clicking Stop at certain moments are now suppressed.
 - **LLM streams properly cleaned up**: When requests timeout or are cancelled, the underlying stream consumption is now actively stopped, preventing background resource usage.
 
+#### Gitignore Handling
+
+- **Path-based .gitignore patterns now work correctly**: Fixed an issue where patterns like `dist/`, `src/generated/**`, or `**/*.log` were not being applied in directory listings. The tool now checks the full file path instead of just the filename.
+- **Local exclude rules now respected**: The extension now reads `.git/info/exclude` in addition to `.gitignore`, so your local per-repository exclusions are properly applied.
+
 #### Analysis Reliability
 
 - **No more analysis hangs**: All operations now have appropriate timeouts. Symbol lookups (5s per file) and pattern searches (60s) ensure analysis always makes progress instead of getting stuck.

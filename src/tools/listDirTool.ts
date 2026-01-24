@@ -93,14 +93,14 @@ export class ListDirTool extends BaseTool {
                     throw new vscode.CancellationError();
                 }
 
-                if (ig.checkIgnore(name).ignored) {
-                    continue;
-                }
-
                 const fullPath =
                     relativePath === '.'
                         ? name
                         : path.posix.join(relativePath, name);
+
+                if (ig.checkIgnore(fullPath).ignored) {
+                    continue;
+                }
 
                 if (type === vscode.FileType.Directory) {
                     dirs.push(fullPath);
