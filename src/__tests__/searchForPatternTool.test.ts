@@ -7,6 +7,10 @@ import {
     RipgrepFileResult,
 } from '../services/ripgrepSearchService';
 import { TimeoutError } from '../types/errorTypes';
+import {
+    createMockExecutionContext,
+    createCancelledExecutionContext,
+} from './testUtils/mockFactories';
 
 // Mock RipgrepSearchService
 vi.mock('../services/ripgrepSearchService');
@@ -126,9 +130,12 @@ describe('SearchForPatternTool', () => {
                 '=== src/index.ts ===\n1: export class MyClass {\n\n=== src/utils.ts ===\n4: class UtilClass {}'
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{',
-            });
+            const result = await searchForPatternTool.execute(
+                {
+                    pattern: 'class.*{',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -176,11 +183,14 @@ describe('SearchForPatternTool', () => {
                 '=== src/test.ts ===\n1: line 1\n2: class TestClass {\n3: line 3\n4: line 4'
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{',
-                lines_before: 1,
-                lines_after: 2,
-            });
+            const result = await searchForPatternTool.execute(
+                {
+                    pattern: 'class.*{',
+                    lines_before: 1,
+                    lines_after: 2,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -224,10 +234,13 @@ describe('SearchForPatternTool', () => {
                 '=== src/test.ts ===\n1: Class TestClass {\n2: class TestClass {'
             );
 
-            let result = await searchForPatternTool.execute({
-                pattern: 'class.*{',
-                case_sensitive: false,
-            });
+            let result = await searchForPatternTool.execute(
+                {
+                    pattern: 'class.*{',
+                    case_sensitive: false,
+                },
+                createMockExecutionContext()
+            );
             expect(result.success).toBe(true);
             expect(result.data).toContain('1: Class TestClass {');
             expect(result.data).toContain('2: class TestClass {');
@@ -256,10 +269,13 @@ describe('SearchForPatternTool', () => {
                 '=== src/test.ts ===\n2: class TestClass {'
             );
 
-            result = await searchForPatternTool.execute({
-                pattern: 'class.*{',
-                case_sensitive: true,
-            });
+            result = await searchForPatternTool.execute(
+                {
+                    pattern: 'class.*{',
+                    case_sensitive: true,
+                },
+                createMockExecutionContext()
+            );
             expect(result.success).toBe(true);
             expect(result.data).toContain('2: class TestClass {');
             expect(result.data).not.toContain('1: Class TestClass {');
@@ -289,10 +305,13 @@ describe('SearchForPatternTool', () => {
                 '=== src/code.ts ===\n1: class Test {}'
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{',
-                only_code_files: true,
-            });
+            const result = await searchForPatternTool.execute(
+                {
+                    pattern: 'class.*{',
+                    only_code_files: true,
+                },
+                createMockExecutionContext()
+            );
 
             expect(mockRipgrepService.search).toHaveBeenCalledWith(
                 expect.objectContaining({ codeFilesOnly: true })
@@ -306,9 +325,12 @@ describe('SearchForPatternTool', () => {
         it('should return no matches when pattern not found', async () => {
             mockRipgrepService.search.mockResolvedValue([]);
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'nonexistentpattern',
-            });
+            const result = await searchForPatternTool.execute(
+                {
+                    pattern: 'nonexistentpattern',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('No matches found');
@@ -323,9 +345,12 @@ describe('SearchForPatternTool', () => {
             );
 
             await expect(
-                searchForPatternTool.execute({
-                    pattern: '[invalid regex',
-                })
+                searchForPatternTool.execute(
+                    {
+                        pattern: '[invalid regex',
+                    },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow('ripgrep error: regex parse error');
         });
 
@@ -336,9 +361,12 @@ describe('SearchForPatternTool', () => {
             );
 
             await expect(
-                searchForPatternTool.execute({
-                    pattern: 'test',
-                })
+                searchForPatternTool.execute(
+                    {
+                        pattern: 'test',
+                    },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow('Failed to spawn ripgrep');
         });
 
@@ -347,9 +375,12 @@ describe('SearchForPatternTool', () => {
                 null
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'test',
-            });
+            const result = await searchForPatternTool.execute(
+                {
+                    pattern: 'test',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Git repository not found');
@@ -383,9 +414,12 @@ describe('SearchForPatternTool', () => {
                 '=== src/test.ts ===\n1: class First {}\n2: class Second {}'
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{',
-            });
+            const result = await searchForPatternTool.execute(
+                {
+                    pattern: 'class.*{',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -432,11 +466,14 @@ describe('SearchForPatternTool', () => {
                 '=== src/test.ts ===\n2: class First {\n3: line3\n4: class Second {\n5: line5'
             );
 
-            const result = await searchForPatternTool.execute({
-                pattern: 'class.*{',
-                lines_before: 0,
-                lines_after: 1,
-            });
+            const result = await searchForPatternTool.execute(
+                {
+                    pattern: 'class.*{',
+                    lines_before: 0,
+                    lines_after: 1,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBeDefined();
@@ -450,10 +487,13 @@ describe('SearchForPatternTool', () => {
         it('should pass include_files glob pattern to ripgrep', async () => {
             mockRipgrepService.search.mockResolvedValue([]);
 
-            await searchForPatternTool.execute({
-                pattern: 'test',
-                include_files: '*.ts',
-            });
+            await searchForPatternTool.execute(
+                {
+                    pattern: 'test',
+                    include_files: '*.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(mockRipgrepService.search).toHaveBeenCalledWith(
                 expect.objectContaining({ includeGlob: '*.ts' })
@@ -463,10 +503,13 @@ describe('SearchForPatternTool', () => {
         it('should pass exclude_files glob pattern to ripgrep', async () => {
             mockRipgrepService.search.mockResolvedValue([]);
 
-            await searchForPatternTool.execute({
-                pattern: 'test',
-                exclude_files: '*test*',
-            });
+            await searchForPatternTool.execute(
+                {
+                    pattern: 'test',
+                    exclude_files: '*test*',
+                },
+                createMockExecutionContext()
+            );
 
             expect(mockRipgrepService.search).toHaveBeenCalledWith(
                 expect.objectContaining({ excludeGlob: '*test*' })
@@ -476,10 +519,13 @@ describe('SearchForPatternTool', () => {
         it('should pass search_path to ripgrep', async () => {
             mockRipgrepService.search.mockResolvedValue([]);
 
-            await searchForPatternTool.execute({
-                pattern: 'test',
-                search_path: 'src/components',
-            });
+            await searchForPatternTool.execute(
+                {
+                    pattern: 'test',
+                    search_path: 'src/components',
+                },
+                createMockExecutionContext()
+            );
 
             expect(mockRipgrepService.search).toHaveBeenCalledWith(
                 expect.objectContaining({ searchPath: 'src/components' })
@@ -489,10 +535,13 @@ describe('SearchForPatternTool', () => {
         it('should not pass searchPath when search_path is "."', async () => {
             mockRipgrepService.search.mockResolvedValue([]);
 
-            await searchForPatternTool.execute({
-                pattern: 'test',
-                search_path: '.',
-            });
+            await searchForPatternTool.execute(
+                {
+                    pattern: 'test',
+                    search_path: '.',
+                },
+                createMockExecutionContext()
+            );
 
             expect(mockRipgrepService.search).toHaveBeenCalledWith(
                 expect.objectContaining({ searchPath: undefined })
@@ -510,22 +559,12 @@ describe('SearchForPatternTool', () => {
                     })
             );
 
-            // Create a mock execution context
-            const context = {
-                cancellationToken: {
-                    isCancellationRequested: false,
-                    onCancellationRequested: vi.fn().mockReturnValue({
-                        dispose: vi.fn(),
-                    }),
-                },
-            };
+            // Create a mock execution context using the standard factory
+            const context = createMockExecutionContext();
 
             // Replace the timeout constant for testing by running with short time
             // The actual timeout is 60s but we can check the token was linked
-            void searchForPatternTool.execute(
-                { pattern: 'test' },
-                context as any
-            );
+            void searchForPatternTool.execute({ pattern: 'test' }, context);
 
             // Verify the linked token was set up with onCancellationRequested
             expect(
@@ -554,7 +593,10 @@ describe('SearchForPatternTool', () => {
                 '=== test.ts ===\n1: test'
             );
 
-            await searchForPatternTool.execute({ pattern: 'test' });
+            await searchForPatternTool.execute(
+                { pattern: 'test' },
+                createMockExecutionContext()
+            );
 
             // Verify ripgrep was called with a token
             expect(mockRipgrepService.search).toHaveBeenCalledWith(
@@ -572,25 +614,18 @@ describe('SearchForPatternTool', () => {
             );
 
             await expect(
-                searchForPatternTool.execute({ pattern: 'test' })
+                searchForPatternTool.execute(
+                    { pattern: 'test' },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow(TimeoutError);
         });
 
         it('should throw CancellationError when already cancelled', async () => {
-            const context = {
-                cancellationToken: {
-                    isCancellationRequested: true, // Pre-cancelled
-                    onCancellationRequested: vi.fn().mockReturnValue({
-                        dispose: vi.fn(),
-                    }),
-                },
-            };
+            const context = createCancelledExecutionContext();
 
             await expect(
-                searchForPatternTool.execute(
-                    { pattern: 'test' },
-                    context as any
-                )
+                searchForPatternTool.execute({ pattern: 'test' }, context)
             ).rejects.toThrow(vscode.CancellationError);
 
             // Ripgrep should never be called

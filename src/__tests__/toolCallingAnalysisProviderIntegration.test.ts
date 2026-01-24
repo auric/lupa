@@ -12,6 +12,7 @@ import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
 } from './testUtils/mockFactories';
+import type { ExecutionContext } from '../types/executionContext';
 
 vi.mock('vscode');
 
@@ -44,7 +45,7 @@ class MockAnalysisTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<ToolResult> {
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
         return {
             success: true,
             data: `Symbol definition for ${args.symbolName}`,

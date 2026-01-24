@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { FileDiscoverer } from '../utils/fileDiscoverer';
@@ -47,8 +48,12 @@ export class FindFilesByPatternTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const { pattern, search_directory: searchPath } = args;
 
         const gitRepo = this.gitOperationsManager.getRepository();
@@ -62,7 +67,7 @@ export class FindFilesByPatternTool extends BaseTool {
             includePattern: pattern,
             respectGitignore: true,
             timeoutMs: FILE_SEARCH_TIMEOUT,
-            cancellationToken: context?.cancellationToken,
+            cancellationToken: context.cancellationToken,
         });
 
         if (result.files.length === 0) {

@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SymbolRangeExpander } from '../tools/symbolRangeExpander';
+import { createMockCancellationTokenSource } from './testUtils/mockFactories';
 
 vi.mock('vscode');
 
 describe('SymbolRangeExpander', () => {
     let expander: SymbolRangeExpander;
     let mockDocument: any;
+    let mockToken: vscode.CancellationToken;
 
     beforeEach(() => {
         expander = new SymbolRangeExpander();
@@ -18,6 +20,8 @@ describe('SymbolRangeExpander', () => {
             getText: vi.fn(),
             lineCount: 20,
         };
+
+        mockToken = createMockCancellationTokenSource().token;
     });
 
     describe('getFullSymbolRange', () => {
@@ -45,7 +49,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(2, 0, 2, 10);
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
@@ -73,7 +78,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(0, 0, 0, 15);
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             // Should expand to include the full class
@@ -114,7 +120,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(2, 5, 2, 15); // Inside constructor
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             // Should return the constructor range, not the class range
@@ -137,7 +144,8 @@ describe('SymbolRangeExpander', () => {
             const inputRange = new vscode.Range(2, 0, 2, 20);
             const result = await expander.getFullSymbolRange(
                 mockDocument,
-                inputRange
+                inputRange,
+                mockToken
             );
 
             // Should include comments and decorators
@@ -149,14 +157,9 @@ describe('SymbolRangeExpander', () => {
             // VS Code APIs don't throw CancellationError - they return undefined/empty.
             // Only withCancellableTimeout throws CancellationError when the token fires.
             // Use a pre-cancelled token to trigger this behavior.
-            const cancelledToken: vscode.CancellationToken = {
-                isCancellationRequested: true,
-                onCancellationRequested: vi.fn((listener) => {
-                    // Fire immediately since already cancelled
-                    listener();
-                    return { dispose: vi.fn() };
-                }),
-            };
+            const cancelledTokenSource = createMockCancellationTokenSource();
+            cancelledTokenSource.cancel();
+            const cancelledToken = cancelledTokenSource.token;
 
             // Mock a slow response that won't complete before cancellation check
             vi.mocked(vscode.commands.executeCommand).mockImplementation(

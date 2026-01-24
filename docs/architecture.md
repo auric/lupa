@@ -314,16 +314,19 @@ interface ExecutionContext {
     planManager?: PlanSessionManager;
     subagentSessionManager?: SubagentSessionManager;
     subagentExecutor?: SubagentExecutor;
+    cancellationToken: vscode.CancellationToken; // Required
 }
 ```
 
-#### Tool ExecutionContext Requirements
+The `context` parameter is **required** for all tool executions. The `cancellationToken` is always available—pass it to long-running operations for responsive cancellation.
 
-| Tool            | Required Fields                              | Notes                            |
-| --------------- | -------------------------------------------- | -------------------------------- |
-| `run_subagent`  | `subagentExecutor`, `subagentSessionManager` | Returns error if missing         |
-| `update_plan`   | `planManager`                                | Returns error if missing         |
-| All other tools | None                                         | Can run without ExecutionContext |
+#### Tool ExecutionContext Field Requirements
+
+| Tool            | Required Fields                              | Notes                    |
+| --------------- | -------------------------------------------- | ------------------------ |
+| `run_subagent`  | `subagentExecutor`, `subagentSessionManager` | Returns error if missing |
+| `update_plan`   | `planManager`                                | Returns error if missing |
+| All other tools | `cancellationToken` only                     | Other fields optional    |
 
 #### Context Creation by Mode
 
@@ -357,7 +360,11 @@ export abstract class BaseTool implements ITool {
         };
     }
 
-    abstract execute(args: z.infer<this['schema']>): Promise<ToolResult>;
+    // context: ExecutionContext is REQUIRED for all tool executions
+    abstract execute(
+        args: z.infer<this['schema']>,
+        context: ExecutionContext
+    ): Promise<ToolResult>;
 }
 ```
 

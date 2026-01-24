@@ -8,7 +8,10 @@ import {
     RipgrepFileResult,
 } from '../services/ripgrepSearchService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { createMockWorkspaceSettings } from './testUtils/mockFactories';
+import {
+    createMockWorkspaceSettings,
+    createMockExecutionContext,
+} from './testUtils/mockFactories';
 
 vi.mock('../services/ripgrepSearchService');
 
@@ -30,7 +33,11 @@ describe('SearchForPatternTool Integration Tests', () => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
+        toolExecutor = new ToolExecutor(
+            toolRegistry,
+            mockWorkspaceSettings,
+            createMockExecutionContext()
+        );
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {

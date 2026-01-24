@@ -3,6 +3,7 @@ import { ThinkAboutContextTool } from '../tools/thinkAboutContextTool';
 import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
 import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
+import { createMockExecutionContext } from './testUtils/mockFactories';
 
 describe('ThinkAboutContextTool', () => {
     let tool: ThinkAboutContextTool;
@@ -106,12 +107,15 @@ describe('ThinkAboutContextTool', () => {
 
     describe('Execution', () => {
         it('should return guidance reflecting files examined', async () => {
-            const result = await tool.execute({
-                files_examined: ['src/auth.ts', 'src/utils.ts'],
-                key_findings: [],
-                remaining_gaps: [],
-                decision: 'context_sufficient',
-            });
+            const result = await tool.execute(
+                {
+                    files_examined: ['src/auth.ts', 'src/utils.ts'],
+                    key_findings: [],
+                    remaining_gaps: [],
+                    decision: 'context_sufficient',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Files/Symbols Examined');
@@ -120,15 +124,18 @@ describe('ThinkAboutContextTool', () => {
         });
 
         it('should include key findings when provided', async () => {
-            const result = await tool.execute({
-                files_examined: ['src/auth.ts'],
-                key_findings: [
-                    'Found race condition in login flow',
-                    'Missing error handling',
-                ],
-                remaining_gaps: [],
-                decision: 'context_sufficient',
-            });
+            const result = await tool.execute(
+                {
+                    files_examined: ['src/auth.ts'],
+                    key_findings: [
+                        'Found race condition in login flow',
+                        'Missing error handling',
+                    ],
+                    remaining_gaps: [],
+                    decision: 'context_sufficient',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Key Findings');
@@ -137,15 +144,18 @@ describe('ThinkAboutContextTool', () => {
         });
 
         it('should include remaining gaps when provided', async () => {
-            const result = await tool.execute({
-                files_examined: ['src/auth.ts'],
-                key_findings: [],
-                remaining_gaps: [
-                    'Need to check session handling',
-                    'Verify token expiration',
-                ],
-                decision: 'need_more_context',
-            });
+            const result = await tool.execute(
+                {
+                    files_examined: ['src/auth.ts'],
+                    key_findings: [],
+                    remaining_gaps: [
+                        'Need to check session handling',
+                        'Verify token expiration',
+                    ],
+                    decision: 'need_more_context',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Remaining Gaps');
@@ -154,12 +164,15 @@ describe('ThinkAboutContextTool', () => {
         });
 
         it('should provide guidance for need_more_context decision', async () => {
-            const result = await tool.execute({
-                files_examined: ['src/auth.ts'],
-                key_findings: [],
-                remaining_gaps: ['Check error handling'],
-                decision: 'need_more_context',
-            });
+            const result = await tool.execute(
+                {
+                    files_examined: ['src/auth.ts'],
+                    key_findings: [],
+                    remaining_gaps: ['Check error handling'],
+                    decision: 'need_more_context',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: NEED MORE CONTEXT');
@@ -168,12 +181,15 @@ describe('ThinkAboutContextTool', () => {
         });
 
         it('should provide guidance for need_subagent decision', async () => {
-            const result = await tool.execute({
-                files_examined: ['src/auth.ts'],
-                key_findings: ['Complex security flow'],
-                remaining_gaps: ['Deep security analysis needed'],
-                decision: 'need_subagent',
-            });
+            const result = await tool.execute(
+                {
+                    files_examined: ['src/auth.ts'],
+                    key_findings: ['Complex security flow'],
+                    remaining_gaps: ['Deep security analysis needed'],
+                    decision: 'need_subagent',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: NEED SUBAGENT');
@@ -182,12 +198,15 @@ describe('ThinkAboutContextTool', () => {
         });
 
         it('should provide guidance for context_sufficient decision', async () => {
-            const result = await tool.execute({
-                files_examined: ['src/auth.ts', 'src/utils.ts'],
-                key_findings: ['Auth flow is secure'],
-                remaining_gaps: [],
-                decision: 'context_sufficient',
-            });
+            const result = await tool.execute(
+                {
+                    files_examined: ['src/auth.ts', 'src/utils.ts'],
+                    key_findings: ['Auth flow is secure'],
+                    remaining_gaps: [],
+                    decision: 'context_sufficient',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: CONTEXT SUFFICIENT');
@@ -195,12 +214,15 @@ describe('ThinkAboutContextTool', () => {
         });
 
         it('should include Markdown structure', async () => {
-            const result = await tool.execute({
-                files_examined: ['src/auth.ts'],
-                key_findings: [],
-                remaining_gaps: [],
-                decision: 'context_sufficient',
-            });
+            const result = await tool.execute(
+                {
+                    files_examined: ['src/auth.ts'],
+                    key_findings: [],
+                    remaining_gaps: [],
+                    decision: 'context_sufficient',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('##');
@@ -333,13 +355,16 @@ describe('ThinkAboutTaskTool', () => {
 
     describe('Execution', () => {
         it('should return guidance reflecting analysis focus', async () => {
-            const result = await tool.execute({
-                analysis_focus: 'Authentication changes in auth.ts',
-                issues_found: [],
-                areas_needing_investigation: [],
-                positive_observations: [],
-                decision: 'ready_to_synthesize',
-            });
+            const result = await tool.execute(
+                {
+                    analysis_focus: 'Authentication changes in auth.ts',
+                    issues_found: [],
+                    areas_needing_investigation: [],
+                    positive_observations: [],
+                    decision: 'ready_to_synthesize',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Current Focus');
@@ -347,29 +372,32 @@ describe('ThinkAboutTaskTool', () => {
         });
 
         it('should format issues with severity emojis', async () => {
-            const result = await tool.execute({
-                analysis_focus: 'Security review',
-                issues_found: [
-                    {
-                        description: 'SQL injection vulnerability',
-                        file: 'src/db.ts',
-                        severity: 'critical',
-                    },
-                    {
-                        description: 'Missing input validation',
-                        file: 'src/api.ts',
-                        severity: 'high',
-                    },
-                    {
-                        description: 'Unused variable',
-                        file: 'src/utils.ts',
-                        severity: 'low',
-                    },
-                ],
-                areas_needing_investigation: [],
-                positive_observations: [],
-                decision: 'gaps_in_coverage',
-            });
+            const result = await tool.execute(
+                {
+                    analysis_focus: 'Security review',
+                    issues_found: [
+                        {
+                            description: 'SQL injection vulnerability',
+                            file: 'src/db.ts',
+                            severity: 'critical',
+                        },
+                        {
+                            description: 'Missing input validation',
+                            file: 'src/api.ts',
+                            severity: 'high',
+                        },
+                        {
+                            description: 'Unused variable',
+                            file: 'src/utils.ts',
+                            severity: 'low',
+                        },
+                    ],
+                    areas_needing_investigation: [],
+                    positive_observations: [],
+                    decision: 'gaps_in_coverage',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('🔴');
@@ -382,16 +410,19 @@ describe('ThinkAboutTaskTool', () => {
         });
 
         it('should include positive observations when provided', async () => {
-            const result = await tool.execute({
-                analysis_focus: 'Code quality',
-                issues_found: [],
-                areas_needing_investigation: [],
-                positive_observations: [
-                    'Good error handling',
-                    'Clear naming conventions',
-                ],
-                decision: 'ready_to_synthesize',
-            });
+            const result = await tool.execute(
+                {
+                    analysis_focus: 'Code quality',
+                    issues_found: [],
+                    areas_needing_investigation: [],
+                    positive_observations: [
+                        'Good error handling',
+                        'Clear naming conventions',
+                    ],
+                    decision: 'ready_to_synthesize',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Positive Observations');
@@ -401,13 +432,16 @@ describe('ThinkAboutTaskTool', () => {
         });
 
         it('should provide guidance for off_track decision', async () => {
-            const result = await tool.execute({
-                analysis_focus: 'Investigating unrelated module',
-                issues_found: [],
-                areas_needing_investigation: [],
-                positive_observations: [],
-                decision: 'off_track',
-            });
+            const result = await tool.execute(
+                {
+                    analysis_focus: 'Investigating unrelated module',
+                    issues_found: [],
+                    areas_needing_investigation: [],
+                    positive_observations: [],
+                    decision: 'off_track',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: OFF TRACK');
@@ -415,13 +449,16 @@ describe('ThinkAboutTaskTool', () => {
         });
 
         it('should provide guidance for gaps_in_coverage decision', async () => {
-            const result = await tool.execute({
-                analysis_focus: 'API review',
-                issues_found: [],
-                areas_needing_investigation: ['Error paths', 'Edge cases'],
-                positive_observations: [],
-                decision: 'gaps_in_coverage',
-            });
+            const result = await tool.execute(
+                {
+                    analysis_focus: 'API review',
+                    issues_found: [],
+                    areas_needing_investigation: ['Error paths', 'Edge cases'],
+                    positive_observations: [],
+                    decision: 'gaps_in_coverage',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: GAPS IN COVERAGE');
@@ -429,13 +466,16 @@ describe('ThinkAboutTaskTool', () => {
         });
 
         it('should provide guidance for ready_to_synthesize decision', async () => {
-            const result = await tool.execute({
-                analysis_focus: 'Complete review',
-                issues_found: [],
-                areas_needing_investigation: [],
-                positive_observations: ['Well-structured code'],
-                decision: 'ready_to_synthesize',
-            });
+            const result = await tool.execute(
+                {
+                    analysis_focus: 'Complete review',
+                    issues_found: [],
+                    areas_needing_investigation: [],
+                    positive_observations: ['Well-structured code'],
+                    decision: 'ready_to_synthesize',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: READY TO SYNTHESIZE');
@@ -596,16 +636,19 @@ describe('ThinkAboutCompletionTool', () => {
 
     describe('Execution', () => {
         it('should return guidance reflecting summary draft', async () => {
-            const result = await tool.execute({
-                summary_draft:
-                    'This PR refactors the authentication module for better security.',
-                critical_issues_count: 0,
-                high_issues_count: 0,
-                files_analyzed: ['src/auth.ts'],
-                files_in_diff: 1,
-                recommendation: 'approve',
-                decision: 'ready_to_submit',
-            });
+            const result = await tool.execute(
+                {
+                    summary_draft:
+                        'This PR refactors the authentication module for better security.',
+                    critical_issues_count: 0,
+                    high_issues_count: 0,
+                    files_analyzed: ['src/auth.ts'],
+                    files_in_diff: 1,
+                    recommendation: 'approve',
+                    decision: 'ready_to_submit',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Summary Draft');
@@ -615,16 +658,19 @@ describe('ThinkAboutCompletionTool', () => {
         });
 
         it('should show issue counts with emojis', async () => {
-            const result = await tool.execute({
-                summary_draft:
-                    'This PR has some issues that need to be addressed.',
-                critical_issues_count: 2,
-                high_issues_count: 3,
-                files_analyzed: ['src/auth.ts', 'src/api.ts'],
-                files_in_diff: 2,
-                recommendation: 'request_changes',
-                decision: 'ready_to_submit',
-            });
+            const result = await tool.execute(
+                {
+                    summary_draft:
+                        'This PR has some issues that need to be addressed.',
+                    critical_issues_count: 2,
+                    high_issues_count: 3,
+                    files_analyzed: ['src/auth.ts', 'src/api.ts'],
+                    files_in_diff: 2,
+                    recommendation: 'request_changes',
+                    decision: 'ready_to_submit',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('🔴 Critical: 2');
@@ -632,15 +678,19 @@ describe('ThinkAboutCompletionTool', () => {
         });
 
         it('should calculate and show coverage percentage', async () => {
-            const result = await tool.execute({
-                summary_draft: 'Partial review of the authentication changes.',
-                critical_issues_count: 0,
-                high_issues_count: 0,
-                files_analyzed: ['src/auth.ts', 'src/oauth.ts'],
-                files_in_diff: 4,
-                recommendation: 'approve_with_suggestions',
-                decision: 'needs_work',
-            });
+            const result = await tool.execute(
+                {
+                    summary_draft:
+                        'Partial review of the authentication changes.',
+                    critical_issues_count: 0,
+                    high_issues_count: 0,
+                    files_analyzed: ['src/auth.ts', 'src/oauth.ts'],
+                    files_in_diff: 4,
+                    recommendation: 'approve_with_suggestions',
+                    decision: 'needs_work',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Coverage');
@@ -650,16 +700,19 @@ describe('ThinkAboutCompletionTool', () => {
         });
 
         it('should warn about critical issues affecting recommendation', async () => {
-            const result = await tool.execute({
-                summary_draft:
-                    'Found critical security vulnerabilities in this PR.',
-                critical_issues_count: 1,
-                high_issues_count: 0,
-                files_analyzed: ['src/auth.ts'],
-                files_in_diff: 1,
-                recommendation: 'block_merge',
-                decision: 'ready_to_submit',
-            });
+            const result = await tool.execute(
+                {
+                    summary_draft:
+                        'Found critical security vulnerabilities in this PR.',
+                    critical_issues_count: 1,
+                    high_issues_count: 0,
+                    files_analyzed: ['src/auth.ts'],
+                    files_in_diff: 1,
+                    recommendation: 'block_merge',
+                    decision: 'ready_to_submit',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Critical issues found');
@@ -667,16 +720,19 @@ describe('ThinkAboutCompletionTool', () => {
         });
 
         it('should provide guidance for needs_work decision', async () => {
-            const result = await tool.execute({
-                summary_draft:
-                    'Need to analyze more files before completing review.',
-                critical_issues_count: 0,
-                high_issues_count: 0,
-                files_analyzed: ['src/auth.ts'],
-                files_in_diff: 3,
-                recommendation: 'approve',
-                decision: 'needs_work',
-            });
+            const result = await tool.execute(
+                {
+                    summary_draft:
+                        'Need to analyze more files before completing review.',
+                    critical_issues_count: 0,
+                    high_issues_count: 0,
+                    files_analyzed: ['src/auth.ts'],
+                    files_in_diff: 3,
+                    recommendation: 'approve',
+                    decision: 'needs_work',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: NEEDS WORK');
@@ -685,16 +741,19 @@ describe('ThinkAboutCompletionTool', () => {
         });
 
         it('should provide guidance for ready_to_submit decision', async () => {
-            const result = await tool.execute({
-                summary_draft:
-                    'Comprehensive review completed with no blocking issues.',
-                critical_issues_count: 0,
-                high_issues_count: 0,
-                files_analyzed: ['src/auth.ts', 'src/utils.ts'],
-                files_in_diff: 2,
-                recommendation: 'approve',
-                decision: 'ready_to_submit',
-            });
+            const result = await tool.execute(
+                {
+                    summary_draft:
+                        'Comprehensive review completed with no blocking issues.',
+                    critical_issues_count: 0,
+                    high_issues_count: 0,
+                    files_analyzed: ['src/auth.ts', 'src/utils.ts'],
+                    files_in_diff: 2,
+                    recommendation: 'approve',
+                    decision: 'ready_to_submit',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: READY TO SUBMIT');
@@ -703,16 +762,19 @@ describe('ThinkAboutCompletionTool', () => {
         });
 
         it('should show recommendation in output', async () => {
-            const result = await tool.execute({
-                summary_draft:
-                    'This PR makes good improvements but has suggestions.',
-                critical_issues_count: 0,
-                high_issues_count: 1,
-                files_analyzed: ['src/auth.ts'],
-                files_in_diff: 1,
-                recommendation: 'approve_with_suggestions',
-                decision: 'ready_to_submit',
-            });
+            const result = await tool.execute(
+                {
+                    summary_draft:
+                        'This PR makes good improvements but has suggestions.',
+                    critical_issues_count: 0,
+                    high_issues_count: 1,
+                    files_analyzed: ['src/auth.ts'],
+                    files_in_diff: 1,
+                    recommendation: 'approve_with_suggestions',
+                    decision: 'ready_to_submit',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain(
@@ -817,14 +879,18 @@ describe('ThinkAboutInvestigationTool', () => {
 
     describe('Execution', () => {
         it('should return guidance reflecting assigned task', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Analyze security implications of auth changes',
-                questions_answered: [],
-                questions_remaining: [],
-                evidence_gathered: [],
-                estimated_iterations_used: 1,
-                decision: 'investigation_complete',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task:
+                        'Analyze security implications of auth changes',
+                    questions_answered: [],
+                    questions_remaining: [],
+                    evidence_gathered: [],
+                    estimated_iterations_used: 1,
+                    decision: 'investigation_complete',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Assigned Task');
@@ -834,17 +900,20 @@ describe('ThinkAboutInvestigationTool', () => {
         });
 
         it('should show progress with answered questions', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Investigate token handling',
-                questions_answered: [
-                    'Tokens are validated on each request',
-                    'JWT is used for encoding',
-                ],
-                questions_remaining: ['What about refresh tokens?'],
-                evidence_gathered: [],
-                estimated_iterations_used: 5,
-                decision: 'continue_investigating',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task: 'Investigate token handling',
+                    questions_answered: [
+                        'Tokens are validated on each request',
+                        'JWT is used for encoding',
+                    ],
+                    questions_remaining: ['What about refresh tokens?'],
+                    evidence_gathered: [],
+                    estimated_iterations_used: 5,
+                    decision: 'continue_investigating',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Progress: 2 answered, 1 remaining');
@@ -856,17 +925,20 @@ describe('ThinkAboutInvestigationTool', () => {
         });
 
         it('should show remaining questions', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Investigate error handling',
-                questions_answered: [],
-                questions_remaining: [
-                    'How are 500 errors handled?',
-                    'Is there retry logic?',
-                ],
-                evidence_gathered: [],
-                estimated_iterations_used: 2,
-                decision: 'continue_investigating',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task: 'Investigate error handling',
+                    questions_answered: [],
+                    questions_remaining: [
+                        'How are 500 errors handled?',
+                        'Is there retry logic?',
+                    ],
+                    evidence_gathered: [],
+                    estimated_iterations_used: 2,
+                    decision: 'continue_investigating',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Questions Remaining');
@@ -875,17 +947,20 @@ describe('ThinkAboutInvestigationTool', () => {
         });
 
         it('should show evidence gathered', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Trace data flow',
-                questions_answered: ['Data flows from API to DB'],
-                questions_remaining: [],
-                evidence_gathered: [
-                    'api.ts:45 - validates input',
-                    'db.ts:123 - stores data',
-                ],
-                estimated_iterations_used: 4,
-                decision: 'investigation_complete',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task: 'Trace data flow',
+                    questions_answered: ['Data flows from API to DB'],
+                    questions_remaining: [],
+                    evidence_gathered: [
+                        'api.ts:45 - validates input',
+                        'db.ts:123 - stores data',
+                    ],
+                    estimated_iterations_used: 4,
+                    decision: 'investigation_complete',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Evidence Gathered');
@@ -894,28 +969,34 @@ describe('ThinkAboutInvestigationTool', () => {
         });
 
         it('should show iterations used', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Quick check',
-                questions_answered: [],
-                questions_remaining: [],
-                evidence_gathered: [],
-                estimated_iterations_used: 7,
-                decision: 'investigation_complete',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task: 'Quick check',
+                    questions_answered: [],
+                    questions_remaining: [],
+                    evidence_gathered: [],
+                    estimated_iterations_used: 7,
+                    decision: 'investigation_complete',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Iterations Used: ~7');
         });
 
         it('should provide guidance for continue_investigating decision', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Deep dive into auth',
-                questions_answered: ['Basic flow understood'],
-                questions_remaining: ['Edge cases unclear'],
-                evidence_gathered: [],
-                estimated_iterations_used: 3,
-                decision: 'continue_investigating',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task: 'Deep dive into auth',
+                    questions_answered: ['Basic flow understood'],
+                    questions_remaining: ['Edge cases unclear'],
+                    evidence_gathered: [],
+                    estimated_iterations_used: 3,
+                    decision: 'continue_investigating',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: CONTINUE INVESTIGATING');
@@ -923,14 +1004,17 @@ describe('ThinkAboutInvestigationTool', () => {
         });
 
         it('should provide guidance for wrap_up_partial decision', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Comprehensive analysis',
-                questions_answered: ['Main flow analyzed'],
-                questions_remaining: ['Minor edge cases'],
-                evidence_gathered: ['Found issue in auth.ts'],
-                estimated_iterations_used: 8,
-                decision: 'wrap_up_partial',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task: 'Comprehensive analysis',
+                    questions_answered: ['Main flow analyzed'],
+                    questions_remaining: ['Minor edge cases'],
+                    evidence_gathered: ['Found issue in auth.ts'],
+                    estimated_iterations_used: 8,
+                    decision: 'wrap_up_partial',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: WRAP UP PARTIAL');
@@ -938,14 +1022,17 @@ describe('ThinkAboutInvestigationTool', () => {
         });
 
         it('should provide guidance for investigation_complete decision', async () => {
-            const result = await tool.execute({
-                assigned_task: 'Full investigation',
-                questions_answered: ['All questions answered'],
-                questions_remaining: [],
-                evidence_gathered: ['Complete evidence trail'],
-                estimated_iterations_used: 6,
-                decision: 'investigation_complete',
-            });
+            const result = await tool.execute(
+                {
+                    assigned_task: 'Full investigation',
+                    questions_answered: ['All questions answered'],
+                    questions_remaining: [],
+                    evidence_gathered: ['Complete evidence trail'],
+                    estimated_iterations_used: 6,
+                    decision: 'investigation_complete',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('Decision: INVESTIGATION COMPLETE');
@@ -997,10 +1084,22 @@ describe('Think Tools Integration', () => {
         const investigationTool = new ThinkAboutInvestigationTool();
 
         const results = await Promise.all([
-            contextTool.execute(createValidContextInput()),
-            taskTool.execute(createValidTaskInput()),
-            completionTool.execute(createValidCompletionInput()),
-            investigationTool.execute(createValidInvestigationInput()),
+            contextTool.execute(
+                createValidContextInput(),
+                createMockExecutionContext()
+            ),
+            taskTool.execute(
+                createValidTaskInput(),
+                createMockExecutionContext()
+            ),
+            completionTool.execute(
+                createValidCompletionInput(),
+                createMockExecutionContext()
+            ),
+            investigationTool.execute(
+                createValidInvestigationInput(),
+                createMockExecutionContext()
+            ),
         ]);
 
         for (const result of results) {
@@ -1069,19 +1168,25 @@ describe('Think Tools Integration', () => {
     it('should all have decision field that affects output', async () => {
         const contextTool = new ThinkAboutContextTool();
 
-        const result1 = await contextTool.execute({
-            files_examined: ['src/file.ts'],
-            key_findings: [],
-            remaining_gaps: [],
-            decision: 'need_more_context',
-        });
+        const result1 = await contextTool.execute(
+            {
+                files_examined: ['src/file.ts'],
+                key_findings: [],
+                remaining_gaps: [],
+                decision: 'need_more_context',
+            },
+            createMockExecutionContext()
+        );
 
-        const result2 = await contextTool.execute({
-            files_examined: ['src/file.ts'],
-            key_findings: [],
-            remaining_gaps: [],
-            decision: 'context_sufficient',
-        });
+        const result2 = await contextTool.execute(
+            {
+                files_examined: ['src/file.ts'],
+                key_findings: [],
+                remaining_gaps: [],
+                decision: 'context_sufficient',
+            },
+            createMockExecutionContext()
+        );
 
         expect(result1.data).not.toBe(result2.data);
         expect(result1.data).toContain('NEED MORE CONTEXT');

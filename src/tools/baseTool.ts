@@ -20,6 +20,6 @@ export abstract class BaseTool implements ITool {
 
     abstract execute(
         args: z.infer<this['schema']>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult>;
 }

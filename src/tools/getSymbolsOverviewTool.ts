@@ -90,8 +90,12 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(
@@ -131,7 +135,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             return toolError(`Path '${sanitizedPath}' not found`);
         }
 
-        const token = context?.cancellationToken;
+        const token = context.cancellationToken;
 
         // No outer withCancellableTimeout wrapper needed here because:
         // - For directories: getDirectorySymbols has internal timeout with graceful partial results
@@ -186,7 +190,7 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             includeKinds?: number[];
             excludeKinds?: number[];
         },
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<{ content: string; symbolCount: number; truncated: boolean }> {
         const targetPath = path.join(gitRootDirectory, relativePath);
 
@@ -247,6 +251,10 @@ Respects .gitignore files and provides LLM-optimized formatting for code review.
             );
 
             for (const { filePath, symbols } of sortedResults) {
+                if (token.isCancellationRequested) {
+                    throw new vscode.CancellationError();
+                }
+
                 if (symbols.length === 0) {
                     continue;
                 }

@@ -9,6 +9,7 @@ import {
     SUBAGENT_LIMITS,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
+import type { ExecutionContext } from '../../types/executionContext';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -291,6 +292,11 @@ export function createMockSymbolInformation(options: {
  * Creates a mock CancellationTokenSource that properly tracks cancellation state.
  * The returned token supports listeners and manual cancellation for testing.
  * Vitest 4 requires function syntax for constructor mocks.
+ *
+ * Behavior matches VS Code's CancellationToken:
+ * - If already cancelled when listener subscribes, listener is invoked synchronously
+ * - Listeners are cleared after firing to prevent double-calls
+ * - cancel() is idempotent - calling twice does not double-fire
  */
 export function createMockCancellationTokenSource(): vscode.CancellationTokenSource {
     const listeners: Array<(e: any) => any> = [];
@@ -301,7 +307,12 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
             return isCancelled;
         },
         onCancellationRequested: vi.fn(function (listener: (e: any) => any) {
-            listeners.push(listener);
+            // If already cancelled, invoke listener synchronously (matches VS Code behavior)
+            if (isCancelled) {
+                listener(undefined);
+            } else {
+                listeners.push(listener);
+            }
             return {
                 dispose: vi.fn(function () {
                     const index = listeners.indexOf(listener);
@@ -316,9 +327,20 @@ export function createMockCancellationTokenSource(): vscode.CancellationTokenSou
     return {
         token,
         cancel: vi.fn(function () {
+            if (isCancelled) {
+                return; // Prevent double-firing
+            }
             isCancelled = true;
-            [...listeners].forEach(function (listener) {
-                listener(undefined);
+            const toFire = [...listeners];
+            listeners.length = 0; // Clear listeners after firing
+            toFire.forEach(function (listener) {
+                // Wrap in try/catch to ensure one listener's exception
+                // doesn't prevent subsequent listeners from firing
+                try {
+                    listener(undefined);
+                } catch {
+                    // Swallow errors from listeners to match VS Code behavior
+                }
             });
         }),
         dispose: vi.fn(),
@@ -489,5 +511,65 @@ export function createMockCopilotModelManager() {
             countTokens: vi.fn().mockResolvedValue(100),
             maxInputTokens: 8000,
         }),
+    };
+}
+
+/**
+ * Creates a mock CancellationToken for simple use cases where a full
+ * CancellationTokenSource is not needed.
+ *
+ * @param cancelled Whether the token should be pre-cancelled (default: false)
+ * @returns A mock CancellationToken
+ */
+export function createMockCancellationToken(
+    cancelled = false
+): vscode.CancellationToken {
+    const source = createMockCancellationTokenSource();
+    if (cancelled) {
+        source.cancel();
+    }
+    return source.token;
+}
+
+/**
+ * Creates a standard mock ExecutionContext for tool testing.
+ * Includes a non-cancelled token by default.
+ *
+ * Use this factory in all tool tests to ensure consistent ExecutionContext handling.
+ *
+ * @param overrides Optional partial ExecutionContext to override defaults
+ * @returns A complete ExecutionContext with required cancellationToken
+ */
+export function createMockExecutionContext(
+    overrides: Partial<ExecutionContext> = {}
+): ExecutionContext {
+    const tokenSource = createMockCancellationTokenSource();
+    return {
+        cancellationToken: tokenSource.token,
+        planManager: undefined,
+        subagentSessionManager: undefined,
+        subagentExecutor: undefined,
+        ...overrides,
+    };
+}
+
+/**
+ * Creates a pre-cancelled ExecutionContext for testing cancellation flows.
+ * The cancellationToken.isCancellationRequested will be true.
+ *
+ * @param overrides Optional partial ExecutionContext to override defaults
+ * @returns An ExecutionContext with a cancelled token
+ */
+export function createCancelledExecutionContext(
+    overrides: Partial<ExecutionContext> = {}
+): ExecutionContext {
+    const tokenSource = createMockCancellationTokenSource();
+    tokenSource.cancel();
+    return {
+        cancellationToken: tokenSource.token,
+        planManager: undefined,
+        subagentSessionManager: undefined,
+        subagentExecutor: undefined,
+        ...overrides,
     };
 }

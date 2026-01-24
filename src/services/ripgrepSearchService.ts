@@ -97,8 +97,8 @@ export interface RipgrepSearchOptions {
     excludeGlob?: string;
     codeFilesOnly?: boolean;
     multiline: boolean;
-    /** Optional cancellation token to abort the search */
-    token?: vscode.CancellationToken;
+    /** Cancellation token to abort the search. Required for responsive cancellation. */
+    token: vscode.CancellationToken;
 }
 
 interface RipgrepJsonMessage {
@@ -180,7 +180,7 @@ export class RipgrepSearchService {
             // Settled flag prevents double resolution/rejection in edge cases
             let settled = false;
 
-            if (options.token?.isCancellationRequested) {
+            if (options.token.isCancellationRequested) {
                 Log.debug('[Ripgrep] Search skipped - already cancelled');
                 reject(new vscode.CancellationError());
                 return;
@@ -283,6 +283,10 @@ export class RipgrepSearchService {
             let buffer = '';
 
             rg.stdout?.on('data', (data: Buffer) => {
+                if (options.token.isCancellationRequested) {
+                    return;
+                }
+
                 buffer += data.toString();
                 const lines = buffer.split('\n');
                 buffer = lines.pop() ?? '';
@@ -312,6 +316,11 @@ export class RipgrepSearchService {
                 settled = true;
                 clearAllTimersAndDisposables();
 
+                if (options.token.isCancellationRequested) {
+                    reject(new vscode.CancellationError());
+                    return;
+                }
+
                 // Process remaining buffer
                 if (buffer.trim()) {
                     try {
@@ -322,11 +331,6 @@ export class RipgrepSearchService {
                     } catch {
                         // Skip malformed JSON
                     }
-                }
-
-                if (options.token?.isCancellationRequested) {
-                    reject(new vscode.CancellationError());
-                    return;
                 }
 
                 // ripgrep exit codes: 0 = matches found, 1 = no matches, 2 = error

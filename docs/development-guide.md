@@ -289,13 +289,16 @@ function process(param?: string): void; // Avoid
 
 1. Create class extending `BaseTool` in `src/tools/`
 2. Define Zod schema for parameters
-3. Implement `execute()` returning `ToolResult`
+3. Implement `execute(args, context)` returning `ToolResult` — `context: ExecutionContext` is required
 4. Register in `ServiceManager.initializeTools()`
+5. Access per-analysis dependencies via `ExecutionContext` (cancellationToken, planManager, etc.)
 
 ```typescript
+import * as vscode from 'vscode';
 import * as z from 'zod';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import type { ExecutionContext } from '../types/executionContext';
 
 export class MyTool extends BaseTool {
     name = 'my_tool';
@@ -305,15 +308,47 @@ export class MyTool extends BaseTool {
         param: z.string().describe('Parameter description'),
     });
 
-    async execute(args: z.infer<typeof this.schema>): Promise<ToolResult> {
-        try {
-            // Implementation
-            return toolSuccess(result);
-        } catch (error) {
-            return toolError(error.message);
+    async execute(
+        args: z.infer<typeof this.schema>,
+        context: ExecutionContext
+    ): Promise<ToolResult> {
+        // Check cancellation for long operations
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
         }
+
+        // Implementation
+        return toolSuccess(result);
     }
 }
+```
+
+### Testing Tools
+
+Use `createMockExecutionContext()` from `testUtils/mockFactories.ts` when testing tool execution:
+
+```typescript
+import { createMockExecutionContext } from './testUtils/mockFactories';
+
+it('should process input correctly', async () => {
+    const tool = new MyTool();
+    const result = await tool.execute(
+        { param: 'value' },
+        createMockExecutionContext()
+    );
+    expect(result.success).toBe(true);
+});
+```
+
+For cancellation testing, use `createCancelledExecutionContext()`:
+
+```typescript
+it('should handle cancellation', async () => {
+    const tool = new MyTool();
+    await expect(
+        tool.execute({ param: 'value' }, createCancelledExecutionContext())
+    ).rejects.toThrow();
+});
 ```
 
 ---

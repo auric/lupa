@@ -4,7 +4,10 @@ import { fdir } from 'fdir';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
-import { createMockFdirInstance } from './testUtils/mockFactories';
+import {
+    createMockFdirInstance,
+    createMockExecutionContext,
+} from './testUtils/mockFactories';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -161,10 +164,13 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            await findFileTool.execute({
-                pattern: '*.js',
-                search_directory: 'src/../test',
-            });
+            await findFileTool.execute(
+                {
+                    pattern: '*.js',
+                    search_directory: 'src/../test',
+                },
+                createMockExecutionContext()
+            );
 
             expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith(
                 'src/../test'
@@ -177,7 +183,10 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            await findFileTool.execute({ pattern: '*.js' });
+            await findFileTool.execute(
+                { pattern: '*.js' },
+                createMockExecutionContext()
+            );
 
             expect(PathSanitizer.sanitizePath).toHaveBeenCalledWith('.');
         });
@@ -193,10 +202,13 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            const result = await findFileTool.execute({
-                pattern: '*.js',
-                search_directory: 'src',
-            });
+            const result = await findFileTool.execute(
+                {
+                    pattern: '*.js',
+                    search_directory: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             // Verify basic fdir setup and execution
             expect(vi.mocked(fdir)).toHaveBeenCalled();
@@ -219,7 +231,10 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            const result = await findFileTool.execute({ pattern: '*.js' });
+            const result = await findFileTool.execute(
+                { pattern: '*.js' },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual('a.js\nm.js\nz.js');
@@ -237,7 +252,10 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            await findFileTool.execute({ pattern: '*.js' });
+            await findFileTool.execute(
+                { pattern: '*.js' },
+                createMockExecutionContext()
+            );
 
             expect(mockReadFile).toHaveBeenCalledWith(
                 expect.objectContaining({
@@ -256,7 +274,10 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            const result = await findFileTool.execute({ pattern: '*.js' });
+            const result = await findFileTool.execute(
+                { pattern: '*.js' },
+                createMockExecutionContext()
+            );
 
             expect(result.data).toEqual('file.js');
         });
@@ -266,7 +287,10 @@ describe('FindFileTool', () => {
         it('should handle missing git repository', async () => {
             mockGetRepository.mockReturnValue(null);
 
-            const result = await findFileTool.execute({ pattern: '*.js' });
+            const result = await findFileTool.execute(
+                { pattern: '*.js' },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Git repository not found');
@@ -283,7 +307,10 @@ describe('FindFileTool', () => {
             } as any);
 
             await expect(
-                findFileTool.execute({ pattern: '*.js' })
+                findFileTool.execute(
+                    { pattern: '*.js' },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow('Directory not found');
         });
 
@@ -296,10 +323,13 @@ describe('FindFileTool', () => {
             });
 
             await expect(
-                findFileTool.execute({
-                    pattern: '*.js',
-                    search_directory: '../evil',
-                })
+                findFileTool.execute(
+                    {
+                        pattern: '*.js',
+                        search_directory: '../evil',
+                    },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow('Directory traversal detected');
         });
     });
@@ -313,7 +343,10 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            const result = await findFileTool.execute({ pattern: '*.tsx' });
+            const result = await findFileTool.execute(
+                { pattern: '*.tsx' },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual('src/components/Button.tsx');
@@ -334,7 +367,10 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            await findFileTool.execute({ pattern: '**/WGC*h' });
+            await findFileTool.execute(
+                { pattern: '**/WGC*h' },
+                createMockExecutionContext()
+            );
 
             // Verify that windows: true is passed to globWithOptions when on Windows
             expect(mockFdirInstance.globWithOptions).toHaveBeenCalledWith(
@@ -357,7 +393,10 @@ describe('FindFileTool', () => {
                 return mockFdirInstance;
             } as any);
 
-            const result = await findFileTool.execute({ pattern: '*.js' });
+            const result = await findFileTool.execute(
+                { pattern: '*.js' },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             // FileDiscoverer truncates to first 1000 and adds a truncation message
@@ -380,10 +419,13 @@ describe('FindFileTool', () => {
 
             // With centralized error handling, file discovery errors bubble up to ToolExecutor
             await expect(
-                findFileTool.execute({
-                    pattern: '**/*.js',
-                    search_directory: 'nonexistent',
-                })
+                findFileTool.execute(
+                    {
+                        pattern: '**/*.js',
+                        search_directory: 'nonexistent',
+                    },
+                    createMockExecutionContext()
+                )
             ).rejects.toThrow('ENOENT: no such file or directory');
         });
     });

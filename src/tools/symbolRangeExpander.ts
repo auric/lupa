@@ -18,13 +18,13 @@ export class SymbolRangeExpander {
      * Get the full range of a symbol definition (e.g., entire function, class, or variable declaration)
      * @param document The text document containing the symbol
      * @param symbolRange The initial range returned by the definition provider
-     * @param token Optional cancellation token for aborting the operation
+     * @param token Cancellation token for aborting the operation
      * @returns A range that encompasses the full symbol definition
      */
     async getFullSymbolRange(
         document: vscode.TextDocument,
         symbolRange: vscode.Range,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<vscode.Range> {
         try {
             const symbolsPromise = vscode.commands.executeCommand<
@@ -51,7 +51,7 @@ export class SymbolRangeExpander {
             }
 
             // Fallback: try to expand the range intelligently based on code structure
-            return this.expandRangeForSymbol(document, symbolRange);
+            return this.expandRangeForSymbol(document, symbolRange, token);
         } catch (error) {
             if (isCancellationError(error)) {
                 throw error;
@@ -68,7 +68,7 @@ export class SymbolRangeExpander {
                 );
             }
             // Fallback to expanded range if symbol provider fails or times out
-            return this.expandRangeForSymbol(document, symbolRange);
+            return this.expandRangeForSymbol(document, symbolRange, token);
         }
     }
 
@@ -102,8 +102,13 @@ export class SymbolRangeExpander {
      */
     private expandRangeForSymbol(
         document: vscode.TextDocument,
-        symbolRange: vscode.Range
+        symbolRange: vscode.Range,
+        token: vscode.CancellationToken
     ): vscode.Range {
+        if (token.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const startLine = symbolRange.start.line;
         const text = document.getText();
         const lines = text.split('\n');
@@ -136,6 +141,10 @@ export class SymbolRangeExpander {
         let inFunction = false;
 
         for (let line = startLine; line < lines.length; line++) {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             const lineText = lines[line];
             if (!lineText) {
                 continue;

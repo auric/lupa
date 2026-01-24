@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -64,8 +65,12 @@ export class ThinkAboutCompletionTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        _context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const {
             summary_draft,
             critical_issues_count,

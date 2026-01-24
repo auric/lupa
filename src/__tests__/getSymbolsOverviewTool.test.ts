@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, Mocked } from 'vitest';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { SymbolExtractor } from '../utils/symbolExtractor';
+import { createMockExecutionContext } from './testUtils/mockFactories';
 
 // Mock vscode
 vi.mock('vscode', async () => {
@@ -192,9 +193,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 relativePath: 'src/test.ts',
             });
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src/test.ts',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual(
@@ -219,9 +223,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 relativePath: 'src/empty.ts',
             });
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src/empty.ts',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src/empty.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('No symbols found');
@@ -259,9 +266,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 timedOutFiles: 0,
             } as any);
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual(
@@ -295,9 +305,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 timedOutFiles: 0,
             } as any);
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual(
@@ -326,9 +339,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 relativePath: 'src/interface.ts',
             });
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src/interface.ts',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src/interface.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual(
@@ -338,11 +354,14 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
 
         it('should propagate path not found error to ToolExecutor', async () => {
             // Path not found returns toolError (consistent with other tools)
-            mockSymbolExtractor.getPathStat.mockResolvedValue(null);
+            mockSymbolExtractor.getPathStat.mockResolvedValue(undefined);
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'nonexistent/path',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'nonexistent/path',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toBe("Path 'nonexistent/path' not found");
@@ -367,9 +386,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 mockSymbolExtractorWithoutRepo
             );
 
-            const result = await toolWithoutRepo.execute({
-                path: 'src/test.ts',
-            });
+            const result = await toolWithoutRepo.execute(
+                {
+                    path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(false);
             expect(result.error).toBe('Git repository not found');
@@ -412,9 +434,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 timedOutFiles: 0,
             } as any);
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual(
@@ -445,9 +470,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 timedOutFiles: 3, // Simulate some files timing out
             } as any);
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             // When timedOutFiles > 0, the truncated flag should be set,
@@ -479,10 +507,13 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 relativePath: 'src/many.ts',
             });
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src/many.ts',
-                max_symbols: 3, // Low limit to trigger truncation
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src/many.ts',
+                    max_symbols: 3, // Low limit to trigger truncation
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('[Output limited to 3 symbols');
@@ -509,9 +540,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 timedOutFiles: 0,
             } as any);
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('MyClass');
@@ -550,9 +584,12 @@ describe('GetSymbolsOverviewTool (Unit Tests)', () => {
                 relativePath: 'src/test.ts',
             });
 
-            const result = await getSymbolsOverviewTool.execute({
-                path: 'src/test.ts',
-            });
+            const result = await getSymbolsOverviewTool.execute(
+                {
+                    path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toEqual(

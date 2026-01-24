@@ -37,8 +37,12 @@ export class ListDirTool extends BaseTool {
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const { relative_path, recursive } = args;
 
         const sanitizedPath = PathSanitizer.sanitizePath(relative_path);
@@ -49,7 +53,7 @@ export class ListDirTool extends BaseTool {
         const result = await this.callListDir(
             sanitizedPath,
             recursive,
-            context?.cancellationToken
+            context.cancellationToken
         );
 
         const output = this.formatOutput(result);
@@ -64,10 +68,10 @@ export class ListDirTool extends BaseTool {
     private async callListDir(
         relativePath: string,
         recursive: boolean,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<{ dirs: string[]; files: string[] }> {
         try {
-            if (token?.isCancellationRequested) {
+            if (token.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
 
@@ -85,7 +89,7 @@ export class ListDirTool extends BaseTool {
             const files: string[] = [];
 
             for (const [name, type] of entries) {
-                if (token?.isCancellationRequested) {
+                if (token.isCancellationRequested) {
                     throw new vscode.CancellationError();
                 }
 

@@ -3,18 +3,23 @@ import { Log } from './loggingService';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
+import type { ExecutionContext } from '../types/executionContext';
 import type {
     OpenFilePayload,
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
 import type { ToolInfo } from '../webview/types/toolTestingTypes';
 import { safeJsonStringify } from '../utils/safeJson';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /**
  * ToolTestingWebviewService handles the tool testing webview functionality.
  * Creates per-request ToolExecutor instances to ensure isolation from analysis sessions.
  */
 export class ToolTestingWebviewService {
+    /** Track active token sources to cancel in-flight requests when panel is disposed */
+    private activeTokenSources = new Set<vscode.CancellationTokenSource>();
+
     constructor(
         private readonly extensionContext: vscode.ExtensionContext,
         private readonly gitRepositoryRoot: string,
@@ -55,9 +60,14 @@ export class ToolTestingWebviewService {
             }
         );
 
-        // Clean up theme listener when panel is disposed
+        // Clean up theme listener and cancel in-flight requests when panel is disposed
         panel.onDidDispose(() => {
             themeChangeDisposable.dispose();
+            for (const tokenSource of this.activeTokenSources) {
+                tokenSource.cancel();
+                tokenSource.dispose();
+            }
+            this.activeTokenSources.clear();
         });
 
         return panel;
@@ -275,6 +285,8 @@ export class ToolTestingWebviewService {
         payload: any,
         webview: vscode.Webview
     ): Promise<void> {
+        const tokenSource = new vscode.CancellationTokenSource();
+        this.activeTokenSources.add(tokenSource);
         try {
             const { sessionId, toolName, parameters } = payload;
 
@@ -284,9 +296,13 @@ export class ToolTestingWebviewService {
             );
 
             // Create per-request executor for isolation from concurrent analyses
+            const executionContext: ExecutionContext = {
+                cancellationToken: tokenSource.token,
+            };
             const executor = new ToolExecutor(
                 this.toolRegistry,
-                this.workspaceSettings
+                this.workspaceSettings,
+                executionContext
             );
 
             const results = await executor.executeTools([
@@ -309,17 +325,30 @@ export class ToolTestingWebviewService {
                 },
             });
         } catch (error) {
-            Log.error('Error executing tool:', error);
-            webview.postMessage({
-                type: 'toolExecutionError',
-                payload: {
-                    sessionId: payload.sessionId,
-                    error:
-                        error instanceof Error
-                            ? error.message
-                            : 'Tool execution failed',
-                },
-            });
+            if (isCancellationError(error)) {
+                Log.debug('Tool execution cancelled:', payload.toolName);
+                webview.postMessage({
+                    type: 'toolExecutionCancelled',
+                    payload: {
+                        sessionId: payload.sessionId,
+                    },
+                });
+            } else {
+                Log.error('Error executing tool:', error);
+                webview.postMessage({
+                    type: 'toolExecutionError',
+                    payload: {
+                        sessionId: payload.sessionId,
+                        error:
+                            error instanceof Error
+                                ? error.message
+                                : 'Tool execution failed',
+                    },
+                });
+            }
+        } finally {
+            this.activeTokenSources.delete(tokenSource);
+            tokenSource.dispose();
         }
     }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
+import { createMockExecutionContext } from './testUtils/mockFactories';
 
 // Mock the logging service
 vi.mock('../services/loggingService', () => ({
@@ -47,9 +48,12 @@ describe('SubmitReviewTool', () => {
 - Issue 1 in auth.ts
 - Issue 2 in handler.ts`;
 
-            const result = await tool.execute({
-                review_content: reviewContent,
-            });
+            const result = await tool.execute(
+                {
+                    review_content: reviewContent,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toBe(reviewContent);
@@ -59,9 +63,12 @@ describe('SubmitReviewTool', () => {
             const reviewContent =
                 'Test review content that meets minimum length requirements for validation. This needs to be at least 100 characters long.';
 
-            const result = await tool.execute({
-                review_content: reviewContent,
-            });
+            const result = await tool.execute(
+                {
+                    review_content: reviewContent,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.metadata).toEqual({ isCompletion: true });
@@ -81,9 +88,12 @@ describe('SubmitReviewTool', () => {
 const x = 1;
 \`\`\``;
 
-            const result = await tool.execute({
-                review_content: reviewContent,
-            });
+            const result = await tool.execute(
+                {
+                    review_content: reviewContent,
+                },
+                createMockExecutionContext()
+            );
 
             expect(result.success).toBe(true);
             expect(result.data).toContain('## Summary');

@@ -68,8 +68,12 @@ Requires file_path where the symbol is defined as starting point.`;
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const {
             symbol_name,
             file_path,
@@ -109,6 +113,7 @@ Requires file_path where the symbol is defined as starting point.`;
         try {
             document = await vscode.workspace.openTextDocument(absolutePath);
         } catch (error) {
+            rethrowIfCancellationOrTimeout(error);
             return toolError(
                 `Could not open file '${sanitizedFilePath}': ${error instanceof Error ? error.message : String(error)}`
             );
@@ -118,7 +123,7 @@ Requires file_path where the symbol is defined as starting point.`;
         const symbolPosition = await this.findSymbolPosition(
             document,
             sanitizedSymbolName,
-            context?.cancellationToken
+            context.cancellationToken
         );
         if (!symbolPosition) {
             return toolError(
@@ -140,7 +145,7 @@ Requires file_path where the symbol is defined as starting point.`;
             ),
             LSP_OPERATION_TIMEOUT,
             `Reference search for ${sanitizedSymbolName}`,
-            context?.cancellationToken
+            context.cancellationToken
         );
 
         // VS Code's reference provider may return undefined when cancelled internally.
@@ -148,7 +153,7 @@ Requires file_path where the symbol is defined as starting point.`;
         // returning "No usages found" which would hide the cancellation from callers.
         if (
             references === undefined &&
-            context?.cancellationToken?.isCancellationRequested
+            context.cancellationToken.isCancellationRequested
         ) {
             throw new vscode.CancellationError();
         }
@@ -166,6 +171,10 @@ Requires file_path where the symbol is defined as starting point.`;
         const formattedUsages: string[] = [];
 
         for (const reference of uniqueReferences) {
+            if (context.cancellationToken.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             try {
                 const refDocument = await vscode.workspace.openTextDocument(
                     reference.uri
@@ -240,13 +249,17 @@ Requires file_path where the symbol is defined as starting point.`;
     private async findSymbolPosition(
         document: vscode.TextDocument,
         symbolName: string,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<vscode.Position | null> {
         const text = document.getText();
         const lines = text.split('\n');
 
         // Look for the symbol in the document
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             const line = lines[lineIndex];
             if (!line) {
                 continue;
@@ -299,6 +312,10 @@ Requires file_path where the symbol is defined as starting point.`;
 
         // If no definition found, return the first occurrence as fallback
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             const line = lines[lineIndex];
             if (!line) {
                 continue;

@@ -6,6 +6,8 @@ import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { TimeoutError } from '../types/errorTypes';
+import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
+import { Log } from '../services/loggingService';
 
 /** Maximum time for pattern search operations */
 const PATTERN_SEARCH_TIMEOUT = 60_000; // 60 seconds
@@ -109,7 +111,7 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
@@ -129,7 +131,7 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             case_sensitive = false,
         } = validationResult.data;
 
-        if (context?.cancellationToken?.isCancellationRequested) {
+        if (context.cancellationToken.isCancellationRequested) {
             throw new vscode.CancellationError();
         }
 
@@ -146,14 +148,10 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
         // This ensures ripgrep process is killed on timeout, not just abandoned.
         const linkedTokenSource = new vscode.CancellationTokenSource();
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let userCancellationDisposable: vscode.Disposable | undefined;
-
-        if (context?.cancellationToken) {
-            userCancellationDisposable =
-                context.cancellationToken.onCancellationRequested(() => {
-                    linkedTokenSource.cancel();
-                });
-        }
+        const userCancellationDisposable =
+            context.cancellationToken.onCancellationRequested(() => {
+                linkedTokenSource.cancel();
+            });
 
         try {
             const searchPromise = this.ripgrepService.search({
@@ -175,7 +173,11 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             // causing searchPromise to reject with CancellationError. The TimeoutError is
             // handled by Promise.race() below; this catch prevents the CancellationError
             // from becoming an unhandled rejection.
-            searchPromise.catch(() => {});
+            searchPromise.catch((err) => {
+                if (!isCancellationError(err) && !isTimeoutError(err)) {
+                    Log.debug('Unexpected late ripgrep rejection:', err);
+                }
+            });
 
             const timeoutPromise = new Promise<never>((_, reject) => {
                 timeoutId = setTimeout(() => {

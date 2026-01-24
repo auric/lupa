@@ -167,10 +167,11 @@ describe('SymbolExtractor', () => {
         });
 
         it('should extract symbols from all files in directory', async () => {
+            const tokenSource = new vscode.CancellationTokenSource();
             const result = await symbolExtractor.getDirectorySymbols(
                 '/workspace/src',
                 'src',
-                {}
+                { token: tokenSource.token }
             );
 
             expect(result.results.length).toBe(2);
@@ -207,10 +208,11 @@ describe('SymbolExtractor', () => {
                 return Promise.resolve([{ name: 'Symbol', kind: 5 }]);
             });
 
+            const tokenSource = new vscode.CancellationTokenSource();
             const promise = symbolExtractor.getDirectorySymbols(
                 '/workspace/src',
                 'src',
-                { timeoutMs: 30_000 } // Give enough time for directory scan
+                { token: tokenSource.token, timeoutMs: 30_000 } // Give enough time for directory scan
             );
 
             // Suppress unhandled rejections during timer advancement
@@ -236,10 +238,11 @@ describe('SymbolExtractor', () => {
                 ])
                 .mockResolvedValueOnce([['file2.ts', vscode.FileType.File]]);
 
+            const tokenSource = new vscode.CancellationTokenSource();
             const result = await symbolExtractor.getDirectorySymbols(
                 '/workspace/src',
                 'src',
-                { maxDepth: 0 } // Only root level
+                { token: tokenSource.token, maxDepth: 0 } // Only root level
             );
 
             // Should only process root level file

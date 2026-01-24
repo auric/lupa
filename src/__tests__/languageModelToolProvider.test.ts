@@ -93,7 +93,10 @@ describe('LanguageModelToolProvider', () => {
             const result = await handler.invoke({ input } as any, {} as any);
 
             // Verify full input is passed directly - no artificial limitations
-            expect(mockTool.execute).toHaveBeenCalledWith(input);
+            expect(mockTool.execute).toHaveBeenCalledWith(
+                input,
+                expect.any(Object)
+            );
 
             expect((result as any).content[0].value).toBe('symbol data');
         });

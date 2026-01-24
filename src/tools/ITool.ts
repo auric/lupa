@@ -15,9 +15,10 @@ import { ExecutionContext } from '../types/executionContext';
  *   name = 'my_tool';
  *   schema = z.object({ query: z.string() });
  *
- *   async execute(args: z.infer<typeof this.schema>, context?: ExecutionContext): Promise<ToolResult> {
+ *   async execute(args: z.infer<typeof this.schema>, context: ExecutionContext): Promise<ToolResult> {
  *     // Access per-analysis dependencies from context
- *     const planManager = context?.planManager;
+ *     const planManager = context.planManager;
+ *     const token = context.cancellationToken;
  *     // ...
  *   }
  * }
@@ -40,21 +41,21 @@ export interface ITool {
      * Execute the tool with validated arguments.
      *
      * @param args - Validated arguments matching the schema
-     * @param context - Per-analysis execution context (optional for backward compatibility)
+     * @param context - Per-analysis execution context (always required)
      *
      * **ExecutionContext fields:**
-     * - `repoRootPath?: string` - Git repository root path for file operations
+     * - `cancellationToken: CancellationToken` - Required for all operations
      * - `planManager?: PlanSessionManager` - Review plan state (main analysis only)
      * - `subagentSessionManager?: SubagentSessionManager` - Subagent spawn tracking (main analysis only)
      * - `subagentExecutor?: SubagentExecutor` - Subagent execution (main analysis only)
      *
      * **When context is provided:**
      * - Main analysis: All fields present
-     * - Subagent analysis: repoRootPath only
-     * - Exploration mode: repoRootPath only
-     * - Agent Mode / external calls: May be undefined
+     * - Subagent analysis: cancellationToken only
+     * - Exploration mode: cancellationToken only
+     * - Tests: Use createMockExecutionContext() from mockFactories.ts
      *
      * @returns Promise resolving to ToolResult (use toolSuccess/toolError helpers)
      */
-    execute(args: any, context?: ExecutionContext): Promise<ToolResult>;
+    execute(args: any, context: ExecutionContext): Promise<ToolResult>;
 }

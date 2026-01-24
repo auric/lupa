@@ -12,6 +12,11 @@ import {
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { TokenConstants } from '../models/tokenConstants';
 import { TimeoutError } from '../types/errorTypes';
+import {
+    createMockExecutionContext,
+    createCancelledExecutionContext,
+} from './testUtils/mockFactories';
+import type { ExecutionContext } from '../types/executionContext';
 
 /**
  * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
@@ -39,7 +44,7 @@ class MockSuccessTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<ToolResult> {
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
         return toolSuccess(`Success: ${args.message}`);
     }
 }
@@ -57,7 +62,7 @@ class MockErrorTool implements ITool {
         };
     }
 
-    async execute(_args: any): Promise<ToolResult> {
+    async execute(_args: any, _context: ExecutionContext): Promise<ToolResult> {
         throw new Error('Simulated tool error');
     }
 }
@@ -75,7 +80,7 @@ class MockDelayTool implements ITool {
         };
     }
 
-    async execute(args: any): Promise<ToolResult> {
+    async execute(args: any, _context: ExecutionContext): Promise<ToolResult> {
         await new Promise((resolve) => setTimeout(resolve, args.delay));
         return toolSuccess(`Delayed by ${args.delay}ms`);
     }
@@ -94,7 +99,11 @@ describe('ToolExecutor', () => {
         mockSettings = createMockSettings(
             ANALYSIS_LIMITS.maxIterations.default
         );
-        toolExecutor = new ToolExecutor(toolRegistry, mockSettings);
+        toolExecutor = new ToolExecutor(
+            toolRegistry,
+            mockSettings,
+            createMockExecutionContext()
+        );
         successTool = new MockSuccessTool();
         errorTool = new MockErrorTool();
         delayTool = new MockDelayTool();
@@ -275,7 +284,8 @@ describe('ToolExecutor', () => {
         it('should allow tool calls under the limit', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(3)
+                createMockSettings(3),
+                createMockExecutionContext()
             );
 
             const result1 = await limitedExecutor.executeTool('success_tool', {
@@ -297,7 +307,8 @@ describe('ToolExecutor', () => {
         it('should reject tool calls exceeding the limit', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(3)
+                createMockSettings(3),
+                createMockExecutionContext()
             );
 
             // Make 3 successful calls
@@ -326,7 +337,8 @@ describe('ToolExecutor', () => {
         it('should track call count correctly', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(10)
+                createMockSettings(10),
+                createMockExecutionContext()
             );
 
             await limitedExecutor.executeTool('success_tool', {
@@ -348,7 +360,8 @@ describe('ToolExecutor', () => {
         it('should use settings with default limit', async () => {
             const defaultExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(ANALYSIS_LIMITS.maxIterations.default)
+                createMockSettings(ANALYSIS_LIMITS.maxIterations.default),
+                createMockExecutionContext()
             );
 
             expect(defaultExecutor.getToolCallCount()).toBe(0);
@@ -523,16 +536,16 @@ describe('ToolExecutor', () => {
 
             toolRegistry.registerTool(contextCaptureTool);
 
-            const mockExecutionContext = {
-                planManager: { someProp: 'testPlan' },
-                subagentSessionManager: { someProp: 'testSession' },
-                subagentExecutor: { someProp: 'testExecutor' },
-            };
+            const mockExecutionContext = createMockExecutionContext({
+                planManager: { someProp: 'testPlan' } as any,
+                subagentSessionManager: { someProp: 'testSession' } as any,
+                subagentExecutor: { someProp: 'testExecutor' } as any,
+            });
 
             const toolExecutorWithContext = new ToolExecutor(
                 toolRegistry,
                 mockSettings,
-                mockExecutionContext as any
+                mockExecutionContext
             );
 
             await toolExecutorWithContext.executeTool(
@@ -543,12 +556,12 @@ describe('ToolExecutor', () => {
             expect(capturedContext).toBe(mockExecutionContext);
         });
 
-        it('should pass undefined context when ToolExecutor created without context', async () => {
+        it('should pass context with non-cancelled token by default', async () => {
             let capturedContext: unknown = 'not-called';
 
             const contextCaptureTool: ITool = {
                 name: 'context_check_tool',
-                description: 'Checks undefined context',
+                description: 'Checks context is passed',
                 schema: z.object({}),
                 getVSCodeTool: () => ({
                     name: 'context_check_tool',
@@ -563,17 +576,20 @@ describe('ToolExecutor', () => {
 
             toolRegistry.registerTool(contextCaptureTool);
 
-            const toolExecutorWithoutContext = new ToolExecutor(
+            const toolExecutorWithContext = new ToolExecutor(
                 toolRegistry,
-                mockSettings
+                mockSettings,
+                createMockExecutionContext()
             );
 
-            await toolExecutorWithoutContext.executeTool(
-                'context_check_tool',
-                {}
-            );
+            await toolExecutorWithContext.executeTool('context_check_tool', {});
 
-            expect(capturedContext).toBeUndefined();
+            // Context should always be defined and have a cancellation token
+            expect(capturedContext).toBeDefined();
+            expect(
+                (capturedContext as any).cancellationToken
+                    .isCancellationRequested
+            ).toBe(false);
         });
 
         it('should throw CancellationError when token is cancelled before execution', async () => {
@@ -594,17 +610,12 @@ describe('ToolExecutor', () => {
 
             toolRegistry.registerTool(slowTool);
 
-            const mockCancelledContext = {
-                cancellationToken: {
-                    isCancellationRequested: true,
-                    onCancellationRequested: () => ({ dispose: () => {} }),
-                },
-            };
+            const cancelledContext = createCancelledExecutionContext();
 
             const toolExecutorWithCancelledToken = new ToolExecutor(
                 toolRegistry,
                 mockSettings,
-                mockCancelledContext as any
+                cancelledContext
             );
 
             await expect(
@@ -662,17 +673,12 @@ describe('ToolExecutor', () => {
     describe('Cancellation Precedence', () => {
         it('should throw CancellationError even when rate limit is exceeded', async () => {
             // Create an executor with a low limit and a pre-cancelled token
-            const mockCancelledContext = {
-                cancellationToken: {
-                    isCancellationRequested: true,
-                    onCancellationRequested: () => ({ dispose: () => {} }),
-                },
-            };
+            const cancelledContext = createCancelledExecutionContext();
 
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
                 createMockSettings(1), // Very low limit
-                mockCancelledContext as any
+                cancelledContext
             );
 
             // Make calls that would exceed the rate limit
@@ -689,17 +695,12 @@ describe('ToolExecutor', () => {
 
         it('should prioritize cancellation over rate limit when both would apply', async () => {
             // Create an executor with limit already exceeded AND cancelled token
-            const mockCancelledContext = {
-                cancellationToken: {
-                    isCancellationRequested: true,
-                    onCancellationRequested: () => ({ dispose: () => {} }),
-                },
-            };
+            const cancelledContext = createCancelledExecutionContext();
 
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
                 createMockSettings(0), // Zero limit - any call would hit rate limit
-                mockCancelledContext as any
+                cancelledContext
             );
 
             // This would hit rate limit immediately if cancellation wasn't checked first
@@ -707,6 +708,35 @@ describe('ToolExecutor', () => {
             await expect(
                 limitedExecutor.executeTool('success_tool', { message: 'test' })
             ).rejects.toThrow(vscode.CancellationError);
+        });
+    });
+
+    describe('Constructor Validation', () => {
+        it('should throw error when ExecutionContext lacks cancellationToken', () => {
+            // Type assertion to bypass TypeScript's type checking for invalid context
+            const invalidContext = {} as any;
+
+            expect(() => {
+                new ToolExecutor(toolRegistry, mockSettings, invalidContext);
+            }).toThrow(
+                'ToolExecutor requires ExecutionContext with a valid cancellationToken'
+            );
+        });
+
+        it('should throw error when ExecutionContext is undefined', () => {
+            expect(() => {
+                new ToolExecutor(toolRegistry, mockSettings, undefined as any);
+            }).toThrow(
+                'ToolExecutor requires ExecutionContext with a valid cancellationToken'
+            );
+        });
+
+        it('should accept valid ExecutionContext with cancellationToken', () => {
+            const validContext = createMockExecutionContext();
+
+            expect(() => {
+                new ToolExecutor(toolRegistry, mockSettings, validContext);
+            }).not.toThrow();
         });
     });
 });

@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -47,11 +48,15 @@ Add notes after items as you complete them (e.g., "- [x] auth.ts - found timing 
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const { plan } = args;
 
-        const planManager = context?.planManager;
+        const planManager = context.planManager;
         if (!planManager) {
             return toolError(
                 'No active analysis session. The update_plan tool is only available during PR analysis.'

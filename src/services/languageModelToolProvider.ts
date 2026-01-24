@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { Log } from './loggingService';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import type { ToolResult } from '../types/toolResultTypes';
+import type { ExecutionContext } from '../types/executionContext';
+import { isCancellationError } from '../utils/asyncUtils';
 
 /** Full input type derived from tool's Zod schema - no artificial limitations. */
 type GetSymbolsOverviewInput = z.infer<GetSymbolsOverviewTool['schema']>;
@@ -56,11 +58,16 @@ export class LanguageModelToolProvider implements vscode.Disposable {
      */
     private async handleInvoke(
         input: GetSymbolsOverviewInput,
-        _token: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<vscode.LanguageModelToolResult> {
         try {
-            const result: ToolResult =
-                await this.symbolsOverviewTool.execute(input);
+            const executionContext: ExecutionContext = {
+                cancellationToken: token,
+            };
+            const result: ToolResult = await this.symbolsOverviewTool.execute(
+                input,
+                executionContext
+            );
 
             if (result.success && result.data) {
                 return new vscode.LanguageModelToolResult([
@@ -74,6 +81,10 @@ export class LanguageModelToolProvider implements vscode.Disposable {
                 ]);
             }
         } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
             const message =
                 error instanceof Error ? error.message : String(error);
             Log.error(

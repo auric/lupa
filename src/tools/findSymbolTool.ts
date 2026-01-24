@@ -106,8 +106,12 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
     async execute(
         args: z.infer<typeof this.schema>,
-        context?: ExecutionContext
+        context: ExecutionContext
     ): Promise<ToolResult> {
+        if (context.cancellationToken.isCancellationRequested) {
+            throw new vscode.CancellationError();
+        }
+
         const validationResult = this.schema.safeParse(args);
         if (!validationResult.success) {
             return toolError(
@@ -136,7 +140,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             return toolError('Symbol name cannot be empty');
         }
 
-        const token = context?.cancellationToken;
+        const token = context.cancellationToken;
         let searchResult: SymbolSearchResult;
 
         if (relativePath && relativePath !== '.') {
@@ -265,9 +269,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
      */
     private async findSymbolsInWorkspace(
         pathSegments: string[],
-        includeKinds?: number[],
-        excludeKinds?: number[],
-        token?: vscode.CancellationToken
+        includeKinds: number[] | undefined,
+        excludeKinds: number[] | undefined,
+        token: vscode.CancellationToken
     ): Promise<SymbolSearchResult> {
         let timedOut = false;
         try {
@@ -328,6 +332,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
             const matches: SymbolMatch[] = [];
 
             for (const symbol of filteredSymbols.slice(0, 50)) {
+                if (token.isCancellationRequested) {
+                    throw new vscode.CancellationError();
+                }
+
                 if (excludeKinds?.includes(symbol.kind)) {
                     continue;
                 }
@@ -440,9 +448,9 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     private async findSymbolsInPath(
         pathSegments: string[],
         relativePath: string,
-        includeKinds?: number[],
-        excludeKinds?: number[],
-        token?: vscode.CancellationToken
+        includeKinds: number[] | undefined,
+        excludeKinds: number[] | undefined,
+        token: vscode.CancellationToken
     ): Promise<SymbolSearchResult> {
         const gitRootDirectory = this.symbolExtractor.getGitRootPath();
         if (!gitRootDirectory) {
@@ -499,6 +507,10 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                 }
 
                 for (const { filePath, symbols } of directoryResults) {
+                    if (token.isCancellationRequested) {
+                        throw new vscode.CancellationError();
+                    }
+
                     // Time-based execution control (secondary safety check)
                     if (Date.now() - startTime > SYMBOL_SEARCH_TIMEOUT) {
                         timedOut = true;
@@ -579,17 +591,25 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         fileUri: vscode.Uri,
         pathSegments: string[],
         symbolName: string,
-        includeKinds?: number[],
-        excludeKinds?: number[],
-        token?: vscode.CancellationToken
+        includeKinds: number[] | undefined,
+        excludeKinds: number[] | undefined,
+        token: vscode.CancellationToken
     ): Promise<SymbolMatch[]> {
         try {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+
             // Quick text pre-check before expensive symbol analysis
             const fileContent = await vscode.workspace.fs.readFile(fileUri);
             const text = fileContent.toString();
 
             if (!text.includes(symbolName)) {
                 return []; // Skip files that don't contain the symbol name
+            }
+
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
             }
 
             const document = await vscode.workspace.openTextDocument(fileUri);
@@ -734,7 +754,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
         includeChildren: boolean,
         includeKinds: number[] | undefined,
         excludeKinds: number[] | undefined,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<string> {
         const formattedBlocks: string[] = [];
 
@@ -959,7 +979,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
     private async fetchDocumentSymbolForRange(
         document: vscode.TextDocument,
         targetRange: vscode.Range,
-        token?: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<vscode.DocumentSymbol | undefined> {
         try {
             const documentSymbols = await withCancellableTimeout(

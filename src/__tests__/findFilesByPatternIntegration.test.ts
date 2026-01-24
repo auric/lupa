@@ -9,6 +9,7 @@ import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import {
     createMockWorkspaceSettings,
     createMockFdirInstance,
+    createMockExecutionContext,
 } from './testUtils/mockFactories';
 
 vi.mock('vscode', async (importOriginal) => {
@@ -96,7 +97,11 @@ describe('FindFileTool Integration Tests', () => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
         mockWorkspaceSettings = createMockWorkspaceSettings();
-        toolExecutor = new ToolExecutor(toolRegistry, mockWorkspaceSettings);
+        toolExecutor = new ToolExecutor(
+            toolRegistry,
+            mockWorkspaceSettings,
+            createMockExecutionContext()
+        );
 
         mockGetRepository = vi.fn().mockReturnValue({
             rootUri: {
