@@ -185,6 +185,80 @@ vscodeMock.FileStat = vi
         this.size = size || 0;
     });
 
+// Match VS Code's FileSystemError: extends Error with code property and static factory methods
+// See: https://github.com/microsoft/vscode/blob/main/src/vs/platform/files/common/files.ts
+vscodeMock.FileSystemError = class FileSystemError extends Error {
+    constructor(messageOrUri) {
+        super(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : messageOrUri?.toString() || 'Unknown file system error'
+        );
+        this.name = 'FileSystemError';
+        this.code = 'Unknown';
+    }
+
+    static FileNotFound(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `File not found: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileNotFound';
+        return error;
+    }
+
+    static FileExists(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `File exists: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileExists';
+        return error;
+    }
+
+    static FileNotADirectory(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `Not a directory: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileNotADirectory';
+        return error;
+    }
+
+    static FileIsADirectory(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `Is a directory: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileIsADirectory';
+        return error;
+    }
+
+    static NoPermissions(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `No permissions: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'NoPermissions';
+        return error;
+    }
+
+    static Unavailable(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `Unavailable: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'Unavailable';
+        return error;
+    }
+};
+
 vscodeMock.workspace = {
     getConfiguration: vi.fn().mockReturnValue({
         get: vi.fn(),
@@ -857,9 +931,9 @@ export const LanguageModelToolResultPart =
 export const lm = vscodeMock.lm;
 export const env = vscodeMock.env;
 
-// Export the new mocks
 export const FileType = vscodeMock.FileType;
 export const FileStat = vscodeMock.FileStat;
+export const FileSystemError = vscodeMock.FileSystemError;
 export const ChatResponseFileTreePart = vscodeMock.ChatResponseFileTreePart;
 export const ChatResponseMarkdownPart = vscodeMock.ChatResponseMarkdownPart;
 export const ChatResponseAnchorPart = vscodeMock.ChatResponseAnchorPart;

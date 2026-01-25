@@ -98,7 +98,7 @@ export class ListDirTool extends BaseTool {
                         ? name
                         : path.posix.join(relativePath, name);
 
-                if (ig.checkIgnore(fullPath).ignored) {
+                if (ignore.isPathValid(fullPath) && ig.ignores(fullPath)) {
                     continue;
                 }
 
