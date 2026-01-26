@@ -68,16 +68,21 @@ export class ListDirTool extends BaseTool {
     private async callListDir(
         relativePath: string,
         recursive: boolean,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        cachedIgnore?: ReturnType<typeof ignore>
     ): Promise<{ dirs: string[]; files: string[] }> {
         try {
             if (token.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
 
-            const ig = ignore().add(
-                await readGitignore(this.gitOperationsManager.getRepository())
-            );
+            const ig =
+                cachedIgnore ||
+                ignore().add(
+                    await readGitignore(
+                        this.gitOperationsManager.getRepository()
+                    )
+                );
 
             const gitRootDirectory =
                 this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
@@ -110,7 +115,8 @@ export class ListDirTool extends BaseTool {
                             const subResult = await this.callListDir(
                                 fullPath,
                                 recursive,
-                                token
+                                token,
+                                ig
                             );
                             dirs.push(...subResult.dirs);
                             files.push(...subResult.files);

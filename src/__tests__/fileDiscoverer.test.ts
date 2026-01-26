@@ -41,6 +41,7 @@ describe('FileDiscoverer', () => {
 
             const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(result.files).toEqual(['src/file1.ts', 'src/file2.ts']);
@@ -62,6 +63,7 @@ describe('FileDiscoverer', () => {
             const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
                 maxResults: 100,
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(result.files.length).toBe(100);
@@ -105,6 +107,7 @@ describe('FileDiscoverer', () => {
             const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
                 timeoutMs: 20,
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             // Should return partial results with truncated flag
@@ -201,6 +204,7 @@ describe('FileDiscoverer', () => {
 
             await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(mockFdirInstance.withAbortSignal).toHaveBeenCalledWith(
@@ -243,6 +247,7 @@ describe('FileDiscoverer', () => {
 
             await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(clearTimeoutSpy).toHaveBeenCalled();

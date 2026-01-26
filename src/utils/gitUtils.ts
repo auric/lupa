@@ -20,7 +20,7 @@ function isFileNotFoundError(error: unknown): boolean {
 async function readFileContent(uri: vscode.Uri): Promise<string> {
     try {
         const content = await vscode.workspace.fs.readFile(uri);
-        return content.toString();
+        return Buffer.from(content).toString('utf8');
     } catch (error) {
         if (isFileNotFoundError(error)) {
             return '';

@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.9 | **Generated**: January 4, 2026 | **Type**: VS Code Extension
+> **Version**: 0.1.11 | **Generated**: January 21, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
@@ -535,6 +535,8 @@ File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOvervi
 1. **Global gitignore**: `core.excludesFile` from git config (e.g., `~/.gitignore_global`)
 2. **Root .gitignore**: The `.gitignore` file at the repository root
 3. **Local excludes**: `.git/info/exclude` (per-repository local excludes)
+
+**Path matching**: Patterns are matched against full relative paths (e.g., `src/generated/file.ts`), not just basenames. This ensures directory patterns like `dist/` and path patterns like `**/*.log` work correctly.
 
 **Limitation**: Nested `.gitignore` files in subdirectories are **not** supported by these tools. Only root-level patterns are applied.
 
