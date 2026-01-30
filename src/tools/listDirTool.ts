@@ -9,6 +9,7 @@ import { rethrowIfCancellationOrTimeout } from '../utils/asyncUtils';
 import { readGitignore } from '../utils/gitUtils';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { Log } from '../services/loggingService';
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -103,8 +104,16 @@ export class ListDirTool extends BaseTool {
                         ? name
                         : path.posix.join(relativePath, name);
 
-                if (ignore.isPathValid(fullPath) && ig.ignores(fullPath)) {
-                    continue;
+                if (ignore.isPathValid(fullPath)) {
+                    try {
+                        if (ig.ignores(fullPath)) {
+                            continue;
+                        }
+                    } catch (error) {
+                        Log.warn(
+                            `Failed to check gitignore for path "${fullPath}": ${error}`
+                        );
+                    }
                 }
 
                 if (type === vscode.FileType.Directory) {

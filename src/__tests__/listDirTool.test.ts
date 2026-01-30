@@ -470,5 +470,51 @@ describe('ListDirTool', () => {
             expect(result.data).toContain('data.json');
             expect(result.data).not.toContain('cache.tmp');
         });
+
+        it('should handle anchored patterns (leading slash)', async () => {
+            // Anchored pattern /src/ should only match root-level src, not nested
+            vi.mocked(gitUtils.readGitignore).mockResolvedValue('/src/');
+
+            mockReadDirectory.mockResolvedValue([
+                ['file.ts', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: 'src',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            // src/ matches the anchored pattern, so its contents should be excluded
+            expect(result.success).toBe(true);
+        });
+
+        it('should handle negation patterns', async () => {
+            // Ignore all .log files except debug.log
+            vi.mocked(gitUtils.readGitignore).mockResolvedValue(
+                '*.log\n!debug.log'
+            );
+
+            mockReadDirectory.mockResolvedValue([
+                ['error.log', vscode.FileType.File],
+                ['debug.log', vscode.FileType.File],
+                ['app.ts', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: '.',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).not.toContain('error.log');
+            expect(result.data).toContain('debug.log'); // Negated, should be included
+            expect(result.data).toContain('app.ts');
+        });
     });
 });

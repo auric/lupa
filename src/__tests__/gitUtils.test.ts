@@ -185,5 +185,26 @@ describe('gitUtils', () => {
                 expect.not.stringContaining('~')
             );
         });
+
+        it('should correctly expand ~/path without discarding homedir', async () => {
+            // This test verifies the fix for path.join discarding homedir
+            // when second arg starts with / (e.g., '~/foo'.slice(1) = '/foo')
+            const mockRepo = createMockGitRepositoryWithConfig('/test/repo', {
+                'core.excludesFile': '~/.config/git/ignore',
+            });
+            mockReadFile
+                .mockResolvedValueOnce(Buffer.from('global-pattern'))
+                .mockResolvedValueOnce(Buffer.from('node_modules'))
+                .mockRejectedValueOnce(createFileNotFoundError());
+
+            await readGitignore(mockRepo as any);
+
+            // The expanded path should contain both homedir and the rest of the path
+            // It should NOT be just '/.config/git/ignore'
+            const calls = vi.mocked(vscode.Uri.file).mock.calls;
+            const globalIgnorePath = calls[0]?.[0];
+            expect(globalIgnorePath).not.toBe('/.config/git/ignore');
+            expect(globalIgnorePath?.startsWith('/.')).toBe(false);
+        });
     });
 });

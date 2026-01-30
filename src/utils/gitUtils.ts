@@ -31,10 +31,15 @@ async function readFileContent(uri: vscode.Uri): Promise<string> {
 }
 
 function expandHomeDir(filePath: string): string {
-    if (filePath.startsWith('~')) {
-        return path.join(os.homedir(), filePath.slice(1));
+    if (!filePath.startsWith('~')) {
+        return filePath;
     }
-    return filePath;
+    if (filePath === '~') {
+        return os.homedir();
+    }
+    // Remove ~ and any following path separator to avoid path.join discarding homedir
+    const remainder = filePath.slice(1).replace(/^[/\\]/, '');
+    return path.join(os.homedir(), remainder);
 }
 
 /**
