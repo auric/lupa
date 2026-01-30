@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local exclude rules now respected**: The extension now reads `.git/info/exclude` in addition to `.gitignore`, so your local per-repository exclusions are properly applied.
 - **Global gitignore now respected**: The extension reads your global gitignore file (configured via `git config core.excludesFile`), so patterns you've set up system-wide are now honored.
 - **Tilde expansion fixed for global gitignore**: Paths like `~/.gitignore_global` are now correctly expanded to include your home directory on all platforms.
+- **Improved error handling for gitignore access**: Added permission error detection and logging when gitignore files or directories are unreadable, improving troubleshooting for edge cases.
 
 #### Analysis Reliability
 

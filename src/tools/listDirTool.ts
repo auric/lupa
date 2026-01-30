@@ -131,7 +131,10 @@ export class ListDirTool extends BaseTool {
                             files.push(...subResult.files);
                         } catch (error) {
                             rethrowIfCancellationOrTimeout(error);
-                            // Skip directories that can't be read for other errors
+                            // Skip directories that can't be read, but log for debugging
+                            Log.debug(
+                                `Skipping unreadable directory "${fullPath}": ${error instanceof Error ? error.message : String(error)}`
+                            );
                         }
                     }
                 } else if (type === vscode.FileType.File) {

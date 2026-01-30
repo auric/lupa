@@ -4,7 +4,9 @@ import { readGitignore } from '../utils/gitUtils';
 import {
     createMockGitRepositoryWithConfig,
     createFileNotFoundError,
+    createNoPermissionsError,
 } from './testUtils/mockFactories';
+import { Log } from '../services/loggingService';
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -205,6 +207,72 @@ describe('gitUtils', () => {
             const globalIgnorePath = calls[0]?.[0];
             expect(globalIgnorePath).not.toBe('/.config/git/ignore');
             expect(globalIgnorePath?.startsWith('/.')).toBe(false);
+        });
+
+        it('should log warning for non-FileNotFound read errors', async () => {
+            const mockRepo = createMockGitRepositoryWithConfig(
+                '/test/repo',
+                {}
+            );
+            // First read (.gitignore) throws permission error
+            mockReadFile.mockRejectedValueOnce(
+                createNoPermissionsError('/test/repo/.gitignore')
+            );
+            // Second read (.git/info/exclude) succeeds
+            mockReadFile.mockResolvedValueOnce(Buffer.from('*.local'));
+
+            const result = await readGitignore(mockRepo as any);
+
+            // Should still return content from .git/info/exclude
+            expect(result).toBe('*.local');
+            // Should log warning about permission error
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Permission denied')
+            );
+        });
+
+        it('should log warning for unknown read errors', async () => {
+            const mockRepo = createMockGitRepositoryWithConfig(
+                '/test/repo',
+                {}
+            );
+            // First read (.gitignore) throws generic error
+            mockReadFile.mockRejectedValueOnce(new Error('Network timeout'));
+            // Second read (.git/info/exclude) succeeds
+            mockReadFile.mockResolvedValueOnce(Buffer.from('*.local'));
+
+            const result = await readGitignore(mockRepo as any);
+
+            // Should still return content from .git/info/exclude
+            expect(result).toBe('*.local');
+            // Should log warning about the error
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Network timeout')
+            );
+        });
+
+        it('should log debug message when getGlobalConfig fails', async () => {
+            const mockRepo = createMockGitRepositoryWithConfig(
+                '/test/repo',
+                {}
+            );
+            // Override getGlobalConfig to throw
+            mockRepo.getGlobalConfig.mockRejectedValue(
+                new Error('Git not available')
+            );
+
+            mockReadFile
+                .mockResolvedValueOnce(Buffer.from('node_modules'))
+                .mockRejectedValueOnce(createFileNotFoundError());
+
+            await readGitignore(mockRepo as any);
+
+            // Should log debug message about config failure
+            expect(Log.debug).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    'Failed to read global gitignore config'
+                )
+            );
         });
     });
 });

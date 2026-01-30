@@ -8,10 +8,37 @@ function isFileNotFoundError(error: unknown): boolean {
     if (error instanceof vscode.FileSystemError) {
         return error.code === 'FileNotFound';
     }
+    if (error && typeof error === 'object') {
+        // Check error.code first (Node.js fs errors have this property)
+        const code = (error as { code?: string }).code;
+        if (code === 'ENOENT' || code === 'FileNotFound') {
+            return true;
+        }
+    }
     if (error instanceof Error) {
         return (
             error.message.includes('ENOENT') ||
             error.message.includes('File not found')
+        );
+    }
+    return false;
+}
+
+function isPermissionError(error: unknown): boolean {
+    if (error instanceof vscode.FileSystemError) {
+        return error.code === 'NoPermissions';
+    }
+    if (error && typeof error === 'object') {
+        const code = (error as { code?: string }).code;
+        if (code === 'EACCES' || code === 'EPERM' || code === 'NoPermissions') {
+            return true;
+        }
+    }
+    if (error instanceof Error) {
+        return (
+            error.message.includes('EACCES') ||
+            error.message.includes('permission denied') ||
+            error.message.includes('Permission denied')
         );
     }
     return false;
@@ -25,13 +52,36 @@ async function readFileContent(uri: vscode.Uri): Promise<string> {
         if (isFileNotFoundError(error)) {
             return '';
         }
-        Log.warn(`Failed to read ${uri.fsPath}: ${error}`);
+        if (isPermissionError(error)) {
+            Log.warn(
+                `Permission denied reading gitignore file: ${error instanceof Error ? error.message : String(error)}`
+            );
+            return '';
+        }
+        Log.warn(
+            `Failed to read gitignore file: ${error instanceof Error ? error.message : String(error)}`
+        );
         return '';
     }
 }
 
+/**
+ * Expands ~ to the current user's home directory.
+ *
+ * Supported forms:
+ * - `~` → home directory
+ * - `~/path` or `~\path` → home directory + path
+ *
+ * Unsupported forms (passed through unchanged):
+ * - `~user/path` → tilde expansion for other users is not supported
+ */
 function expandHomeDir(filePath: string): string {
     if (!filePath.startsWith('~')) {
+        return filePath;
+    }
+    // Only expand ~ for current user, not ~user/ form
+    if (filePath.length > 1 && filePath[1] !== '/' && filePath[1] !== '\\') {
+        // This is ~user/path form which we don't support
         return filePath;
     }
     if (filePath === '~') {
