@@ -54,12 +54,12 @@ async function readFileContent(uri: vscode.Uri): Promise<string> {
         }
         if (isPermissionError(error)) {
             Log.warn(
-                `Permission denied reading gitignore file: ${error instanceof Error ? error.message : String(error)}`
+                `Permission denied reading gitignore file (${uri.fsPath}): ${error instanceof Error ? error.message : String(error)}`
             );
             return '';
         }
         Log.warn(
-            `Failed to read gitignore file: ${error instanceof Error ? error.message : String(error)}`
+            `Failed to read gitignore file (${uri.fsPath}): ${error instanceof Error ? error.message : String(error)}`
         );
         return '';
     }
@@ -74,6 +74,9 @@ async function readFileContent(uri: vscode.Uri): Promise<string> {
  *
  * Unsupported forms (passed through unchanged):
  * - `~user/path` → tilde expansion for other users is not supported
+ *
+ * Note: Paths outside the home directory (e.g., ~/../../etc/foo) are allowed
+ * since git's core.excludesFile can legitimately point to any location.
  */
 function expandHomeDir(filePath: string): string {
     if (!filePath.startsWith('~')) {
@@ -89,7 +92,8 @@ function expandHomeDir(filePath: string): string {
     }
     // Remove ~ and any following path separator to avoid path.join discarding homedir
     const remainder = filePath.slice(1).replace(/^[/\\]/, '');
-    return path.join(os.homedir(), remainder);
+    // Use path.resolve to normalize the path (handles .. segments cleanly)
+    return path.resolve(os.homedir(), remainder);
 }
 
 /**

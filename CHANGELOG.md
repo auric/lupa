@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tilde expansion fixed for global gitignore**: Paths like `~/.gitignore_global` are now correctly expanded to include your home directory on all platforms.
 - **Improved error handling for gitignore access**: Added permission error detection and logging when gitignore files or directories are unreadable, improving troubleshooting for edge cases.
 
+> **Note**: Nested `.gitignore` files in subdirectories are not supported by directory listing and file discovery tools. Only root-level patterns are applied. The ripgrep-based search tool (`search_for_pattern`) handles nested gitignore correctly.
+
 #### Analysis Reliability
 
 - **No more analysis hangs**: All operations now have appropriate timeouts. Symbol lookups (5s per file) and pattern searches (60s) ensure analysis always makes progress instead of getting stuck.
