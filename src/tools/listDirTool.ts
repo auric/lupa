@@ -1,12 +1,12 @@
 import * as z from 'zod';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import ignore from 'ignore';
+import ignore, { type Ignore } from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { rethrowIfCancellationOrTimeout } from '../utils/asyncUtils';
-import { readGitignore } from '../utils/gitUtils';
+import { createGitignoreFilter } from '../utils/gitUtils';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
@@ -70,7 +70,7 @@ export class ListDirTool extends BaseTool {
         relativePath: string,
         recursive: boolean,
         token: vscode.CancellationToken,
-        cachedIgnore?: ReturnType<typeof ignore>
+        cachedIgnore?: Ignore
     ): Promise<{ dirs: string[]; files: string[] }> {
         try {
             if (token.isCancellationRequested) {
@@ -79,14 +79,17 @@ export class ListDirTool extends BaseTool {
 
             const ig =
                 cachedIgnore ||
-                ignore().add(
-                    await readGitignore(
-                        this.gitOperationsManager.getRepository()
-                    )
-                );
+                (await createGitignoreFilter(
+                    this.gitOperationsManager.getRepository()
+                ));
 
-            const gitRootDirectory =
-                this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
+            const repository = this.gitOperationsManager.getRepository();
+            if (!repository?.rootUri?.fsPath) {
+                throw new Error(
+                    'No git repository found. Cannot list directory without a repository context.'
+                );
+            }
+            const gitRootDirectory = repository.rootUri.fsPath;
             const targetPath = path.join(gitRootDirectory, relativePath);
             const targetUri = vscode.Uri.file(targetPath);
 
@@ -114,6 +117,10 @@ export class ListDirTool extends BaseTool {
                             `Failed to check gitignore for path "${fullPath}": ${error}`
                         );
                     }
+                } else {
+                    Log.warn(
+                        `Invalid path format for gitignore check: "${fullPath}"`
+                    );
                 }
 
                 if (type === vscode.FileType.Directory) {

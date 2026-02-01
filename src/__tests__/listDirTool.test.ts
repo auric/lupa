@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import ignore from 'ignore';
 import { ListDirTool } from '../tools/listDirTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { createMockExecutionContext } from './testUtils/mockFactories';
 import * as gitUtils from '../utils/gitUtils';
 
-// Mock vscode
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
     return {
@@ -36,12 +36,18 @@ vi.mock('vscode', async () => {
     };
 });
 
-// Mock GitOperationsManager
 vi.mock('../services/gitOperationsManager');
 
 vi.mock('../utils/gitUtils', () => ({
-    readGitignore: vi.fn().mockResolvedValue(''),
+    readGitignore: vi.fn(),
+    createGitignoreFilter: vi.fn(),
 }));
+
+function setGitignorePatterns(patterns: string): void {
+    vi.mocked(gitUtils.createGitignoreFilter).mockResolvedValue(
+        ignore().add(patterns)
+    );
+}
 
 describe('ListDirTool', () => {
     let listDirTool: ListDirTool;
@@ -78,7 +84,7 @@ describe('ListDirTool', () => {
         });
 
         // Default: no gitignore patterns
-        vi.mocked(gitUtils.readGitignore).mockResolvedValue('');
+        setGitignorePatterns('');
     });
 
     afterEach(() => {
@@ -401,7 +407,7 @@ describe('ListDirTool', () => {
     describe('Gitignore Handling', () => {
         it('should exclude files matching path-based gitignore patterns', async () => {
             // Mock gitignore with path-based pattern
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue('src/*.log');
+            setGitignorePatterns('src/*.log');
 
             // Mock directory listing with files in src/
             mockReadDirectory.mockResolvedValue([
@@ -427,7 +433,7 @@ describe('ListDirTool', () => {
 
         it('should exclude directories matching path-based patterns', async () => {
             // Mock gitignore with directory pattern - exclude all temp dirs under build
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue('build/temp');
+            setGitignorePatterns('build/temp');
 
             // Mock build directory containing temp subdirectory
             mockReadDirectory.mockResolvedValue([
@@ -451,7 +457,7 @@ describe('ListDirTool', () => {
 
         it('should handle wildcard patterns in subdirectories', async () => {
             // Mock gitignore with double-star pattern
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue('**/*.tmp');
+            setGitignorePatterns('**/*.tmp');
 
             mockReadDirectory.mockResolvedValue([
                 ['data.json', vscode.FileType.File],
@@ -473,7 +479,7 @@ describe('ListDirTool', () => {
 
         it('should handle anchored patterns (leading slash)', async () => {
             // Anchored pattern /src/ should only match root-level src, not nested
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue('/src/');
+            setGitignorePatterns('/src/');
 
             mockReadDirectory.mockResolvedValue([
                 ['file.ts', vscode.FileType.File],
@@ -498,9 +504,7 @@ describe('ListDirTool', () => {
 
         it('should handle negation patterns', async () => {
             // Ignore all .log files except debug.log
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue(
-                '*.log\n!debug.log'
-            );
+            setGitignorePatterns('*.log\n!debug.log');
 
             mockReadDirectory.mockResolvedValue([
                 ['error.log', vscode.FileType.File],
@@ -524,7 +528,7 @@ describe('ListDirTool', () => {
 
         it('should continue listing when ignore.ignores throws and log warning', async () => {
             // Mock gitignore with a pattern that will be valid for parsing
-            vi.mocked(gitUtils.readGitignore).mockResolvedValue('*.log');
+            setGitignorePatterns('*.log');
 
             // Mock the Log.warn to verify it's called
             const { Log } = await import('../services/loggingService');

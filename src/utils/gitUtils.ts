@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
+import ignore, { Ignore } from 'ignore';
 import { Repository } from '../types/vscodeGitExtension';
 import { Log } from '../services/loggingService';
 
@@ -116,8 +117,9 @@ export async function readGitignore(
     try {
         const globalExcludesPath =
             await repository.getGlobalConfig('core.excludesFile');
-        if (globalExcludesPath) {
-            const expandedPath = expandHomeDir(globalExcludesPath.trim());
+        const trimmedPath = globalExcludesPath?.trim();
+        if (trimmedPath) {
+            const expandedPath = expandHomeDir(trimmedPath);
             const globalUri = vscode.Uri.file(expandedPath);
             const globalContent = await readFileContent(globalUri);
             if (globalContent) {
@@ -143,4 +145,21 @@ export async function readGitignore(
     }
 
     return patterns.join('\n');
+}
+
+/**
+ * Creates a gitignore filter instance for the given repository.
+ * Combines patterns from global gitignore, .gitignore, and .git/info/exclude.
+ *
+ * This is a convenience function that wraps readGitignore() and returns
+ * an Ignore instance ready for use with isPathValid() and ignores().
+ *
+ * @param repository The git repository instance (can be null)
+ * @returns An Ignore instance with all patterns loaded
+ */
+export async function createGitignoreFilter(
+    repository: Repository | null
+): Promise<Ignore> {
+    const patterns = await readGitignore(repository);
+    return ignore().add(patterns);
 }
