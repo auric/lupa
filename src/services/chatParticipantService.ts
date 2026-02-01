@@ -23,6 +23,7 @@ import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
@@ -358,8 +359,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
+            const errorMessage = getErrorMessage(error);
             Log.error(
                 '[ChatParticipantService]: Exploration mode failed',
                 error
@@ -467,8 +467,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
+            const errorMessage = getErrorMessage(error);
             Log.error(
                 `[ChatParticipantService]: /${request.command} analysis failed`,
                 error

@@ -6,6 +6,7 @@ import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { rethrowIfCancellationOrTimeout } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { createGitignoreFilter } from '../utils/gitUtils';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -138,9 +139,8 @@ export class ListDirTool extends BaseTool {
                             files.push(...subResult.files);
                         } catch (error) {
                             rethrowIfCancellationOrTimeout(error);
-                            // Skip directories that can't be read, but log for debugging
                             Log.debug(
-                                `Skipping unreadable directory "${fullPath}": ${error instanceof Error ? error.message : String(error)}`
+                                `Skipping unreadable directory "${fullPath}": ${getErrorMessage(error)}`
                             );
                         }
                     }
@@ -154,7 +154,7 @@ export class ListDirTool extends BaseTool {
             rethrowIfCancellationOrTimeout(error);
 
             throw new Error(
-                `Failed to read directory '${relativePath}': ${error instanceof Error ? error.message : String(error)}`
+                `Failed to read directory '${relativePath}': ${getErrorMessage(error)}`
             );
         }
     }

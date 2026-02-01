@@ -4,6 +4,7 @@ import * as os from 'os';
 import ignore, { Ignore } from 'ignore';
 import { Repository } from '../types/vscodeGitExtension';
 import { Log } from '../services/loggingService';
+import { getErrorMessage } from './errorUtils';
 
 function isFileNotFoundError(error: unknown): boolean {
     if (error instanceof vscode.FileSystemError) {
@@ -55,12 +56,12 @@ async function readFileContent(uri: vscode.Uri): Promise<string> {
         }
         if (isPermissionError(error)) {
             Log.warn(
-                `Permission denied reading gitignore file (${uri.fsPath}): ${error instanceof Error ? error.message : String(error)}`
+                `Permission denied reading gitignore file (${uri.fsPath}): ${getErrorMessage(error)}`
             );
             return '';
         }
         Log.warn(
-            `Failed to read gitignore file (${uri.fsPath}): ${error instanceof Error ? error.message : String(error)}`
+            `Failed to read gitignore file (${uri.fsPath}): ${getErrorMessage(error)}`
         );
         return '';
     }

@@ -4,6 +4,7 @@ import {
     isTimeoutError,
     isCancellationError,
 } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from '../services/loggingService';
 
 /** Timeout for document symbol provider call */
@@ -61,8 +62,7 @@ export class SymbolRangeExpander {
                     `Document symbol provider timed out for ${document.fileName} - using heuristic expansion`
                 );
             } else {
-                const message =
-                    error instanceof Error ? error.message : String(error);
+                const message = getErrorMessage(error);
                 Log.debug(
                     `Document symbol provider failed for ${document.fileName}: ${message}`
                 );

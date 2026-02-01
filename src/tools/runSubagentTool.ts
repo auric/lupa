@@ -8,6 +8,7 @@ import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * Tool that spawns isolated subagent investigations.
@@ -155,8 +156,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 return toolError(SubagentErrors.timeout(timeoutMs));
             }
 
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
+            const errorMessage = getErrorMessage(error);
             return toolError(SubagentErrors.failed(errorMessage));
         } finally {
             parentCancellationDisposable?.dispose();

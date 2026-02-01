@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { TimeoutError } from '../types/errorTypes';
 import { Log } from '../services/loggingService';
+import { getErrorMessage } from './errorUtils';
 
 /**
  * Wraps a promise with a timeout and proper resource cleanup.
@@ -33,7 +34,7 @@ export async function withTimeout<T>(
     promise.catch((error) => {
         try {
             Log.debug(
-                `[Timeout] Late rejection from ${operation}: ${error instanceof Error ? error.message : String(error)}`
+                `[Timeout] Late rejection from ${operation}: ${getErrorMessage(error)}`
             );
         } catch {
             // Logging service unavailable (e.g., test teardown) - silently ignore
@@ -79,7 +80,7 @@ export async function withCancellableTimeout<T>(
     promise.catch((error) => {
         try {
             Log.debug(
-                `[Timeout] Late rejection from ${operation}: ${error instanceof Error ? error.message : String(error)}`
+                `[Timeout] Late rejection from ${operation}: ${getErrorMessage(error)}`
             );
         } catch {
             // Logging service unavailable (e.g., test teardown) - silently ignore

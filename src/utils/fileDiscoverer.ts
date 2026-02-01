@@ -9,6 +9,7 @@ import { readGitignore } from './gitUtils';
 import { Repository } from '../types/vscodeGitExtension';
 import { Log } from '../services/loggingService';
 import { isCancellationError } from './asyncUtils';
+import { getErrorMessage } from './errorUtils';
 
 export interface FileDiscoveryOptions {
     /**
@@ -169,9 +170,7 @@ export class FileDiscoverer {
             }
             // Note: fdir never throws on abort - it resolves with partial results.
             // This catch block handles errors from other operations (readGitignore, etc.)
-            throw new Error(
-                `File discovery failed: ${error instanceof Error ? error.message : String(error)}`
-            );
+            throw new Error(`File discovery failed: ${getErrorMessage(error)}`);
         } finally {
             clearTimeout(timeoutId);
             cancellationDisposable?.dispose();

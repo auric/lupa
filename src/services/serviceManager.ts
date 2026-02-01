@@ -22,6 +22,7 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
 import type { ExecutionContext } from '../types/executionContext';
+import { getErrorMessage } from '../utils/errorUtils';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
 import { ListDirTool } from '../tools/listDirTool';
@@ -109,7 +110,7 @@ export class ServiceManager implements vscode.Disposable {
             return this.services as IServiceRegistry;
         } catch (error) {
             throw new Error(
-                `Service initialization failed: ${error instanceof Error ? error.message : String(error)}`
+                `Service initialization failed: ${getErrorMessage(error)}`
             );
         }
     }
@@ -320,9 +321,7 @@ export class ServiceManager implements vscode.Disposable {
                 `Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`
             );
         } catch (error) {
-            Log.error(
-                `Failed to initialize tools: ${error instanceof Error ? error.message : String(error)}`
-            );
+            Log.error(`Failed to initialize tools: ${getErrorMessage(error)}`);
         }
     }
 

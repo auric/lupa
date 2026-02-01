@@ -11,6 +11,7 @@ import { ITool } from '../tools/ITool';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUtils';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * Configuration for running a conversation loop.
@@ -306,7 +307,7 @@ export class ConversationRunner {
                     );
                 }
 
-                const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${error instanceof Error ? error.message : String(error)}`;
+                const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${getErrorMessage(error)}`;
                 Log.error(errorMessage);
 
                 // Re-throw service unavailable errors to be handled by caller
@@ -349,7 +350,7 @@ export class ConversationRunner {
             return { message: error.message, code: error.code };
         }
 
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = getErrorMessage(error);
 
         // Extract and parse JSON from error message (e.g., "400 {...}" or "{...}")
         // Example: 400 {"error":{"message":"Model is not supported for this request.","param":"model","code":"model_not_supported","type":"invalid_request_error"}}

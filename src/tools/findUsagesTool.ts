@@ -9,6 +9,7 @@ import {
     isTimeoutError,
     rethrowIfCancellationOrTimeout,
 } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { GitOperationsManager } from '../services/gitOperationsManager';
@@ -115,7 +116,7 @@ Requires file_path where the symbol is defined as starting point.`;
         } catch (error) {
             rethrowIfCancellationOrTimeout(error);
             return toolError(
-                `Could not open file '${sanitizedFilePath}': ${error instanceof Error ? error.message : String(error)}`
+                `Could not open file '${sanitizedFilePath}': ${getErrorMessage(error)}`
             );
         }
 

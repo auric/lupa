@@ -3,6 +3,7 @@ import { ServiceManager, IServiceRegistry } from './serviceManager';
 import { AnalysisOrchestrator } from '../coordinators/analysisOrchestrator';
 import { CopilotModelCoordinator } from '../coordinators/copilotModelCoordinator';
 import { CommandRegistry } from '../coordinators/commandRegistry';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * PRAnalysisCoordinator is the main entry point for the extension.
@@ -55,8 +56,7 @@ export class PRAnalysisCoordinator implements vscode.Disposable {
 
             this.commandRegistry.registerAllCommands();
         } catch (error) {
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
+            const errorMessage = getErrorMessage(error);
             vscode.window.showErrorMessage(
                 `Failed to initialize PR Analyzer: ${errorMessage}`
             );

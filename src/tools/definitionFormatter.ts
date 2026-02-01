@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * Utility class for formatting symbol definitions into structured JSON output
@@ -71,8 +72,7 @@ export class DefinitionFormatter {
     ): string {
         const startLine = range.start.line + 1;
         const startCharacter = range.start.character;
-        const errorMessage =
-            error instanceof Error ? error.message : String(error);
+        const errorMessage = getErrorMessage(error);
 
         const errorDefinition = {
             file: filePath,

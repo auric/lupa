@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { OutputFormatter } from '../utils/outputFormatter';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * Utility class for formatting symbol usage references into plain string output
@@ -41,8 +42,7 @@ export class UsageFormatter {
         range: vscode.Range,
         error: unknown
     ): string {
-        const errorMessage =
-            error instanceof Error ? error.message : String(error);
+        const errorMessage = getErrorMessage(error);
         return OutputFormatter.formatErrorLocation(
             filePath,
             `Could not read file content: ${errorMessage}`
