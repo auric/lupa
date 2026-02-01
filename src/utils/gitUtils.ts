@@ -13,13 +13,19 @@ function isFileNotFoundError(error: unknown): boolean {
     if (error && typeof error === 'object') {
         // Check error.code first (Node.js fs errors have this property)
         const code = (error as { code?: string }).code;
-        if (code === 'ENOENT' || code === 'FileNotFound') {
+        // ENOTDIR: path component is not a directory (e.g., /file.txt/subpath)
+        if (
+            code === 'ENOENT' ||
+            code === 'ENOTDIR' ||
+            code === 'FileNotFound'
+        ) {
             return true;
         }
     }
     if (error instanceof Error) {
         return (
             error.message.includes('ENOENT') ||
+            error.message.includes('ENOTDIR') ||
             error.message.includes('File not found')
         );
     }

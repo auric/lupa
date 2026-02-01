@@ -495,11 +495,76 @@ describe('ListDirTool', () => {
             );
 
             // The src directory is matched by /src/, so files within src/ are excluded
-            // (since we're listing from inside an ignored directory)
             expect(result.success).toBe(true);
-            // Files in src/ are excluded because /src/ pattern ignores the entire directory
-            expect(result.data).not.toContain('file.ts');
-            expect(result.data).not.toContain('component.tsx');
+            expect(result.data).toBe('(empty directory)');
+        });
+
+        it('should NOT exclude nested directories matching anchored pattern', async () => {
+            // Anchored pattern /src/ should only match root-level src, not libs/src/
+            setGitignorePatterns('/src/');
+
+            mockReadDirectory.mockResolvedValue([
+                ['utils.ts', vscode.FileType.File],
+                ['helpers.ts', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: 'libs/src',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            // Nested libs/src/ should NOT be ignored by anchored /src/ pattern
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('libs/src/utils.ts');
+            expect(result.data).toContain('libs/src/helpers.ts');
+        });
+
+        it('should handle Windows-style paths with backslashes in relative_path', async () => {
+            // Even if relative_path contains backslashes, gitignore should still work
+            setGitignorePatterns('*.log');
+
+            mockReadDirectory.mockResolvedValue([
+                ['app.ts', vscode.FileType.File],
+                ['debug.log', vscode.FileType.File],
+            ]);
+
+            // Note: PathSanitizer normalizes paths, so backslashes are handled
+            const result = await listDirTool.execute(
+                {
+                    relative_path: 'src',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('src/app.ts');
+            expect(result.data).not.toContain('debug.log');
+        });
+
+        it('should correctly apply gitignore patterns with POSIX paths regardless of OS', async () => {
+            // Test that path-based patterns work correctly when paths are normalized to POSIX
+            setGitignorePatterns('build/output/**');
+
+            mockReadDirectory.mockResolvedValue([
+                ['bundle.js', vscode.FileType.File],
+                ['sourcemap.js.map', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: 'build/output',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            // Files under build/output/ should be excluded by build/output/** pattern
+            expect(result.data).toBe('(empty directory)');
         });
 
         it('should handle negation patterns', async () => {
@@ -554,6 +619,85 @@ describe('ListDirTool', () => {
             expect(result.data).toContain('data.json');
 
             // Clean up spy
+            warnSpy.mockRestore();
+        });
+
+        it('should log warning when ignore.isPathValid returns false and continue listing', async () => {
+            // Spy on ignore.isPathValid to return false for specific paths
+            const isPathValidSpy = vi
+                .spyOn(ignore, 'isPathValid')
+                .mockReturnValue(false);
+
+            const { Log } = await import('../services/loggingService');
+            const warnSpy = vi.spyOn(Log, 'warn');
+
+            setGitignorePatterns('*.log');
+
+            mockReadDirectory.mockResolvedValue([
+                ['app.ts', vscode.FileType.File],
+                ['data.json', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: '.',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            // Files should still be included when isPathValid returns false
+            expect(result.data).toContain('app.ts');
+            expect(result.data).toContain('data.json');
+            // Warning should be logged for invalid paths
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    'Invalid path format for gitignore check'
+                )
+            );
+
+            warnSpy.mockRestore();
+            isPathValidSpy.mockRestore();
+        });
+
+        it('should log warning when ig.ignores() throws and continue listing', async () => {
+            const { Log } = await import('../services/loggingService');
+            const warnSpy = vi.spyOn(Log, 'warn');
+
+            // Create a mock Ignore instance that throws on ignores()
+            const throwingIgnore = {
+                add: vi.fn().mockReturnThis(),
+                ignores: vi.fn().mockImplementation(() => {
+                    throw new Error('Unexpected ignore library error');
+                }),
+            };
+            vi.mocked(gitUtils.createGitignoreFilter).mockResolvedValue(
+                throwingIgnore as unknown as ReturnType<typeof ignore>
+            );
+
+            mockReadDirectory.mockResolvedValue([
+                ['app.ts', vscode.FileType.File],
+                ['data.json', vscode.FileType.File],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: '.',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            // Files should still be included when ignores() throws
+            expect(result.data).toContain('app.ts');
+            expect(result.data).toContain('data.json');
+            // Warning should be logged
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Failed to check gitignore for path')
+            );
+
             warnSpy.mockRestore();
         });
     });
