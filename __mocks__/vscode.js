@@ -336,12 +336,18 @@ vscodeMock.CancellationError = class CancellationError extends Error {
 vscodeMock.CancellationTokenSource = vi.fn(function () {
     // Using function() instead of arrow function so 'this' refers to the instance
     const listeners = [];
+    let isCancelled = false;
 
     // Create the token property on the instance
     this.token = {
         isCancellationRequested: false,
         onCancellationRequested: vi.fn((listener) => {
-            listeners.push(listener);
+            // If already cancelled, invoke listener immediately (VS Code behavior)
+            if (isCancelled) {
+                listener(undefined);
+            } else {
+                listeners.push(listener);
+            }
             return {
                 dispose: vi.fn(() => {
                     const index = listeners.indexOf(listener);
@@ -355,6 +361,7 @@ vscodeMock.CancellationTokenSource = vi.fn(function () {
 
     // Add methods to the instance
     this.cancel = vi.fn(() => {
+        isCancelled = true;
         this.token.isCancellationRequested = true;
         // Create a copy of listeners array before iteration
         [...listeners].forEach((listener) => listener());

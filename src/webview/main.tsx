@@ -139,10 +139,10 @@ onDomReady(() => {
         // Safely set error content using textContent to prevent XSS
         const errorDetails = container.querySelector('#error-details');
         if (errorDetails) {
+            // Show only error message, not stack (stack logged to console)
             errorDetails.textContent =
-                error instanceof Error
-                    ? (error.stack ?? error.message)
-                    : String(error);
+                error instanceof Error ? error.message : String(error);
+            console.error('[Webview] Initialization error:', error);
         }
     }
 });

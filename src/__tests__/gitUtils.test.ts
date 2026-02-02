@@ -274,5 +274,57 @@ describe('gitUtils', () => {
                 )
             );
         });
+
+        it('should NOT expand ~user/ paths (pass through unchanged)', async () => {
+            // ~user/path form is not supported and should be passed through unchanged
+            const mockRepo = createMockGitRepositoryWithConfig('/test/repo', {
+                'core.excludesFile': '~otheruser/gitignore',
+            });
+            mockReadFile
+                .mockResolvedValueOnce(Buffer.from('node_modules'))
+                .mockRejectedValueOnce(createFileNotFoundError());
+
+            await readGitignore(mockRepo as any);
+
+            // The ~otheruser/ path should be passed through unchanged
+            const calls = vi.mocked(vscode.Uri.file).mock.calls;
+            const globalIgnorePath = calls[0]?.[0];
+            expect(globalIgnorePath).toBe('~otheruser/gitignore');
+        });
+
+        it('should expand bare ~ to home directory', async () => {
+            // Just ~ should expand to home directory
+            const mockRepo = createMockGitRepositoryWithConfig('/test/repo', {
+                'core.excludesFile': '~',
+            });
+            mockReadFile
+                .mockResolvedValueOnce(Buffer.from('bare-tilde-pattern'))
+                .mockResolvedValueOnce(Buffer.from('node_modules'))
+                .mockRejectedValueOnce(createFileNotFoundError());
+
+            await readGitignore(mockRepo as any);
+
+            // The path should NOT contain ~ (should be expanded)
+            const calls = vi.mocked(vscode.Uri.file).mock.calls;
+            const globalIgnorePath = calls[0]?.[0];
+            expect(globalIgnorePath).not.toContain('~');
+        });
+
+        it('should handle Windows-style ~\\path expansion', async () => {
+            const mockRepo = createMockGitRepositoryWithConfig('/test/repo', {
+                'core.excludesFile': '~\\my-gitignore',
+            });
+            mockReadFile
+                .mockResolvedValueOnce(Buffer.from('*.bak'))
+                .mockResolvedValueOnce(Buffer.from('node_modules'))
+                .mockRejectedValueOnce(createFileNotFoundError());
+
+            await readGitignore(mockRepo as any);
+
+            // The path should NOT contain ~ (should be expanded)
+            const calls = vi.mocked(vscode.Uri.file).mock.calls;
+            const globalIgnorePath = calls[0]?.[0];
+            expect(globalIgnorePath).not.toContain('~');
+        });
     });
 });
