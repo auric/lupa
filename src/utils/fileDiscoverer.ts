@@ -246,7 +246,8 @@ export class FileDiscoverer {
 
         crawler = crawler.exclude((_dirName, dirPath) => {
             const relativePath = path.relative(gitRootDirectory, dirPath);
-            const posixPath = relativePath.replaceAll(path.sep, path.posix.sep);
+            const posixPath =
+                relativePath.replaceAll(path.sep, path.posix.sep) + '/';
 
             // Use normalized POSIX path for gitignore checks (consistent with file filter)
             if (ig && ig.ignores(posixPath)) {
@@ -254,7 +255,7 @@ export class FileDiscoverer {
             }
 
             if (
-                posixPath === '.git' ||
+                posixPath === '.git/' ||
                 posixPath.startsWith('.git/') ||
                 posixPath.includes('/.git/')
             ) {

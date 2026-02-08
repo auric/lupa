@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Gitignore Handling
 
 - **Path-based .gitignore patterns now work correctly**: Fixed an issue where patterns like `dist/`, `src/generated/**`, or `**/*.log` were not being applied in directory listings. The tool now checks the full file path instead of just the filename.
+- **Directory-only patterns now matched correctly**: Fixed an issue where gitignore patterns ending with `/` (e.g., `dist/`, `build/`) were not filtering directory entries because the `ignore` library requires a trailing slash to distinguish directories from files.
 - **Local exclude rules now respected**: The extension now reads `.git/info/exclude` in addition to `.gitignore`, so your local per-repository exclusions are properly applied.
 - **Global gitignore now respected**: The extension reads your global gitignore file (configured via `git config core.excludesFile`), so patterns you've set up system-wide are now honored.
 - **Tilde expansion fixed for global gitignore**: Paths like `~/.gitignore_global` are now correctly expanded to include your home directory on all platforms.

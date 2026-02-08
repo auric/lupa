@@ -108,14 +108,21 @@ export class ListDirTool extends BaseTool {
                         ? name
                         : path.posix.join(relativePath, name);
 
-                if (ignore.isPathValid(fullPath)) {
+                // Append trailing slash for directories so the ignore library
+                // correctly matches directory-only patterns (e.g., `dist/`)
+                const ignorePath =
+                    type === vscode.FileType.Directory
+                        ? `${fullPath}/`
+                        : fullPath;
+
+                if (ignore.isPathValid(ignorePath)) {
                     try {
-                        if (ig.ignores(fullPath)) {
+                        if (ig.ignores(ignorePath)) {
                             continue;
                         }
                     } catch (error) {
                         Log.warn(
-                            `Failed to check gitignore for path "${fullPath}": ${error}`
+                            `Failed to check gitignore for path "${fullPath}": ${getErrorMessage(error)}`
                         );
                     }
                 } else {

@@ -536,7 +536,7 @@ File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOvervi
 2. **Root .gitignore**: The `.gitignore` file at the repository root
 3. **Local excludes**: `.git/info/exclude` (per-repository local excludes)
 
-**Path matching**: Patterns are matched against full relative paths (e.g., `src/generated/file.ts`), not just basenames. This ensures directory patterns like `dist/` and path patterns like `**/*.log` work correctly.
+**Path matching**: Patterns are matched against full relative paths (e.g., `src/generated/file.ts`), not just basenames. Directory entries include a trailing `/` so the `ignore` library correctly matches directory-only patterns (e.g., `dist/`). Path patterns like `**/*.log` also work correctly.
 
 **Limitation**: Nested `.gitignore` files in subdirectories are **not** supported by these tools. Only root-level patterns are applied.
 

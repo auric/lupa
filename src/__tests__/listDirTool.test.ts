@@ -567,6 +567,33 @@ describe('ListDirTool', () => {
             expect(result.data).toBe('(empty directory)');
         });
 
+        it('should exclude directories matching directory-only patterns (trailing slash)', async () => {
+            // Pattern `dist/` should only match directories, not files named `dist`
+            setGitignorePatterns('dist/');
+
+            mockReadDirectory.mockResolvedValue([
+                ['dist', vscode.FileType.Directory],
+                ['dist.ts', vscode.FileType.File],
+                ['src', vscode.FileType.Directory],
+            ]);
+
+            const result = await listDirTool.execute(
+                {
+                    relative_path: '.',
+                    recursive: false,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            // dist/ directory should be excluded by the directory-only pattern
+            expect(result.data).not.toContain('dist/');
+            // dist.ts file should NOT be excluded (pattern only targets directories)
+            expect(result.data).toContain('dist.ts');
+            // src/ should remain
+            expect(result.data).toContain('src/');
+        });
+
         it('should handle negation patterns', async () => {
             // Ignore all .log files except debug.log
             setGitignorePatterns('*.log\n!debug.log');
