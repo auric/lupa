@@ -306,12 +306,8 @@ export class SymbolExtractor {
                             continue;
                         }
                     } catch (error) {
-                        const message =
-                            error instanceof Error
-                                ? error.message
-                                : String(error);
                         Log.warn(
-                            `Failed to check gitignore for path "${fullPath}": ${message}`
+                            `Failed to check gitignore for path "${fullPath}": ${getErrorMessage(error)}`
                         );
                     }
                 } else {

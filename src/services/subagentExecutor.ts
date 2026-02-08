@@ -225,7 +225,7 @@ export class SubagentExecutor {
             }
 
             const errorMessage = getErrorMessage(error);
-            Log.error(`${logLabel} Failed: ${errorMessage}`);
+            Log.error(`${logLabel} Failed: ${errorMessage}`, error);
 
             return {
                 success: false,

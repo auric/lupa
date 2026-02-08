@@ -227,7 +227,8 @@ export class ToolExecutor {
 
             const errorMsg = getErrorMessage(error);
             Log.error(
-                `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
+                `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`,
+                error
             );
             return {
                 name,

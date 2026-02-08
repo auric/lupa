@@ -78,7 +78,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 fs.mkdirSync(vscodeDir, { recursive: true });
             } catch (error) {
                 Log.error(
-                    `Failed to create .vscode directory: ${getErrorMessage(error)}`
+                    `Failed to create .vscode directory: ${getErrorMessage(error)}`,
+                    error
                 );
                 return null;
             }

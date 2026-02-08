@@ -244,7 +244,7 @@ export class ToolCallingAnalysisProvider {
             }
             analysisError = getErrorMessage(error);
             const errorMessage = `Error during analysis: ${analysisError}`;
-            Log.error(errorMessage);
+            Log.error(errorMessage, error);
             analysisText = errorMessage;
         } finally {
             // Clear parent cancellation token to release references
