@@ -120,7 +120,12 @@ vscodeMock.Range = vi
             this.isEmpty = startPos.isEqual(endPos);
             this.isSingleLine = startPos.line === endPos.line;
             this.contains = vi.fn(function (positionOrRange) {
-                if (positionOrRange instanceof vscodeMock.Position) {
+                const isPosition =
+                    positionOrRange &&
+                    typeof positionOrRange.line === 'number' &&
+                    typeof positionOrRange.character === 'number' &&
+                    !('start' in positionOrRange);
+                if (isPosition) {
                     return (
                         !positionOrRange.isBefore(startPos) &&
                         !positionOrRange.isAfter(endPos)

@@ -134,7 +134,9 @@ export async function readGitignore(
             }
         }
     } catch (error) {
-        Log.debug(`Failed to read global gitignore config: ${error}`);
+        Log.debug(
+            `Failed to read global gitignore config: ${getErrorMessage(error)}`
+        );
     }
 
     const gitignoreUri = vscode.Uri.file(path.join(repoRoot, '.gitignore'));

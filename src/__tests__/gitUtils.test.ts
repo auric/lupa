@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { readGitignore } from '../utils/gitUtils';
 import {
@@ -7,6 +8,12 @@ import {
     createNoPermissionsError,
 } from './testUtils/mockFactories';
 import { Log } from '../services/loggingService';
+
+const MOCK_HOME_DIR = '/mock/home';
+
+vi.mock('os', () => ({
+    homedir: vi.fn(() => MOCK_HOME_DIR),
+}));
 
 vi.mock('vscode', async (importOriginal) => {
     const vscodeMock = await importOriginal<typeof vscode>();
@@ -182,9 +189,8 @@ describe('gitUtils', () => {
             const result = await readGitignore(mockRepo as any);
 
             expect(result).toContain('*.bak');
-            // Verify path expansion happened (home dir should be used)
             expect(vscode.Uri.file).toHaveBeenCalledWith(
-                expect.not.stringContaining('~')
+                path.resolve(MOCK_HOME_DIR, 'my-gitignore')
             );
         });
 
@@ -201,12 +207,11 @@ describe('gitUtils', () => {
 
             await readGitignore(mockRepo as any);
 
-            // The expanded path should contain both homedir and the rest of the path
-            // It should NOT be just '/.config/git/ignore'
             const calls = vi.mocked(vscode.Uri.file).mock.calls;
             const globalIgnorePath = calls[0]?.[0];
-            expect(globalIgnorePath).not.toBe('/.config/git/ignore');
-            expect(globalIgnorePath?.startsWith('/.')).toBe(false);
+            expect(globalIgnorePath).toBe(
+                path.resolve(MOCK_HOME_DIR, '.config/git/ignore')
+            );
         });
 
         it('should log warning for non-FileNotFound read errors', async () => {
@@ -304,10 +309,9 @@ describe('gitUtils', () => {
 
             await readGitignore(mockRepo as any);
 
-            // The path should NOT contain ~ (should be expanded)
             const calls = vi.mocked(vscode.Uri.file).mock.calls;
             const globalIgnorePath = calls[0]?.[0];
-            expect(globalIgnorePath).not.toContain('~');
+            expect(globalIgnorePath).toBe(MOCK_HOME_DIR);
         });
 
         it('should handle Windows-style ~\\path expansion', async () => {
@@ -321,10 +325,11 @@ describe('gitUtils', () => {
 
             await readGitignore(mockRepo as any);
 
-            // The path should NOT contain ~ (should be expanded)
             const calls = vi.mocked(vscode.Uri.file).mock.calls;
             const globalIgnorePath = calls[0]?.[0];
-            expect(globalIgnorePath).not.toContain('~');
+            expect(globalIgnorePath).toBe(
+                path.resolve(MOCK_HOME_DIR, 'my-gitignore')
+            );
         });
     });
 });
