@@ -72,4 +72,15 @@ describe('getErrorMessage', () => {
     it('should handle empty object', () => {
         expect(getErrorMessage({})).toBe('[object Object]');
     });
+
+    it('should extract message from plain object with message property', () => {
+        const error = { message: 'plain object error', code: 'ETIMEOUT' };
+        expect(getErrorMessage(error)).toBe('plain object error');
+    });
+
+    it('should ignore non-string message property', () => {
+        const error = { message: 42 };
+        // Falls through to String() since message is not a string
+        expect(getErrorMessage(error)).toBe('[object Object]');
+    });
 });

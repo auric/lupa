@@ -127,7 +127,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 this.saveSettings();
             }
         } catch (error) {
-            Log.error(`Failed to load settings: ${getErrorMessage(error)}`);
+            Log.error(
+                `Failed to load settings: ${getErrorMessage(error)}`,
+                error
+            );
             this.settings = getDefaultSettings();
         }
     }
@@ -154,7 +157,10 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 'utf-8'
             );
         } catch (error) {
-            Log.error(`Failed to save settings: ${getErrorMessage(error)}`);
+            Log.error(
+                `Failed to save settings: ${getErrorMessage(error)}`,
+                error
+            );
         }
     }
 

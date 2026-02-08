@@ -361,10 +361,14 @@ vscodeMock.CancellationTokenSource = vi.fn(function () {
 
     // Add methods to the instance
     this.cancel = vi.fn(() => {
+        if (isCancelled) {
+            return;
+        }
         isCancelled = true;
         this.token.isCancellationRequested = true;
-        // Create a copy of listeners array before iteration
-        [...listeners].forEach((listener) => listener());
+        const toFire = [...listeners];
+        listeners.length = 0;
+        toFire.forEach((listener) => listener());
     });
 
     this.dispose = vi.fn();

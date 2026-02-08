@@ -321,7 +321,10 @@ export class ServiceManager implements vscode.Disposable {
                 `Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`
             );
         } catch (error) {
-            Log.error(`Failed to initialize tools: ${getErrorMessage(error)}`);
+            Log.error(
+                `Failed to initialize tools: ${getErrorMessage(error)}`,
+                error
+            );
         }
     }
 

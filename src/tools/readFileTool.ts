@@ -97,7 +97,9 @@ export class ReadFileTool extends BaseTool {
             );
         } catch (error) {
             rethrowIfCancellationOrTimeout(error);
-            return toolError(`File not found: ${sanitizedPath}`);
+            return toolError(
+                `Cannot access file ${sanitizedPath}: ${getErrorMessage(error)}`
+            );
         }
 
         let fileContent: string;

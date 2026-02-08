@@ -308,7 +308,7 @@ export class ConversationRunner {
                 }
 
                 const errorMessage = `${logPrefix} Error in iteration ${iteration}: ${getErrorMessage(error)}`;
-                Log.error(errorMessage);
+                Log.error(errorMessage, error);
 
                 // Re-throw service unavailable errors to be handled by caller
                 if (
