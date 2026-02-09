@@ -298,7 +298,8 @@ export class ConversationRunner {
                 const fatalError = this.detectFatalError(error);
                 if (fatalError) {
                     Log.error(
-                        `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`
+                        `${logPrefix} Fatal API error [${fatalError.code}]: ${fatalError.message}`,
+                        error
                     );
                     vscode.window.showErrorMessage(fatalError.message);
                     throw new CopilotApiError(

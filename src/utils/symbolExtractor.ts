@@ -300,9 +300,12 @@ export class SymbolExtractor {
 
                 if (ignore.isPathValid(fullPath)) {
                     try {
-                        // Check if this entry should be ignored by .gitignore using full path
-                        // Use ignores() method with full path instead of checkIgnore() with just name
-                        if (ignorePatterns.ignores(fullPath)) {
+                        // Append trailing slash for directories so directory-only patterns match
+                        const checkPath =
+                            type === vscode.FileType.Directory
+                                ? `${fullPath}/`
+                                : fullPath;
+                        if (ignorePatterns.ignores(checkPath)) {
                             continue;
                         }
                     } catch (error) {

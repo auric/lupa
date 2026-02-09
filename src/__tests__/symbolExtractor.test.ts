@@ -282,5 +282,53 @@ describe('SymbolExtractor', () => {
             // readDirectory should not have been called since token was pre-cancelled
             expect(vscode.workspace.fs.readDirectory).not.toHaveBeenCalled();
         });
+
+        it('should append trailing slash for directories when checking gitignore', async () => {
+            const tokenSource = new vscode.CancellationTokenSource();
+
+            // Reset readDirectory to clear any persistent implementation from other tests
+            (vscode.workspace.fs.readDirectory as any).mockReset();
+            (vscode.workspace.fs.readDirectory as any)
+                .mockResolvedValueOnce([
+                    ['dist', vscode.FileType.Directory],
+                    ['src', vscode.FileType.Directory],
+                    ['file.ts', vscode.FileType.File],
+                ])
+                .mockResolvedValue([]);
+
+            const getAllFiles = (symbolExtractor as any).getAllFiles.bind(
+                symbolExtractor
+            );
+
+            // Track paths passed to ignores()
+            const checkedPaths: string[] = [];
+            const mockIgnore = {
+                ignores: (p: string) => {
+                    checkedPaths.push(p);
+                    // Only ignore dist/ (directory-only pattern)
+                    return p === 'dist/';
+                },
+            };
+
+            const result = await getAllFiles(
+                '/workspace', // targetPath
+                '.', // relativePath (root)
+                mockIgnore, // ignorePatterns
+                { token: tokenSource.token },
+                0, // currentDepth
+                Date.now(),
+                10_000
+            );
+
+            // Directory entries should be checked with trailing slash
+            expect(checkedPaths).toContain('dist/');
+            expect(checkedPaths).toContain('src/');
+            // File entries should NOT have trailing slash
+            expect(checkedPaths).toContain('file.ts');
+            expect(checkedPaths).not.toContain('file.ts/');
+            // dist/ should be excluded from results (not traversed)
+            expect(result.files).not.toContain('dist');
+            expect(result.files).toContain('file.ts');
+        });
     });
 });

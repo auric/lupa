@@ -233,8 +233,16 @@ export class FileDiscoverer {
                 .relative(gitRootDirectory, filePath)
                 .replaceAll(path.sep, path.posix.sep);
 
-            if (ig && ig.ignores(relativePath)) {
-                return false;
+            if (ig && ignore.isPathValid(relativePath)) {
+                try {
+                    if (ig.ignores(relativePath)) {
+                        return false;
+                    }
+                } catch (error) {
+                    Log.warn(
+                        `Failed to check gitignore for path "${relativePath}": ${getErrorMessage(error)}`
+                    );
+                }
             }
 
             if (excludeMatcher && excludeMatcher(relativePath)) {
@@ -250,8 +258,16 @@ export class FileDiscoverer {
                 relativePath.replaceAll(path.sep, path.posix.sep) + '/';
 
             // Use normalized POSIX path for gitignore checks (consistent with file filter)
-            if (ig && ig.ignores(posixPath)) {
-                return true;
+            if (ig && ignore.isPathValid(posixPath)) {
+                try {
+                    if (ig.ignores(posixPath)) {
+                        return true;
+                    }
+                } catch (error) {
+                    Log.warn(
+                        `Failed to check gitignore for path "${posixPath}": ${getErrorMessage(error)}`
+                    );
+                }
             }
 
             if (

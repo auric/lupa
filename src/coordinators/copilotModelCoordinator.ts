@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { IServiceRegistry } from '../services/serviceManager';
 import { getErrorMessage } from '../utils/errorUtils';
+import { Log } from '../services/loggingService';
 
 interface ModelQuickPickItem extends vscode.QuickPickItem {
     identifier: string;
@@ -105,6 +106,7 @@ export class CopilotModelCoordinator implements vscode.Disposable {
             });
         } catch (error) {
             const errorMessage = getErrorMessage(error);
+            Log.error(`Error selecting language model: ${errorMessage}`, error);
             vscode.window.showErrorMessage(
                 `Error selecting language model: ${errorMessage}`
             );

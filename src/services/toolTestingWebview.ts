@@ -235,10 +235,7 @@ export class ToolTestingWebviewService {
                     webview.postMessage({
                         type: 'error',
                         payload: {
-                            message:
-                                error instanceof Error
-                                    ? error.message
-                                    : 'Unknown error occurred',
+                            message: getErrorMessage(error),
                             suggestions: [
                                 'Check VS Code developer console for more details',
                                 'Try refreshing the interface',
@@ -340,10 +337,7 @@ export class ToolTestingWebviewService {
                     type: 'toolExecutionError',
                     payload: {
                         sessionId: payload.sessionId,
-                        error:
-                            error instanceof Error
-                                ? error.message
-                                : 'Tool execution failed',
+                        error: getErrorMessage(error),
                     },
                 });
             }
