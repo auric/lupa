@@ -232,7 +232,8 @@ describe('gitUtils', () => {
             expect(result).toBe('*.local');
             // Should log warning about permission error
             expect(Log.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Permission denied')
+                expect.stringContaining('Permission denied'),
+                expect.any(Object)
             );
         });
 
@@ -252,7 +253,8 @@ describe('gitUtils', () => {
             expect(result).toBe('*.local');
             // Should log warning about the error
             expect(Log.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Network timeout')
+                expect.stringContaining('Network timeout'),
+                expect.any(Object)
             );
         });
 

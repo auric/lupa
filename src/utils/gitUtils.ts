@@ -62,12 +62,14 @@ async function readFileContent(uri: vscode.Uri): Promise<string> {
         }
         if (isPermissionError(error)) {
             Log.warn(
-                `Permission denied reading gitignore file (${uri.fsPath}): ${getErrorMessage(error)}`
+                `Permission denied reading gitignore file (${uri.fsPath}): ${getErrorMessage(error)}`,
+                error
             );
             return '';
         }
         Log.warn(
-            `Failed to read gitignore file (${uri.fsPath}): ${getErrorMessage(error)}`
+            `Failed to read gitignore file (${uri.fsPath}): ${getErrorMessage(error)}`,
+            error
         );
         return '';
     }

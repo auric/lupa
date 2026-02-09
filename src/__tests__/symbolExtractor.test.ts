@@ -330,5 +330,39 @@ describe('SymbolExtractor', () => {
             expect(result.files).not.toContain('dist');
             expect(result.files).toContain('file.ts');
         });
+
+        it('should continue discovery when ignores() throws (fail-open)', async () => {
+            const tokenSource = new vscode.CancellationTokenSource();
+
+            (vscode.workspace.fs.readDirectory as any).mockReset();
+            (vscode.workspace.fs.readDirectory as any).mockResolvedValueOnce([
+                ['file1.ts', vscode.FileType.File],
+                ['file2.ts', vscode.FileType.File],
+            ]);
+
+            const getAllFiles = (symbolExtractor as any).getAllFiles.bind(
+                symbolExtractor
+            );
+
+            const mockIgnore = {
+                ignores: () => {
+                    throw new Error('corrupt .gitignore pattern');
+                },
+            };
+
+            const result = await getAllFiles(
+                '/workspace/src',
+                'src',
+                mockIgnore,
+                { token: tokenSource.token },
+                0,
+                Date.now(),
+                10_000
+            );
+
+            // Discovery should continue despite ignores() throwing — fail-open behavior
+            expect(result.files).toContain('src/file1.ts');
+            expect(result.files).toContain('src/file2.ts');
+        });
     });
 });
