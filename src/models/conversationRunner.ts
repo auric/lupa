@@ -8,7 +8,6 @@ import type { ToolCallMessage, ToolCall } from '../types/modelTypes';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
-import { CANCELLATION_MESSAGE } from '../config/constants';
 import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUtils';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -134,7 +133,7 @@ export class ConversationRunner {
                     `${logPrefix} Cancelled before iteration ${iteration}`
                 );
                 this._wasCancelled = true;
-                return CANCELLATION_MESSAGE;
+                return '';
             }
 
             handler?.onIterationStart?.(iteration, config.maxIterations);
@@ -217,7 +216,7 @@ export class ConversationRunner {
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
                     this._wasCancelled = true;
-                    return CANCELLATION_MESSAGE;
+                    return '';
                 }
 
                 conversation.addAssistantMessage(
@@ -307,7 +306,7 @@ export class ConversationRunner {
                         `${logPrefix} Cancelled during iteration ${iteration}`
                     );
                     this._wasCancelled = true;
-                    return CANCELLATION_MESSAGE;
+                    return '';
                 }
 
                 // Token cancelled with non-cancellation error: log actual error for diagnostics
@@ -318,7 +317,7 @@ export class ConversationRunner {
                             `(error while token cancelled: ${getErrorMessage(error)})`
                     );
                     this._wasCancelled = true;
-                    return CANCELLATION_MESSAGE;
+                    return '';
                 }
 
                 const fatalError = this.detectFatalError(error);

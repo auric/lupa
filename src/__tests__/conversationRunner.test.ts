@@ -470,7 +470,8 @@ describe('ConversationRunner', () => {
                 cancelledToken
             );
 
-            expect(result).toContain('cancelled');
+            expect(result).toBe('');
+            expect(runner.wasCancelled).toBe(true);
         });
 
         it('should return cancellation message when non-CancellationError occurs with cancelled token', async () => {
@@ -529,7 +530,8 @@ describe('ConversationRunner', () => {
 
             const result = await runner.run(config, conversation, token);
 
-            expect(result).toContain('cancelled');
+            expect(result).toBe('');
+            expect(runner.wasCancelled).toBe(true);
         });
 
         it('should set wasCancelled flag when token is pre-cancelled', async () => {

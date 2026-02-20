@@ -231,13 +231,17 @@ export class ToolCallingAnalysisProvider {
                 token,
                 handler
             );
-            analysisCompleted = true;
+            analysisCompleted = !conversationRunner.wasCancelled;
 
-            progressCallback?.(
-                `Analysis complete (${toolCallCount} tool calls)`,
-                2
-            );
-            Log.info('Analysis completed successfully');
+            if (analysisCompleted) {
+                progressCallback?.(
+                    `Analysis complete (${toolCallCount} tool calls)`,
+                    2
+                );
+                Log.info('Analysis completed successfully');
+            } else {
+                Log.info('Analysis was cancelled by user');
+            }
         } catch (error) {
             if (isCancellationError(error)) {
                 throw error;

@@ -503,6 +503,51 @@ describe('RunSubagentTool', () => {
             expect(result.success).toBe(false);
             expect(result.error).toContain('Subagent failed');
         });
+
+        it('should prioritize parent cancellation over timeout when both occur', async () => {
+            // Race condition: timeout fires during executor unwinding from parent cancellation.
+            // Use 10ms timeout; executor delays 100ms to ensure timeout fires first.
+            const shortTimeoutSettings = createMockWorkspaceSettings({
+                requestTimeoutSeconds: 0.01,
+            });
+
+            const parentTokenSource = new vscode.CancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentTokenSource.token);
+
+            const mockExecutor = {
+                execute: vi.fn().mockImplementation(async () => {
+                    // Wait for the 10ms timeout to fire
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    // Parent also cancels during execution (the race)
+                    parentTokenSource.cancel();
+                    return {
+                        success: false,
+                        response: '',
+                        error: 'cancelled',
+                        toolCallsMade: 0,
+                        toolCalls: [],
+                    };
+                }),
+            } as unknown as SubagentExecutor;
+
+            const tool = new RunSubagentTool(shortTimeoutSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                cancellationToken: parentTokenSource.token,
+            });
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Both timeout AND parent cancellation occurred, but parent wins
+            expect(result.success).toBe(false);
+            expect(result.error).not.toContain('timed out');
+        });
     });
 
     describe('Parallel Execution Safety', () => {
@@ -555,46 +600,59 @@ describe('RunSubagentTool', () => {
             expect(sessionManager.getCount()).toBe(2);
         });
 
-        it('should propagate parent cancellation to all parallel subagent tokens', async () => {
+        it('should propagate parent cancellation to child subagent tokens', async () => {
+            let resolveExecutor!: (value: SubagentResult) => void;
             const capturedTokens: vscode.CancellationToken[] = [];
             const mockExecutor = {
                 execute: vi
                     .fn()
                     .mockImplementation(
-                        (
-                            _task: any,
-                            token: vscode.CancellationToken,
-                            _id: number
-                        ) => {
+                        (_task: any, token: vscode.CancellationToken) => {
                             capturedTokens.push(token);
-                            return Promise.resolve({
-                                success: true,
-                                response: 'Done',
-                                toolCallsMade: 1,
-                                toolCalls: [],
+                            // Return a pending promise so we can test during execution
+                            return new Promise<SubagentResult>((resolve) => {
+                                resolveExecutor = resolve;
                             });
                         }
                     ),
             } as unknown as SubagentExecutor;
 
-            const tool = new RunSubagentTool(workspaceSettings);
-            // Create context with a cancellable parent token
             const parentTokenSource = new vscode.CancellationTokenSource();
+            // Critical: link parent token to session manager for propagation
+            sessionManager.setParentCancellationToken(parentTokenSource.token);
+
+            const tool = new RunSubagentTool(workspaceSettings);
             const context = createMockExecutionContext({
                 subagentExecutor: mockExecutor,
                 subagentSessionManager: sessionManager,
                 cancellationToken: parentTokenSource.token,
             });
 
-            // Execute subagent to capture its child token
-            await tool.execute(
+            // Start execution (won't resolve until we say so)
+            const executePromise = tool.execute(
                 { task: 'Investigate auth module for security issues' },
                 context
             );
 
+            // Child token captured and not yet cancelled
             expect(capturedTokens).toHaveLength(1);
-            // Child token should not be the same object as parent
-            expect(capturedTokens[0]).not.toBe(parentTokenSource.token);
+            expect(capturedTokens[0].isCancellationRequested).toBe(false);
+
+            // Cancel parent — should propagate to child via session manager
+            parentTokenSource.cancel();
+            expect(capturedTokens[0].isCancellationRequested).toBe(true);
+
+            // Resolve executor so the promise completes
+            resolveExecutor({
+                success: false,
+                response: '',
+                error: 'cancelled',
+                toolCallsMade: 0,
+                toolCalls: [],
+            });
+
+            const result = await executePromise;
+            expect(result.success).toBe(false);
         });
     });
 });

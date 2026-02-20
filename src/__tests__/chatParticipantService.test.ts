@@ -985,9 +985,7 @@ describe('ChatParticipantService', () => {
                 vi.mocked(ConversationRunner).mockImplementation(function (
                     this: any
                 ) {
-                    this.run = vi
-                        .fn()
-                        .mockResolvedValue('Conversation cancelled by user');
+                    this.run = vi.fn().mockResolvedValue('');
                     this.reset = vi.fn();
                     this.wasCancelled = true;
                 });
@@ -1023,9 +1021,6 @@ describe('ChatParticipantService', () => {
                 expect(mockStream.markdown).toHaveBeenCalledWith(
                     expect.stringContaining('Analysis Cancelled')
                 );
-                expect(mockStream.markdown).not.toHaveBeenCalledWith(
-                    'Conversation cancelled by user'
-                );
                 expect(result.metadata).toEqual({
                     cancelled: true,
                     responseIsIncomplete: true,
@@ -1041,9 +1036,7 @@ describe('ChatParticipantService', () => {
                 vi.mocked(ConversationRunner).mockImplementation(function (
                     this: any
                 ) {
-                    this.run = vi
-                        .fn()
-                        .mockResolvedValue('Conversation cancelled by user');
+                    this.run = vi.fn().mockResolvedValue('');
                     this.reset = vi.fn();
                     this.wasCancelled = true;
                 });
@@ -1538,9 +1531,7 @@ describe('ChatParticipantService', () => {
             vi.mocked(ConversationRunner).mockImplementation(function (
                 this: any
             ) {
-                this.run = vi
-                    .fn()
-                    .mockResolvedValue('Conversation cancelled by user');
+                this.run = vi.fn().mockResolvedValue('');
                 this.reset = vi.fn();
                 this.wasCancelled = true;
             });

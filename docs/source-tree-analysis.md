@@ -174,7 +174,6 @@ src/
 │   └── chatResponseBuilder.ts    # Chat response formatting
 │
 ├── 📁 config/                     # Configuration
-│   ├── constants.ts              # App constants
 │   └── chatEmoji.ts              # Chat emoji definitions
 │
 ├── 📁 lib/                        # shadcn/ui utilities

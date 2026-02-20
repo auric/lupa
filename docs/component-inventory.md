@@ -217,10 +217,9 @@ These components are created fresh for each analysis session, not managed by Ser
 
 ## Configuration (`src/config/`)
 
-| File           | Contents                                    |
-| -------------- | ------------------------------------------- |
-| `constants.ts` | Application constants, cancellation message |
-| `chatEmoji.ts` | Chat emoji definitions for UI feedback      |
+| File           | Contents                               |
+| -------------- | -------------------------------------- |
+| `chatEmoji.ts` | Chat emoji definitions for UI feedback |
 
 ---
 

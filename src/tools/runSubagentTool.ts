@@ -136,7 +136,13 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             clearTimeout(timeoutHandle);
 
             if (!result.success && result.error === 'cancelled') {
-                if (cancelledByTimeout) {
+                // Only attribute to timeout if parent wasn't also cancelled.
+                // Race condition: timeout timer can fire while executor unwinds
+                // from parent cancellation, setting cancelledByTimeout incorrectly.
+                if (
+                    cancelledByTimeout &&
+                    !context.cancellationToken.isCancellationRequested
+                ) {
                     return toolError(SubagentErrors.timeout(timeoutMs));
                 }
                 return toolError('Subagent was cancelled');
@@ -173,7 +179,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 throw error;
             }
 
-            if (cancelledByTimeout) {
+            if (
+                cancelledByTimeout &&
+                !context.cancellationToken.isCancellationRequested
+            ) {
                 return toolError(SubagentErrors.timeout(timeoutMs));
             }
 

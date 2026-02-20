@@ -211,9 +211,8 @@ export class SubagentExecutor {
                 };
             }
 
-            // Check cancellation using the runner's boolean flag rather than comparing
-            // the response string. This avoids any risk of the LLM producing text that
-            // matches the sentinel value (CANCELLATION_MESSAGE).
+            // Check cancellation using the runner's boolean flag rather than
+            // comparing the response string, avoiding any risk of false detection.
             if (conversationRunner.wasCancelled) {
                 Log.warn(
                     `${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`

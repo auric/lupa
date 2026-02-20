@@ -236,8 +236,8 @@ describe('SubagentExecutor', () => {
         });
 
         it('should detect cancellation when CancellationError thrown by model', async () => {
-            // ConversationRunner catches CancellationError internally and returns
-            // CANCELLATION_MESSAGE with wasCancelled=true. SubagentExecutor detects
+            // ConversationRunner catches CancellationError internally, returns
+            // empty string, and sets wasCancelled=true. SubagentExecutor detects
             // the flag and returns cancelled result (does NOT rethrow).
             const modelManager = {
                 sendRequest: vi
