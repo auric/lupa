@@ -120,7 +120,12 @@ vscodeMock.Range = vi
             this.isEmpty = startPos.isEqual(endPos);
             this.isSingleLine = startPos.line === endPos.line;
             this.contains = vi.fn(function (positionOrRange) {
-                if (positionOrRange instanceof vscodeMock.Position) {
+                const isPosition =
+                    positionOrRange &&
+                    typeof positionOrRange.line === 'number' &&
+                    typeof positionOrRange.character === 'number' &&
+                    !('start' in positionOrRange);
+                if (isPosition) {
                     return (
                         !positionOrRange.isBefore(startPos) &&
                         !positionOrRange.isAfter(endPos)
@@ -184,6 +189,80 @@ vscodeMock.FileStat = vi
         this.mtime = mtime || Date.now();
         this.size = size || 0;
     });
+
+// Match VS Code's FileSystemError: extends Error with code property and static factory methods
+// See: https://github.com/microsoft/vscode/blob/main/src/vs/platform/files/common/files.ts
+vscodeMock.FileSystemError = class FileSystemError extends Error {
+    constructor(messageOrUri) {
+        super(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : messageOrUri?.toString() || 'Unknown file system error'
+        );
+        this.name = 'FileSystemError';
+        this.code = 'Unknown';
+    }
+
+    static FileNotFound(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `File not found: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileNotFound';
+        return error;
+    }
+
+    static FileExists(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `File exists: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileExists';
+        return error;
+    }
+
+    static FileNotADirectory(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `Not a directory: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileNotADirectory';
+        return error;
+    }
+
+    static FileIsADirectory(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `Is a directory: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'FileIsADirectory';
+        return error;
+    }
+
+    static NoPermissions(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `No permissions: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'NoPermissions';
+        return error;
+    }
+
+    static Unavailable(messageOrUri) {
+        const error = new vscodeMock.FileSystemError(
+            typeof messageOrUri === 'string'
+                ? messageOrUri
+                : `Unavailable: ${messageOrUri?.toString() || ''}`
+        );
+        error.code = 'Unavailable';
+        return error;
+    }
+};
 
 vscodeMock.workspace = {
     getConfiguration: vi.fn().mockReturnValue({
@@ -262,12 +341,18 @@ vscodeMock.CancellationError = class CancellationError extends Error {
 vscodeMock.CancellationTokenSource = vi.fn(function () {
     // Using function() instead of arrow function so 'this' refers to the instance
     const listeners = [];
+    let isCancelled = false;
 
     // Create the token property on the instance
     this.token = {
         isCancellationRequested: false,
         onCancellationRequested: vi.fn((listener) => {
-            listeners.push(listener);
+            // If already cancelled, invoke listener immediately (VS Code behavior)
+            if (isCancelled) {
+                listener(undefined);
+            } else {
+                listeners.push(listener);
+            }
             return {
                 dispose: vi.fn(() => {
                     const index = listeners.indexOf(listener);
@@ -281,9 +366,14 @@ vscodeMock.CancellationTokenSource = vi.fn(function () {
 
     // Add methods to the instance
     this.cancel = vi.fn(() => {
+        if (isCancelled) {
+            return;
+        }
+        isCancelled = true;
         this.token.isCancellationRequested = true;
-        // Create a copy of listeners array before iteration
-        [...listeners].forEach((listener) => listener());
+        const toFire = [...listeners];
+        listeners.length = 0;
+        toFire.forEach((listener) => listener());
     });
 
     this.dispose = vi.fn();
@@ -857,9 +947,9 @@ export const LanguageModelToolResultPart =
 export const lm = vscodeMock.lm;
 export const env = vscodeMock.env;
 
-// Export the new mocks
 export const FileType = vscodeMock.FileType;
 export const FileStat = vscodeMock.FileStat;
+export const FileSystemError = vscodeMock.FileSystemError;
 export const ChatResponseFileTreePart = vscodeMock.ChatResponseFileTreePart;
 export const ChatResponseMarkdownPart = vscodeMock.ChatResponseMarkdownPart;
 export const ChatResponseAnchorPart = vscodeMock.ChatResponseAnchorPart;

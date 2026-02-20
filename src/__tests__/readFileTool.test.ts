@@ -136,7 +136,9 @@ describe('ReadFileTool', () => {
             );
 
             expect(result.success).toBe(false);
-            expect(result.error).toBe('File not found: nonexistent.ts');
+            expect(result.error).toBe(
+                'Cannot access file nonexistent.ts: File not found'
+            );
         });
 
         it('should read full file successfully', async () => {

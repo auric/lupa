@@ -5,6 +5,7 @@ import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import type { ToolResult } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /** Full input type derived from tool's Zod schema - no artificial limitations. */
 type GetSymbolsOverviewInput = z.infer<GetSymbolsOverviewTool['schema']>;
@@ -85,8 +86,7 @@ export class LanguageModelToolProvider implements vscode.Disposable {
                 throw error;
             }
 
-            const message =
-                error instanceof Error ? error.message : String(error);
+            const message = getErrorMessage(error);
             Log.error(
                 '[LanguageModelToolProvider]: Tool invocation failed',
                 error

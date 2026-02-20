@@ -7,6 +7,7 @@ import type {
     Repository,
 } from '../types/vscodeGitExtension';
 import { Log } from './loggingService';
+import { getErrorMessage } from '../utils/errorUtils';
 import type { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
@@ -673,7 +674,7 @@ export class GitService {
             return {
                 diffText: '',
                 refName: options.compare || 'unknown',
-                error: `Failed to compare branches: ${error instanceof Error ? error.message : String(error)}`,
+                error: `Failed to compare branches: ${getErrorMessage(error)}`,
             };
         }
     }
@@ -729,7 +730,7 @@ export class GitService {
             return {
                 diffText: '',
                 refName: 'uncommitted changes',
-                error: `Failed to get uncommitted changes: ${error instanceof Error ? error.message : String(error)}`,
+                error: `Failed to get uncommitted changes: ${getErrorMessage(error)}`,
             };
         }
     }

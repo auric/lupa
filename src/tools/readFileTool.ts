@@ -9,6 +9,7 @@ import {
     withCancellableTimeout,
     rethrowIfCancellationOrTimeout,
 } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { OutputFormatter, FileContentOptions } from '../utils/outputFormatter';
@@ -96,7 +97,9 @@ export class ReadFileTool extends BaseTool {
             );
         } catch (error) {
             rethrowIfCancellationOrTimeout(error);
-            return toolError(`File not found: ${sanitizedPath}`);
+            return toolError(
+                `Cannot access file ${sanitizedPath}: ${getErrorMessage(error)}`
+            );
         }
 
         let fileContent: string;
@@ -110,8 +113,7 @@ export class ReadFileTool extends BaseTool {
             fileContent = Buffer.from(contentBytes).toString('utf8');
         } catch (error) {
             rethrowIfCancellationOrTimeout(error);
-            const message =
-                error instanceof Error ? error.message : String(error);
+            const message = getErrorMessage(error);
             return toolError(
                 `Failed to read file ${sanitizedPath}: ${message}`
             );

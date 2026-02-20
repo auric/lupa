@@ -11,6 +11,7 @@ import type {
 import type { ToolInfo } from '../webview/types/toolTestingTypes';
 import { safeJsonStringify } from '../utils/safeJson';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * ToolTestingWebviewService handles the tool testing webview functionality.
@@ -234,10 +235,7 @@ export class ToolTestingWebviewService {
                     webview.postMessage({
                         type: 'error',
                         payload: {
-                            message:
-                                error instanceof Error
-                                    ? error.message
-                                    : 'Unknown error occurred',
+                            message: getErrorMessage(error),
                             suggestions: [
                                 'Check VS Code developer console for more details',
                                 'Try refreshing the interface',
@@ -339,10 +337,7 @@ export class ToolTestingWebviewService {
                     type: 'toolExecutionError',
                     payload: {
                         sessionId: payload.sessionId,
-                        error:
-                            error instanceof Error
-                                ? error.message
-                                : 'Tool execution failed',
+                        error: getErrorMessage(error),
                     },
                 });
             }
@@ -395,7 +390,7 @@ export class ToolTestingWebviewService {
 
             // Show user-friendly error message
             vscode.window.showErrorMessage(
-                `Could not open file: ${payload.filePath}. ${error instanceof Error ? error.message : 'Unknown error'}`
+                `Could not open file: ${payload.filePath}. ${getErrorMessage(error)}`
             );
         }
     }

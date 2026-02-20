@@ -9,6 +9,7 @@ import { readGitignore } from './gitUtils';
 import { Repository } from '../types/vscodeGitExtension';
 import { Log } from '../services/loggingService';
 import { isCancellationError } from './asyncUtils';
+import { getErrorMessage } from './errorUtils';
 
 export interface FileDiscoveryOptions {
     /**
@@ -169,9 +170,7 @@ export class FileDiscoverer {
             }
             // Note: fdir never throws on abort - it resolves with partial results.
             // This catch block handles errors from other operations (readGitignore, etc.)
-            throw new Error(
-                `File discovery failed: ${error instanceof Error ? error.message : String(error)}`
-            );
+            throw new Error(`File discovery failed: ${getErrorMessage(error)}`);
         } finally {
             clearTimeout(timeoutId);
             cancellationDisposable?.dispose();
@@ -234,8 +233,16 @@ export class FileDiscoverer {
                 .relative(gitRootDirectory, filePath)
                 .replaceAll(path.sep, path.posix.sep);
 
-            if (ig && ig.ignores(relativePath)) {
-                return false;
+            if (ig && ignore.isPathValid(relativePath)) {
+                try {
+                    if (ig.ignores(relativePath)) {
+                        return false;
+                    }
+                } catch (error) {
+                    Log.warn(
+                        `Failed to check gitignore for path "${relativePath}": ${getErrorMessage(error)}`
+                    );
+                }
             }
 
             if (excludeMatcher && excludeMatcher(relativePath)) {
@@ -247,15 +254,24 @@ export class FileDiscoverer {
 
         crawler = crawler.exclude((_dirName, dirPath) => {
             const relativePath = path.relative(gitRootDirectory, dirPath);
-            const posixPath = relativePath.replaceAll(path.sep, path.posix.sep);
+            const posixPath =
+                relativePath.replaceAll(path.sep, path.posix.sep) + '/';
 
             // Use normalized POSIX path for gitignore checks (consistent with file filter)
-            if (ig && ig.ignores(posixPath)) {
-                return true;
+            if (ig && ignore.isPathValid(posixPath)) {
+                try {
+                    if (ig.ignores(posixPath)) {
+                        return true;
+                    }
+                } catch (error) {
+                    Log.warn(
+                        `Failed to check gitignore for path "${posixPath}": ${getErrorMessage(error)}`
+                    );
+                }
             }
 
             if (
-                posixPath === '.git' ||
+                posixPath === '.git/' ||
                 posixPath.startsWith('.git/') ||
                 posixPath.includes('/.git/')
             ) {

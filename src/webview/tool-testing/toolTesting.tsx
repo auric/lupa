@@ -91,9 +91,8 @@ onDomReady(() => {
         const errorDetails = container.querySelector('#error-details');
         if (errorDetails) {
             errorDetails.textContent =
-                error instanceof Error
-                    ? (error.stack ?? error.message)
-                    : String(error);
+                error instanceof Error ? error.message : String(error);
+            console.error('[ToolTesting] Initialization error:', error);
         }
     }
 });

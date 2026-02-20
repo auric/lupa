@@ -1,14 +1,16 @@
 import * as z from 'zod';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import ignore from 'ignore';
+import ignore, { type Ignore } from 'ignore';
 import { BaseTool } from './baseTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { PathSanitizer } from '../utils/pathSanitizer';
 import { rethrowIfCancellationOrTimeout } from '../utils/asyncUtils';
-import { readGitignore } from '../utils/gitUtils';
+import { getErrorMessage } from '../utils/errorUtils';
+import { createGitignoreFilter } from '../utils/gitUtils';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { Log } from '../services/loggingService';
 
 /**
  * Tool that lists the contents of a directory, with optional recursion.
@@ -68,19 +70,27 @@ export class ListDirTool extends BaseTool {
     private async callListDir(
         relativePath: string,
         recursive: boolean,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        cachedIgnore?: Ignore
     ): Promise<{ dirs: string[]; files: string[] }> {
         try {
             if (token.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
 
-            const ig = ignore().add(
-                await readGitignore(this.gitOperationsManager.getRepository())
-            );
+            const ig =
+                cachedIgnore ||
+                (await createGitignoreFilter(
+                    this.gitOperationsManager.getRepository()
+                ));
 
-            const gitRootDirectory =
-                this.gitOperationsManager.getRepository()?.rootUri.fsPath || '';
+            const repository = this.gitOperationsManager.getRepository();
+            if (!repository?.rootUri?.fsPath) {
+                throw new Error(
+                    'No git repository found. Cannot list directory without a repository context.'
+                );
+            }
+            const gitRootDirectory = repository.rootUri.fsPath;
             const targetPath = path.join(gitRootDirectory, relativePath);
             const targetUri = vscode.Uri.file(targetPath);
 
@@ -93,14 +103,33 @@ export class ListDirTool extends BaseTool {
                     throw new vscode.CancellationError();
                 }
 
-                if (ig.checkIgnore(name).ignored) {
-                    continue;
-                }
-
                 const fullPath =
                     relativePath === '.'
                         ? name
                         : path.posix.join(relativePath, name);
+
+                // Append trailing slash for directories so the ignore library
+                // correctly matches directory-only patterns (e.g., `dist/`)
+                const ignorePath =
+                    type === vscode.FileType.Directory
+                        ? `${fullPath}/`
+                        : fullPath;
+
+                if (ignore.isPathValid(ignorePath)) {
+                    try {
+                        if (ig.ignores(ignorePath)) {
+                            continue;
+                        }
+                    } catch (error) {
+                        Log.warn(
+                            `Failed to check gitignore for path "${fullPath}": ${getErrorMessage(error)}`
+                        );
+                    }
+                } else {
+                    Log.warn(
+                        `Invalid path format for gitignore check: "${fullPath}"`
+                    );
+                }
 
                 if (type === vscode.FileType.Directory) {
                     dirs.push(fullPath);
@@ -110,13 +139,16 @@ export class ListDirTool extends BaseTool {
                             const subResult = await this.callListDir(
                                 fullPath,
                                 recursive,
-                                token
+                                token,
+                                ig
                             );
                             dirs.push(...subResult.dirs);
                             files.push(...subResult.files);
                         } catch (error) {
                             rethrowIfCancellationOrTimeout(error);
-                            // Skip directories that can't be read for other errors
+                            Log.debug(
+                                `Skipping unreadable directory "${fullPath}": ${getErrorMessage(error)}`
+                            );
                         }
                     }
                 } else if (type === vscode.FileType.File) {
@@ -129,7 +161,7 @@ export class ListDirTool extends BaseTool {
             rethrowIfCancellationOrTimeout(error);
 
             throw new Error(
-                `Failed to read directory '${relativePath}': ${error instanceof Error ? error.message : String(error)}`
+                `Failed to read directory '${relativePath}': ${getErrorMessage(error)}`
             );
         }
     }

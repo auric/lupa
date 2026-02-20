@@ -158,6 +158,7 @@ These components are created fresh for each analysis session, not managed by Ser
 | `CodeFileDetector`     | `codeFileDetector.ts`     | Detect source code files               |
 | `CodeFileUtils`        | `codeFileUtils.ts`        | Code file utilities                    |
 | `GitUtils`             | `gitUtils.ts`             | Git helper functions                   |
+| `ErrorUtils`           | `errorUtils.ts`           | Error message extraction               |
 | `AsyncUtils`           | `asyncUtils.ts`           | Async utilities (withTimeout)          |
 | `ChatResponseBuilder`  | `chatResponseBuilder.ts`  | Chat response formatting               |
 | `ChatMarkdownStreamer` | `chatMarkdownStreamer.ts` | Stream markdown with clickable anchors |

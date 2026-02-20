@@ -169,6 +169,7 @@ src/
 │   ├── codeFileDetector.ts       # Detect code files
 │   ├── codeFileUtils.ts          # Code file utilities
 │   ├── gitUtils.ts               # Git helper functions
+│   ├── errorUtils.ts             # Error message extraction
 │   ├── asyncUtils.ts             # Async utilities (timeout)
 │   └── chatResponseBuilder.ts    # Chat response formatting
 │

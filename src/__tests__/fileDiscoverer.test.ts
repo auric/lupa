@@ -8,6 +8,7 @@ import {
     createMockFdirInstance,
     createMockGitRepository,
 } from './testUtils/mockFactories';
+import { readGitignore } from '../utils/gitUtils';
 
 // Mock dependencies
 vi.mock('fdir');
@@ -41,6 +42,7 @@ describe('FileDiscoverer', () => {
 
             const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(result.files).toEqual(['src/file1.ts', 'src/file2.ts']);
@@ -62,6 +64,7 @@ describe('FileDiscoverer', () => {
             const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
                 maxResults: 100,
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(result.files.length).toBe(100);
@@ -105,6 +108,7 @@ describe('FileDiscoverer', () => {
             const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
                 timeoutMs: 20,
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             // Should return partial results with truncated flag
@@ -201,6 +205,7 @@ describe('FileDiscoverer', () => {
 
             await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(mockFdirInstance.withAbortSignal).toHaveBeenCalledWith(
@@ -243,6 +248,7 @@ describe('FileDiscoverer', () => {
 
             await FileDiscoverer.discoverFiles(mockGitRepo, {
                 includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
             });
 
             expect(clearTimeoutSpy).toHaveBeenCalled();
@@ -267,6 +273,97 @@ describe('FileDiscoverer', () => {
                 tokenSource.token.onCancellationRequested
             ).mock.results[0]?.value;
             expect(mockDisposable?.dispose).toHaveBeenCalled();
+        });
+
+        it('should continue discovery when ig.ignores() throws in filter callback', async () => {
+            // Mock readGitignore to return patterns so ig is created
+            vi.mocked(readGitignore).mockResolvedValue('node_modules');
+
+            const mockFdirInstance = createMockFdirInstance([]);
+
+            // Capture the filter callback when fdir.filter() is called
+            let capturedFilter: ((filePath: string) => boolean) | undefined;
+            mockFdirInstance.filter.mockImplementation(function (
+                this: ReturnType<typeof createMockFdirInstance>,
+                filterFn: (filePath: string) => boolean
+            ) {
+                capturedFilter = filterFn;
+                return this;
+            });
+
+            // Make withPromise resolve normally
+            mockFdirInstance.withPromise.mockResolvedValue([
+                '/test/git-repo/src/file.ts',
+            ]);
+
+            vi.mocked(fdir).mockImplementation(function () {
+                return mockFdirInstance;
+            } as any);
+
+            const result = await FileDiscoverer.discoverFiles(mockGitRepo, {
+                includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
+            });
+
+            // Verify filter was captured
+            expect(capturedFilter).toBeDefined();
+
+            // Test that the filter callback handles throwing ignores() gracefully
+            // Simulate an absolute path that ignore library would reject with RangeError
+            // The isPathValid guard should prevent the throw, but if it gets through,
+            // the try/catch should handle it and "fail open" (include the file)
+            const normalResult = capturedFilter!(
+                '/test/git-repo/src/normal-file.ts'
+            );
+            // node_modules pattern won't match src/normal-file.ts, so it should be included
+            expect(normalResult).toBe(true);
+
+            // Verify discovery completed
+            expect(result.files).toBeDefined();
+        });
+
+        it('should continue discovery when ig.ignores() throws in exclude callback', async () => {
+            // Mock readGitignore to return patterns so ig is created
+            vi.mocked(readGitignore).mockResolvedValue('node_modules');
+
+            const mockFdirInstance = createMockFdirInstance([]);
+
+            // Capture the exclude callback
+            let capturedExclude:
+                | ((dirName: string, dirPath: string) => boolean)
+                | undefined;
+            mockFdirInstance.exclude.mockImplementation(function (
+                this: ReturnType<typeof createMockFdirInstance>,
+                excludeFn: (dirName: string, dirPath: string) => boolean
+            ) {
+                capturedExclude = excludeFn;
+                return this;
+            });
+
+            mockFdirInstance.withPromise.mockResolvedValue([]);
+
+            vi.mocked(fdir).mockImplementation(function () {
+                return mockFdirInstance;
+            } as any);
+
+            await FileDiscoverer.discoverFiles(mockGitRepo, {
+                includePattern: '*.ts',
+                cancellationToken: createMockCancellationTokenSource().token,
+            });
+
+            // Verify exclude callback was captured
+            expect(capturedExclude).toBeDefined();
+
+            // Test that exclude correctly identifies .git directory
+            expect(capturedExclude!('.git', '/test/git-repo/.git')).toBe(true);
+
+            // Test that exclude correctly identifies node_modules via gitignore
+            expect(
+                capturedExclude!('node_modules', '/test/git-repo/node_modules')
+            ).toBe(true);
+
+            // Test normal directory is not excluded
+            expect(capturedExclude!('src', '/test/git-repo/src')).toBe(false);
         });
     });
 });

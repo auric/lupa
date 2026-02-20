@@ -10,6 +10,7 @@ import {
     isCancellationError,
     rethrowIfCancellationOrTimeout,
 } from './asyncUtils';
+import { getErrorMessage } from './errorUtils';
 import { Log } from '../services/loggingService';
 
 /** Timeout for extracting symbols from a single file */
@@ -105,8 +106,7 @@ export class SymbolExtractor {
                 throw error;
             }
             // Other errors (LSP failures, etc.) return empty - don't abort entire directory scan
-            const message =
-                error instanceof Error ? error.message : String(error);
+            const message = getErrorMessage(error);
             Log.warn(
                 `Symbol extraction failed for ${fileUri.fsPath}: ${message}`
             );
@@ -215,8 +215,7 @@ export class SymbolExtractor {
                     timedOutFiles++;
                 }
 
-                const message =
-                    error instanceof Error ? error.message : String(error);
+                const message = getErrorMessage(error);
                 Log.debug(`Skipping file ${filePath}: ${message}`);
                 continue;
             }
@@ -301,18 +300,17 @@ export class SymbolExtractor {
 
                 if (ignore.isPathValid(fullPath)) {
                     try {
-                        // Check if this entry should be ignored by .gitignore using full path
-                        // Use ignores() method with full path instead of checkIgnore() with just name
-                        if (ignorePatterns.ignores(fullPath)) {
+                        // Append trailing slash for directories so directory-only patterns match
+                        const checkPath =
+                            type === vscode.FileType.Directory
+                                ? `${fullPath}/`
+                                : fullPath;
+                        if (ignorePatterns.ignores(checkPath)) {
                             continue;
                         }
                     } catch (error) {
-                        const message =
-                            error instanceof Error
-                                ? error.message
-                                : String(error);
                         Log.warn(
-                            `Failed to check gitignore for path "${fullPath}": ${message}`
+                            `Failed to check gitignore for path "${fullPath}": ${getErrorMessage(error)}`
                         );
                     }
                 } else {
@@ -351,8 +349,7 @@ export class SymbolExtractor {
         } catch (error) {
             rethrowIfCancellationOrTimeout(error);
 
-            const message =
-                error instanceof Error ? error.message : String(error);
+            const message = getErrorMessage(error);
             Log.debug(`Cannot read directory ${targetPath}: ${message}`);
         }
 

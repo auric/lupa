@@ -3,7 +3,7 @@
  * These utilities centralize common mock patterns used across test files.
  */
 import { vi } from 'vitest';
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import {
     ANALYSIS_LIMITS,
     SUBAGENT_LIMITS,
@@ -477,6 +477,70 @@ export function createMockGitOperationsManager(
         getRepository: mockGetRepository,
         _mockGetRepository: mockGetRepository, // Expose for test manipulation
     };
+}
+
+/**
+ * Creates a mock Git repository object with optional global config support.
+ * The getGlobalConfig method is useful for testing gitignore functionality
+ * that reads core.excludesFile.
+ *
+ * @param gitRootPath The mock git root path
+ * @param globalConfig Optional map of git config keys to values
+ */
+export function createMockGitRepositoryWithConfig(
+    gitRootPath: string = '/test/git-repo',
+    globalConfig: Record<string, string | null> = {}
+) {
+    const getGlobalConfig = vi.fn().mockImplementation((key: string) => {
+        return Promise.resolve(globalConfig[key] ?? null);
+    });
+
+    return {
+        rootUri: {
+            fsPath: gitRootPath,
+        },
+        getGlobalConfig,
+        _mockGetGlobalConfig: getGlobalConfig, // Expose for test manipulation
+    };
+}
+
+/**
+ * Creates a FileNotFound error using VS Code's FileSystemError class.
+ * Use this for mocking file read failures in tests.
+ *
+ * Note: This uses the global vscode mock's FileSystemError class, which properly
+ * extends Error and supports instanceof checks.
+ *
+ * @param messageOrUri Optional error message or URI
+ */
+export function createFileNotFoundError(
+    messageOrUri?: string
+): vscode.FileSystemError {
+    return vscode.FileSystemError.FileNotFound(messageOrUri);
+}
+
+/**
+ * Creates a NoPermissions error using VS Code's FileSystemError class.
+ * Use this for mocking permission failures in tests.
+ *
+ * @param messageOrUri Optional error message or URI
+ */
+export function createNoPermissionsError(
+    messageOrUri?: string
+): vscode.FileSystemError {
+    return vscode.FileSystemError.NoPermissions(messageOrUri);
+}
+
+/**
+ * Creates a FileExists error using VS Code's FileSystemError class.
+ * Use this for mocking file creation failures in tests.
+ *
+ * @param messageOrUri Optional error message or URI
+ */
+export function createFileExistsError(
+    messageOrUri?: string
+): vscode.FileSystemError {
+    return vscode.FileSystemError.FileExists(messageOrUri);
 }
 
 /**

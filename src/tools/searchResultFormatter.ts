@@ -1,3 +1,5 @@
+import { getErrorMessage } from '../utils/errorUtils';
+
 /**
  * Utility class for formatting search pattern results into structured JSON output
  * optimized for LLM parsing and understanding with minimal token usage.
@@ -62,8 +64,7 @@ export class SearchResultFormatter {
      * @returns Simple string error message
      */
     formatError(error: unknown): string {
-        const errorMessage =
-            error instanceof Error ? error.message : String(error);
+        const errorMessage = getErrorMessage(error);
         return `Error searching for pattern: ${errorMessage}`;
     }
 }

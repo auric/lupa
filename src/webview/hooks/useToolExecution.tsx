@@ -5,6 +5,7 @@ import type {
     ToolTestResult,
     FormValidationError,
 } from '../types/toolTestingTypes';
+import { getErrorMessage } from '../../utils/errorUtils';
 
 export const useToolExecution = () => {
     const vscode = useVSCodeApi();
@@ -130,7 +131,7 @@ export const useToolExecution = () => {
                 ...session,
                 executionTime,
                 status: 'error',
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             };
 
             setCurrentSession(errorSession);

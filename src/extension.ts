@@ -7,6 +7,7 @@
 import * as vscode from 'vscode';
 import { PRAnalysisCoordinator } from './services/prAnalysisCoordinator';
 import { StatusBarService } from './services/statusBarService';
+import { getErrorMessage } from './utils/errorUtils';
 
 // Main extension activation function
 export async function activate(context: vscode.ExtensionContext) {
@@ -21,7 +22,7 @@ export async function activate(context: vscode.ExtensionContext) {
     } catch (error) {
         console.error('Failed to activate extension:', error);
         vscode.window.showErrorMessage(
-            `Failed to activate Lupa: ${error instanceof Error ? error.message : String(error)}`
+            `Failed to activate Lupa: ${getErrorMessage(error)}`
         );
     }
 }

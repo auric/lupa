@@ -6,6 +6,8 @@ import type {
 } from '../types/toolCallTypes';
 import { IServiceRegistry } from '../services/serviceManager';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
+import { Log } from '../services/loggingService';
 import { CANCELLATION_MESSAGE } from '../config/constants';
 
 /**
@@ -92,8 +94,8 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                 );
                 vscode.window.showInformationMessage('Analysis cancelled');
             } else {
-                const errorMessage =
-                    error instanceof Error ? error.message : String(error);
+                const errorMessage = getErrorMessage(error);
+                Log.error(`Failed to analyze PR: ${errorMessage}`, error);
                 this.services.statusBar.showTemporaryMessage(
                     'Analysis failed',
                     3000,

@@ -19,6 +19,7 @@ import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
@@ -241,10 +242,9 @@ export class ToolCallingAnalysisProvider {
             if (isCancellationError(error)) {
                 throw error;
             }
-            analysisError =
-                error instanceof Error ? error.message : String(error);
+            analysisError = getErrorMessage(error);
             const errorMessage = `Error during analysis: ${analysisError}`;
-            Log.error(errorMessage);
+            Log.error(errorMessage, error);
             analysisText = errorMessage;
         } finally {
             // Clear parent cancellation token to release references

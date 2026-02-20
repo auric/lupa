@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as z from 'zod';
+import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from './loggingService';
 import {
     WorkspaceSettingsSchema,
@@ -77,7 +78,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
                 fs.mkdirSync(vscodeDir, { recursive: true });
             } catch (error) {
                 Log.error(
-                    `Failed to create .vscode directory: ${error instanceof Error ? error.message : String(error)}`
+                    `Failed to create .vscode directory: ${getErrorMessage(error)}`,
+                    error
                 );
                 return null;
             }
@@ -127,7 +129,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             }
         } catch (error) {
             Log.error(
-                `Failed to load settings: ${error instanceof Error ? error.message : String(error)}`
+                `Failed to load settings: ${getErrorMessage(error)}`,
+                error
             );
             this.settings = getDefaultSettings();
         }
@@ -156,7 +159,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             );
         } catch (error) {
             Log.error(
-                `Failed to save settings: ${error instanceof Error ? error.message : String(error)}`
+                `Failed to save settings: ${getErrorMessage(error)}`,
+                error
             );
         }
     }

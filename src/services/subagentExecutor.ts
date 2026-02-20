@@ -18,6 +18,7 @@ import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '@/types/toolResultTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
@@ -223,9 +224,8 @@ export class SubagentExecutor {
                 throw error;
             }
 
-            const errorMessage =
-                error instanceof Error ? error.message : String(error);
-            Log.error(`${logLabel} Failed: ${errorMessage}`);
+            const errorMessage = getErrorMessage(error);
+            Log.error(`${logLabel} Failed: ${errorMessage}`, error);
 
             return {
                 success: false,

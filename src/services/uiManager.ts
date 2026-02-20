@@ -15,6 +15,7 @@ import type {
     ThemeUpdatePayload,
 } from '../types/webviewMessages';
 import { safeJsonStringify } from '../utils/safeJson';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * UIManager handles all UI-related functionality
@@ -374,7 +375,7 @@ export class UIManager {
 
             // Show user-friendly error message
             vscode.window.showErrorMessage(
-                `Could not open file: ${payload.filePath}. ${error instanceof Error ? error.message : 'Unknown error'}`
+                `Could not open file: ${payload.filePath}. ${getErrorMessage(error)}`
             );
         }
     }
@@ -467,7 +468,7 @@ export class UIManager {
         } catch (error) {
             // File doesn't exist or access error
             Log.debug(
-                `Path validation failed for ${payload.filePath}: ${error instanceof Error ? error.message : 'Unknown error'}`
+                `Path validation failed for ${payload.filePath}: ${getErrorMessage(error)}`
             );
 
             // Send negative validation result

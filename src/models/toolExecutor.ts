@@ -8,6 +8,7 @@ import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 
 /**
  * Interface for tool execution requests
@@ -224,10 +225,10 @@ export class ToolExecutor {
                 };
             }
 
-            const errorMsg =
-                error instanceof Error ? error.message : String(error);
+            const errorMsg = getErrorMessage(error);
             Log.error(
-                `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`
+                `Tool '${name}' threw exception: ${errorMsg} [${elapsed}ms] | args: ${this.formatArgsForLog(args)}`,
+                error
             );
             return {
                 name,
@@ -291,7 +292,7 @@ export class ToolExecutor {
             // This shouldn't happen since executeTool catches other errors,
             // but just in case, handle any unexpected errors
             throw new Error(
-                `Unexpected error during parallel tool execution: ${error instanceof Error ? error.message : String(error)}`
+                `Unexpected error during parallel tool execution: ${getErrorMessage(error)}`
             );
         }
     }

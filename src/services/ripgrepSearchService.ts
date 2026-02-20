@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CodeFileDetector } from '../utils/codeFileDetector';
+import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from './loggingService';
 
 /**
@@ -235,7 +236,7 @@ export class RipgrepSearchService {
                             rg.kill('SIGTERM');
                         } catch (err) {
                             Log.debug(
-                                `[Ripgrep] SIGTERM failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
+                                `[Ripgrep] SIGTERM failed (process may have already exited): ${getErrorMessage(err)}`
                             );
                         }
                         sigkillTimeout = setTimeout(() => {
@@ -250,7 +251,7 @@ export class RipgrepSearchService {
                                     rg.kill('SIGKILL');
                                 } catch (err) {
                                     Log.debug(
-                                        `[Ripgrep] SIGKILL failed (process may have already exited): ${err instanceof Error ? err.message : String(err)}`
+                                        `[Ripgrep] SIGKILL failed (process may have already exited): ${getErrorMessage(err)}`
                                     );
                                 }
 

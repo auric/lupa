@@ -17,6 +17,7 @@ import {
     isTimeoutError,
     rethrowIfCancellationOrTimeout,
 } from '../utils/asyncUtils';
+import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from '../services/loggingService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -663,7 +664,7 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
 
             Log.debug(
                 `Failed to find symbols in ${fileUri.fsPath}:`,
-                error instanceof Error ? error.message : String(error)
+                getErrorMessage(error)
             );
             throw error;
         }
