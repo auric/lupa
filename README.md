@@ -99,11 +99,11 @@ Monitor your usage in your GitHub account settings.
 
 Recommended for Lupa:
 
-| Model                 | Cost | Notes                                             |
-| --------------------- | ---- | ------------------------------------------------- |
-| **GPT-4.1** (default) | Free | Works for small PRs, struggles with large changes |
-| **Grok Code Fast 1**  | Free | Good balance of speed and quality                 |
-| **Raptor Mini**       | Free | Good for larger PRs                               |
+| Model                 | Cost  | Notes                                             |
+| --------------------- | ----- | ------------------------------------------------- |
+| **GPT-4.1** (default) | Free  | Works for small PRs, struggles with large changes |
+| **Grok Code Fast 1**  | 0.25x | Good balance of speed and quality                 |
+| **Raptor Mini**       | Free  | Good for larger PRs                               |
 
 ### 💰 Using Your Own API Key
 
