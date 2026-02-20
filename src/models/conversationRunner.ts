@@ -88,11 +88,17 @@ interface HandleToolCallsResult {
  */
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
+    private _hitMaxIterations = false;
 
     constructor(
         private readonly client: ILLMClient,
         private readonly toolExecutor: ToolExecutor
     ) {}
+
+    /** Whether the last run() exited due to reaching the max iteration limit. */
+    get hitMaxIterations(): boolean {
+        return this._hitMaxIterations;
+    }
 
     /**
      * Execute a conversation loop until completion or max iterations.
@@ -108,6 +114,7 @@ export class ConversationRunner {
         let completionNudgeCount = 0;
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
+        this._hitMaxIterations = false;
 
         while (iteration < config.maxIterations) {
             iteration++;
@@ -285,12 +292,20 @@ export class ConversationRunner {
                     'Conversation completed but no content returned.'
                 );
             } catch (error) {
-                if (
-                    token.isCancellationRequested ||
-                    isCancellationError(error)
-                ) {
+                // Explicit CancellationError always treated as cancellation
+                if (isCancellationError(error)) {
                     Log.info(
                         `${logPrefix} Cancelled during iteration ${iteration}`
+                    );
+                    return CANCELLATION_MESSAGE;
+                }
+
+                // Token cancelled with non-cancellation error: log actual error for diagnostics
+                // (helps identify when errors coincide with or are caused by cancellation)
+                if (token.isCancellationRequested) {
+                    Log.warn(
+                        `${logPrefix} Cancelled during iteration ${iteration} ` +
+                            `(error while token cancelled: ${getErrorMessage(error)})`
                     );
                     return CANCELLATION_MESSAGE;
                 }
@@ -332,6 +347,7 @@ export class ConversationRunner {
         Log.warn(
             `${logPrefix} Reached maximum iterations (${config.maxIterations})`
         );
+        this._hitMaxIterations = true;
         return 'Conversation reached maximum iterations. The conversation may be incomplete.';
     }
 
@@ -547,5 +563,6 @@ export class ConversationRunner {
      */
     reset(): void {
         this.tokenValidator = null;
+        this._hitMaxIterations = false;
     }
 }

@@ -81,5 +81,9 @@ export const SubagentErrors = {
     timeout: (ms: number) =>
         `Subagent timed out after ${ms / 1000}s. Break into smaller, more focused tasks.`,
 
+    maxIterations: (toolCalls: number, maxIter: number) =>
+        `Subagent reached maximum iterations (${maxIter}) after ${toolCalls} tool calls. ` +
+        `Investigation may be incomplete. Break the task into smaller, more focused subtasks.`,
+
     failed: (error: string) => `Subagent failed: ${error}`,
 } as const;

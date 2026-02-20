@@ -16,6 +16,7 @@ import type {
 import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '@/types/toolResultTypes';
+import { CANCELLATION_MESSAGE } from '../config/constants';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -195,8 +196,27 @@ export class SubagentExecutor {
 
             const duration = Date.now() - startTime;
 
-            // Check if cancelled (timeout or user) after run completes
-            if (token.isCancellationRequested) {
+            // Check max iterations first — runner completed but hit the limit.
+            // This must be checked before cancellation since the token may also
+            // be cancelled (e.g., timeout fired while runner was on its last iteration).
+            if (conversationRunner.hitMaxIterations) {
+                Log.warn(
+                    `${logLabel} Reached max iterations after ${duration}ms with ${toolCallsMade} tool calls`
+                );
+                return {
+                    success: false,
+                    response,
+                    toolCallsMade,
+                    toolCalls,
+                    error: 'max_iterations',
+                };
+            }
+
+            // Check cancellation using the runner's actual return value rather than
+            // blindly checking token state. This prevents false cancellation when
+            // the token is cancelled by unrelated events (e.g., race conditions)
+            // while the runner completed for a different reason.
+            if (response === CANCELLATION_MESSAGE) {
                 Log.warn(
                     `${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`
                 );

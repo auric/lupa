@@ -40,9 +40,6 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         context: z.ZodOptional<z.ZodString>;
     }>;
 
-    private cancellationTokenSource: vscode.CancellationTokenSource | null =
-        null;
-
     constructor(private readonly workspaceSettings: WorkspaceSettingsService) {
         super();
 
@@ -111,15 +108,18 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             `Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );
 
-        this.cancellationTokenSource = new vscode.CancellationTokenSource();
+        // Local variable prevents race condition when multiple subagents run in parallel.
+        // Instance variable would be overwritten by the second subagent, causing
+        // timeout callbacks to cancel the wrong token source.
+        const cancellationTokenSource = new vscode.CancellationTokenSource();
         const parentCancellationDisposable =
             sessionManager.registerSubagentCancellation(
-                this.cancellationTokenSource
+                cancellationTokenSource
             );
         let cancelledByTimeout = false;
         const timeoutHandle = setTimeout(() => {
             cancelledByTimeout = true;
-            this.cancellationTokenSource?.cancel();
+            cancellationTokenSource.cancel();
         }, timeoutMs);
 
         try {
@@ -128,18 +128,26 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                     task,
                     context: taskContext,
                 },
-                this.cancellationTokenSource.token,
+                cancellationTokenSource.token,
                 subagentId
             );
 
             clearTimeout(timeoutHandle);
 
-            // Check if cancelled (timeout or user)
             if (!result.success && result.error === 'cancelled') {
                 if (cancelledByTimeout) {
                     return toolError(SubagentErrors.timeout(timeoutMs));
                 }
                 return toolError('Subagent was cancelled');
+            }
+
+            if (!result.success && result.error === 'max_iterations') {
+                return toolError(
+                    SubagentErrors.maxIterations(
+                        result.toolCallsMade,
+                        this.workspaceSettings.getMaxIterations()
+                    )
+                );
             }
 
             return toolSuccess(this.formatResult(result, subagentId), {
@@ -160,8 +168,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             return toolError(SubagentErrors.failed(errorMessage));
         } finally {
             parentCancellationDisposable?.dispose();
-            this.cancellationTokenSource?.dispose();
-            this.cancellationTokenSource = null;
+            cancellationTokenSource.dispose();
         }
     }
 
