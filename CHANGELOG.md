@@ -9,12 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-#### Subagent Execution
-
-- **Fixed spurious "Subagent was cancelled" errors**: Subagents could be incorrectly cancelled during normal execution due to a race condition when multiple subagents shared an instance-level CancellationTokenSource. The token source is now scoped locally per execution, preventing one subagent's timeout from cancelling another.
-- **Max iterations now correctly reported as failure**: When a subagent reached the maximum iteration limit (100), it was incorrectly reported as a successful tool call. It is now reported as a failed call with a clear message indicating the investigation may be incomplete.
-- **Improved cancellation diagnostics in conversation loop**: The ConversationRunner catch block now separates explicit CancellationError handling from token-state checks, logging the actual error type when cancellation coincides with other errors. This aids debugging of spurious cancellation scenarios.
-- **Subagent cancellation detection uses runner result**: SubagentExecutor now checks ConversationRunner's actual return value (CANCELLATION_MESSAGE) rather than blindly checking the token state, preventing false cancellation reports when the token is set by unrelated events.
+- Fix race condition causing spurious "Subagent was cancelled" errors when parallel subagents shared an instance-level CancellationTokenSource
+- Fix max iterations incorrectly reported as successful tool call — now reported as failure with partial findings
+- Fix false cancellation detection in SubagentExecutor — checks runner return value instead of raw token state
+- Fix `hitMaxIterations` flag not set when error occurs on the last allowed iteration
+- Improve cancellation diagnostics: log actual error type when cancellation coincides with other errors
 
 ## [0.1.11] - 2026-02-20
 

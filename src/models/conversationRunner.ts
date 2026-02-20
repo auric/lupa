@@ -339,6 +339,7 @@ export class ConversationRunner {
                 );
 
                 if (iteration >= config.maxIterations) {
+                    this._hitMaxIterations = true;
                     return errorMessage;
                 }
             }

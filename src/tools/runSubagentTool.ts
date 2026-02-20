@@ -108,9 +108,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             `Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );
 
-        // Local variable prevents race condition when multiple subagents run in parallel.
-        // Instance variable would be overwritten by the second subagent, causing
-        // timeout callbacks to cancel the wrong token source.
+        // Subagent needs a combined cancellation signal: cancel on parent cancellation OR timeout.
+        // We can't add timeout to the parent token (would cancel the entire analysis), so we
+        // create a local source and link it to the parent via sessionManager.
+        // Local variable (not instance) prevents race condition with parallel subagents.
         const cancellationTokenSource = new vscode.CancellationTokenSource();
         const parentCancellationDisposable =
             sessionManager.registerSubagentCancellation(
@@ -142,11 +143,16 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             }
 
             if (!result.success && result.error === 'max_iterations') {
+                const maxIterMsg = SubagentErrors.maxIterations(
+                    result.toolCallsMade,
+                    this.workspaceSettings.getMaxIterations()
+                );
+                // Include partial response so parent LLM can use findings gathered so far
+                const partialFindings = result.response?.trim();
                 return toolError(
-                    SubagentErrors.maxIterations(
-                        result.toolCallsMade,
-                        this.workspaceSettings.getMaxIterations()
-                    )
+                    partialFindings
+                        ? `${maxIterMsg}\n\nPartial findings:\n${partialFindings}`
+                        : maxIterMsg
                 );
             }
 

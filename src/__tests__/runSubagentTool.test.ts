@@ -248,6 +248,85 @@ describe('RunSubagentTool', () => {
         });
     });
 
+    describe('Max Iterations Handling', () => {
+        it('should report max_iterations as failed tool call', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Partial investigation findings so far',
+                error: 'max_iterations',
+                toolCallsMade: 12,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('maximum iterations');
+            expect(result.error).toContain('12');
+        });
+
+        it('should include partial findings in max_iterations error', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Found 3 security issues in auth module',
+                error: 'max_iterations',
+                toolCallsMade: 50,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Partial findings');
+            expect(result.error).toContain(
+                'Found 3 security issues in auth module'
+            );
+        });
+
+        it('should handle max_iterations with empty response', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'max_iterations',
+                toolCallsMade: 100,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('maximum iterations');
+            expect(result.error).not.toContain('Partial findings');
+        });
+    });
+
     describe('Error Handling', () => {
         it('should return internal error when subagentExecutor and subagentSessionManager are missing', async () => {
             const tool = new RunSubagentTool(workspaceSettings);

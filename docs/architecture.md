@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.11 | **Generated**: January 21, 2026 | **Type**: VS Code Extension
+> **Version**: 0.1.12 | **Generated**: February 20, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
@@ -423,6 +423,22 @@ Subagents enable delegated investigations with isolated context. Each analysis c
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Subagent Cancellation Model
+
+Each subagent gets its own `CancellationTokenSource` (local variable in `RunSubagentTool.execute()`, never an instance field) to prevent cross-cancellation between parallel subagents. The token is linked to the parent analysis token via `SubagentSessionManager.registerSubagentCancellation()`.
+
+**Cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and the runner's return value (`CANCELLATION_MESSAGE`) rather than raw `token.isCancellationRequested`. This prevents false cancellation when the token is set by unrelated events.
+
+**Exit conditions and their reporting**:
+
+| Condition         | ConversationRunner                       | SubagentExecutor            | RunSubagentTool                       |
+| ----------------- | ---------------------------------------- | --------------------------- | ------------------------------------- |
+| Normal completion | Returns response text                    | `success: true`             | `toolSuccess()`                       |
+| Max iterations    | Returns message, sets `hitMaxIterations` | `error: 'max_iterations'`   | `toolError()` with partial findings   |
+| Cancellation      | Returns `CANCELLATION_MESSAGE`           | `error: 'cancelled'`        | `toolError('Subagent was cancelled')` |
+| Timeout           | Token cancelled by timer                 | `error: 'cancelled'`        | `toolError(SubagentErrors.timeout())` |
+| LLM/Tool error    | Catches and retries                      | `success: false` with error | `toolError(SubagentErrors.failed())`  |
 
 ---
 

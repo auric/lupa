@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     SubagentLimits,
+    SubagentErrors,
     MAIN_ANALYSIS_ONLY_TOOLS,
 } from '../models/toolConstants';
 
@@ -27,6 +28,28 @@ describe('toolConstants', () => {
                     'think_about_investigation' as any
                 )
             ).toBe(false);
+        });
+    });
+
+    describe('SubagentErrors', () => {
+        it('should produce maxIterations message with tool call count and limit', () => {
+            const message = SubagentErrors.maxIterations(42, 100);
+            expect(message).toContain('maximum iterations');
+            expect(message).toContain('100');
+            expect(message).toContain('42');
+            expect(message).toContain('incomplete');
+        });
+
+        it('should produce timeout message with duration', () => {
+            const message = SubagentErrors.timeout(60000);
+            expect(message).toContain('60');
+            expect(message).toContain('timed out');
+        });
+
+        it('should produce maxExceeded message with limit', () => {
+            const message = SubagentErrors.maxExceeded(5);
+            expect(message).toContain('5');
+            expect(message).toContain('Maximum subagents');
         });
     });
 });
