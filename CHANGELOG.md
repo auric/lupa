@@ -5,25 +5,29 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.11] - 2026-01-21
+## [0.1.11] - 2026-02-20
 
 ### Fixed
 
 #### Stop Button & Cancellation
 
 - **Stop button now works reliably everywhere**: Clicking Stop immediately halts all analysis activity—file searches, symbol lookups, and subagent investigations all stop within seconds, even during long-running operations.
+- **Every tool responds to cancellation immediately**: All tools now check for cancellation at entry and between loop iterations (e.g., processing references, filtering symbols), so pressing Stop takes effect within milliseconds instead of waiting for the current operation to finish.
+- **Ripgrep searches killed on cancel**: Pattern search processes are now terminated immediately when you press Stop, instead of running to completion in the background.
 - **Works on slow/stalled connections**: Cancellation now responds quickly even when network conditions are poor, instead of potentially waiting 5+ minutes.
 - **No more "unhandled rejection" warnings**: Spurious error messages when clicking Stop at certain moments are now suppressed.
 - **LLM streams properly cleaned up**: When requests timeout or are cancelled, the underlying stream consumption is now actively stopped, preventing background resource usage.
+- **Cancellation works in VS Code Agent Mode**: CancellationError is now properly propagated when tools are invoked via VS Code's built-in agent API.
 
 #### Gitignore Handling
 
 - **Path-based .gitignore patterns now work correctly**: Fixed an issue where patterns like `dist/`, `src/generated/**`, or `**/*.log` were not being applied in directory listings. The tool now checks the full file path instead of just the filename.
-- **Directory-only patterns now matched correctly**: Fixed an issue where gitignore patterns ending with `/` (e.g., `dist/`, `build/`) were not filtering directory entries because the `ignore` library requires a trailing slash to distinguish directories from files.
+- **Directory-only patterns now matched correctly**: Fixed an issue where gitignore patterns ending with `/` (e.g., `dist/`, `build/`) were not filtering directory entries in directory listings, symbol extraction, and file discovery.
+- **Symbol extraction now respects .gitignore**: The symbols overview tool no longer returns symbols from gitignored files and directories (e.g., `dist/`, `build/`), reducing noise in analysis results.
 - **Local exclude rules now respected**: The extension now reads `.git/info/exclude` in addition to `.gitignore`, so your local per-repository exclusions are properly applied.
 - **Global gitignore now respected**: The extension reads your global gitignore file (configured via `git config core.excludesFile`), so patterns you've set up system-wide are now honored.
 - **Tilde expansion fixed for global gitignore**: Paths like `~/.gitignore_global` are now correctly expanded to include your home directory on all platforms.
-- **Improved error handling for gitignore access**: Added permission error detection and logging when gitignore files or directories are unreadable, improving troubleshooting for edge cases.
+- **Gitignore errors no longer crash tools**: Invalid paths or unreadable gitignore files are handled gracefully with warnings instead of breaking the tool.
 
 > **Note**: Nested `.gitignore` files in subdirectories are not supported by directory listing and file discovery tools. Only root-level patterns are applied. The ripgrep-based search tool (`search_for_pattern`) handles nested gitignore correctly.
 
@@ -37,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Error Messages
 
 - **Clearer Copilot model errors**: When models are unavailable, you now see the actual error message instead of just the model name.
+- **Better file access errors**: When a file can't be read, you now see the actual reason (permission denied, path not found) instead of a generic "File not found" message.
+
+### Changed
+
+- **Grok Code Fast 1 pricing updated**: Model comparison table now reflects that Grok Code Fast 1 costs 0.25x credits per request (previously listed as Free).
 
 ## [0.1.10] - 2026-01-05
 
