@@ -16,7 +16,6 @@ import type {
 import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '@/types/toolResultTypes';
-import { CANCELLATION_MESSAGE } from '../config/constants';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -212,11 +211,10 @@ export class SubagentExecutor {
                 };
             }
 
-            // Check cancellation using the runner's actual return value rather than
-            // blindly checking token state. This prevents false cancellation when
-            // the token is cancelled by unrelated events (e.g., race conditions)
-            // while the runner completed for a different reason.
-            if (response === CANCELLATION_MESSAGE) {
+            // Check cancellation using the runner's boolean flag rather than comparing
+            // the response string. This avoids any risk of the LLM producing text that
+            // matches the sentinel value (CANCELLATION_MESSAGE).
+            if (conversationRunner.wasCancelled) {
                 Log.warn(
                     `${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`
                 );

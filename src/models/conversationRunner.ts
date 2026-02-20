@@ -89,6 +89,7 @@ interface HandleToolCallsResult {
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
     private _hitMaxIterations = false;
+    private _wasCancelled = false;
 
     constructor(
         private readonly client: ILLMClient,
@@ -98,6 +99,11 @@ export class ConversationRunner {
     /** Whether the last run() exited due to reaching the max iteration limit. */
     get hitMaxIterations(): boolean {
         return this._hitMaxIterations;
+    }
+
+    /** Whether the last run() exited due to cancellation. */
+    get wasCancelled(): boolean {
+        return this._wasCancelled;
     }
 
     /**
@@ -115,6 +121,7 @@ export class ConversationRunner {
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
+        this._wasCancelled = false;
 
         while (iteration < config.maxIterations) {
             iteration++;
@@ -126,6 +133,7 @@ export class ConversationRunner {
                 Log.info(
                     `${logPrefix} Cancelled before iteration ${iteration}`
                 );
+                this._wasCancelled = true;
                 return CANCELLATION_MESSAGE;
             }
 
@@ -208,6 +216,7 @@ export class ConversationRunner {
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
+                    this._wasCancelled = true;
                     return CANCELLATION_MESSAGE;
                 }
 
@@ -297,6 +306,7 @@ export class ConversationRunner {
                     Log.info(
                         `${logPrefix} Cancelled during iteration ${iteration}`
                     );
+                    this._wasCancelled = true;
                     return CANCELLATION_MESSAGE;
                 }
 
@@ -307,6 +317,7 @@ export class ConversationRunner {
                         `${logPrefix} Cancelled during iteration ${iteration} ` +
                             `(error while token cancelled: ${getErrorMessage(error)})`
                     );
+                    this._wasCancelled = true;
                     return CANCELLATION_MESSAGE;
                 }
 
@@ -338,6 +349,9 @@ export class ConversationRunner {
                     `I encountered an error: ${errorMessage}. Let me try to continue.`
                 );
 
+                // An error on the final iteration is intentionally treated as max-iterations:
+                // the subagent can't retry regardless, so the parent LLM gets the same signal
+                // (with partial findings included via the error message).
                 if (iteration >= config.maxIterations) {
                     this._hitMaxIterations = true;
                     return errorMessage;
@@ -565,5 +579,6 @@ export class ConversationRunner {
     reset(): void {
         this.tokenValidator = null;
         this._hitMaxIterations = false;
+        this._wasCancelled = false;
     }
 }

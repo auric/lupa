@@ -163,7 +163,7 @@ Most tools should let errors propagate to ToolExecutor. Don't wrap your execute 
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
 - **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
 - **Subagent CancellationTokenSource must be local**: `RunSubagentTool.execute()` uses a local `CancellationTokenSource`, never an instance variable—tools are singletons, so parallel executions would share and corrupt the source
-- **Subagent cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `CANCELLATION_MESSAGE` return value instead of raw `token.isCancellationRequested` to avoid false cancellation signals
+- **Subagent cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `ConversationRunner.wasCancelled` boolean flags instead of raw `token.isCancellationRequested` or string comparison—avoids both false cancellation signals and theoretical LLM output collision with sentinel strings
 
 ### Timeout Patterns
 

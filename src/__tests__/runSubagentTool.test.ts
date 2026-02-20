@@ -507,4 +507,53 @@ describe('RunSubagentTool', () => {
             expect(result.data).toContain('Failed');
         });
     });
+
+    describe('Parallel Execution Safety', () => {
+        it('should use separate cancellation tokens for parallel executions', async () => {
+            const capturedTokens: vscode.CancellationToken[] = [];
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockImplementation(
+                        (
+                            _task: any,
+                            token: vscode.CancellationToken,
+                            _id: number
+                        ) => {
+                            capturedTokens.push(token);
+                            return Promise.resolve({
+                                success: true,
+                                response: 'Done',
+                                toolCallsMade: 1,
+                                toolCalls: [],
+                            });
+                        }
+                    ),
+            } as unknown as SubagentExecutor;
+
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            // Execute two subagents in parallel
+            const [result1, result2] = await Promise.all([
+                tool.execute(
+                    { task: 'Investigate auth module for security issues' },
+                    context
+                ),
+                tool.execute(
+                    { task: 'Investigate database module for SQL injection' },
+                    context
+                ),
+            ]);
+
+            expect(result1.success).toBe(true);
+            expect(result2.success).toBe(true);
+            expect(capturedTokens).toHaveLength(2);
+            // Each execution should receive a distinct token object
+            expect(capturedTokens[0]).not.toBe(capturedTokens[1]);
+        });
+    });
 });

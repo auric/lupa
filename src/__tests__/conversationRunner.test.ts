@@ -531,6 +531,66 @@ describe('ConversationRunner', () => {
 
             expect(result).toContain('cancelled');
         });
+
+        it('should set wasCancelled flag when token is pre-cancelled', async () => {
+            const modelManager = createMockModelManager([
+                { content: 'Result', toolCalls: undefined },
+            ]);
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            expect(runner.wasCancelled).toBe(false);
+
+            const cancelledToken = createCancellationToken(true);
+            await runner.run(config, conversation, cancelledToken);
+
+            expect(runner.wasCancelled).toBe(true);
+        });
+
+        it('should not set wasCancelled on normal completion', async () => {
+            const modelManager = createMockModelManager([
+                { content: 'Done', toolCalls: undefined },
+            ]);
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            expect(runner.wasCancelled).toBe(false);
+        });
+
+        it('should reset wasCancelled flag on reset()', async () => {
+            const modelManager = createMockModelManager([
+                { content: 'Result', toolCalls: undefined },
+            ]);
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            const cancelledToken = createCancellationToken(true);
+            await runner.run(config, conversation, cancelledToken);
+            expect(runner.wasCancelled).toBe(true);
+
+            runner.reset();
+            expect(runner.wasCancelled).toBe(false);
+        });
     });
 
     describe('Error Handling', () => {
