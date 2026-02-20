@@ -51,5 +51,19 @@ describe('toolConstants', () => {
             expect(message).toContain('5');
             expect(message).toContain('Maximum subagents');
         });
+
+        it('should produce taskTooShort message with minimum length', () => {
+            const message = SubagentErrors.taskTooShort(50);
+            expect(message).toContain('50');
+            expect(message).toContain('too brief');
+        });
+
+        it('should produce failed message with error details', () => {
+            const message = SubagentErrors.failed(
+                'LLM returned empty response'
+            );
+            expect(message).toContain('Subagent failed');
+            expect(message).toContain('LLM returned empty response');
+        });
     });
 });

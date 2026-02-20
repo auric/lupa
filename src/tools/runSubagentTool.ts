@@ -156,6 +156,13 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 );
             }
 
+            // Any other failure (LLM errors, service errors, etc.)
+            if (!result.success) {
+                return toolError(
+                    SubagentErrors.failed(result.error || 'Unknown error')
+                );
+            }
+
             return toolSuccess(this.formatResult(result, subagentId), {
                 nestedToolCalls: result.toolCalls,
             });
@@ -179,14 +186,9 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
     }
 
     /**
-     * Format subagent result for parent LLM consumption.
-     * Returns the raw response with minimal metadata - parent LLM interprets naturally.
+     * Format successful subagent result for parent LLM consumption.
      */
     private formatResult(result: SubagentResult, subagentId: number): string {
-        if (!result.success) {
-            return `## Subagent #${subagentId} Failed\n\nError: ${result.error}\n\nTool calls made: ${result.toolCallsMade}`;
-        }
-
         return (
             `## Subagent #${subagentId} Investigation Complete\n\n` +
             `**Tool calls made:** ${result.toolCallsMade}\n\n` +

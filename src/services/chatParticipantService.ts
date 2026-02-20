@@ -25,7 +25,6 @@ import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { ACTIVITY, SEVERITY } from '../config/chatEmoji';
-import { CANCELLATION_MESSAGE } from '../config/constants';
 import { ChatResponseBuilder } from '../utils/chatResponseBuilder';
 import type {
     ChatToolCallHandler,
@@ -339,7 +338,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
             debouncedHandler.flush();
 
-            if (result === CANCELLATION_MESSAGE) {
+            if (runner.wasCancelled) {
                 return this.handleCancellation(stream);
             }
 
@@ -570,7 +569,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
             debouncedHandler.flush();
 
-            if (analysisResult === CANCELLATION_MESSAGE) {
+            if (runner.wasCancelled) {
                 return this.handleCancellation(stream);
             }
 

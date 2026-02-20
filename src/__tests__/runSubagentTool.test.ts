@@ -221,7 +221,7 @@ describe('RunSubagentTool', () => {
             expect(result.data).toContain('8');
         });
 
-        it('should format failed results with subagent ID', async () => {
+        it('should report generic failures as tool errors', async () => {
             const mockExecutor = createMockExecutor({
                 success: false,
                 response: '',
@@ -241,10 +241,9 @@ describe('RunSubagentTool', () => {
                 context
             );
 
-            expect(result.success).toBe(true);
-            expect(result.data).toContain('Subagent #1');
-            expect(result.data).toContain('Failed');
-            expect(result.data).toContain('Connection timeout');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Subagent failed');
+            expect(result.error).toContain('Connection timeout');
         });
     });
 
@@ -479,9 +478,9 @@ describe('RunSubagentTool', () => {
             expect(result.data).toContain('Partial findings');
         });
 
-        it('should not propagate pre-cancelled token as error if executor handles it', async () => {
-            // When context is pre-cancelled, the executor might return a cancelled result
-            // The tool wraps this in toolSuccess with formatted failure message
+        it('should report pre-cancelled executor result as tool error', async () => {
+            // When context is pre-cancelled, the executor might return a non-standard error.
+            // The tool reports all generic failures as toolError for clear LLM signaling.
             const mockExecutor = createMockExecutor({
                 success: false,
                 response: '',
@@ -501,10 +500,8 @@ describe('RunSubagentTool', () => {
                 context
             );
 
-            // Tool returns success=true with formatted failure message
-            // (so the parent LLM can interpret the cancellation gracefully)
-            expect(result.success).toBe(true);
-            expect(result.data).toContain('Failed');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Subagent failed');
         });
     });
 
@@ -554,6 +551,50 @@ describe('RunSubagentTool', () => {
             expect(capturedTokens).toHaveLength(2);
             // Each execution should receive a distinct token object
             expect(capturedTokens[0]).not.toBe(capturedTokens[1]);
+            // Both spawns should be tracked in session count
+            expect(sessionManager.getCount()).toBe(2);
+        });
+
+        it('should propagate parent cancellation to all parallel subagent tokens', async () => {
+            const capturedTokens: vscode.CancellationToken[] = [];
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockImplementation(
+                        (
+                            _task: any,
+                            token: vscode.CancellationToken,
+                            _id: number
+                        ) => {
+                            capturedTokens.push(token);
+                            return Promise.resolve({
+                                success: true,
+                                response: 'Done',
+                                toolCallsMade: 1,
+                                toolCalls: [],
+                            });
+                        }
+                    ),
+            } as unknown as SubagentExecutor;
+
+            const tool = new RunSubagentTool(workspaceSettings);
+            // Create context with a cancellable parent token
+            const parentTokenSource = new vscode.CancellationTokenSource();
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                cancellationToken: parentTokenSource.token,
+            });
+
+            // Execute subagent to capture its child token
+            await tool.execute(
+                { task: 'Investigate auth module for security issues' },
+                context
+            );
+
+            expect(capturedTokens).toHaveLength(1);
+            // Child token should not be the same object as parent
+            expect(capturedTokens[0]).not.toBe(parentTokenSource.token);
         });
     });
 });

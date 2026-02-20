@@ -989,6 +989,7 @@ describe('ChatParticipantService', () => {
                         .fn()
                         .mockResolvedValue('Conversation cancelled by user');
                     this.reset = vi.fn();
+                    this.wasCancelled = true;
                 });
 
                 const mockGitService = {
@@ -1044,6 +1045,7 @@ describe('ChatParticipantService', () => {
                         .fn()
                         .mockResolvedValue('Conversation cancelled by user');
                     this.reset = vi.fn();
+                    this.wasCancelled = true;
                 });
 
                 const mockGitService = {
@@ -1540,6 +1542,7 @@ describe('ChatParticipantService', () => {
                     .fn()
                     .mockResolvedValue('Conversation cancelled by user');
                 this.reset = vi.fn();
+                this.wasCancelled = true;
             });
 
             const instance = ChatParticipantService.getInstance();
