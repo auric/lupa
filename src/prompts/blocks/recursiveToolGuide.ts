@@ -22,8 +22,8 @@ export function generateRecursiveToolGuide(): string {
 | PR Size | Strategy |
 |---------|----------|
 | 1-3 files, <50 lines | Review directly (no sub-agents needed) |
-| 4-10 files | Spawn 2-3 sub-agents by logical concern |
-| 10-20 files | Spawn 3-5 sub-agents, include diff hunks in context |
+| 4-9 files | Spawn 2-3 sub-agents by logical concern |
+| 10-19 files | Spawn 3-5 sub-agents, include diff hunks in context |
 | 20+ files | Spawn 4-6 sub-agents, prioritize security and breaking changes |
 
 ### Sub-Agent Task Template

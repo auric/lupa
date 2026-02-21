@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.12 | **Generated**: February 20, 2026 | **Type**: VS Code Extension
+> **Version**: 0.2.0 | **Generated**: February 21, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
@@ -17,6 +17,8 @@
 | Zod Schema Validation         | Type-safe tool parameter validation with automatic JSON schema generation    |
 | Progress-Only Tool Streaming  | Uses `stream.progress()` for transient tool feedback; clears on completion   |
 | Parallel Tool Execution       | `ToolExecutor` uses `Promise.all` for concurrent tool calls                  |
+| RLM Diff-on-Demand            | PR diff not embedded in prompt; LLM requests diffs via tools on demand       |
+| Recursive Agent Tree          | Root controller decomposes work, child agents investigate in parallel        |
 
 ---
 

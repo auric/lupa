@@ -215,14 +215,73 @@ describe('GetFileDiffTool', () => {
         expect(result.error).toContain('nonexistent.ts');
     });
 
-    it('matches partial file paths', async () => {
+    it('matches partial file paths with path separator boundary', async () => {
         const context = createMockExecutionContext({
             parsedDiff: createTestDiff(),
         });
-        const result = await tool.execute({ file_paths: ['auth.ts'] }, context);
+        const result = await tool.execute(
+            { file_paths: ['services/auth.ts'] },
+            context
+        );
 
         expect(result.success).toBe(true);
         expect(result.data).toContain('=== src/services/auth.ts ===');
+    });
+
+    it('rejects ambiguous partial path matches', async () => {
+        const ambiguousDiff: DiffHunk[] = [
+            {
+                filePath: 'src/components/Button.tsx',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader:
+                    'diff --git a/src/components/Button.tsx b/src/components/Button.tsx',
+                hunks: [
+                    {
+                        oldStart: 1,
+                        oldLines: 1,
+                        newStart: 1,
+                        newLines: 1,
+                        hunkId: 'src/components/Button.tsx:1',
+                        hunkHeader: '@@ -1,1 +1,1 @@',
+                        parsedLines: [
+                            { type: 'added', content: 'export const A = 1;' },
+                        ],
+                    },
+                ],
+            },
+            {
+                filePath: 'src/utils/Button.tsx',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader:
+                    'diff --git a/src/utils/Button.tsx b/src/utils/Button.tsx',
+                hunks: [
+                    {
+                        oldStart: 1,
+                        oldLines: 1,
+                        newStart: 1,
+                        newLines: 1,
+                        hunkId: 'src/utils/Button.tsx:1',
+                        hunkHeader: '@@ -1,1 +1,1 @@',
+                        parsedLines: [
+                            { type: 'added', content: 'export const B = 2;' },
+                        ],
+                    },
+                ],
+            },
+        ];
+
+        const context = createMockExecutionContext({
+            parsedDiff: ambiguousDiff,
+        });
+        const result = await tool.execute(
+            { file_paths: ['Button.tsx'] },
+            context
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('ambiguous');
     });
 
     it('includes not-found note when some files match and some do not', async () => {

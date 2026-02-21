@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-02-21
 
+### Fixed
+
+#### Recursive Review
+
+- **Recursion now works beyond depth 1**: Fixed critical bug where subagent child contexts had `subagentSessionManager: undefined`, causing `RunSubagentTool`'s guard clause to reject all spawns at depth > 0. Session manager is now propagated through `SubagentExecuteOptions`.
+- **Session limit enforced in recursive mode**: Fixed `RunSubagentTool` where `sessionManager.canSpawn()` was never checked when `RecursiveStateManager` was present (due to `if/else-if` structure). The session limit is now always checked first as a hard global cap.
+- **Budget deducted from parent on allocation**: `RecursiveStateManager.allocateChildBudget()` now deducts the allocated budget from the parent's `iterationBudget`, preventing children from all seeing the full budget. Separated into pure `calculateChildBudget()` (used by `canSpawnChild` guard) and mutating `allocateChildBudget()`.
+- **Remaining budget capped at totalBudget**: `getRemainingBudget()` now returns `Math.min(sum, totalBudget)` to prevent the sum of independent agent budgets from exceeding the analysis-wide total.
+- **Subagents can now read PR diffs**: Subagent prompt generator detects when diff tools (`list_changed_files`, `get_file_diff`) are available and replaces the "You CANNOT see the PR diff" constraint with instructions to use those tools.
+
+#### Tool Reliability
+
+- **find_usages no longer crashes on malformed LSP responses**: Added null guards (`def?.uri?.toString()`, `def?.range?.contains()`) in definition checks and reference deduplication. Invalid references (with missing `uri` or `range`) are filtered out instead of crashing.
+- **get_file_diff rejects ambiguous path matches**: Path matching now requires a `/` boundary (e.g., `auth.ts` matches `src/services/auth.ts` but not `noauth.ts`). When multiple files match, returns an error listing all candidates instead of silently returning the first match.
+
+#### Prompt Quality
+
+- **Fixed overlapping file count ranges in recursive tool guide**: Delegation strategy table had overlapping ranges (4-10 and 10-20). Corrected to non-overlapping ranges (4-9, 10-19, 20+).
+- **Removed redundant ternary in budget allocation**: Both branches of a depth-0 check returned the same `CHILD_BUDGET_RATIO` constant.
+
+### Changed
+
+- **README version badge**: Updated from 0.1.11 to 0.2.0.
+- **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
+
 - Transition to Recursive Language Model approach.
 
 ## [0.1.12] - 2026-02-21
@@ -412,6 +437,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.2.0]: https://github.com/auric/lupa/releases/tag/v0.2.0
+[0.1.12]: https://github.com/auric/lupa/releases/tag/v0.1.12
 [0.1.11]: https://github.com/auric/lupa/releases/tag/v0.1.11
 [0.1.10]: https://github.com/auric/lupa/releases/tag/v0.1.10
 [0.1.9]: https://github.com/auric/lupa/releases/tag/v0.1.9

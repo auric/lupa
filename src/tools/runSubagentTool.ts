@@ -101,8 +101,15 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         const timeoutMs =
             this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
-        // Check spawn budget: prefer RecursiveStateManager guard when available,
-        // fall back to flat SubagentSessionManager for backward compatibility.
+        // Hard limit: session manager tracks total spawns across all depths.
+        if (!sessionManager.canSpawn()) {
+            Log.warn(
+                `Subagent spawn rejected: session limit reached (${maxSubagents})`
+            );
+            return toolError(SubagentErrors.maxExceeded(maxSubagents));
+        }
+
+        // Recursive budget guard: check depth and per-agent budget limits.
         if (recursiveState) {
             const guard = recursiveState.canSpawnChild(currentAgentId);
             if (!guard.allowed) {
@@ -113,11 +120,6 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                     guard.reason ?? 'Cannot spawn child agent at this depth'
                 );
             }
-        } else if (!sessionManager.canSpawn()) {
-            Log.warn(
-                `Subagent spawn rejected: session limit reached (${maxSubagents})`
-            );
-            return toolError(SubagentErrors.maxExceeded(maxSubagents));
         }
 
         const subagentId = sessionManager.recordSpawn();
@@ -168,6 +170,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                     agentId: childAgentId,
                     recursiveState,
                     parsedDiff: context.parsedDiff,
+                    subagentSessionManager: sessionManager,
                 }
             );
 

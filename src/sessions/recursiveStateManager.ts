@@ -193,7 +193,7 @@ export class RecursiveStateManager {
             };
         }
 
-        const budget = this.allocateChildBudget(parentId, 1);
+        const budget = this.calculateChildBudget(parentId, 1);
         if (budget < RecursionConstants.MIN_VIABLE_BUDGET) {
             return {
                 allowed: false,
@@ -280,24 +280,37 @@ export class RecursiveStateManager {
     }
 
     /**
-     * Calculate the iteration budget for a single child of the given parent.
-     *
-     * @param parentId The parent agent
-     * @param numChildren How many children the parent intends to spawn in this batch
+     * Calculate the iteration budget for a single child without mutating state.
+     * Used by canSpawnChild for guard checks.
      */
-    allocateChildBudget(parentId: string, numChildren: number): number {
+    private calculateChildBudget(
+        parentId: string,
+        numChildren: number
+    ): number {
         const parent = this.tree.get(parentId);
         if (!parent || numChildren <= 0) {
             return 0;
         }
 
-        const ratio =
-            parent.depth === 0
-                ? RecursionConstants.CHILD_BUDGET_RATIO
-                : RecursionConstants.CHILD_BUDGET_RATIO;
-
-        const childPool = Math.floor(parent.iterationBudget * ratio);
+        const childPool = Math.floor(
+            parent.iterationBudget * RecursionConstants.CHILD_BUDGET_RATIO
+        );
         return Math.max(1, Math.floor(childPool / numChildren));
+    }
+
+    /**
+     * Allocate iteration budget for a single child and deduct from parent.
+     *
+     * @param parentId The parent agent
+     * @param numChildren How many children the parent intends to spawn in this batch
+     */
+    allocateChildBudget(parentId: string, numChildren: number): number {
+        const budget = this.calculateChildBudget(parentId, numChildren);
+        const parent = this.tree.get(parentId);
+        if (parent && budget > 0) {
+            parent.iterationBudget -= budget;
+        }
+        return budget;
     }
 
     /**
@@ -311,7 +324,7 @@ export class RecursiveStateManager {
                 remaining += node.iterationBudget - node.iterationsUsed;
             }
         }
-        return remaining;
+        return Math.min(remaining, this.totalBudget);
     }
 
     /**

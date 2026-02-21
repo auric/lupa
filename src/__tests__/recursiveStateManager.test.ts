@@ -195,6 +195,42 @@ describe('RecursiveStateManager', () => {
             const budget = manager.allocateChildBudget('root', 0);
             expect(budget).toBe(0);
         });
+
+        it('should deduct allocated budget from parent', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+
+            const budget = manager.allocateChildBudget('root', 1);
+            expect(budget).toBe(15);
+
+            // Parent's remaining iterationBudget should be reduced
+            const rootNode = manager.getNode('root')!;
+            expect(rootNode.iterationBudget).toBe(10); // 25 - 15 = 10
+        });
+
+        it('should yield progressively smaller budgets on repeated allocations', () => {
+            manager.registerAgent(undefined, 'Root', 100);
+
+            const first = manager.allocateChildBudget('root', 1);
+            expect(first).toBe(60); // 100 * 0.6 = 60
+
+            const second = manager.allocateChildBudget('root', 1);
+            expect(second).toBe(24); // 40 * 0.6 = 24
+
+            const third = manager.allocateChildBudget('root', 1);
+            expect(third).toBe(9); // 16 * 0.6 = 9.6 → 9
+        });
+
+        it('canSpawnChild should not deduct budget (read-only check)', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+
+            const result = manager.canSpawnChild('root');
+            expect(result.allowed).toBe(true);
+
+            // Budget should be unchanged after canSpawnChild
+            const rootNode = manager.getNode('root')!;
+            expect(rootNode.iterationBudget).toBe(25);
+        });
     });
 
     describe('deduplication', () => {
@@ -333,6 +369,16 @@ describe('RecursiveStateManager', () => {
             manager.completeAgent('root', [], []);
 
             expect(manager.getRemainingBudget()).toBe(0);
+        });
+
+        it('should cap at totalBudget', () => {
+            // totalBudget=25 but register agents with more
+            const tightManager = new RecursiveStateManager(2, 12, 25);
+            tightManager.registerAgent(undefined, 'Root', 30);
+            tightManager.startAgent('root');
+
+            // Remaining would be 30 but capped at totalBudget=25
+            expect(tightManager.getRemainingBudget()).toBe(25);
         });
     });
 

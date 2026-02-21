@@ -22,6 +22,7 @@ import type { ToolResultMetadata } from '@/types/toolResultTypes';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
+import type { SubagentSessionManager } from './subagentSessionManager';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -39,6 +40,8 @@ export interface SubagentExecuteOptions {
     recursiveState?: RecursiveStateManager;
     /** Parsed diff data for on-demand access via diff tools (RLM approach). */
     parsedDiff?: DiffHunk[];
+    /** Session manager from parent — enables child to spawn its own subagents. */
+    subagentSessionManager?: SubagentSessionManager;
 }
 
 /**
@@ -129,7 +132,9 @@ export class SubagentExecutor {
             const childContext: ExecutionContext = {
                 cancellationToken: token,
                 subagentExecutor: canRecurse ? this : undefined,
-                subagentSessionManager: undefined, // Session manager is on the parent; child uses its own budget via RecursiveStateManager
+                subagentSessionManager: canRecurse
+                    ? options?.subagentSessionManager
+                    : undefined,
                 recursiveState: options?.recursiveState,
                 currentDepth: options?.recursiveState ? depth : undefined,
                 currentAgentId: options?.agentId,

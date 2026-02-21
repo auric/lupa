@@ -343,6 +343,124 @@ describe('FindUsagesTool', () => {
             expect(result.data).toBeDefined();
         });
 
+        it('should handle malformed LSP definitions with undefined uri', async () => {
+            const mockDocument = {
+                getText: () => 'class MyClass {}',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // Malformed response: definition with undefined uri
+                        return Promise.resolve([
+                            { uri: undefined, range: undefined },
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: {
+                                    start: { line: 0, character: 6 },
+                                    end: { line: 0, character: 13 },
+                                },
+                            },
+                        ]);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
+
+            // Should not crash, should find the valid definition
+            expect(result.success).toBe(true);
+        });
+
+        it('should filter out references with undefined uri during deduplication', async () => {
+            const mockDocument = {
+                getText: () => 'class MyClass {}',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        // Include a malformed reference with no uri
+                        return Promise.resolve([
+                            { uri: undefined, range: undefined },
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: {
+                                    start: { line: 0, character: 6 },
+                                    end: { line: 0, character: 13 },
+                                },
+                            },
+                        ]);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
+
+            // Should not crash, should return the valid reference
+            expect(result.success).toBe(true);
+        });
+
         it('should handle includeDeclaration parameter', async () => {
             const mockDocument = {
                 getText: () => 'class MyClass {}',

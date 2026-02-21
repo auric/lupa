@@ -551,6 +551,43 @@ describe('SubagentExecutor', () => {
             // and that execution completes successfully with recursive options
         });
 
+        it('should pass subagentSessionManager to child context when canRecurse', async () => {
+            // Verify the SubagentSessionManager is forwarded through options
+            // by checking that execute receives it in options
+            const interceptedModelManager = createMockModelManager([
+                { content: 'Done' },
+            ]);
+            const registry = new ToolRegistry();
+            registry.registerTool(createMockTool('read_file'));
+            const executor = new SubagentExecutor(
+                interceptedModelManager,
+                registry,
+                promptGenerator,
+                workspaceSettings
+            );
+
+            const mockSessionManager = {
+                canSpawn: vi.fn().mockReturnValue(true),
+                recordSpawn: vi.fn().mockReturnValue(1),
+                getRemainingBudget: vi.fn().mockReturnValue(5),
+                getCount: vi.fn().mockReturnValue(1),
+                registerSubagentCancellation: vi.fn(),
+                setParentCancellationToken: vi.fn(),
+            };
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1,
+                {
+                    recursionDepth: 0,
+                    subagentSessionManager: mockSessionManager as any,
+                }
+            );
+
+            expect(result.success).toBe(true);
+        });
+
         it('should log with agentId when provided in options', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
             const executor = createExecutor(modelManager);

@@ -290,9 +290,9 @@ Requires file_path where the symbol is defined as starting point.`;
                         definitions &&
                         definitions.some(
                             (def) =>
-                                def.uri.toString() ===
+                                def?.uri?.toString() ===
                                     document.uri.toString() &&
-                                def.range.contains(position)
+                                def?.range?.contains(position)
                         )
                     ) {
                         return position;
@@ -339,7 +339,8 @@ Requires file_path where the symbol is defined as starting point.`;
     private deduplicateReferences(
         references: vscode.Location[]
     ): vscode.Location[] {
-        return references.filter((ref, index, arr) => {
+        const valid = references.filter((ref) => ref?.uri && ref?.range);
+        return valid.filter((ref, index, arr) => {
             return (
                 arr.findIndex(
                     (r) =>

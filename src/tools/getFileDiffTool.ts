@@ -52,13 +52,25 @@ export class GetFileDiffTool extends BaseTool {
         const notFound: string[] = [];
 
         for (const requestedPath of file_paths) {
-            const fileDiff = parsedDiff.find(
+            // Exact match first, then match with path separator boundary
+            // to prevent "Button.tsx" matching both "src/components/Button.tsx"
+            // and "src/utils/Button.tsx".
+            const matches = parsedDiff.filter(
                 (f) =>
                     f.filePath === requestedPath ||
-                    f.filePath.endsWith(requestedPath) ||
-                    requestedPath.endsWith(f.filePath)
+                    requestedPath === f.filePath ||
+                    f.filePath.endsWith('/' + requestedPath) ||
+                    requestedPath.endsWith('/' + f.filePath)
             );
 
+            if (matches.length > 1) {
+                notFound.push(
+                    `${requestedPath} (ambiguous — matches: ${matches.map((m) => m.filePath).join(', ')})`
+                );
+                continue;
+            }
+
+            const fileDiff = matches[0];
             if (!fileDiff) {
                 notFound.push(requestedPath);
                 continue;

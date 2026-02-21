@@ -957,5 +957,69 @@ describe('RunSubagentTool', () => {
             expect(result.success).toBe(false);
             expect(result.error).toContain('Maximum subagents');
         });
+
+        it('should enforce session limit even when recursiveState is present', async () => {
+            const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
+            for (let i = 0; i < maxSubagents; i++) {
+                sessionManager.recordSpawn();
+            }
+
+            const recursiveState = new RecursiveStateManager(3, 100, 200);
+            const rootId = recursiveState.registerAgent(
+                undefined,
+                'root task',
+                200
+            );
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Maximum subagents');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
+
+        it('should pass subagentSessionManager through to executor options', async () => {
+            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    subagentSessionManager: sessionManager,
+                })
+            );
+        });
     });
 });
