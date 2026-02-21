@@ -706,6 +706,103 @@ describe('ConversationRunner', () => {
             expect(result).toBe('');
             expect(runner.wasCancelled).toBe(true);
         });
+
+        it('should detect cancellation in no-tool-calls path (subagent mode)', async () => {
+            // Simulates: LLM returns content without tool calls, token fires during response processing
+            let cancelled = false;
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() {
+                    return cancelled;
+                },
+                onCancellationRequested: vi.fn(),
+            };
+
+            let sendRequestCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    sendRequestCount++;
+                    if (sendRequestCount === 1) {
+                        // Token fires after sendRequest returns but before no-tool-calls processing
+                        cancelled = true;
+                        return Promise.resolve({
+                            content: 'Here is my analysis',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: 'Recovered',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+                requiresExplicitCompletion: false,
+            };
+
+            const result = await runner.run(config, conversation, token);
+
+            // Should detect cancellation, not return the response content
+            expect(result).toBe('');
+            expect(runner.wasCancelled).toBe(true);
+            expect(runner.hitMaxIterations).toBe(false);
+        });
+
+        it('should detect cancellation in no-tool-calls nudge path instead of hitMaxIterations', async () => {
+            // Simulates: final iteration, LLM returns no tool calls, token fires during nudge processing
+            // Without the fix, this would report hitMaxIterations instead of wasCancelled
+            let cancelled = false;
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() {
+                    return cancelled;
+                },
+                onCancellationRequested: vi.fn(),
+            };
+
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    // Token fires after sendRequest returns
+                    cancelled = true;
+                    return Promise.resolve({
+                        content: 'Let me think about this...',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 1,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(config, conversation, token);
+
+            // Should detect cancellation, NOT report hitMaxIterations
+            expect(result).toBe('');
+            expect(runner.wasCancelled).toBe(true);
+            expect(runner.hitMaxIterations).toBe(false);
+        });
     });
 
     describe('Error Handling', () => {

@@ -224,6 +224,16 @@ export class ConversationRunner {
                     response.toolCalls
                 );
 
+                // Re-check cancellation before processing branching logic —
+                // token may have fired during response processing
+                if (token.isCancellationRequested) {
+                    Log.info(
+                        `${logPrefix} Cancelled during response processing`
+                    );
+                    this._wasCancelled = true;
+                    return '';
+                }
+
                 if (response.toolCalls && response.toolCalls.length > 0) {
                     // Reset nudge counter - model is cooperating with tool calls
                     completionNudgeCount = 0;

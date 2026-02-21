@@ -360,6 +360,36 @@ describe('RunSubagentTool', () => {
             expect(result.error).toContain('internal error');
         });
 
+        it('should throw CancellationError immediately when context token is pre-cancelled', async () => {
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            // Override with a pre-cancelled token
+            const cancelledContext: ExecutionContext = {
+                ...context,
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: vi.fn(),
+                },
+            };
+
+            await expect(
+                tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    cancelledContext
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Executor should never be called
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
+
         it('should handle executor errors gracefully', async () => {
             const mockExecutor = {
                 execute: vi.fn().mockRejectedValue(new Error('Internal error')),
