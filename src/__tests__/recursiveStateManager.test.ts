@@ -150,12 +150,12 @@ describe('RecursiveStateManager', () => {
         });
 
         it('should reject when budget is insufficient', () => {
-            // Create a manager with low budget
-            const lowBudgetManager = new RecursiveStateManager(2, 12, 3);
-            lowBudgetManager.registerAgent(undefined, 'Root', 3);
+            // Create a manager with budget too low for even one child
+            const lowBudgetManager = new RecursiveStateManager(2, 12, 8);
+            lowBudgetManager.registerAgent(undefined, 'Root', 8);
             lowBudgetManager.startAgent('root');
 
-            // 3 * 0.6 = 1.8 → floor = 1 < MIN_VIABLE_BUDGET(5) → rejected
+            // available = 8 - 5 = 3, 3 < MIN_VIABLE_BUDGET(5) → rejected
             const result = lowBudgetManager.canSpawnChild('root');
             expect(result.allowed).toBe(false);
             expect(result.reason).toContain('budget');
@@ -169,55 +169,66 @@ describe('RecursiveStateManager', () => {
     });
 
     describe('budget allocation', () => {
-        it('should allocate child budget using CHILD_BUDGET_RATIO', () => {
-            manager.registerAgent(undefined, 'Root', 25);
+        it('should allocate up to DEFAULT_CHILD_BUDGET per child', () => {
+            const bigManager = new RecursiveStateManager(2, 12, 100);
+            bigManager.registerAgent(undefined, 'Root', 100);
 
-            // 25 * 0.6 = 15, divided by 3 children = 5 each
-            const budget = manager.allocateChildBudget('root', 3);
-            expect(budget).toBe(5);
+            const budget = bigManager.allocateChildBudget('root');
+            expect(budget).toBe(RecursionConstants.DEFAULT_CHILD_BUDGET);
         });
 
-        it('should allocate for single child', () => {
-            manager.registerAgent(undefined, 'Root', 25);
+        it('should cap allocation when parent budget is limited', () => {
+            // Parent has 12, reserve 5 → available 7 < DEFAULT_CHILD_BUDGET(20) → gets 7
+            const limitedManager = new RecursiveStateManager(2, 12, 12);
+            limitedManager.registerAgent(undefined, 'Root', 12);
 
-            // 25 * 0.6 = 15
-            const budget = manager.allocateChildBudget('root', 1);
-            expect(budget).toBe(15);
+            const budget = limitedManager.allocateChildBudget('root');
+            expect(budget).toBe(7); // 12 - MIN_VIABLE_BUDGET(5) = 7
         });
 
         it('should return 0 for unknown parent', () => {
-            const budget = manager.allocateChildBudget('nonexistent', 1);
+            const budget = manager.allocateChildBudget('nonexistent');
             expect(budget).toBe(0);
         });
 
-        it('should return 0 for zero children', () => {
-            manager.registerAgent(undefined, 'Root', 25);
-            const budget = manager.allocateChildBudget('root', 0);
+        it('should return 0 when budget is too low', () => {
+            // Parent has 8, available = 8-5 = 3, 3 < MIN_VIABLE_BUDGET → 0
+            const lowManager = new RecursiveStateManager(2, 12, 8);
+            lowManager.registerAgent(undefined, 'Root', 8);
+
+            const budget = lowManager.allocateChildBudget('root');
             expect(budget).toBe(0);
         });
 
         it('should deduct allocated budget from parent', () => {
-            manager.registerAgent(undefined, 'Root', 25);
+            const bigManager = new RecursiveStateManager(2, 12, 100);
+            bigManager.registerAgent(undefined, 'Root', 100);
 
-            const budget = manager.allocateChildBudget('root', 1);
-            expect(budget).toBe(15);
+            const budget = bigManager.allocateChildBudget('root');
+            expect(budget).toBe(20);
 
-            // Parent's remaining iterationBudget should be reduced
-            const rootNode = manager.getNode('root')!;
-            expect(rootNode.iterationBudget).toBe(10); // 25 - 15 = 10
+            const rootNode = bigManager.getNode('root')!;
+            expect(rootNode.iterationBudget).toBe(80); // 100 - 20 = 80
         });
 
-        it('should yield progressively smaller budgets on repeated allocations', () => {
-            manager.registerAgent(undefined, 'Root', 100);
+        it('should yield consistent budgets on repeated allocations (flat model)', () => {
+            const bigManager = new RecursiveStateManager(2, 12, 100);
+            bigManager.registerAgent(undefined, 'Root', 100);
 
-            const first = manager.allocateChildBudget('root', 1);
-            expect(first).toBe(60); // 100 * 0.6 = 60
+            const first = bigManager.allocateChildBudget('root');
+            expect(first).toBe(20); // min(20, 100-5) = 20, root→80
 
-            const second = manager.allocateChildBudget('root', 1);
-            expect(second).toBe(24); // 40 * 0.6 = 24
+            const second = bigManager.allocateChildBudget('root');
+            expect(second).toBe(20); // min(20, 80-5) = 20, root→60
 
-            const third = manager.allocateChildBudget('root', 1);
-            expect(third).toBe(9); // 16 * 0.6 = 9.6 → 9
+            const third = bigManager.allocateChildBudget('root');
+            expect(third).toBe(20); // min(20, 60-5) = 20, root→40
+
+            const fourth = bigManager.allocateChildBudget('root');
+            expect(fourth).toBe(20); // min(20, 40-5) = 20, root→20
+
+            const fifth = bigManager.allocateChildBudget('root');
+            expect(fifth).toBe(15); // min(20, 20-5) = 15, root→5
         });
 
         it('canSpawnChild should not deduct budget (read-only check)', () => {
@@ -385,10 +396,12 @@ describe('RecursiveStateManager', () => {
     describe('RecursionConstants', () => {
         it('should have sensible defaults', () => {
             expect(RecursionConstants.MIN_VIABLE_BUDGET).toBeGreaterThan(0);
-            expect(RecursionConstants.ROOT_BUDGET_RATIO).toBeGreaterThan(0);
-            expect(RecursionConstants.ROOT_BUDGET_RATIO).toBeLessThan(1);
-            expect(RecursionConstants.CHILD_BUDGET_RATIO).toBeGreaterThan(0);
-            expect(RecursionConstants.CHILD_BUDGET_RATIO).toBeLessThan(1);
+            expect(RecursionConstants.DEFAULT_CHILD_BUDGET).toBeGreaterThan(
+                RecursionConstants.MIN_VIABLE_BUDGET
+            );
+            expect(
+                RecursionConstants.FALLBACK_ITERATION_THRESHOLD
+            ).toBeGreaterThan(0);
         });
     });
 });

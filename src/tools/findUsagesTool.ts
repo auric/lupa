@@ -19,6 +19,33 @@ const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operation
 const DEFINITION_CHECK_TIMEOUT = 10000; // 10 seconds per definition check (non-fatal)
 
 /**
+ * Extract URI from a definition result, handling both Location and LocationLink types.
+ * vscode.executeDefinitionProvider returns (Location | LocationLink)[] — LocationLink uses
+ * targetUri/targetRange instead of uri/range.
+ */
+function getDefinitionUri(
+    def: vscode.Location | vscode.LocationLink
+): vscode.Uri | undefined {
+    if ('targetUri' in def) {
+        return def.targetUri;
+    }
+    return def.uri;
+}
+
+/**
+ * Extract the selection range from a definition result.
+ * LocationLink provides targetSelectionRange (precise) and targetRange (full).
+ */
+function getDefinitionRange(
+    def: vscode.Location | vscode.LocationLink
+): vscode.Range | undefined {
+    if ('targetRange' in def) {
+        return def.targetSelectionRange ?? def.targetRange;
+    }
+    return def.range;
+}
+
+/**
  * Tool that finds all usages of a code symbol using VS Code's reference provider.
  * Uses vscode.executeReferenceProvider to locate all references to a symbol.
  */
@@ -255,7 +282,6 @@ Requires file_path where the symbol is defined as starting point.`;
         const text = document.getText();
         const lines = text.split('\n');
 
-        // Look for the symbol in the document
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             if (token.isCancellationRequested) {
                 throw new vscode.CancellationError();
@@ -270,11 +296,12 @@ Requires file_path where the symbol is defined as starting point.`;
             if (symbolIndex !== -1) {
                 const position = new vscode.Position(lineIndex, symbolIndex);
 
-                // Verify this is actually a symbol definition by checking if definition provider returns this location
                 try {
                     const definitions = await withCancellableTimeout(
                         Promise.resolve(
-                            vscode.commands.executeCommand<vscode.Location[]>(
+                            vscode.commands.executeCommand<
+                                (vscode.Location | vscode.LocationLink)[]
+                            >(
                                 'vscode.executeDefinitionProvider',
                                 document.uri,
                                 position
@@ -288,24 +315,25 @@ Requires file_path where the symbol is defined as starting point.`;
                     // If we get back the same location, this is likely the definition
                     if (
                         definitions &&
-                        definitions.some(
-                            (def) =>
-                                def?.uri?.toString() ===
+                        definitions.some((def) => {
+                            const defUri = getDefinitionUri(def);
+                            const defRange = getDefinitionRange(def);
+                            return (
+                                defUri?.toString() ===
                                     document.uri.toString() &&
-                                def?.range?.contains(position)
-                        )
+                                defRange?.contains(position)
+                            );
+                        })
                     ) {
                         return position;
                     }
                 } catch (error) {
-                    // Log timeout but continue searching (non-fatal for definition check)
                     if (isTimeoutError(error)) {
                         Log.debug(
                             `Definition check timed out for ${symbolName} at line ${lineIndex + 1}, continuing search`
                         );
                         continue;
                     }
-                    // Other errors should bubble up
                     throw error;
                 }
             }

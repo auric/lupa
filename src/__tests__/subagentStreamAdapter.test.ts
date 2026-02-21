@@ -194,4 +194,61 @@ describe('SubagentStreamAdapter', () => {
             expect(calls[2][0]).toMatch(/^🔹 #1: .* Searched for `TODO`$/);
         });
     });
+
+    describe('recursive mode prefix', () => {
+        it('should use agentId in prefix when provided', () => {
+            const recursiveAdapter = new SubagentStreamAdapter(
+                mockChatHandler,
+                1,
+                1,
+                'child-1'
+            );
+
+            recursiveAdapter.onToolCallStart(
+                'read_file',
+                { file_path: 'src/auth.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                expect.stringContaining('🔹 child-1: ')
+            );
+        });
+
+        it('should use hierarchical agentId for deep recursion', () => {
+            const deepAdapter = new SubagentStreamAdapter(
+                mockChatHandler,
+                2,
+                2,
+                'child-1.1'
+            );
+
+            deepAdapter.onToolCallStart(
+                'find_symbol',
+                { name_path: 'login' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                expect.stringContaining('🔹 child-1.1: ')
+            );
+        });
+
+        it('should fall back to #N prefix when no agentId', () => {
+            const flatAdapter = new SubagentStreamAdapter(mockChatHandler, 3);
+
+            flatAdapter.onToolCallStart(
+                'read_file',
+                { file_path: 'src/index.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                expect.stringContaining('🔹 #3: ')
+            );
+        });
+    });
 });

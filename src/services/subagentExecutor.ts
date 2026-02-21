@@ -42,6 +42,8 @@ export interface SubagentExecuteOptions {
     parsedDiff?: DiffHunk[];
     /** Session manager from parent — enables child to spawn its own subagents. */
     subagentSessionManager?: SubagentSessionManager;
+    /** Allocated iteration budget for this child (used as maxIterations). */
+    childBudget?: number;
 }
 
 /**
@@ -126,6 +128,12 @@ export class SubagentExecutor {
             const filteredTools = this.filterTools(canRecurse);
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
+            // Use allocated budget as maxIterations when available (recursive mode),
+            // otherwise fall back to global setting.
+            const maxIterations =
+                options?.childBudget ??
+                this.workspaceSettings.getMaxIterations();
+
             // Build execution context for the child.
             // When canRecurse: include subagentExecutor and subagentSessionManager
             // so the child's RunSubagentTool can spawn its own children.
@@ -151,7 +159,6 @@ export class SubagentExecutor {
                 toolExecutor
             );
 
-            const maxIterations = this.workspaceSettings.getMaxIterations();
             const systemPrompt = this.promptGenerator.generateSystemPrompt(
                 task,
                 filteredTools,
@@ -165,9 +172,14 @@ export class SubagentExecutor {
             const toolCalls: ToolCallRecord[] = [];
 
             // Create subagent stream adapter for prefixed tool progress in chat UI
-            // This shows tool calls with "🔹 #N: Reading file..." format
+            // This shows tool calls with "🔹 child-1: Reading file..." format
             const subagentAdapter = this.chatHandler
-                ? new SubagentStreamAdapter(this.chatHandler, subagentId, depth)
+                ? new SubagentStreamAdapter(
+                      this.chatHandler,
+                      subagentId,
+                      depth,
+                      options?.agentId
+                  )
                 : undefined;
 
             // Run the conversation loop with labeled logging and progress reporting

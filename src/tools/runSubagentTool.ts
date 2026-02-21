@@ -129,11 +129,9 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         );
 
         let childAgentId: string | undefined;
+        let childBudget: number | undefined;
         if (recursiveState) {
-            const childBudget = recursiveState.allocateChildBudget(
-                currentAgentId,
-                1
-            );
+            childBudget = recursiveState.allocateChildBudget(currentAgentId);
             childAgentId = recursiveState.registerAgent(
                 currentAgentId,
                 task,
@@ -171,6 +169,7 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                     recursiveState,
                     parsedDiff: context.parsedDiff,
                     subagentSessionManager: sessionManager,
+                    childBudget,
                 }
             );
 

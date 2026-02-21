@@ -815,6 +815,69 @@ describe('FindUsagesTool', () => {
         });
     });
 
+    describe('LocationLink handling', () => {
+        it('should handle LocationLink responses from executeDefinitionProvider', async () => {
+            const mockDocument = {
+                getText: () => 'export function myFunc() { return 1; }',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            const mockReferences = [
+                {
+                    uri: {
+                        toString: () => 'file:///test/workspace/src/caller.ts',
+                        fsPath: '/test/workspace/src/caller.ts',
+                    },
+                    range: {
+                        start: { line: 5, character: 0 },
+                        end: { line: 5, character: 6 },
+                    },
+                },
+            ];
+
+            (vscode.workspace.openTextDocument as any)
+                .mockResolvedValueOnce(mockDocument)
+                .mockResolvedValueOnce(mockDocument);
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // Return LocationLink format (targetUri/targetRange instead of uri/range)
+                        return Promise.resolve([
+                            {
+                                targetUri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                targetRange: { contains: () => true },
+                                targetSelectionRange: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve(mockReferences);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'myFunc',
+                    file_path: 'src/test.ts',
+                    context_line_count: 1,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+        });
+    });
+
     describe('findSymbolPosition word boundary', () => {
         it('should not match partial words - "get" should not match "targetValue"', async () => {
             (vscode.workspace.openTextDocument as any).mockResolvedValue({

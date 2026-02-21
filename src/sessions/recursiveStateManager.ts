@@ -63,14 +63,16 @@ export interface SpawnGuardResult {
 /**
  * Constants controlling recursive agent behavior.
  * These are internal / non-user-configurable.
+ *
+ * Budget model: Flat per-child allocation instead of exponential decay.
+ * Each child gets up to DEFAULT_CHILD_BUDGET iterations, deducted from parent.
+ * Parent always retains at least MIN_VIABLE_BUDGET for its own orchestration.
  */
 export const RecursionConstants = {
     /** Below this budget a new agent is not worth spawning */
     MIN_VIABLE_BUDGET: 5,
-    /** Fraction of budget the parent keeps for orchestration */
-    ROOT_BUDGET_RATIO: 0.4,
-    /** Fraction of parent's remaining budget given to children */
-    CHILD_BUDGET_RATIO: 0.6,
+    /** Default iteration budget allocated to each child agent */
+    DEFAULT_CHILD_BUDGET: 20,
     /** If root hasn't spawned subagents after this many iterations, fall back to linear */
     FALLBACK_ITERATION_THRESHOLD: 5,
 } as const;
@@ -193,7 +195,7 @@ export class RecursiveStateManager {
             };
         }
 
-        const budget = this.calculateChildBudget(parentId, 1);
+        const budget = this.calculateChildBudget(parentId);
         if (budget < RecursionConstants.MIN_VIABLE_BUDGET) {
             return {
                 allowed: false,
@@ -281,33 +283,31 @@ export class RecursiveStateManager {
 
     /**
      * Calculate the iteration budget for a single child without mutating state.
-     * Used by canSpawnChild for guard checks.
+     * Uses flat allocation: each child gets up to DEFAULT_CHILD_BUDGET,
+     * bounded by what the parent can afford (must retain MIN_VIABLE_BUDGET).
      */
-    private calculateChildBudget(
-        parentId: string,
-        numChildren: number
-    ): number {
+    calculateChildBudget(parentId: string): number {
         const parent = this.tree.get(parentId);
-        if (!parent || numChildren <= 0) {
+        if (!parent) {
             return 0;
         }
 
-        const childPool = Math.floor(
-            parent.iterationBudget * RecursionConstants.CHILD_BUDGET_RATIO
-        );
-        return Math.max(1, Math.floor(childPool / numChildren));
+        const available =
+            parent.iterationBudget - RecursionConstants.MIN_VIABLE_BUDGET;
+        if (available < RecursionConstants.MIN_VIABLE_BUDGET) {
+            return 0;
+        }
+
+        return Math.min(RecursionConstants.DEFAULT_CHILD_BUDGET, available);
     }
 
     /**
      * Allocate iteration budget for a single child and deduct from parent.
-     *
-     * @param parentId The parent agent
-     * @param numChildren How many children the parent intends to spawn in this batch
      */
-    allocateChildBudget(parentId: string, numChildren: number): number {
-        const budget = this.calculateChildBudget(parentId, numChildren);
+    allocateChildBudget(parentId: string): number {
+        const budget = this.calculateChildBudget(parentId);
         const parent = this.tree.get(parentId);
-        if (parent && budget > 0) {
+        if (parent && budget >= RecursionConstants.MIN_VIABLE_BUDGET) {
             parent.iterationBudget -= budget;
         }
         return budget;
