@@ -103,13 +103,39 @@ describe('SubagentPromptGenerator', () => {
             expect(prompt).toContain('Trace Dependencies');
         });
 
-        it('should include constraints section', () => {
+        it('should include constraints section without diff tools', () => {
             const task: SubagentTask = { task: 'Test task' };
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('## Constraints');
             expect(prompt).toContain('CANNOT see the PR diff');
             expect(prompt).toContain('CANNOT execute code');
+        });
+
+        it('should include diff access guidance when diff tools are available', () => {
+            const tools = [
+                createMockTool('list_changed_files', 'List all changed files'),
+                createMockTool('get_file_diff', 'Get diff for specific files'),
+                createMockTool('find_symbol', 'Finds symbols in code'),
+            ];
+            const task: SubagentTask = { task: 'Test task' };
+            const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+            expect(prompt).toContain('### Diff Access');
+            expect(prompt).toContain('list_changed_files');
+            expect(prompt).toContain('get_file_diff');
+            expect(prompt).not.toContain('CANNOT see the PR diff');
+        });
+
+        it('should not include diff access guidance without diff tools', () => {
+            const tools = [
+                createMockTool('find_symbol', 'Finds symbols in code'),
+            ];
+            const task: SubagentTask = { task: 'Test task' };
+            const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+            expect(prompt).not.toContain('### Diff Access');
+            expect(prompt).toContain('CANNOT see the PR diff');
         });
     });
 });

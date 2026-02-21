@@ -5,7 +5,7 @@ import type { ITool } from '../tools/ITool';
  * Generates focused system prompts for subagent investigations.
  *
  * Subagents are lightweight investigation agents that:
- * - Do NOT see the PR diff (context must be provided by parent)
+ * - Access PR diff on demand via list_changed_files/get_file_diff tools (RLM mode)
  * - Have limited tool iterations
  * - Focus on a single, specific investigation task
  * - Return structured findings for the parent agent to synthesize
@@ -27,6 +27,7 @@ export class SubagentPromptGenerator {
         canRecurse: boolean = false
     ): string {
         const toolList = this.formatToolList(tools);
+        const hasDiffTools = tools.some((t) => t.name === 'list_changed_files');
         const contextSection = task.context
             ? `<context_from_parent>
 ## Context from Parent Agent
@@ -35,6 +36,17 @@ The parent agent has provided the following code/information relevant to your in
 
 ${task.context}
 </context_from_parent>`
+            : '';
+
+        const diffAccessSection = hasDiffTools
+            ? `
+### Diff Access
+
+You have direct access to the PR diff via tools:
+- \`list_changed_files\` — See all changed files with statistics
+- \`get_file_diff\` — Read the actual diff for specific file(s)
+
+**Start by calling \`list_changed_files\`** to understand the scope of changes, then use \`get_file_diff\` to examine files relevant to your investigation.`
             : '';
 
         const recursionSection = canRecurse
@@ -97,6 +109,7 @@ Follow this systematic approach:
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+${diffAccessSection}
 ${recursionSection}
 </investigation_approach>
 
@@ -132,7 +145,7 @@ If you find NO issues, explicitly state what you checked and why it passed.
 
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
-- You CANNOT see the PR diff - only what the parent provided in context
+${hasDiffTools ? '- Use `list_changed_files` and `get_file_diff` to access the PR diff on demand' : '- You CANNOT see the PR diff - only what the parent provided in context'}
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
