@@ -221,7 +221,7 @@ describe('RunSubagentTool', () => {
             expect(result.data).toContain('8');
         });
 
-        it('should format failed results with subagent ID', async () => {
+        it('should report generic failures as tool errors', async () => {
             const mockExecutor = createMockExecutor({
                 success: false,
                 response: '',
@@ -241,10 +241,88 @@ describe('RunSubagentTool', () => {
                 context
             );
 
-            expect(result.success).toBe(true);
-            expect(result.data).toContain('Subagent #1');
-            expect(result.data).toContain('Failed');
-            expect(result.data).toContain('Connection timeout');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Subagent failed');
+            expect(result.error).toContain('Connection timeout');
+        });
+    });
+
+    describe('Max Iterations Handling', () => {
+        it('should report max_iterations as failed tool call', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Partial investigation findings so far',
+                error: 'max_iterations',
+                toolCallsMade: 12,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('maximum iterations');
+            expect(result.error).toContain('12');
+        });
+
+        it('should include partial findings in max_iterations error', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Found 3 security issues in auth module',
+                error: 'max_iterations',
+                toolCallsMade: 50,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Partial findings');
+            expect(result.error).toContain(
+                'Found 3 security issues in auth module'
+            );
+        });
+
+        it('should handle max_iterations with empty response', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'max_iterations',
+                toolCallsMade: 100,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('maximum iterations');
+            expect(result.error).not.toContain('Partial findings');
         });
     });
 
@@ -280,6 +358,36 @@ describe('RunSubagentTool', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('internal error');
+        });
+
+        it('should throw CancellationError immediately when context token is pre-cancelled', async () => {
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            // Override with a pre-cancelled token
+            const cancelledContext: ExecutionContext = {
+                ...context,
+                cancellationToken: {
+                    isCancellationRequested: true,
+                    onCancellationRequested: vi.fn(),
+                },
+            };
+
+            await expect(
+                tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    cancelledContext
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Executor should never be called
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
         });
 
         it('should handle executor errors gracefully', async () => {
@@ -400,9 +508,9 @@ describe('RunSubagentTool', () => {
             expect(result.data).toContain('Partial findings');
         });
 
-        it('should not propagate pre-cancelled token as error if executor handles it', async () => {
-            // When context is pre-cancelled, the executor might return a cancelled result
-            // The tool wraps this in toolSuccess with formatted failure message
+        it('should report pre-cancelled executor result as tool error', async () => {
+            // When context is pre-cancelled, the executor might return a non-standard error.
+            // The tool reports all generic failures as toolError for clear LLM signaling.
             const mockExecutor = createMockExecutor({
                 success: false,
                 response: '',
@@ -422,10 +530,159 @@ describe('RunSubagentTool', () => {
                 context
             );
 
-            // Tool returns success=true with formatted failure message
-            // (so the parent LLM can interpret the cancellation gracefully)
-            expect(result.success).toBe(true);
-            expect(result.data).toContain('Failed');
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Subagent failed');
+        });
+
+        it('should prioritize parent cancellation over timeout when both occur', async () => {
+            // Race condition: timeout fires during executor unwinding from parent cancellation.
+            // Use 10ms timeout; executor delays 100ms to ensure timeout fires first.
+            const shortTimeoutSettings = createMockWorkspaceSettings({
+                requestTimeoutSeconds: 0.01,
+            });
+
+            const parentTokenSource = new vscode.CancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentTokenSource.token);
+
+            const mockExecutor = {
+                execute: vi.fn().mockImplementation(async () => {
+                    // Wait for the 10ms timeout to fire
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    // Parent also cancels during execution (the race)
+                    parentTokenSource.cancel();
+                    return {
+                        success: false,
+                        response: '',
+                        error: 'cancelled',
+                        toolCallsMade: 0,
+                        toolCalls: [],
+                    };
+                }),
+            } as unknown as SubagentExecutor;
+
+            const tool = new RunSubagentTool(shortTimeoutSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                cancellationToken: parentTokenSource.token,
+            });
+
+            const result = await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Both timeout AND parent cancellation occurred, but parent wins
+            expect(result.success).toBe(false);
+            expect(result.error).not.toContain('timed out');
+        });
+    });
+
+    describe('Parallel Execution Safety', () => {
+        it('should use separate cancellation tokens for parallel executions', async () => {
+            const capturedTokens: vscode.CancellationToken[] = [];
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockImplementation(
+                        (
+                            _task: any,
+                            token: vscode.CancellationToken,
+                            _id: number
+                        ) => {
+                            capturedTokens.push(token);
+                            return Promise.resolve({
+                                success: true,
+                                response: 'Done',
+                                toolCallsMade: 1,
+                                toolCalls: [],
+                            });
+                        }
+                    ),
+            } as unknown as SubagentExecutor;
+
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            // Execute two subagents in parallel
+            const [result1, result2] = await Promise.all([
+                tool.execute(
+                    { task: 'Investigate auth module for security issues' },
+                    context
+                ),
+                tool.execute(
+                    { task: 'Investigate database module for SQL injection' },
+                    context
+                ),
+            ]);
+
+            expect(result1.success).toBe(true);
+            expect(result2.success).toBe(true);
+            expect(capturedTokens).toHaveLength(2);
+            // Each execution should receive a distinct token object
+            expect(capturedTokens[0]).not.toBe(capturedTokens[1]);
+            // Both spawns should be tracked in session count
+            expect(sessionManager.getCount()).toBe(2);
+        });
+
+        it('should propagate parent cancellation to child subagent tokens', async () => {
+            let resolveExecutor!: (value: SubagentResult) => void;
+            const capturedTokens: vscode.CancellationToken[] = [];
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockImplementation(
+                        (_task: any, token: vscode.CancellationToken) => {
+                            capturedTokens.push(token);
+                            // Return a pending promise so we can test during execution
+                            return new Promise<SubagentResult>((resolve) => {
+                                resolveExecutor = resolve;
+                            });
+                        }
+                    ),
+            } as unknown as SubagentExecutor;
+
+            const parentTokenSource = new vscode.CancellationTokenSource();
+            // Critical: link parent token to session manager for propagation
+            sessionManager.setParentCancellationToken(parentTokenSource.token);
+
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                cancellationToken: parentTokenSource.token,
+            });
+
+            // Start execution (won't resolve until we say so)
+            const executePromise = tool.execute(
+                { task: 'Investigate auth module for security issues' },
+                context
+            );
+
+            // Child token captured and not yet cancelled
+            expect(capturedTokens).toHaveLength(1);
+            expect(capturedTokens[0].isCancellationRequested).toBe(false);
+
+            // Cancel parent — should propagate to child via session manager
+            parentTokenSource.cancel();
+            expect(capturedTokens[0].isCancellationRequested).toBe(true);
+
+            // Resolve executor so the promise completes
+            resolveExecutor({
+                success: false,
+                response: '',
+                error: 'cancelled',
+                toolCallsMade: 0,
+                toolCalls: [],
+            });
+
+            const result = await executePromise;
+            expect(result.success).toBe(false);
         });
     });
 });

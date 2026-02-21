@@ -40,9 +40,6 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         context: z.ZodOptional<z.ZodString>;
     }>;
 
-    private cancellationTokenSource: vscode.CancellationTokenSource | null =
-        null;
-
     constructor(private readonly workspaceSettings: WorkspaceSettingsService) {
         super();
 
@@ -111,15 +108,19 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             `Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );
 
-        this.cancellationTokenSource = new vscode.CancellationTokenSource();
+        // Subagent needs a combined cancellation signal: cancel on parent cancellation OR timeout.
+        // We can't add timeout to the parent token (would cancel the entire analysis), so we
+        // create a local source and link it to the parent via sessionManager.
+        // Local variable (not instance) prevents race condition with parallel subagents.
+        const cancellationTokenSource = new vscode.CancellationTokenSource();
         const parentCancellationDisposable =
             sessionManager.registerSubagentCancellation(
-                this.cancellationTokenSource
+                cancellationTokenSource
             );
         let cancelledByTimeout = false;
         const timeoutHandle = setTimeout(() => {
             cancelledByTimeout = true;
-            this.cancellationTokenSource?.cancel();
+            cancellationTokenSource.cancel();
         }, timeoutMs);
 
         try {
@@ -128,18 +129,44 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                     task,
                     context: taskContext,
                 },
-                this.cancellationTokenSource.token,
+                cancellationTokenSource.token,
                 subagentId
             );
 
             clearTimeout(timeoutHandle);
 
-            // Check if cancelled (timeout or user)
             if (!result.success && result.error === 'cancelled') {
-                if (cancelledByTimeout) {
+                // Only attribute to timeout if parent wasn't also cancelled.
+                // Race condition: timeout timer can fire while executor unwinds
+                // from parent cancellation, setting cancelledByTimeout incorrectly.
+                if (
+                    cancelledByTimeout &&
+                    !context.cancellationToken.isCancellationRequested
+                ) {
                     return toolError(SubagentErrors.timeout(timeoutMs));
                 }
                 return toolError('Subagent was cancelled');
+            }
+
+            if (!result.success && result.error === 'max_iterations') {
+                const maxIterMsg = SubagentErrors.maxIterations(
+                    result.toolCallsMade,
+                    this.workspaceSettings.getMaxIterations()
+                );
+                // Include partial response so parent LLM can use findings gathered so far
+                const partialFindings = result.response?.trim();
+                return toolError(
+                    partialFindings
+                        ? `${maxIterMsg}\n\nPartial findings:\n${partialFindings}`
+                        : maxIterMsg
+                );
+            }
+
+            // Any other failure (LLM errors, service errors, etc.)
+            if (!result.success) {
+                return toolError(
+                    SubagentErrors.failed(result.error || 'Unknown error')
+                );
             }
 
             return toolSuccess(this.formatResult(result, subagentId), {
@@ -152,7 +179,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                 throw error;
             }
 
-            if (cancelledByTimeout) {
+            if (
+                cancelledByTimeout &&
+                !context.cancellationToken.isCancellationRequested
+            ) {
                 return toolError(SubagentErrors.timeout(timeoutMs));
             }
 
@@ -160,20 +190,14 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             return toolError(SubagentErrors.failed(errorMessage));
         } finally {
             parentCancellationDisposable?.dispose();
-            this.cancellationTokenSource?.dispose();
-            this.cancellationTokenSource = null;
+            cancellationTokenSource.dispose();
         }
     }
 
     /**
-     * Format subagent result for parent LLM consumption.
-     * Returns the raw response with minimal metadata - parent LLM interprets naturally.
+     * Format successful subagent result for parent LLM consumption.
      */
     private formatResult(result: SubagentResult, subagentId: number): string {
-        if (!result.success) {
-            return `## Subagent #${subagentId} Failed\n\nError: ${result.error}\n\nTool calls made: ${result.toolCallsMade}`;
-        }
-
         return (
             `## Subagent #${subagentId} Investigation Complete\n\n` +
             `**Tool calls made:** ${result.toolCallsMade}\n\n` +

@@ -52,6 +52,8 @@ export interface ToolCallingAnalysisResult {
     analysis: string;
     /** History of tool calls made during analysis */
     toolCalls: ToolCallsData;
+    /** Whether the analysis was cancelled by the user */
+    wasCancelled: boolean;
 }
 
 /**

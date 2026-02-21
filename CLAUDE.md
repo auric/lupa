@@ -162,6 +162,9 @@ Most tools should let errors propagate to ToolExecutor. Don't wrap your execute 
 - **fdir abort behavior**: fdir resolves with partial results on AbortSignal, never throws. Check signal state AFTER fdir resolves and throw appropriate error (see `FileDiscoverer`)
 - **Cancel propagation**: Pass `ExecutionContext.cancellationToken` through to `SymbolExtractor` methods
 - **Linked tokens for child processes**: When spawning processes with timeouts, use `CancellationTokenSource` linked to the parent token (see `SearchForPatternTool`)
+- **Subagent CancellationTokenSource must be local**: `RunSubagentTool.execute()` uses a local `CancellationTokenSource`, never an instance variable—tools are singletons, so parallel executions would share and corrupt the source
+- **Subagent cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `ConversationRunner.wasCancelled` boolean flags instead of raw `token.isCancellationRequested`—avoids false cancellation signals from unrelated token events
+- **Timeout vs parent cancellation**: `RunSubagentTool` checks `context.cancellationToken.isCancellationRequested` when attributing cancellation to timeout, giving parent cancellation priority over timeout timer
 
 ### Timeout Patterns
 
@@ -286,6 +289,7 @@ Use subagents strategically to preserve context and parallelize work:
 - Provide clear, specific instructions with examples
 - Include relevant context the subagent needs
 - Verify subagent results before trusting them
+- Always use Claude Opus 4.6 model in subagents for best results
 
 **Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
 

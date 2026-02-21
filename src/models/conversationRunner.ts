@@ -8,7 +8,6 @@ import type { ToolCallMessage, ToolCall } from '../types/modelTypes';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import { Log } from '../services/loggingService';
 import { ITool } from '../tools/ITool';
-import { CANCELLATION_MESSAGE } from '../config/constants';
 import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUtils';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -88,11 +87,23 @@ interface HandleToolCallsResult {
  */
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
+    private _hitMaxIterations = false;
+    private _wasCancelled = false;
 
     constructor(
         private readonly client: ILLMClient,
         private readonly toolExecutor: ToolExecutor
     ) {}
+
+    /** Whether the last run() exited due to reaching the max iteration limit. */
+    get hitMaxIterations(): boolean {
+        return this._hitMaxIterations;
+    }
+
+    /** Whether the last run() exited due to cancellation. */
+    get wasCancelled(): boolean {
+        return this._wasCancelled;
+    }
 
     /**
      * Execute a conversation loop until completion or max iterations.
@@ -108,6 +119,8 @@ export class ConversationRunner {
         let completionNudgeCount = 0;
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
+        this._hitMaxIterations = false;
+        this._wasCancelled = false;
 
         while (iteration < config.maxIterations) {
             iteration++;
@@ -119,7 +132,8 @@ export class ConversationRunner {
                 Log.info(
                     `${logPrefix} Cancelled before iteration ${iteration}`
                 );
-                return CANCELLATION_MESSAGE;
+                this._wasCancelled = true;
+                return '';
             }
 
             handler?.onIterationStart?.(iteration, config.maxIterations);
@@ -201,13 +215,24 @@ export class ConversationRunner {
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
-                    return CANCELLATION_MESSAGE;
+                    this._wasCancelled = true;
+                    return '';
                 }
 
                 conversation.addAssistantMessage(
                     response.content || null,
                     response.toolCalls
                 );
+
+                // Re-check cancellation before processing branching logic —
+                // token may have fired during response processing
+                if (token.isCancellationRequested) {
+                    Log.info(
+                        `${logPrefix} Cancelled during response processing`
+                    );
+                    this._wasCancelled = true;
+                    return '';
+                }
 
                 if (response.toolCalls && response.toolCalls.length > 0) {
                     // Reset nudge counter - model is cooperating with tool calls
@@ -219,6 +244,14 @@ export class ConversationRunner {
                         handler,
                         logPrefix
                     );
+
+                    // Check cancellation after tool execution completes —
+                    // tools may finish normally even when the token fires mid-execution
+                    if (token.isCancellationRequested) {
+                        Log.info(`${logPrefix} Cancelled after tool execution`);
+                        this._wasCancelled = true;
+                        return '';
+                    }
 
                     // If submit_review was called, return its content as the final review
                     if (result.finalReview) {
@@ -285,14 +318,24 @@ export class ConversationRunner {
                     'Conversation completed but no content returned.'
                 );
             } catch (error) {
-                if (
-                    token.isCancellationRequested ||
-                    isCancellationError(error)
-                ) {
+                // Explicit CancellationError always treated as cancellation
+                if (isCancellationError(error)) {
                     Log.info(
                         `${logPrefix} Cancelled during iteration ${iteration}`
                     );
-                    return CANCELLATION_MESSAGE;
+                    this._wasCancelled = true;
+                    return '';
+                }
+
+                // Token cancelled with non-cancellation error: log actual error for diagnostics
+                // (helps identify when errors coincide with or are caused by cancellation)
+                if (token.isCancellationRequested) {
+                    Log.warn(
+                        `${logPrefix} Cancelled during iteration ${iteration} ` +
+                            `(error while token cancelled: ${getErrorMessage(error)})`
+                    );
+                    this._wasCancelled = true;
+                    return '';
                 }
 
                 const fatalError = this.detectFatalError(error);
@@ -323,7 +366,11 @@ export class ConversationRunner {
                     `I encountered an error: ${errorMessage}. Let me try to continue.`
                 );
 
+                // An error on the final iteration is intentionally treated as max-iterations:
+                // the subagent can't retry regardless, so the parent LLM gets the same signal
+                // (with partial findings included via the error message).
                 if (iteration >= config.maxIterations) {
+                    this._hitMaxIterations = true;
                     return errorMessage;
                 }
             }
@@ -332,6 +379,7 @@ export class ConversationRunner {
         Log.warn(
             `${logPrefix} Reached maximum iterations (${config.maxIterations})`
         );
+        this._hitMaxIterations = true;
         return 'Conversation reached maximum iterations. The conversation may be incomplete.';
     }
 
@@ -547,5 +595,7 @@ export class ConversationRunner {
      */
     reset(): void {
         this.tokenValidator = null;
+        this._hitMaxIterations = false;
+        this._wasCancelled = false;
     }
 }

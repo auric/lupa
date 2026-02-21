@@ -8,7 +8,6 @@ import { IServiceRegistry } from '../services/serviceManager';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { Log } from '../services/loggingService';
-import { CANCELLATION_MESSAGE } from '../config/constants';
 
 /**
  * AnalysisOrchestrator handles the core PR analysis workflow.
@@ -151,7 +150,7 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                             progressCallback
                         );
 
-                    if (result.analysis === CANCELLATION_MESSAGE) {
+                    if (result.wasCancelled) {
                         throw new vscode.CancellationError();
                     }
 

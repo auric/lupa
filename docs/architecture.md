@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.11 | **Generated**: January 21, 2026 | **Type**: VS Code Extension
+> **Version**: 0.1.12 | **Generated**: February 20, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
@@ -423,6 +423,26 @@ Subagents enable delegated investigations with isolated context. Each analysis c
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Subagent Cancellation Model
+
+Each subagent gets its own `CancellationTokenSource` (local variable in `RunSubagentTool.execute()`, never an instance field) to prevent cross-cancellation between parallel subagents. The token is linked to the parent analysis token via `SubagentSessionManager.registerSubagentCancellation()`.
+
+**Initialization order**: `SubagentSessionManager.setParentCancellationToken()` must be called early in the analysis flow (before any tool execution) to ensure subagent cancellation propagation works. See `ToolCallingAnalysisProvider.analyze()` for the pattern.
+
+**Cancellation detection**: `SubagentExecutor` checks `ConversationRunner.hitMaxIterations` and `ConversationRunner.wasCancelled` boolean flags rather than raw `token.isCancellationRequested`. This prevents false cancellation signals from unrelated token events. At the top level, `ToolCallingAnalysisResult.wasCancelled` propagates cancellation state from `ConversationRunner` through to coordinators.
+
+**Timeout vs parent cancellation**: `RunSubagentTool` checks `context.cancellationToken.isCancellationRequested` when attributing a cancellation to timeout, giving parent cancellation priority over the timeout timer. This prevents misclassification when both fire during executor unwinding.
+
+**Exit conditions and their reporting**:
+
+| Condition         | ConversationRunner                       | SubagentExecutor            | RunSubagentTool                       |
+| ----------------- | ---------------------------------------- | --------------------------- | ------------------------------------- |
+| Normal completion | Returns response text                    | `success: true`             | `toolSuccess()`                       |
+| Max iterations    | Returns message, sets `hitMaxIterations` | `error: 'max_iterations'`   | `toolError()` with partial findings   |
+| Cancellation      | Returns `''`, sets `wasCancelled`        | `error: 'cancelled'`        | `toolError('Subagent was cancelled')` |
+| Timeout           | Token cancelled by timer                 | `error: 'cancelled'`        | `toolError(SubagentErrors.timeout())` |
+| LLM/Tool error    | Catches and retries                      | `success: false` with error | `toolError(SubagentErrors.failed())`  |
 
 ---
 

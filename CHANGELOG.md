@@ -5,6 +5,16 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12] - 2026-02-21
+
+### Fixed
+
+- Fix race condition causing spurious "Subagent was cancelled" errors when parallel subagents shared an instance-level CancellationTokenSource
+- Fix max iterations incorrectly reported as successful tool call — now reported as failure with partial findings
+- Fix false cancellation detection in SubagentExecutor — checks runner return value instead of raw token state
+- Fix `hitMaxIterations` flag not set when error occurs on the last allowed iteration
+- Improve cancellation diagnostics: log actual error type when cancellation coincides with other errors
+
 ## [0.1.11] - 2026-02-20
 
 ### Fixed

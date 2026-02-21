@@ -195,8 +195,25 @@ export class SubagentExecutor {
 
             const duration = Date.now() - startTime;
 
-            // Check if cancelled (timeout or user) after run completes
-            if (token.isCancellationRequested) {
+            // Check max iterations first — runner completed but hit the limit.
+            // This must be checked before cancellation since the token may also
+            // be cancelled (e.g., timeout fired while runner was on its last iteration).
+            if (conversationRunner.hitMaxIterations) {
+                Log.warn(
+                    `${logLabel} Reached max iterations after ${duration}ms with ${toolCallsMade} tool calls`
+                );
+                return {
+                    success: false,
+                    response,
+                    toolCallsMade,
+                    toolCalls,
+                    error: 'max_iterations',
+                };
+            }
+
+            // Check cancellation using the runner's boolean flag rather than
+            // comparing the response string, avoiding any risk of false detection.
+            if (conversationRunner.wasCancelled) {
                 Log.warn(
                     `${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`
                 );
