@@ -14,11 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **RLM mode no longer disables tools for large diffs**: `processDiffSize()` was calculating token usage using the legacy full-diff prompt even in RLM mode, causing tools to be disabled for large PRs. RLM mode now always keeps tools enabled since diff is accessed on-demand.
 - **Tool response limit tripled** (`MAX_TOOL_RESPONSE_CHARS`: 20K → 60K): Large file diffs (e.g., docs, generated code) no longer rejected by the response size validator.
 - **File read limit doubled** (`MAX_FILE_READ_LINES`: 200 → 400): LLM can read larger file sections in a single call.
-- **Budget model tuned for more subagents** (`DEFAULT_CHILD_BUDGET`: 20 → 15, `MIN_VIABLE_BUDGET`: 5 → 3): Root agent can now spawn ~7 children instead of ~5, reducing "Insufficient budget" rejections.
+- **Budget increased** (`DEFAULT_CHILD_BUDGET`: 15 → 20, `MIN_VIABLE_BUDGET`: 5 → 3): Subagents get 20 iterations each (up from 15) for meaningful investigation. Root can spawn 5 children from 100 iterations.
 - **Removed dead `iterationsUsed` field**: Never-incremented field removed from `RecursiveStateNode`.
 - **Workflow: examine diffs before planning**: Both recursive and non-recursive RLM prompts now instruct the LLM to read key file diffs before creating the review plan, preventing blind decomposition.
 - **Rate limit backoff**: `ConversationRunner` now detects `ChatRateLimited` errors and retries with exponential backoff (2s → 30s, up to 5 retries) without burning iterations. Previously, rate limit errors consumed an iteration each and retried immediately.
-- **Max iterations error shows actual budget**: `RunSubagentTool` error message now reports the child's allocated budget (e.g., 15) instead of the global `maxIterations` setting (e.g., 100).
+- **Max iterations error shows actual budget**: `RunSubagentTool` error message now reports the child's allocated budget (e.g., 20) instead of the global `maxIterations` setting (e.g., 100).
+- **Root agent plans from metadata, not diffs**: Recursive root no longer calls `get_file_diff` — it decomposes from `<diff_metadata>` and `list_changed_files` metadata only. Subagents read diffs themselves via `get_file_diff`. Keeps root context clean for aggregation.
+- **Subagents skip `list_changed_files`**: Subagent diff prompt now starts with `get_file_diff` for assigned files instead of wasting an iteration listing all changed files.
+- **Small model warning**: When using RLM mode with a model under 50K context tokens, logs a warning suggesting `"analysisApproach": "legacy"` for better results.
 
 #### Recursive Review
 
@@ -32,9 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Prompt Quality
 
-- **Fixed conflicting first-action instructions in recursive mode**: Root role and methodology both mandated `update_plan` as the first tool call, contradicting the tool guide which correctly starts with `list_changed_files`. All three now agree: examine diffs first, then plan.
+- **Fixed conflicting first-action instructions in recursive mode**: Root role and methodology both mandated `update_plan` as the first tool call, contradicting the tool guide which correctly starts with `list_changed_files`. All three now agree on the metadata-first workflow.
 - **Subagent recursion prompt no longer discourages delegation**: Replaced conservative "delegate sparingly" with actionable guidance on when to spawn sub-agents. Removed misleading "shared budget" framing—children get their own allocated budget.
 - **Fixed overlapping file count ranges in recursive tool guide**: Delegation strategy table had overlapping ranges (4-10 and 10-20). Corrected to non-overlapping ranges (4-9, 10-19, 20+).
+
+#### Tool Reliability
+
+- **Path normalization in `get_file_diff`**: Backslash paths from LLM are normalized to forward slashes before matching against diff entries.
+- **Diff tools filtered in legacy mode**: `SubagentExecutor` removes `list_changed_files` and `get_file_diff` from subagent tools when `parsedDiff` is unavailable (legacy approach), preventing misleading prompt instructions and tool call errors.
+
+#### Test Coverage
+
+- Added schema validation tests for `maxRecursionDepth`, `maxTotalAgents`, and `analysisApproach` settings (bounds and invalid values).
 
 ### Changed
 

@@ -43,10 +43,10 @@ ${task.context}
 ### Diff Access
 
 You have direct access to the PR diff via tools:
-- \`list_changed_files\` — See all changed files with statistics
 - \`get_file_diff\` — Read the actual diff for specific file(s)
+- \`list_changed_files\` — See all changed files (only if you need broader context)
 
-**Start by calling \`list_changed_files\`** to understand the scope of changes, then use \`get_file_diff\` to examine files relevant to your investigation.`
+**Start by calling \`get_file_diff\`** for the files listed in your task. Your parent has already identified which files you need to examine.`
             : '';
 
         const recursionSection = canRecurse

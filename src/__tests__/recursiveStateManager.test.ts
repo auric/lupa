@@ -178,7 +178,7 @@ describe('RecursiveStateManager', () => {
         });
 
         it('should cap allocation when parent budget is limited', () => {
-            // Parent has 10, reserve 3 → available 7 < DEFAULT_CHILD_BUDGET(15) → gets 7
+            // Parent has 10, reserve 3 → available 7 < DEFAULT_CHILD_BUDGET(20) → gets 7
             const limitedManager = new RecursiveStateManager(2, 12, 10);
             limitedManager.registerAgent(undefined, 'Root', 10);
 
@@ -218,19 +218,19 @@ describe('RecursiveStateManager', () => {
             bigManager.registerAgent(undefined, 'Root', 100);
 
             const first = bigManager.allocateChildBudget('root');
-            expect(first).toBe(15); // min(15, 100-3) = 15, root→85
+            expect(first).toBe(20); // min(20, 100-3) = 20, root→80
 
             const second = bigManager.allocateChildBudget('root');
-            expect(second).toBe(15); // min(15, 85-3) = 15, root→70
+            expect(second).toBe(20); // min(20, 80-3) = 20, root→60
 
             const third = bigManager.allocateChildBudget('root');
-            expect(third).toBe(15); // min(15, 70-3) = 15, root→55
+            expect(third).toBe(20); // min(20, 60-3) = 20, root→40
 
             const fourth = bigManager.allocateChildBudget('root');
-            expect(fourth).toBe(15); // min(15, 55-3) = 15, root→40
+            expect(fourth).toBe(20); // min(20, 40-3) = 20, root→20
 
             const fifth = bigManager.allocateChildBudget('root');
-            expect(fifth).toBe(15); // min(15, 40-3) = 15, root→25
+            expect(fifth).toBe(17); // min(20, 20-3) = 17, root→3
         });
 
         it('canSpawnChild should not deduct budget (read-only check)', () => {

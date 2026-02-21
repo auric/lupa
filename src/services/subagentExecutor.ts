@@ -125,7 +125,19 @@ export class SubagentExecutor {
             this.reportProgress(`Sub-analysis: ${taskLabel}`, 0.5);
 
             const conversation = new ConversationManager();
-            const filteredTools = this.filterTools(canRecurse);
+            let filteredTools = this.filterTools(canRecurse);
+
+            // Remove diff tools when parsedDiff is unavailable (legacy mode).
+            // Without parsedDiff the tools would return errors, and the prompt
+            // would misleadingly instruct the subagent to call them.
+            if (!options?.parsedDiff) {
+                filteredTools = filteredTools.filter(
+                    (t) =>
+                        t.name !== 'list_changed_files' &&
+                        t.name !== 'get_file_diff'
+                );
+            }
+
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
             // Use allocated budget as maxIterations when available (recursive mode),

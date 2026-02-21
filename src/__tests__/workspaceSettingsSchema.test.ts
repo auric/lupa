@@ -154,6 +154,96 @@ describe('WorkspaceSettingsSchema', () => {
         });
     });
 
+    describe('recursion settings', () => {
+        it('should accept valid maxRecursionDepth values', () => {
+            for (const depth of [
+                RECURSION_LIMITS.maxDepth.min,
+                RECURSION_LIMITS.maxDepth.default,
+                RECURSION_LIMITS.maxDepth.max,
+            ]) {
+                const result = WorkspaceSettingsSchema.safeParse({
+                    maxRecursionDepth: depth,
+                });
+                expect(result.success).toBe(true);
+                if (result.success) {
+                    expect(result.data.maxRecursionDepth).toBe(depth);
+                }
+            }
+        });
+
+        it('should reject maxRecursionDepth outside bounds', () => {
+            expect(
+                WorkspaceSettingsSchema.safeParse({
+                    maxRecursionDepth: RECURSION_LIMITS.maxDepth.min - 1,
+                }).success
+            ).toBe(false);
+            expect(
+                WorkspaceSettingsSchema.safeParse({
+                    maxRecursionDepth: RECURSION_LIMITS.maxDepth.max + 1,
+                }).success
+            ).toBe(false);
+        });
+
+        it('should accept valid maxTotalAgents values', () => {
+            for (const agents of [
+                RECURSION_LIMITS.maxTotalAgents.min,
+                RECURSION_LIMITS.maxTotalAgents.default,
+                RECURSION_LIMITS.maxTotalAgents.max,
+            ]) {
+                const result = WorkspaceSettingsSchema.safeParse({
+                    maxTotalAgents: agents,
+                });
+                expect(result.success).toBe(true);
+                if (result.success) {
+                    expect(result.data.maxTotalAgents).toBe(agents);
+                }
+            }
+        });
+
+        it('should reject maxTotalAgents outside bounds', () => {
+            expect(
+                WorkspaceSettingsSchema.safeParse({
+                    maxTotalAgents: RECURSION_LIMITS.maxTotalAgents.min - 1,
+                }).success
+            ).toBe(false);
+            expect(
+                WorkspaceSettingsSchema.safeParse({
+                    maxTotalAgents: RECURSION_LIMITS.maxTotalAgents.max + 1,
+                }).success
+            ).toBe(false);
+        });
+    });
+
+    describe('analysisApproach setting', () => {
+        it('should accept valid analysis approaches', () => {
+            for (const approach of ['rlm', 'legacy'] as const) {
+                const result = WorkspaceSettingsSchema.safeParse({
+                    analysisApproach: approach,
+                });
+                expect(result.success).toBe(true);
+                if (result.success) {
+                    expect(result.data.analysisApproach).toBe(approach);
+                }
+            }
+        });
+
+        it('should default to rlm', () => {
+            const result = WorkspaceSettingsSchema.safeParse({});
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.analysisApproach).toBe('rlm');
+            }
+        });
+
+        it('should reject invalid analysis approach', () => {
+            expect(
+                WorkspaceSettingsSchema.safeParse({
+                    analysisApproach: 'turbo',
+                }).success
+            ).toBe(false);
+        });
+    });
+
     describe('error formatting', () => {
         it('should provide readable error messages', () => {
             const result = WorkspaceSettingsSchema.safeParse({
