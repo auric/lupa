@@ -116,6 +116,19 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'submit_review':
                 return '🚀 Submitted code review';
 
+            case 'list_changed_files':
+                return `${ACTIVITY.reading} Listed changed files`;
+
+            case 'get_file_diff': {
+                const paths = Array.isArray(args.file_paths)
+                    ? args.file_paths
+                    : [];
+                if (paths.length === 1) {
+                    return `${ACTIVITY.reading} Read diff for \`${sanitizeForMarkdown(paths[0], 'file')}\``;
+                }
+                return `${ACTIVITY.reading} Read diff for ${paths.length} files`;
+            }
+
             // Long-running actions - present continuous
             case 'run_subagent':
                 return '🤖 Running subagent investigation...';

@@ -8,6 +8,10 @@ import { ITool } from '../tools/ITool';
  * - Task instructions in user messages
  * - Proper XML structure with underscores
  * - Optimized for long context (query at end)
+ *
+ * Supports two analysis approaches:
+ * - RLM (Recursive Language Model): Diff metadata only in prompt; LLM uses tools for diff access
+ * - Legacy: Full diff embedded in prompt (traditional approach)
  */
 export class PromptGenerator {
     private toolAwarePromptGenerator = new ToolAwareSystemPromptGenerator();
@@ -19,6 +23,18 @@ export class PromptGenerator {
      */
     public generateToolAwareSystemPrompt(availableTools: ITool[]): string {
         return this.toolAwarePromptGenerator.generateSystemPrompt(
+            availableTools
+        );
+    }
+
+    /**
+     * Generate recursive review system prompt for the root controller agent.
+     * Uses decompose → delegate → aggregate → synthesize methodology.
+     * @param availableTools Array of tools available to the LLM
+     * @returns System prompt for recursive root auditor
+     */
+    public generateRecursiveSystemPrompt(availableTools: ITool[]): string {
+        return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt(
             availableTools
         );
     }
@@ -36,15 +52,42 @@ export class PromptGenerator {
     }
 
     /**
-     * Generate tool-calling focused user prompt
-     * Optimized for tool-calling workflow with diff content
+     * Generate RLM-style user prompt with diff metadata only.
+     * The LLM uses list_changed_files and get_file_diff tools to access diff on demand.
+     * @param parsedDiff Parsed diff structure (for metadata extraction)
+     * @param userInstructions Optional user-provided instructions
+     * @param recursiveMode Whether to use recursive review workflow
+     * @returns User prompt with diff metadata and tool usage instructions
+     */
+    public generateRlmUserPrompt(
+        parsedDiff: DiffHunk[],
+        userInstructions?: string,
+        recursiveMode: boolean = false
+    ): string {
+        const metadataSection = this.generateDiffMetadataSection(parsedDiff);
+        const userFocusSection = userInstructions?.trim()
+            ? `<user_focus>\nThe developer has requested you focus on: ${userInstructions.trim()}\n\nWhile performing comprehensive analysis, prioritize findings related to this request.\n</user_focus>\n\n`
+            : '';
+        const reminder = this.generateRlmAnalysisReminder(
+            parsedDiff.length,
+            recursiveMode
+        );
+
+        return `${metadataSection}${userFocusSection}${reminder}`;
+    }
+
+    /**
+     * Generate tool-calling focused user prompt (legacy mode).
+     * Embeds the full diff content in the prompt.
      * @param parsedDiff Parsed diff structure
      * @param userInstructions Optional user-provided instructions to focus the analysis
-     * @returns User prompt optimized for tool-calling analysis
+     * @param recursiveMode Whether to use recursive review workflow reminders
+     * @returns User prompt with full diff content
      */
     public generateToolCallingUserPrompt(
         parsedDiff: DiffHunk[],
-        userInstructions?: string
+        userInstructions?: string,
+        recursiveMode: boolean = false
     ): string {
         // 1. File content at top for long context optimization
         const fileContentSection = this.generateFileContentSection(parsedDiff);
@@ -56,10 +99,117 @@ export class PromptGenerator {
 
         // 3. Concise analysis reminder (main instructions are in system prompt)
         const analysisReminder = this.generateAnalysisReminder(
-            parsedDiff.length
+            parsedDiff.length,
+            recursiveMode
         );
 
         return `${fileContentSection}${userFocusSection}${analysisReminder}`;
+    }
+
+    /**
+     * Generate diff metadata section for RLM approach.
+     * Provides a high-level summary instead of full diff content.
+     */
+    private generateDiffMetadataSection(parsedDiff: DiffHunk[]): string {
+        let totalAdded = 0;
+        let totalRemoved = 0;
+        const fileSummaries: string[] = [];
+
+        for (const file of parsedDiff) {
+            let added = 0;
+            let removed = 0;
+            for (const hunk of file.hunks) {
+                for (const line of hunk.parsedLines) {
+                    if (line.type === 'added') {
+                        added++;
+                    }
+                    if (line.type === 'removed') {
+                        removed++;
+                    }
+                }
+            }
+            totalAdded += added;
+            totalRemoved += removed;
+
+            const status = file.isNewFile
+                ? 'new'
+                : file.isDeletedFile
+                  ? 'deleted'
+                  : 'modified';
+            fileSummaries.push(
+                `  - ${file.filePath} [${status}] (+${added} -${removed})`
+            );
+        }
+
+        let section = '<diff_metadata>\n';
+        section += `Files changed: ${parsedDiff.length}\n`;
+        section += `Total lines: +${totalAdded} -${totalRemoved}\n`;
+        section += `\nChanged files:\n${fileSummaries.join('\n')}\n`;
+        section +=
+            '\nUse `list_changed_files` for detailed statistics and `get_file_diff` to examine specific file changes.\n';
+        section += '</diff_metadata>\n\n';
+
+        return section;
+    }
+
+    /**
+     * Generate analysis reminder for RLM approach.
+     */
+    private generateRlmAnalysisReminder(
+        fileCount: number,
+        recursiveMode: boolean
+    ): string {
+        if (recursiveMode) {
+            return this.generateRecursiveRlmReminder(fileCount);
+        }
+
+        const spawnSubagents = fileCount >= 4;
+
+        let reminder = '<analysis_task>\n';
+        reminder += `Review the ${fileCount} changed file(s) in this PR.\n\n`;
+        reminder += `**Important**: The diff is NOT embedded in this message. Use these tools to access it:\n`;
+        reminder += `1. \`list_changed_files\` — See all changed files with statistics\n`;
+        reminder += `2. \`get_file_diff\` — Read the actual diff for specific file(s)\n\n`;
+
+        if (spawnSubagents) {
+            reminder += `**Note**: This PR has ${fileCount} files. Consider spawning subagents for parallel analysis.\n\n`;
+        }
+
+        reminder += `**Workflow**:\n`;
+        reminder += `1. Call \`list_changed_files\` to understand the scope\n`;
+        reminder += `2. Create a plan with \`update_plan\`\n`;
+        reminder += `3. Use \`get_file_diff\` to examine each file's changes\n`;
+        reminder += `4. Use other tools to investigate context as needed\n`;
+        reminder += `5. Call reflection tools before concluding\n`;
+        reminder += `6. Deliver structured Markdown review\n`;
+        reminder += '</analysis_task>';
+
+        return reminder;
+    }
+
+    /**
+     * Generate recursive RLM analysis reminder.
+     */
+    private generateRecursiveRlmReminder(fileCount: number): string {
+        let reminder = '<analysis_task>\n';
+        reminder += `Review the ${fileCount} changed file(s) in this PR.\n\n`;
+        reminder += `**Important**: The diff is NOT embedded in this message. Use these tools to access it:\n`;
+        reminder += `1. \`list_changed_files\` — See all changed files with statistics\n`;
+        reminder += `2. \`get_file_diff\` — Read the actual diff for specific file(s)\n\n`;
+
+        reminder += `**Recursive Review Mode**: Decompose this PR into logical concern groups and spawn focused sub-agents for each. Pass relevant file paths to each sub-agent so they can use \`get_file_diff\` themselves.\n\n`;
+
+        reminder += `**Workflow**:\n`;
+        reminder += `1. Call \`list_changed_files\` to scan the diff structure\n`;
+        reminder += `2. Classify changes into concern groups\n`;
+        reminder += `3. Call \`update_plan\` with your decomposition plan\n`;
+        reminder += `4. Spawn \`run_subagent\` for each concern group (include file paths in task!)\n`;
+        reminder += `5. After all agents return, aggregate findings\n`;
+        reminder += `6. Check for cross-concern issues\n`;
+        reminder += `7. Call \`think_about_completion\`, then \`submit_review\`\n`;
+        reminder += '</analysis_task>';
+
+        return reminder;
     }
 
     /**
@@ -97,10 +247,17 @@ export class PromptGenerator {
     }
 
     /**
-     * Generate a concise analysis reminder based on PR size.
+     * Generate a concise analysis reminder based on PR size and mode.
      * Full methodology is in system prompt - this just provides context-specific nudges.
      */
-    private generateAnalysisReminder(fileCount: number): string {
+    private generateAnalysisReminder(
+        fileCount: number,
+        recursiveMode: boolean = false
+    ): string {
+        if (recursiveMode) {
+            return this.generateRecursiveAnalysisReminder(fileCount);
+        }
+
         const spawnSubagents = fileCount >= 4;
 
         let reminder = '<analysis_task>\n';
@@ -115,6 +272,28 @@ export class PromptGenerator {
 2. Use tools to investigate unfamiliar code
 3. Call reflection tools before concluding
 4. Deliver structured Markdown review
+</analysis_task>`;
+
+        return reminder;
+    }
+
+    /**
+     * Generate analysis reminder for recursive review mode.
+     * Emphasizes decomposition and delegation workflow.
+     */
+    private generateRecursiveAnalysisReminder(fileCount: number): string {
+        let reminder = '<analysis_task>\n';
+        reminder += `Review the ${fileCount} file(s) above.\n\n`;
+
+        reminder += `**Recursive Review Mode**: Decompose this PR into logical concern groups and spawn focused sub-agents for each. Include relevant diff hunks in each sub-agent's context.\n\n`;
+
+        reminder += `**Workflow**:
+1. Scan the diff structure and classify changes
+2. Call \`update_plan\` with your decomposition plan
+3. Spawn \`run_subagent\` for each concern group (include diff context!)
+4. After all agents return, aggregate findings
+5. Check for cross-concern issues
+6. Call \`think_about_completion\`, then \`submit_review\`
 </analysis_task>`;
 
         return reminder;

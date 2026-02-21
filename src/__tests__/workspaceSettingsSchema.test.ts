@@ -4,6 +4,7 @@ import {
     WorkspaceSettingsSchema,
     ANALYSIS_LIMITS,
     SUBAGENT_LIMITS,
+    RECURSION_LIMITS,
 } from '../models/workspaceSettingsSchema';
 
 describe('WorkspaceSettingsSchema', () => {
@@ -37,7 +38,12 @@ describe('WorkspaceSettingsSchema', () => {
             const result = WorkspaceSettingsSchema.safeParse(validSettings);
             expect(result.success).toBe(true);
             if (result.success) {
-                expect(result.data).toEqual(validSettings);
+                expect(result.data).toEqual({
+                    ...validSettings,
+                    maxRecursionDepth: RECURSION_LIMITS.maxDepth.default,
+                    maxTotalAgents: RECURSION_LIMITS.maxTotalAgents.default,
+                    analysisApproach: 'rlm',
+                });
             }
         });
 

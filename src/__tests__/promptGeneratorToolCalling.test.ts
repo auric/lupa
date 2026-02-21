@@ -252,4 +252,271 @@ describe('PromptGenerator - Tool Calling Features', () => {
             }).not.toThrow();
         });
     });
+
+    describe('generateRecursiveSystemPrompt', () => {
+        it('should generate a recursive review system prompt', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('Lead Architect');
+            expect(systemPrompt).toContain('recursive');
+            expect(systemPrompt).toContain('Decompose');
+            expect(systemPrompt).toContain('Delegate');
+            expect(systemPrompt).toContain('run_subagent');
+        });
+
+        it('should include recursive methodology section', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('recursive_methodology');
+            expect(systemPrompt).toContain('Concern Groups');
+            expect(systemPrompt).toContain('Spawn Sub-Agents');
+            expect(systemPrompt).toContain('Aggregate Findings');
+        });
+
+        it('should include recursive tool guide', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('recursive_tool_guide');
+            expect(systemPrompt).toContain('Root Controller');
+            expect(systemPrompt).toContain('Delegation Strategy');
+        });
+
+        it('should include available tools section', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('## Available Tools');
+            expect(systemPrompt).toContain('mock_tool');
+        });
+
+        it('should handle empty tools array', () => {
+            const systemPrompt = promptGenerator.generateRecursiveSystemPrompt(
+                []
+            );
+
+            expect(systemPrompt).toContain('Lead Architect');
+            expect(systemPrompt).not.toContain('## Available Tools');
+        });
+    });
+
+    describe('generateToolCallingUserPrompt - recursive mode', () => {
+        it('should use recursive analysis reminder when recursiveMode is true', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true
+            );
+
+            expect(userPrompt).toContain('Recursive Review Mode');
+            expect(userPrompt).toContain('Decompose this PR');
+            expect(userPrompt).toContain('run_subagent');
+        });
+
+        it('should include recursive workflow steps', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true
+            );
+
+            expect(userPrompt).toContain('Scan the diff structure');
+            expect(userPrompt).toContain('decomposition plan');
+            expect(userPrompt).toContain('aggregate findings');
+            expect(userPrompt).toContain('submit_review');
+        });
+
+        it('should not use recursive reminder when recursiveMode is false', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                false
+            );
+
+            expect(userPrompt).not.toContain('Recursive Review Mode');
+            expect(userPrompt).not.toContain('Decompose this PR');
+        });
+
+        it('should still include user focus when combined with recursive mode', () => {
+            const userPrompt = promptGenerator.generateToolCallingUserPrompt(
+                sampleParsedDiff,
+                'focus on security',
+                true
+            );
+
+            expect(userPrompt).toContain('<user_focus>');
+            expect(userPrompt).toContain('focus on security');
+            expect(userPrompt).toContain('Recursive Review Mode');
+        });
+    });
+
+    describe('generateRlmUserPrompt', () => {
+        it('should generate metadata section without full diff content', () => {
+            const prompt =
+                promptGenerator.generateRlmUserPrompt(sampleParsedDiff);
+
+            expect(prompt).toContain('<diff_metadata>');
+            expect(prompt).toContain('</diff_metadata>');
+            expect(prompt).toContain('src/example.ts');
+            expect(prompt).toContain('Files changed: 1');
+            // Should NOT contain actual diff content
+            expect(prompt).not.toContain('<files_to_review>');
+            expect(prompt).not.toContain('function example()');
+            expect(prompt).not.toContain('// New comment');
+        });
+
+        it('should include line statistics in metadata', () => {
+            const prompt =
+                promptGenerator.generateRlmUserPrompt(sampleParsedDiff);
+
+            // sampleParsedDiff has 2 added, 0 removed lines
+            expect(prompt).toContain('+2 -0');
+            expect(prompt).toContain('Total lines: +2 -0');
+        });
+
+        it('should include file status in metadata', () => {
+            const diffWithNewFile: DiffHunk[] = [
+                {
+                    filePath: 'src/new.ts',
+                    isNewFile: true,
+                    isDeletedFile: false,
+                    originalHeader: 'diff --git a/src/new.ts b/src/new.ts',
+                    hunks: [
+                        {
+                            oldStart: 0,
+                            oldLines: 0,
+                            newStart: 1,
+                            newLines: 1,
+                            hunkId: 'src/new.ts:1',
+                            hunkHeader: '@@ -0,0 +1,1 @@',
+                            parsedLines: [
+                                {
+                                    type: 'added',
+                                    content: 'new',
+                                    lineNumber: 1,
+                                },
+                            ],
+                        },
+                    ],
+                },
+                {
+                    filePath: 'src/deleted.ts',
+                    isNewFile: false,
+                    isDeletedFile: true,
+                    originalHeader:
+                        'diff --git a/src/deleted.ts b/src/deleted.ts',
+                    hunks: [
+                        {
+                            oldStart: 1,
+                            oldLines: 1,
+                            newStart: 0,
+                            newLines: 0,
+                            hunkId: 'src/deleted.ts:0',
+                            hunkHeader: '@@ -1,1 +0,0 @@',
+                            parsedLines: [{ type: 'removed', content: 'old' }],
+                        },
+                    ],
+                },
+            ];
+
+            const prompt =
+                promptGenerator.generateRlmUserPrompt(diffWithNewFile);
+
+            expect(prompt).toContain('src/new.ts [new]');
+            expect(prompt).toContain('src/deleted.ts [deleted]');
+        });
+
+        it('should include tool usage instructions', () => {
+            const prompt =
+                promptGenerator.generateRlmUserPrompt(sampleParsedDiff);
+
+            expect(prompt).toContain('list_changed_files');
+            expect(prompt).toContain('get_file_diff');
+        });
+
+        it('should include analysis_task section', () => {
+            const prompt =
+                promptGenerator.generateRlmUserPrompt(sampleParsedDiff);
+
+            expect(prompt).toContain('<analysis_task>');
+            expect(prompt).toContain('</analysis_task>');
+            expect(prompt).toContain('diff is NOT embedded');
+        });
+
+        it('should include user focus when provided', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                'check for SQL injection'
+            );
+
+            expect(prompt).toContain('<user_focus>');
+            expect(prompt).toContain('check for SQL injection');
+        });
+
+        it('should not include user focus when empty', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                '  '
+            );
+
+            expect(prompt).not.toContain('<user_focus>');
+        });
+
+        it('should use recursive reminder when recursiveMode is true', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true
+            );
+
+            expect(prompt).toContain('Recursive Review Mode');
+            expect(prompt).toContain('Decompose this PR');
+            expect(prompt).toContain('run_subagent');
+        });
+
+        it('should not use recursive reminder when recursiveMode is false', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                false
+            );
+
+            expect(prompt).not.toContain('Recursive Review Mode');
+        });
+
+        it('should suggest subagents for large PRs', () => {
+            const largeDiff: DiffHunk[] = Array(5)
+                .fill(null)
+                .map((_, i) => ({
+                    filePath: `src/file${i}.ts`,
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: `diff --git a/src/file${i}.ts b/src/file${i}.ts`,
+                    hunks: [],
+                }));
+
+            const prompt = promptGenerator.generateRlmUserPrompt(largeDiff);
+
+            expect(prompt).toContain('5 files');
+            expect(prompt).toContain('subagent');
+        });
+
+        it('should handle empty diff gracefully', () => {
+            expect(() => {
+                promptGenerator.generateRlmUserPrompt([]);
+            }).not.toThrow();
+        });
+
+        it('should place metadata before analysis task', () => {
+            const prompt =
+                promptGenerator.generateRlmUserPrompt(sampleParsedDiff);
+
+            const metadataIndex = prompt.indexOf('<diff_metadata>');
+            const taskIndex = prompt.indexOf('<analysis_task>');
+
+            expect(metadataIndex).toBeLessThan(taskIndex);
+        });
+    });
 });

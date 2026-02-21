@@ -37,6 +37,8 @@ import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationToo
 import { RunSubagentTool } from '../tools/runSubagentTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
+import { ListChangedFilesTool } from '../tools/listChangedFilesTool';
+import { GetFileDiffTool } from '../tools/getFileDiffTool';
 
 import { Log } from './loggingService';
 
@@ -316,6 +318,14 @@ export class ServiceManager implements vscode.Disposable {
 
             // Register the SubmitReviewTool for explicit completion signaling
             this.services.toolRegistry!.registerTool(new SubmitReviewTool());
+
+            // Register diff-on-demand tools (RLM approach)
+            // These tools access parsedDiff from ExecutionContext instead of
+            // embedding the full diff in the prompt, enabling on-demand context loading.
+            this.services.toolRegistry!.registerTool(
+                new ListChangedFilesTool()
+            );
+            this.services.toolRegistry!.registerTool(new GetFileDiffTool());
 
             Log.info(
                 `Registered ${this.services.toolRegistry!.getToolNames().length} tools: ${this.services.toolRegistry!.getToolNames().join(', ')}`

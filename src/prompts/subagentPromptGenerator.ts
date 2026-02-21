@@ -9,19 +9,22 @@ import type { ITool } from '../tools/ITool';
  * - Have limited tool iterations
  * - Focus on a single, specific investigation task
  * - Return structured findings for the parent agent to synthesize
+ * - May spawn their own sub-agents when in recursive mode (canRecurse=true)
  */
 export class SubagentPromptGenerator {
     /**
      * Generate a system prompt for a subagent investigation.
      * @param task The investigation task definition
-     * @param tools Available tools (run_subagent will be filtered out by executor)
+     * @param tools Available tools (run_subagent will be filtered out by executor unless recursive)
      * @param maxIterations Maximum conversation iterations for this subagent
+     * @param canRecurse Whether this agent can spawn its own sub-agents
      * @returns Complete system prompt for the subagent
      */
     generateSystemPrompt(
         task: SubagentTask,
         tools: ITool[],
-        maxIterations: number
+        maxIterations: number,
+        canRecurse: boolean = false
     ): string {
         const toolList = this.formatToolList(tools);
         const contextSection = task.context
@@ -33,6 +36,36 @@ The parent agent has provided the following code/information relevant to your in
 ${task.context}
 </context_from_parent>`
             : '';
+
+        const recursionSection = canRecurse
+            ? `
+### Spawning Sub-Agents
+
+You can delegate deep dependency investigations by calling \`run_subagent\`.
+
+**When to spawn:**
+- You discover a dependency chain spanning 3+ additional files
+- A single function's behavior depends on understanding a separate module
+- You need to trace callers/callees across multiple layers
+
+**Task format for sub-agents:**
+\`\`\`
+task: "Trace [function] dependency chain.
+Questions:
+1. [Specific question about behavior]
+2. [Specific question about edge cases]
+Examine: [function1], [function2]"
+
+context: "[What you found so far and why you need deeper investigation]"
+\`\`\`
+
+**Budget awareness:** Your sub-agents share your iteration budget, so delegate sparingly.`
+            : `
+### Recursion Limit
+
+You are at maximum recursion depth—you **cannot** spawn sub-agents.
+Complete your investigation within your iteration budget.
+Note any uninvestigated areas in your response so the parent agent can follow up.`;
 
         return `You are a focused investigation subagent. A senior engineer reviewing a pull request has delegated a specific investigation to you.
 
@@ -64,6 +97,7 @@ Follow this systematic approach:
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+${recursionSection}
 </investigation_approach>
 
 <response_requirements>

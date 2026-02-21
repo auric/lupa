@@ -56,6 +56,19 @@ export const SubagentLimits = {
 } as const;
 
 /**
+ * Tools disallowed for depth-1 recursive agents.
+ * They CAN call run_subagent (enabling recursion) but cannot access
+ * plan-tracking and final-review tools that belong to the root agent.
+ */
+export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [
+    'update_plan', // Main agent only - subagents don't track review progress
+    'submit_review', // Main agent only - explicit completion signal
+    'think_about_completion', // Main agent only - for final review verification
+    'think_about_context', // Main agent only - references diff coverage
+    'think_about_task', // Main agent only - references PR review scope
+] as const;
+
+/**
  * Tools that are only available during main analysis mode (not exploration mode).
  * Exploration mode (no slash command) doesn't have PR context or a review plan,
  * so these tools would either fail or return nonsensical guidance.
@@ -66,6 +79,8 @@ export const MAIN_ANALYSIS_ONLY_TOOLS = [
     'think_about_completion', // References PR analysis completion criteria
     'think_about_context', // References diff coverage and PR-level context
     'think_about_task', // References PR review scope and task structure
+    'list_changed_files', // Requires parsedDiff from ExecutionContext
+    'get_file_diff', // Requires parsedDiff from ExecutionContext
 ] as const;
 
 /**

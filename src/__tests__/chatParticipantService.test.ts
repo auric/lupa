@@ -165,6 +165,9 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
+                getMaxTotalAgents: vi.fn().mockReturnValue(12),
+                getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -173,6 +176,9 @@ describe('ChatParticipantService', () => {
                 generateToolCallingUserPrompt: vi
                     .fn()
                     .mockReturnValue('User prompt'),
+                generateRlmUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -406,6 +412,9 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
+                getMaxTotalAgents: vi.fn().mockReturnValue(12),
+                getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -414,6 +423,9 @@ describe('ChatParticipantService', () => {
                 generateToolCallingUserPrompt: vi
                     .fn()
                     .mockReturnValue('User prompt'),
+                generateRlmUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -638,7 +650,8 @@ describe('ChatParticipantService', () => {
                 mockPromptGenerator.generateToolCallingUserPrompt
             ).toHaveBeenCalledWith(
                 expect.any(Array),
-                undefined // User prompt is undefined when empty
+                undefined, // User prompt is undefined when empty
+                false // recursiveMode
             );
         });
 
@@ -677,7 +690,11 @@ describe('ChatParticipantService', () => {
 
             expect(
                 mockPromptGenerator.generateToolCallingUserPrompt
-            ).toHaveBeenCalledWith(expect.any(Array), 'focus on security');
+            ).toHaveBeenCalledWith(
+                expect.any(Array),
+                'focus on security',
+                false
+            );
         });
 
         it('should stream progress with uncommitted changes scope', async () => {
@@ -864,6 +881,9 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
+                getMaxTotalAgents: vi.fn().mockReturnValue(12),
+                getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -872,6 +892,9 @@ describe('ChatParticipantService', () => {
                 generateToolCallingUserPrompt: vi
                     .fn()
                     .mockReturnValue('User prompt'),
+                generateRlmUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -1297,6 +1320,9 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
+                getMaxTotalAgents: vi.fn().mockReturnValue(12),
+                getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -1308,6 +1334,9 @@ describe('ChatParticipantService', () => {
                 generateToolCallingUserPrompt: vi
                     .fn()
                     .mockReturnValue('User prompt'),
+                generateRlmUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -2039,6 +2068,9 @@ describe('ChatParticipantService', () => {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
+                getMaxTotalAgents: vi.fn().mockReturnValue(12),
+                getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -2047,6 +2079,9 @@ describe('ChatParticipantService', () => {
                 generateToolCallingUserPrompt: vi
                     .fn()
                     .mockReturnValue('User prompt'),
+                generateRlmUserPrompt: vi
+                    .fn()
+                    .mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({

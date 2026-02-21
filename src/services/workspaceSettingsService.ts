@@ -9,6 +9,8 @@ import {
     WorkspaceSettings,
     ANALYSIS_LIMITS,
     SUBAGENT_LIMITS,
+    RECURSION_LIMITS,
+    type AnalysisApproach,
 } from '../models/workspaceSettingsSchema';
 
 const getDefaultSettings = (): WorkspaceSettings =>
@@ -306,6 +308,29 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
+     * Get the maximum recursion depth for recursive review mode.
+     * 0 = flat/linear (current behavior), 2 = default recursive depth.
+     */
+    public getMaxRecursionDepth(): number {
+        return this.settings.maxRecursionDepth;
+    }
+
+    /**
+     * Get the maximum total agents across all depths per analysis.
+     */
+    public getMaxTotalAgents(): number {
+        return this.settings.maxTotalAgents;
+    }
+
+    /**
+     * Get the analysis approach strategy.
+     * "rlm" = diff-on-demand via tools, "legacy" = full diff embedded in prompt.
+     */
+    public getAnalysisApproach(): AnalysisApproach {
+        return this.settings.analysisApproach;
+    }
+
+    /**
      * Reset all analysis limit settings to their defaults
      */
     public resetAnalysisLimitsToDefaults(): void {
@@ -314,6 +339,8 @@ export class WorkspaceSettingsService implements vscode.Disposable {
             ANALYSIS_LIMITS.requestTimeoutSeconds.default;
         this.settings.maxSubagentsPerSession =
             SUBAGENT_LIMITS.maxPerSession.default;
+        this.settings.maxRecursionDepth = RECURSION_LIMITS.maxDepth.default;
+        this.settings.maxTotalAgents = RECURSION_LIMITS.maxTotalAgents.default;
         this.debouncedSaveSettings();
     }
 

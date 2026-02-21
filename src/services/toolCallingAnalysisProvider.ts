@@ -25,6 +25,8 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
+import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import type { ExecutionContext } from '../types/executionContext';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -87,15 +89,48 @@ export class ToolCallingAnalysisProvider {
             progressCallback,
             progressContext
         );
+
+        // Determine if recursive review mode is available
+        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
+        const isRecursiveMode = maxRecursionDepth >= 2;
+        const isRlmApproach =
+            this.workspaceSettings.getAnalysisApproach() === 'rlm';
+
+        // Create RecursiveStateManager when in recursive mode
+        const recursiveState = isRecursiveMode
+            ? new RecursiveStateManager(
+                  maxRecursionDepth,
+                  this.workspaceSettings.getMaxTotalAgents(),
+                  this.maxIterations
+              )
+            : undefined;
+
+        // Register root agent in recursive state tree
+        if (recursiveState) {
+            recursiveState.registerAgent(
+                undefined,
+                'Root review controller',
+                this.maxIterations
+            );
+            recursiveState.startAgent('root');
+        }
+
+        // Create execution context as a mutable reference so parsedDiff can be
+        // set after diff processing (RLM approach needs it on the context for tools)
+        const executionContext: ExecutionContext = {
+            planManager,
+            subagentSessionManager,
+            subagentExecutor,
+            cancellationToken: token,
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: 'root',
+        };
+
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
             this.workspaceSettings,
-            {
-                planManager,
-                subagentSessionManager,
-                subagentExecutor,
-                cancellationToken: token,
-            }
+            executionContext
         );
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,
@@ -121,17 +156,39 @@ export class ToolCallingAnalysisProvider {
             const availableTools = toolsAvailable
                 ? toolExecutor.getAvailableTools()
                 : [];
-            const systemPrompt =
-                this.promptGenerator.generateToolAwareSystemPrompt(
-                    availableTools
-                );
+            const systemPrompt = isRecursiveMode
+                ? this.promptGenerator.generateRecursiveSystemPrompt(
+                      availableTools
+                  )
+                : this.promptGenerator.generateToolAwareSystemPrompt(
+                      availableTools
+                  );
 
             // Parse diff for structured analysis
             const parsedDiff = DiffUtils.parseDiff(processedDiff);
 
-            // Generate user prompt with processed diff
-            let userMessage =
-                this.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
+            // Generate user prompt based on analysis approach
+            let userMessage: string;
+            if (isRlmApproach && toolsAvailable) {
+                // RLM approach: metadata-only prompt, diff accessed via tools
+                executionContext.parsedDiff = parsedDiff;
+                userMessage = this.promptGenerator.generateRlmUserPrompt(
+                    parsedDiff,
+                    undefined,
+                    isRecursiveMode
+                );
+                Log.info(
+                    `Using RLM approach: ${parsedDiff.length} files available via diff tools`
+                );
+            } else {
+                // Legacy approach: full diff embedded in prompt
+                userMessage =
+                    this.promptGenerator.generateToolCallingUserPrompt(
+                        parsedDiff,
+                        undefined,
+                        isRecursiveMode
+                    );
+            }
 
             // Add tools disabled message if applicable
             if (toolsDisabledMessage) {

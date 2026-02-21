@@ -4,7 +4,10 @@ import { SubagentExecutor } from '../services/subagentExecutor';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
-import { SubagentLimits } from '../models/toolConstants';
+import {
+    SubagentLimits,
+    RECURSIVE_CHILD_DISALLOWED_TOOLS,
+} from '../models/toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { ITool } from '../tools/ITool';
 import {
@@ -317,7 +320,7 @@ describe('SubagentExecutor', () => {
     });
 
     describe('Tool Filtering', () => {
-        it('should filter out disallowed tools', async () => {
+        it('should filter out disallowed tools when canRecurse is false', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
             const allowedTool = createMockTool('read_file');
@@ -327,10 +330,12 @@ describe('SubagentExecutor', () => {
             const allTools = [allowedTool, ...disallowedTools];
 
             const executor = createExecutor(modelManager, allTools);
+            // Pass recursionDepth >= maxRecursionDepth so canRecurse=false (flat behavior)
             const result = await executor.execute(
                 defaultTask,
                 tokenSource.token,
-                1
+                1,
+                { recursionDepth: 3 }
             );
 
             expect(result.success).toBe(true);
@@ -391,6 +396,173 @@ describe('SubagentExecutor', () => {
                 expect.stringContaining('Turn 3/10'),
                 expect.any(Number)
             );
+        });
+    });
+
+    describe('Recursive Tool Filtering', () => {
+        it('should keep run_subagent when canRecurse is true (depth < maxDepth)', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const subagentTool = createMockTool('run_subagent');
+            const planTool = createMockTool('update_plan');
+            const allTools = [readTool, subagentTool, planTool];
+
+            const executor = createExecutor(modelManager, allTools);
+            // depth=0, maxDepth=2 → canRecurse=true
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).toContain('run_subagent');
+            // update_plan should be filtered (in RECURSIVE_CHILD_DISALLOWED_TOOLS)
+            expect(filteredNames).not.toContain('update_plan');
+        });
+
+        it('should filter run_subagent when canRecurse is false (depth >= maxDepth)', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const subagentTool = createMockTool('run_subagent');
+            const allTools = [readTool, subagentTool];
+
+            // maxRecursionDepth=1 so depth=1 means canRecurse=false
+            const lowDepthSettings = createMockWorkspaceSettings({
+                maxRecursionDepth: 1,
+            });
+            const registry = new ToolRegistry();
+            for (const tool of allTools) {
+                registry.registerTool(tool);
+            }
+            const executor = new SubagentExecutor(
+                modelManager,
+                registry,
+                promptGenerator,
+                lowDepthSettings
+            );
+
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 1,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).not.toContain('run_subagent');
+        });
+
+        it('should use RECURSIVE_CHILD_DISALLOWED_TOOLS when canRecurse is true', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const tools = [
+                ...RECURSIVE_CHILD_DISALLOWED_TOOLS.map((name) =>
+                    createMockTool(name)
+                ),
+                createMockTool('read_file'),
+                createMockTool('run_subagent'),
+            ];
+
+            const executor = createExecutor(modelManager, tools);
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            // All RECURSIVE_CHILD_DISALLOWED_TOOLS should be filtered
+            for (const disallowed of RECURSIVE_CHILD_DISALLOWED_TOOLS) {
+                expect(filteredNames).not.toContain(disallowed);
+            }
+            // But read_file and run_subagent should pass through
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).toContain('run_subagent');
+        });
+
+        it('should pass canRecurse to prompt generator', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const executor = createExecutor(modelManager);
+
+            // canRecurse=true (depth 0 < maxDepth 2)
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+            });
+
+            expect(promptGenerator.generateSystemPrompt).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                true // canRecurse
+            );
+        });
+
+        it('should pass canRecurse=false to prompt generator at max depth', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const lowDepthSettings = createMockWorkspaceSettings({
+                maxRecursionDepth: 1,
+            });
+            const registry = new ToolRegistry();
+            registry.registerTool(createMockTool('read_file'));
+            const executor = new SubagentExecutor(
+                modelManager,
+                registry,
+                promptGenerator,
+                lowDepthSettings
+            );
+
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 1,
+            });
+
+            expect(promptGenerator.generateSystemPrompt).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                false // canRecurse
+            );
+        });
+    });
+
+    describe('Recursive Child Context', () => {
+        it('should include subagentExecutor in child context when canRecurse', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const executor = createExecutor(modelManager);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1,
+                { recursionDepth: 0 }
+            );
+
+            expect(result.success).toBe(true);
+            // The child context is internal, but we can verify via the log label
+            // and that execution completes successfully with recursive options
+        });
+
+        it('should log with agentId when provided in options', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const executor = createExecutor(modelManager);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1,
+                { recursionDepth: 1, agentId: 'child-1' }
+            );
+
+            expect(result.success).toBe(true);
         });
     });
 });

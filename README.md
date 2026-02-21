@@ -25,8 +25,9 @@ Lupa is a VS Code extension for pull request analysis using GitHub Copilot model
 ## Features
 
 - 🔍 **Deep Code Analysis** — LLM-driven analysis with dynamic context gathering
-- 🛠️ **14 Specialized Tools** — Symbol lookup, file reading, grep search, usage finding, plan tracking, and more
-- 🤖 **Subagent Delegation** — Complex investigations handled by autonomous sub-agents
+- 🛠️ **16 Specialized Tools** — Symbol lookup, file reading, grep search, diff access, usage finding, plan tracking, and more
+- 🤖 **Recursive Language Model (RLM)** — Diff-on-demand architecture where the LLM loads context via tools instead of receiving the full diff
+- 🌲 **Recursive Agent Tree** — Complex PRs decomposed into concern groups with sub-agents analyzing each independently
 - 📊 **Rich Webview UI** — Interactive results with Markdown rendering and syntax highlighting
 - 💬 **Chat Integration** — Native VS Code chat participant for quick analysis
 
@@ -134,9 +135,34 @@ Settings are stored in `.vscode/lupa.json`:
     "maxIterations": 100,
     "requestTimeoutSeconds": 300,
     "maxSubagentsPerSession": 10,
+    "analysisApproach": "rlm",
+    "maxRecursionDepth": 2,
+    "maxTotalAgents": 12,
     "logLevel": "info"
 }
 ```
+
+### Analysis Approach
+
+Lupa supports two analysis strategies, controlled by the `analysisApproach` setting:
+
+| Approach     | Description                                                                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`rlm`**    | **(Default)** Recursive Language Model approach. The diff is NOT embedded in the prompt. Instead, the LLM uses `list_changed_files` and `get_file_diff` tools to access changes on demand. More efficient for large diffs and enables recursive decomposition. |
+| **`legacy`** | Traditional approach. The full diff is embedded directly in the user prompt. Simpler but uses more context window for large diffs.                                                                                                                             |
+
+The RLM approach is inspired by the [Recursive Language Models paper](https://arxiv.org/abs/2512.24601) — the key insight is that LLMs work better when they actively explore context on demand rather than passively receiving it all at once. This prevents "context rot" on large PRs and allows the LLM to prioritize which files to examine.
+
+### Recursive Review Mode
+
+When `maxRecursionDepth` is set to 2 or higher, Lupa uses recursive review mode:
+
+1. The **root agent** scans the PR scope and decomposes it into concern groups
+2. **Sub-agents** are spawned to analyze each concern group independently
+3. Sub-agents at sufficient depth can spawn their own sub-agents
+4. The root agent **aggregates** all findings into a unified review
+
+This is particularly effective for large PRs with many files across different domains (e.g., API changes + frontend updates + test modifications).
 
 ## Documentation
 

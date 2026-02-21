@@ -12,6 +12,9 @@ import {
     generateExplorationOutputFormat,
     generateSelfReflectionGuidance,
     generateExplorationReflectionGuidance,
+    generateRecursiveRootRole,
+    generateRecursiveMethodology,
+    generateRecursiveToolGuide,
 } from './blocks/promptBlocks';
 
 /**
@@ -132,6 +135,30 @@ export class PromptBuilder {
     }
 
     /**
+     * Add role definition for recursive root auditor.
+     */
+    addRecursiveRootRole(): this {
+        this.sections.push(generateRecursiveRootRole());
+        return this;
+    }
+
+    /**
+     * Add recursive decomposition/aggregation methodology.
+     */
+    addRecursiveMethodology(): this {
+        this.sections.push(generateRecursiveMethodology());
+        return this;
+    }
+
+    /**
+     * Add tool guide for recursive root controller.
+     */
+    addRecursiveToolGuide(): this {
+        this.sections.push(generateRecursiveToolGuide());
+        return this;
+    }
+
+    /**
      * Add a custom section.
      */
     addSection(section: string): this {
@@ -182,4 +209,21 @@ export function createExplorationPromptBuilder(tools: ITool[]): PromptBuilder {
         .addExplorationSubagentGuidance()
         .addExplorationReflection()
         .addExplorationOutputFormat();
+}
+
+/**
+ * Create a pre-configured builder for recursive PR review prompts.
+ * Used when maxRecursionDepth >= 2: the root agent decomposes the PR
+ * into concern groups and delegates investigation to recursive sub-agents.
+ */
+export function createRecursiveRootPromptBuilder(
+    tools: ITool[]
+): PromptBuilder {
+    return new PromptBuilder()
+        .addRecursiveRootRole()
+        .addToolInventory(tools)
+        .addRecursiveToolGuide()
+        .addSelfReflection()
+        .addRecursiveMethodology()
+        .addPROutputFormat();
 }

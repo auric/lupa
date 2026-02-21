@@ -42,6 +42,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     let mockPromptGenerator: {
         generateToolAwareSystemPrompt: Mock;
         generateToolCallingUserPrompt: Mock;
+        generateRlmUserPrompt: Mock;
     };
     let mockModel: {
         countTokens: Mock;
@@ -69,9 +70,12 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         mockPromptGenerator = {
             generateToolAwareSystemPrompt: vi.fn(() => 'System prompt'),
             generateToolCallingUserPrompt: vi.fn(() => 'User message'),
+            generateRlmUserPrompt: vi.fn(() => 'RLM user message'),
         };
 
-        const mockWorkspaceSettings = createMockWorkspaceSettings();
+        const mockWorkspaceSettings = createMockWorkspaceSettings({
+            maxRecursionDepth: 0,
+        });
         analysisProvider = new ToolCallingAnalysisProvider(
             mockToolRegistry as any,
             mockCopilotModelManager as any,

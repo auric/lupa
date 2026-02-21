@@ -5,7 +5,10 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
-import { SubagentLimits } from '../models/toolConstants';
+import {
+    SubagentLimits,
+    RECURSIVE_CHILD_DISALLOWED_TOOLS,
+} from '../models/toolConstants';
 import { SubagentStreamAdapter } from '../models/subagentStreamAdapter';
 import type { SubagentTask, SubagentResult } from '../types/modelTypes';
 import type {
@@ -16,10 +19,27 @@ import type {
 import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '@/types/toolResultTypes';
+import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import type { ExecutionContext } from '../types/executionContext';
+import type { DiffHunk } from '../types/contextTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
+
+/**
+ * Options for depth-aware recursive subagent execution.
+ */
+export interface SubagentExecuteOptions {
+    /** Recursion depth of the child being spawned (0-based). */
+    recursionDepth?: number;
+    /** The agent ID in the recursive state tree. */
+    agentId?: string;
+    /** Recursive state manager for the analysis (shared across all agents). */
+    recursiveState?: RecursiveStateManager;
+    /** Parsed diff data for on-demand access via diff tools (RLM approach). */
+    parsedDiff?: DiffHunk[];
+}
 
 /**
  * Executes subagent investigations with isolated context.
@@ -29,7 +49,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  *
  * Responsibilities:
  * - Create isolated conversation context per investigation
- * - Filter tools to prevent infinite recursion
+ * - Filter tools to prevent infinite recursion (or enable controlled recursion)
  * - Stream tool calls to parent's chat UI with subagent prefix
  * - Return raw response for parent LLM to interpret
  */
@@ -69,37 +89,57 @@ export class SubagentExecutor {
      * @param task The investigation task
      * @param token Cancellation token
      * @param subagentId Unique ID for this subagent (for logging)
+     * @param options Depth-aware recursion options
      */
     async execute(
         task: SubagentTask,
         token: vscode.CancellationToken,
-        subagentId: number
+        subagentId: number,
+        options?: SubagentExecuteOptions
     ): Promise<SubagentResult> {
         const startTime = Date.now();
         let toolCallsMade = 0;
+
+        const depth = options?.recursionDepth ?? 0;
+        const maxDepth = this.workspaceSettings.getMaxRecursionDepth();
+        const canRecurse = depth < maxDepth;
 
         // Create short task label for logging and progress (first 30 chars)
         const taskLabel =
             task.task.length > 30
                 ? task.task.substring(0, 30).replace(/\s+/g, ' ').trim() + '...'
                 : task.task.replace(/\s+/g, ' ').trim();
-        const logLabel = `Subagent #${subagentId}`;
+        const logLabel = options?.agentId
+            ? `Agent ${options.agentId}`
+            : `Subagent #${subagentId}`;
 
         try {
-            Log.info(`${logLabel} Starting: "${taskLabel}"`);
+            Log.info(
+                `${logLabel} Starting (depth=${depth}, canRecurse=${canRecurse}): "${taskLabel}"`
+            );
             this.reportProgress(`Sub-analysis: ${taskLabel}`, 0.5);
 
             const conversation = new ConversationManager();
-            const filteredTools = this.filterTools();
+            const filteredTools = this.filterTools(canRecurse);
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 
-            // Pass cancellationToken so subagent tools can observe cancellation.
-            // Note: planManager and subagentExecutor are NOT passed - SubagentLimits.DISALLOWED_TOOLS
-            // filters out run_subagent and update_plan which require those dependencies.
+            // Build execution context for the child.
+            // When canRecurse: include subagentExecutor and subagentSessionManager
+            // so the child's RunSubagentTool can spawn its own children.
+            const childContext: ExecutionContext = {
+                cancellationToken: token,
+                subagentExecutor: canRecurse ? this : undefined,
+                subagentSessionManager: undefined, // Session manager is on the parent; child uses its own budget via RecursiveStateManager
+                recursiveState: options?.recursiveState,
+                currentDepth: options?.recursiveState ? depth : undefined,
+                currentAgentId: options?.agentId,
+                parsedDiff: options?.parsedDiff,
+            };
+
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
                 this.workspaceSettings,
-                { cancellationToken: token }
+                childContext
             );
             const conversationRunner = new ConversationRunner(
                 this.modelManager,
@@ -110,7 +150,8 @@ export class SubagentExecutor {
             const systemPrompt = this.promptGenerator.generateSystemPrompt(
                 task,
                 filteredTools,
-                maxIterations
+                maxIterations,
+                canRecurse
             );
 
             conversation.addUserMessage(`Please investigate: ${task.task}`);
@@ -121,7 +162,7 @@ export class SubagentExecutor {
             // Create subagent stream adapter for prefixed tool progress in chat UI
             // This shows tool calls with "🔹 #N: Reading file..." format
             const subagentAdapter = this.chatHandler
-                ? new SubagentStreamAdapter(this.chatHandler, subagentId)
+                ? new SubagentStreamAdapter(this.chatHandler, subagentId, depth)
                 : undefined;
 
             // Run the conversation loop with labeled logging and progress reporting
@@ -255,17 +296,18 @@ export class SubagentExecutor {
     }
 
     /**
-     * Filter tools to exclude run_subagent and prevent infinite recursion.
+     * Filter tools based on recursion capability.
+     * When canRecurse is true, only exclude root-only tools (plan, review, reflection).
+     * When canRecurse is false, exclude everything including run_subagent (current flat behavior).
      */
-    private filterTools(): ITool[] {
+    private filterTools(canRecurse: boolean): ITool[] {
+        const disallowed: readonly string[] = canRecurse
+            ? RECURSIVE_CHILD_DISALLOWED_TOOLS
+            : SubagentLimits.DISALLOWED_TOOLS;
+
         return this.toolRegistry
             .getAllTools()
-            .filter(
-                (tool) =>
-                    !SubagentLimits.DISALLOWED_TOOLS.includes(
-                        tool.name as (typeof SubagentLimits.DISALLOWED_TOOLS)[number]
-                    )
-            );
+            .filter((tool) => !disallowed.includes(tool.name));
     }
 
     /**

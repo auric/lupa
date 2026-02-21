@@ -9,9 +9,10 @@ import { ToolCallStreamAdapter } from './toolCallStreamAdapter';
  *
  * UX Design:
  * - Main agent: "📂 Read src/index.ts"
- * - Subagent:   "🔹 #1: 📂 Read src/auth.ts"
+ * - Subagent (flat):      "🔹 #1: 📂 Read src/auth.ts"
+ * - Subagent (recursive):  "🔹 L1#1: 📂 Read src/auth.ts"  (depth 1, agent #1)
  *
- * This provides clear visual distinction between main and subagent work.
+ * This provides clear visual distinction between main, subagent, and recursive agent work.
  */
 export class SubagentStreamAdapter implements ToolCallHandler {
     private readonly innerAdapter: ToolCallStreamAdapter;
@@ -20,12 +21,18 @@ export class SubagentStreamAdapter implements ToolCallHandler {
     /**
      * @param chatHandler The base chat handler to wrap
      * @param subagentId The unique subagent identifier (1, 2, 3...)
+     * @param depth Optional recursion depth for recursive mode visualization (0 = root, 1+ = child)
      */
     constructor(
         chatHandler: ChatToolCallHandler,
-        private readonly subagentId: number
+        private readonly subagentId: number,
+        depth?: number
     ) {
-        this.prefix = `🔹 #${subagentId}: `;
+        // Show depth in prefix when in recursive mode (depth >= 1)
+        this.prefix =
+            depth !== undefined && depth >= 1
+                ? `🔹 L${depth}#${subagentId}: `
+                : `🔹 #${subagentId}: `;
         this.innerAdapter = new ToolCallStreamAdapter(
             this.createPrefixedHandler(chatHandler)
         );

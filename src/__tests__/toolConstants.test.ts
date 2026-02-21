@@ -7,12 +7,31 @@ import {
 
 describe('toolConstants', () => {
     describe('SubagentLimits.DISALLOWED_TOOLS', () => {
-        it('should include all MAIN_ANALYSIS_ONLY_TOOLS to prevent subagent access', () => {
+        // Diff tools (list_changed_files, get_file_diff) are analysis-only but intentionally
+        // ALLOWED for subagents so they can access diff on demand (RLM approach).
+        const SUBAGENT_ALLOWED_ANALYSIS_TOOLS = [
+            'list_changed_files',
+            'get_file_diff',
+        ];
+
+        it('should include non-diff MAIN_ANALYSIS_ONLY_TOOLS to prevent subagent access', () => {
             for (const tool of MAIN_ANALYSIS_ONLY_TOOLS) {
+                if (SUBAGENT_ALLOWED_ANALYSIS_TOOLS.includes(tool)) {
+                    continue;
+                }
                 expect(
                     SubagentLimits.DISALLOWED_TOOLS.includes(tool as any),
                     `${tool} should be in DISALLOWED_TOOLS but was not found`
                 ).toBe(true);
+            }
+        });
+
+        it('should allow diff tools for subagents (RLM approach)', () => {
+            for (const tool of SUBAGENT_ALLOWED_ANALYSIS_TOOLS) {
+                expect(
+                    SubagentLimits.DISALLOWED_TOOLS.includes(tool as any),
+                    `${tool} should NOT be in DISALLOWED_TOOLS`
+                ).toBe(false);
             }
         });
 

@@ -12,6 +12,7 @@ import {
     createMockWorkspaceSettings,
     createMockExecutionContext,
 } from './testUtils/mockFactories';
+import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { TimeoutError } from '../types/errorTypes';
 
 const createMockExecutor = (
@@ -120,7 +121,8 @@ describe('RunSubagentTool', () => {
                     context: 'PR adds new JWT validation',
                 }),
                 expect.anything(),
-                expect.any(Number)
+                expect.any(Number),
+                expect.anything()
             );
         });
     });
@@ -162,7 +164,8 @@ describe('RunSubagentTool', () => {
             expect(mockExecutor.execute).toHaveBeenCalledWith(
                 expect.anything(),
                 expect.anything(),
-                1
+                1,
+                expect.anything()
             );
         });
 
@@ -683,6 +686,276 @@ describe('RunSubagentTool', () => {
 
             const result = await executePromise;
             expect(result.success).toBe(false);
+        });
+    });
+
+    describe('Recursive Depth Tracking', () => {
+        it('should pass recursionDepth=1 to executor when no recursiveState', async () => {
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursionDepth: 1,
+                    agentId: undefined,
+                    recursiveState: undefined,
+                })
+            );
+        });
+
+        it('should use currentDepth from context for recursionDepth calculation', async () => {
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                currentDepth: 2,
+                currentAgentId: 'child-1',
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursionDepth: 3,
+                })
+            );
+        });
+
+        it('should use RecursiveStateManager spawn guard when available', async () => {
+            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const rootId = recursiveState.registerAgent(
+                undefined,
+                'root task',
+                100
+            );
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(true);
+            // Should have registered a child agent
+            expect(recursiveState.getTotalAgentCount()).toBe(2);
+        });
+
+        it('should reject spawn when RecursiveStateManager depth limit reached', async () => {
+            const recursiveState = new RecursiveStateManager(1, 12, 100);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+            const childId = recursiveState.registerAgent(rootId, 'child', 50);
+            recursiveState.startAgent(childId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 1,
+                currentAgentId: childId,
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('depth');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
+
+        it('should reject spawn when RecursiveStateManager total agents limit reached', async () => {
+            const recursiveState = new RecursiveStateManager(3, 2, 100);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+            const childId = recursiveState.registerAgent(rootId, 'child1', 50);
+            recursiveState.startAgent(childId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('agents');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
+
+        it('should pass recursiveState through to executor options', async () => {
+            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursiveState,
+                })
+            );
+        });
+
+        it('should mark child agent as completed on success', async () => {
+            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = createMockExecutor({ success: true });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            // Find the child node
+            const rootNode = recursiveState.getNode(rootId)!;
+            expect(rootNode.childIds).toHaveLength(1);
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should mark child agent as failed on executor error', async () => {
+            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = {
+                execute: vi.fn().mockRejectedValue(new Error('LLM failure')),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('failed');
+        });
+
+        it('should mark child agent as cancelled on cancellation result', async () => {
+            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'cancelled',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('cancelled');
+        });
+
+        it('should fall back to flat SessionManager when no recursiveState', async () => {
+            const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
+            for (let i = 0; i < maxSubagents; i++) {
+                sessionManager.recordSpawn();
+            }
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+            // No recursiveState → uses sessionManager.canSpawn()
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Maximum subagents');
         });
     });
 });

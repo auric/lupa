@@ -2,6 +2,7 @@ import { ITool } from '../tools/ITool';
 import {
     createPRReviewPromptBuilder,
     createExplorationPromptBuilder,
+    createRecursiveRootPromptBuilder,
 } from './promptBuilder';
 
 /**
@@ -21,6 +22,14 @@ export class ToolAwareSystemPromptGenerator {
      */
     public generateSystemPrompt(availableTools: ITool[]): string {
         return createPRReviewPromptBuilder(availableTools).build();
+    }
+
+    /**
+     * Generate system prompt for recursive PR review mode.
+     * Root agent decomposes the PR and delegates to recursive sub-agents.
+     */
+    public generateRecursiveSystemPrompt(availableTools: ITool[]): string {
+        return createRecursiveRootPromptBuilder(availableTools).build();
     }
 
     /**

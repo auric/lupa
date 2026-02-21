@@ -9,6 +9,7 @@ import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 
 /**
  * Tool that spawns isolated subagent investigations.
@@ -76,6 +77,11 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         // Get per-analysis dependencies from ExecutionContext
         const executor = context.subagentExecutor;
         const sessionManager = context.subagentSessionManager;
+        const recursiveState = context.recursiveState as
+            | RecursiveStateManager
+            | undefined;
+        const currentDepth = context.currentDepth ?? 0;
+        const currentAgentId = context.currentAgentId ?? 'root';
 
         if (!executor || !sessionManager) {
             return toolError(
@@ -95,7 +101,19 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         const timeoutMs =
             this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
-        if (!sessionManager.canSpawn()) {
+        // Check spawn budget: prefer RecursiveStateManager guard when available,
+        // fall back to flat SubagentSessionManager for backward compatibility.
+        if (recursiveState) {
+            const guard = recursiveState.canSpawnChild(currentAgentId);
+            if (!guard.allowed) {
+                Log.warn(
+                    `Subagent spawn rejected by RecursiveStateManager: ${guard.reason}`
+                );
+                return toolError(
+                    guard.reason ?? 'Cannot spawn child agent at this depth'
+                );
+            }
+        } else if (!sessionManager.canSpawn()) {
             Log.warn(
                 `Subagent spawn rejected: session limit reached (${maxSubagents})`
             );
@@ -107,6 +125,20 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
         Log.info(
             `Subagent #${subagentId} spawned (${sessionManager.getCount()}/${maxSubagents}, ${remaining} remaining)`
         );
+
+        let childAgentId: string | undefined;
+        if (recursiveState) {
+            const childBudget = recursiveState.allocateChildBudget(
+                currentAgentId,
+                1
+            );
+            childAgentId = recursiveState.registerAgent(
+                currentAgentId,
+                task,
+                childBudget
+            );
+            recursiveState.startAgent(childAgentId);
+        }
 
         // Subagent needs a combined cancellation signal: cancel on parent cancellation OR timeout.
         // We can't add timeout to the parent token (would cancel the entire analysis), so we
@@ -130,10 +162,29 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
                     context: taskContext,
                 },
                 cancellationTokenSource.token,
-                subagentId
+                subagentId,
+                {
+                    recursionDepth: currentDepth + 1,
+                    agentId: childAgentId,
+                    recursiveState,
+                    parsedDiff: context.parsedDiff,
+                }
             );
 
             clearTimeout(timeoutHandle);
+
+            if (recursiveState && childAgentId) {
+                if (result.success) {
+                    recursiveState.completeAgent(childAgentId);
+                } else if (result.error === 'cancelled') {
+                    recursiveState.cancelAgent(childAgentId);
+                } else {
+                    recursiveState.failAgent(
+                        childAgentId,
+                        result.error ?? 'Unknown error'
+                    );
+                }
+            }
 
             if (!result.success && result.error === 'cancelled') {
                 // Only attribute to timeout if parent wasn't also cancelled.
@@ -174,6 +225,10 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             });
         } catch (error) {
             clearTimeout(timeoutHandle);
+
+            if (recursiveState && childAgentId) {
+                recursiveState.failAgent(childAgentId, getErrorMessage(error));
+            }
 
             if (isCancellationError(error)) {
                 throw error;

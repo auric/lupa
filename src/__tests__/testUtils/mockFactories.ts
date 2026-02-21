@@ -7,6 +7,8 @@ import * as vscode from 'vscode';
 import {
     ANALYSIS_LIMITS,
     SUBAGENT_LIMITS,
+    RECURSION_LIMITS,
+    type AnalysisApproach,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
 import type { ExecutionContext } from '../../types/executionContext';
@@ -551,6 +553,9 @@ export function createMockWorkspaceSettings(
         maxIterations: number;
         requestTimeoutSeconds: number;
         maxSubagentsPerSession: number;
+        maxRecursionDepth: number;
+        maxTotalAgents: number;
+        analysisApproach: AnalysisApproach;
     }> = {}
 ): WorkspaceSettingsService {
     return {
@@ -562,6 +567,11 @@ export function createMockWorkspaceSettings(
         getMaxSubagentsPerSession: () =>
             overrides.maxSubagentsPerSession ??
             SUBAGENT_LIMITS.maxPerSession.default,
+        getMaxRecursionDepth: () =>
+            overrides.maxRecursionDepth ?? RECURSION_LIMITS.maxDepth.default,
+        getMaxTotalAgents: () =>
+            overrides.maxTotalAgents ?? RECURSION_LIMITS.maxTotalAgents.default,
+        getAnalysisApproach: () => overrides.analysisApproach ?? 'rlm',
     } as WorkspaceSettingsService;
 }
 

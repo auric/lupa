@@ -19,6 +19,7 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { CopilotModelManager } from '../models/copilotModelManager';
 import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
+import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -30,6 +31,7 @@ import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
+import type { ExecutionContext } from '../types/executionContext';
 import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
@@ -515,15 +517,47 @@ export class ChatParticipantService implements vscode.Disposable {
         const { subagentSessionManager, subagentExecutor } =
             this.createSubagentContext(token, debouncedHandler);
 
+        // Determine if recursive review mode is available
+        const maxRecursionDepth =
+            this.deps!.workspaceSettings.getMaxRecursionDepth();
+        const isRecursiveMode = maxRecursionDepth >= 2;
+        const isRlmApproach =
+            this.deps!.workspaceSettings.getAnalysisApproach() === 'rlm';
+
+        // Create RecursiveStateManager when in recursive mode
+        const recursiveState = isRecursiveMode
+            ? new RecursiveStateManager(
+                  maxRecursionDepth,
+                  this.deps!.workspaceSettings.getMaxTotalAgents(),
+                  this.deps!.workspaceSettings.getMaxIterations()
+              )
+            : undefined;
+
+        if (recursiveState) {
+            recursiveState.registerAgent(
+                undefined,
+                'Root review controller',
+                this.deps!.workspaceSettings.getMaxIterations()
+            );
+            recursiveState.startAgent('root');
+        }
+
+        // Create execution context as a mutable reference so parsedDiff can be
+        // set after diff processing (RLM approach needs it on the context for tools)
+        const executionContext: ExecutionContext = {
+            planManager,
+            subagentSessionManager,
+            subagentExecutor,
+            cancellationToken: token,
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: 'root',
+        };
+
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
             this.deps!.workspaceSettings,
-            {
-                planManager,
-                subagentSessionManager,
-                subagentExecutor,
-                cancellationToken: token,
-            }
+            executionContext
         );
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
@@ -535,21 +569,33 @@ export class ChatParticipantService implements vscode.Disposable {
         const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
         const availableTools = toolExecutor.getAvailableTools();
-        const systemPrompt =
-            this.deps!.promptGenerator.generateToolAwareSystemPrompt(
-                availableTools
-            );
+        const systemPrompt = isRecursiveMode
+            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
+                  availableTools
+              )
+            : this.deps!.promptGenerator.generateToolAwareSystemPrompt(
+                  availableTools
+              );
 
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);
             stream.filetree(fileTree, gitRootUri);
         }
 
-        const userPrompt =
-            this.deps!.promptGenerator.generateToolCallingUserPrompt(
-                parsedDiff,
-                request.prompt || undefined
-            );
+        const userPrompt = isRlmApproach
+            ? (() => {
+                  executionContext.parsedDiff = parsedDiff;
+                  return this.deps!.promptGenerator.generateRlmUserPrompt(
+                      parsedDiff,
+                      request.prompt || undefined,
+                      isRecursiveMode
+                  );
+              })()
+            : this.deps!.promptGenerator.generateToolCallingUserPrompt(
+                  parsedDiff,
+                  request.prompt || undefined,
+                  isRecursiveMode
+              );
         conversation.addUserMessage(userPrompt);
 
         try {
