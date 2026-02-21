@@ -46,7 +46,6 @@ export interface RecursiveStateNode {
     findings: RecursiveReviewFinding[];
     filesExamined: string[];
     iterationBudget: number;
-    iterationsUsed: number;
     childIds: string[];
     startTime: number;
     endTime: number | undefined;
@@ -70,9 +69,9 @@ export interface SpawnGuardResult {
  */
 export const RecursionConstants = {
     /** Below this budget a new agent is not worth spawning */
-    MIN_VIABLE_BUDGET: 5,
+    MIN_VIABLE_BUDGET: 3,
     /** Default iteration budget allocated to each child agent */
-    DEFAULT_CHILD_BUDGET: 20,
+    DEFAULT_CHILD_BUDGET: 15,
     /** If root hasn't spawned subagents after this many iterations, fall back to linear */
     FALLBACK_ITERATION_THRESHOLD: 5,
 } as const;
@@ -113,7 +112,6 @@ export class RecursiveStateManager {
             findings: [],
             filesExamined: [],
             iterationBudget: budget,
-            iterationsUsed: 0,
             childIds: [],
             startTime: Date.now(),
             endTime: undefined,
@@ -321,7 +319,7 @@ export class RecursiveStateManager {
         let remaining = 0;
         for (const node of this.tree.values()) {
             if (node.status === 'running' || node.status === 'pending') {
-                remaining += node.iterationBudget - node.iterationsUsed;
+                remaining += node.iterationBudget;
             }
         }
         return Math.min(remaining, this.totalBudget);

@@ -177,11 +177,12 @@ export class PromptGenerator {
 
         reminder += `**Workflow**:\n`;
         reminder += `1. Call \`list_changed_files\` to understand the scope\n`;
-        reminder += `2. Create a plan with \`update_plan\`\n`;
-        reminder += `3. Use \`get_file_diff\` to examine each file's changes\n`;
-        reminder += `4. Use other tools to investigate context as needed\n`;
-        reminder += `5. Call reflection tools before concluding\n`;
-        reminder += `6. Deliver structured Markdown review\n`;
+        reminder += `2. Use \`get_file_diff\` to examine key files and understand the changes\n`;
+        reminder += `3. Create a plan with \`update_plan\` based on what you've seen\n`;
+        reminder += `4. Continue examining remaining files with \`get_file_diff\`\n`;
+        reminder += `5. Use other tools to investigate context as needed\n`;
+        reminder += `6. Call reflection tools before concluding\n`;
+        reminder += `7. Deliver structured Markdown review\n`;
         reminder += '</analysis_task>';
 
         return reminder;
@@ -197,16 +198,17 @@ export class PromptGenerator {
         reminder += `1. \`list_changed_files\` — See all changed files with statistics\n`;
         reminder += `2. \`get_file_diff\` — Read the actual diff for specific file(s)\n\n`;
 
-        reminder += `**Recursive Review Mode**: Decompose this PR into logical concern groups and spawn focused sub-agents for each. Pass relevant file paths to each sub-agent so they can use \`get_file_diff\` themselves.\n\n`;
+        reminder += `**Recursive Review Mode**: Understand the changes first, then decompose into concern groups and delegate to sub-agents.\n\n`;
 
         reminder += `**Workflow**:\n`;
-        reminder += `1. Call \`list_changed_files\` to scan the diff structure\n`;
-        reminder += `2. Classify changes into concern groups\n`;
-        reminder += `3. Call \`update_plan\` with your decomposition plan\n`;
-        reminder += `4. Spawn \`run_subagent\` for each concern group (include file paths in task!)\n`;
-        reminder += `5. After all agents return, aggregate findings\n`;
-        reminder += `6. Check for cross-concern issues\n`;
-        reminder += `7. Call \`think_about_completion\`, then \`submit_review\`\n`;
+        reminder += `1. Call \`list_changed_files\` to see all changed files with statistics\n`;
+        reminder += `2. Call \`get_file_diff\` on a few key files to understand the nature of changes\n`;
+        reminder += `3. Based on actual diff content, classify changes into logical concern groups\n`;
+        reminder += `4. Call \`update_plan\` with your decomposition plan (informed by diffs you examined)\n`;
+        reminder += `5. Spawn \`run_subagent\` for each concern group (include file paths in task!)\n`;
+        reminder += `6. After all agents return, aggregate findings\n`;
+        reminder += `7. Check for cross-concern issues\n`;
+        reminder += `8. Call \`think_about_completion\`, then \`submit_review\`\n`;
         reminder += '</analysis_task>';
 
         return reminder;

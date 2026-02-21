@@ -472,7 +472,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             );
 
             expect(prompt).toContain('Recursive Review Mode');
-            expect(prompt).toContain('Decompose this PR');
+            expect(prompt).toContain('decompose');
             expect(prompt).toContain('run_subagent');
         });
 

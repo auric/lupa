@@ -291,6 +291,23 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     });
 
     describe('Diff size processing and tool availability', () => {
+        // These tests verify legacy mode's processDiffSize behavior.
+        // In RLM mode, tools are always available (diff accessed on-demand).
+        let legacyProvider: ToolCallingAnalysisProvider;
+
+        beforeEach(() => {
+            const legacySettings = createMockWorkspaceSettings({
+                maxRecursionDepth: 0,
+                analysisApproach: 'legacy',
+            });
+            legacyProvider = new ToolCallingAnalysisProvider(
+                mockToolRegistry as any,
+                mockCopilotModelManager as any,
+                mockPromptGenerator as any,
+                legacySettings
+            );
+        });
+
         it('should disable tools when diff is too large', async () => {
             // Mock high token count for the diff
             mockModel.countTokens.mockImplementation(async (text: string) => {
@@ -330,7 +347,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
             const doesntMatterDiff =
                 'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
-            const result = await analysisProvider.analyze(
+            const result = await legacyProvider.analyze(
                 doesntMatterDiff,
                 tokenSource.token
             );
@@ -396,7 +413,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 ],
             });
 
-            const result = await analysisProvider.analyze(
+            const result = await legacyProvider.analyze(
                 reasonableDiff,
                 tokenSource.token
             );

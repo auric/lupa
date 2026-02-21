@@ -25,9 +25,9 @@ export class TokenConstants {
     static readonly CHARS_PER_TOKEN_ESTIMATE = 4.0;
 
     // Tool calling constants
-    static readonly MAX_TOOL_RESPONSE_CHARS = 20000;
+    static readonly MAX_TOOL_RESPONSE_CHARS = 60000;
     static readonly CONTEXT_WARNING_RATIO = 0.9; // 90% of context window
-    static readonly MAX_FILE_READ_LINES = 200; // Maximum lines for ReadFileTool
+    static readonly MAX_FILE_READ_LINES = 400; // Maximum lines for ReadFileTool
 
     // Tool context management messages
     static readonly TOOL_CONTEXT_MESSAGES = {

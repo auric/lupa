@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+#### RLM Analysis
+
+- **RLM mode no longer disables tools for large diffs**: `processDiffSize()` was calculating token usage using the legacy full-diff prompt even in RLM mode, causing tools to be disabled for large PRs. RLM mode now always keeps tools enabled since diff is accessed on-demand.
+- **Tool response limit tripled** (`MAX_TOOL_RESPONSE_CHARS`: 20K → 60K): Large file diffs (e.g., docs, generated code) no longer rejected by the response size validator.
+- **File read limit doubled** (`MAX_FILE_READ_LINES`: 200 → 400): LLM can read larger file sections in a single call.
+- **Budget model tuned for more subagents** (`DEFAULT_CHILD_BUDGET`: 20 → 15, `MIN_VIABLE_BUDGET`: 5 → 3): Root agent can now spawn ~7 children instead of ~5, reducing "Insufficient budget" rejections.
+- **Removed dead `iterationsUsed` field**: Never-incremented field removed from `RecursiveStateNode`.
+- **Workflow: examine diffs before planning**: Both recursive and non-recursive RLM prompts now instruct the LLM to read key file diffs before creating the review plan, preventing blind decomposition.
+
 #### Recursive Review
 
 - **Budget model: flat allocation replaces exponential decay**: Replaced the `CHILD_BUDGET_RATIO` model (each child got 60% of remaining, causing rapid depletion after 3 spawns) with flat per-child allocation (`DEFAULT_CHILD_BUDGET=20`). Root with 100 iterations can now spawn 5 children consistently.

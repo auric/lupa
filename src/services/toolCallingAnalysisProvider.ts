@@ -147,10 +147,29 @@ export class ToolCallingAnalysisProvider {
             progressCallback?.('Initializing analysis...', 0.5);
             subagentSessionManager.setParentCancellationToken(token);
 
-            // Check diff size and handle truncation/tool availability
+            // Parse diff for structured analysis
             progressCallback?.('Processing diff...', 0.5);
-            const { processedDiff, toolsAvailable, toolsDisabledMessage } =
-                await this.processDiffSize(diff);
+            const parsedDiff = DiffUtils.parseDiff(diff);
+
+            // RLM approach: tools always available — diff accessed on-demand via tools,
+            // so context window size is irrelevant for tool availability.
+            // Legacy approach: check if diff fits in context alongside tools.
+            let toolsAvailable: boolean;
+            let processedDiff: string;
+            let toolsDisabledMessage: string | undefined;
+
+            if (isRlmApproach) {
+                toolsAvailable = true;
+                processedDiff = diff;
+                Log.info(
+                    `Using RLM approach: tools always enabled, ${parsedDiff.length} files via diff tools`
+                );
+            } else {
+                const diffResult = await this.processDiffSize(diff);
+                toolsAvailable = diffResult.toolsAvailable;
+                processedDiff = diffResult.processedDiff;
+                toolsDisabledMessage = diffResult.toolsDisabledMessage;
+            }
 
             // Get available tools and generate system prompt based on tool availability
             const availableTools = toolsAvailable
@@ -164,33 +183,27 @@ export class ToolCallingAnalysisProvider {
                       availableTools
                   );
 
-            // Parse diff for structured analysis
-            const parsedDiff = DiffUtils.parseDiff(processedDiff);
-
             // Generate user prompt based on analysis approach
             let userMessage: string;
-            if (isRlmApproach && toolsAvailable) {
-                // RLM approach: metadata-only prompt, diff accessed via tools
+            if (isRlmApproach) {
                 executionContext.parsedDiff = parsedDiff;
                 userMessage = this.promptGenerator.generateRlmUserPrompt(
                     parsedDiff,
                     undefined,
                     isRecursiveMode
                 );
-                Log.info(
-                    `Using RLM approach: ${parsedDiff.length} files available via diff tools`
-                );
             } else {
                 // Legacy approach: full diff embedded in prompt
+                const legacyParsedDiff = DiffUtils.parseDiff(processedDiff);
                 userMessage =
                     this.promptGenerator.generateToolCallingUserPrompt(
-                        parsedDiff,
+                        legacyParsedDiff,
                         undefined,
                         isRecursiveMode
                     );
             }
 
-            // Add tools disabled message if applicable
+            // Add tools disabled message if applicable (legacy only)
             if (toolsDisabledMessage) {
                 userMessage = `${toolsDisabledMessage}\n\n${userMessage}`;
             }

@@ -9,9 +9,11 @@ export function generateRecursiveToolGuide(): string {
 
 | Tool | When to Use |
 |------|-------------|
-| \`update_plan\` | **FIRST ACTION** — decompose PR into concern groups |
+| \`list_changed_files\` | **FIRST ACTION** — see all changed files and statistics |
+| \`get_file_diff\` | **SECOND ACTION** — examine key files to understand changes before planning |
+| \`update_plan\` | After examining diffs — decompose PR into concern groups |
 | \`run_subagent\` | **PRIMARY TOOL** — delegate each concern group to a focused investigator |
-| \`list_directory\` | Orient yourself — understand project structure before decomposing |
+| \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
 | \`read_file\` | Sparingly — only to understand file structure for better decomposition |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |

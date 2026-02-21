@@ -126,7 +126,9 @@ index 1234567..abcdefg 100644
 
         mockPromptGenerator = new PromptGenerator();
 
-        const mockWorkspaceSettings = createMockWorkspaceSettings();
+        const mockWorkspaceSettings = createMockWorkspaceSettings({
+            analysisApproach: 'legacy',
+        });
 
         provider = new ToolCallingAnalysisProvider(
             mockToolRegistry,

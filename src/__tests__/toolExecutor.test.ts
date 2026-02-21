@@ -440,7 +440,9 @@ describe('ToolExecutor', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Response too large');
-            expect(result.error).toContain('maximum allowed: 20000');
+            expect(result.error).toContain(
+                `maximum allowed: ${TokenConstants.MAX_TOOL_RESPONSE_CHARS}`
+            );
         });
 
         it('should allow tool response at exactly MAX_TOOL_RESPONSE_CHARS', async () => {
