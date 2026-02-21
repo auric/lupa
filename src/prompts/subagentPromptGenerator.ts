@@ -53,25 +53,26 @@ You have direct access to the PR diff via tools:
             ? `
 ### Spawning Sub-Agents
 
-You can delegate deep dependency investigations by calling \`run_subagent\`.
+You have \`run_subagent\` available. Use it to delegate focused sub-investigations.
 
 **When to spawn:**
-- You discover a dependency chain spanning 3+ additional files
-- A single function's behavior depends on understanding a separate module
-- You need to trace callers/callees across multiple layers
+- Your investigation scope spans 4+ files
+- You need to trace a dependency chain across multiple modules
+- A separate concern emerged that deserves its own focused analysis
+- Understanding a function requires examining its callers AND callees in depth
 
 **Task format for sub-agents:**
 \`\`\`
-task: "Trace [function] dependency chain.
+task: "Investigate [specific concern] in [files/functions].
 Questions:
-1. [Specific question about behavior]
-2. [Specific question about edge cases]
+1. [Specific question]
+2. [Specific question]
 Examine: [function1], [function2]"
 
-context: "[What you found so far and why you need deeper investigation]"
+context: "[What you found so far and why this needs deeper investigation]"
 \`\`\`
 
-**Budget awareness:** Your sub-agents share your iteration budget, so delegate sparingly.`
+**Budget:** Each sub-agent gets its own allocated iteration budget. Spawning does not waste your remaining iterations—delegate when the scope warrants it.`
             : `
 ### Recursion Limit
 

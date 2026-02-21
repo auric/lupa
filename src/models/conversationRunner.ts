@@ -90,6 +90,13 @@ export class ConversationRunner {
     private _hitMaxIterations = false;
     private _wasCancelled = false;
 
+    /** Maximum number of consecutive rate-limit retries before giving up */
+    private static readonly MAX_RATE_LIMIT_RETRIES = 5;
+    /** Initial backoff delay in ms for rate-limited requests */
+    private static readonly INITIAL_BACKOFF_MS = 2000;
+    /** Maximum backoff delay in ms */
+    private static readonly MAX_BACKOFF_MS = 30000;
+
     constructor(
         private readonly client: ILLMClient,
         private readonly toolExecutor: ToolExecutor
@@ -117,6 +124,7 @@ export class ConversationRunner {
     ): Promise<string> {
         let iteration = 0;
         let completionNudgeCount = 0;
+        let rateLimitRetries = 0;
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
@@ -338,6 +346,45 @@ export class ConversationRunner {
                     return '';
                 }
 
+                // Rate limit: backoff and retry WITHOUT burning an iteration.
+                // VS Code API throws errors with "ChatRateLimited" in the name/message.
+                if (this.isRateLimitError(error)) {
+                    rateLimitRetries++;
+                    if (
+                        rateLimitRetries >
+                        ConversationRunner.MAX_RATE_LIMIT_RETRIES
+                    ) {
+                        Log.error(
+                            `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
+                        );
+                        throw new Error(
+                            'Rate limited by the API after multiple retries. Please try again later.'
+                        );
+                    }
+
+                    const backoffMs = Math.min(
+                        ConversationRunner.INITIAL_BACKOFF_MS *
+                            Math.pow(2, rateLimitRetries - 1),
+                        ConversationRunner.MAX_BACKOFF_MS
+                    );
+                    Log.warn(
+                        `${logPrefix} Rate limited (attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), waiting ${backoffMs}ms before retry`
+                    );
+
+                    // Don't count rate-limit retries as iterations
+                    iteration--;
+
+                    await this.sleepWithCancellation(backoffMs, token);
+                    if (token.isCancellationRequested) {
+                        this._wasCancelled = true;
+                        return '';
+                    }
+                    continue;
+                }
+
+                // Reset rate limit counter on non-rate-limit errors
+                rateLimitRetries = 0;
+
                 const fatalError = this.detectFatalError(error);
                 if (fatalError) {
                     Log.error(
@@ -458,6 +505,44 @@ export class ConversationRunner {
         } catch {
             return null;
         }
+    }
+
+    /**
+     * Check if an error is a rate limit error from the VS Code Copilot API.
+     * The API throws errors with class name "ChatRateLimited".
+     */
+    private isRateLimitError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const name = error.constructor?.name ?? '';
+        const message = error.message ?? '';
+        return (
+            name === 'ChatRateLimited' ||
+            name.includes('RateLimited') ||
+            message.includes('rate limit') ||
+            message.includes('Rate limit') ||
+            message.includes('RateLimited')
+        );
+    }
+
+    /**
+     * Sleep for a specified duration, aborting early if cancellation is requested.
+     */
+    private sleepWithCancellation(
+        ms: number,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        return new Promise((resolve) => {
+            const timer = setTimeout(resolve, ms);
+            const disposable = token.onCancellationRequested(() => {
+                clearTimeout(timer);
+                disposable.dispose();
+                resolve();
+            });
+            // Clean up listener when timer fires normally
+            setTimeout(() => disposable.dispose(), ms + 1);
+        });
     }
 
     /**

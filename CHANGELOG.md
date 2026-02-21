@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Budget model tuned for more subagents** (`DEFAULT_CHILD_BUDGET`: 20 → 15, `MIN_VIABLE_BUDGET`: 5 → 3): Root agent can now spawn ~7 children instead of ~5, reducing "Insufficient budget" rejections.
 - **Removed dead `iterationsUsed` field**: Never-incremented field removed from `RecursiveStateNode`.
 - **Workflow: examine diffs before planning**: Both recursive and non-recursive RLM prompts now instruct the LLM to read key file diffs before creating the review plan, preventing blind decomposition.
+- **Rate limit backoff**: `ConversationRunner` now detects `ChatRateLimited` errors and retries with exponential backoff (2s → 30s, up to 5 retries) without burning iterations. Previously, rate limit errors consumed an iteration each and retried immediately.
+- **Max iterations error shows actual budget**: `RunSubagentTool` error message now reports the child's allocated budget (e.g., 15) instead of the global `maxIterations` setting (e.g., 100).
 
 #### Recursive Review
 
@@ -28,12 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Session limit enforced in recursive mode**: Fixed `RunSubagentTool` where `sessionManager.canSpawn()` was never checked when `RecursiveStateManager` was present (due to `if/else-if` structure). The session limit is now always checked first as a hard global cap.
 - **Subagents can now read PR diffs**: Subagent prompt generator detects when diff tools (`list_changed_files`, `get_file_diff`) are available and replaces the "You CANNOT see the PR diff" constraint with instructions to use those tools.
 
-#### Tool Reliability
-
-- **get_file_diff rejects ambiguous path matches**: Path matching now requires a `/` boundary (e.g., `auth.ts` matches `src/services/auth.ts` but not `noauth.ts`). When multiple files match, returns an error listing all candidates instead of silently returning the first match.
-
 #### Prompt Quality
 
+- **Fixed conflicting first-action instructions in recursive mode**: Root role and methodology both mandated `update_plan` as the first tool call, contradicting the tool guide which correctly starts with `list_changed_files`. All three now agree: examine diffs first, then plan.
+- **Subagent recursion prompt no longer discourages delegation**: Replaced conservative "delegate sparingly" with actionable guidance on when to spawn sub-agents. Removed misleading "shared budget" framing—children get their own allocated budget.
 - **Fixed overlapping file count ranges in recursive tool guide**: Delegation strategy table had overlapping ranges (4-10 and 10-20). Corrected to non-overlapping ranges (4-9, 10-19, 20+).
 
 ### Changed

@@ -202,9 +202,11 @@ MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
             }
 
             if (!result.success && result.error === 'max_iterations') {
+                const actualMaxIterations =
+                    childBudget ?? this.workspaceSettings.getMaxIterations();
                 const maxIterMsg = SubagentErrors.maxIterations(
                     result.toolCallsMade,
-                    this.workspaceSettings.getMaxIterations()
+                    actualMaxIterations
                 );
                 // Include partial response so parent LLM can use findings gathered so far
                 const partialFindings = result.response?.trim();

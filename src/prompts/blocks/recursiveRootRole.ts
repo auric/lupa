@@ -24,5 +24,5 @@ You are the ROOT AGENT in a recursive review system:
 - Sub-agents can investigate both current code AND diff changes you provide
 - Sub-agents CAN spawn their own sub-agents for deep dependency tracing
 
-**Your first tool call on any review MUST be \`update_plan\` to establish your decomposition plan.**`;
+**Workflow**: \`list_changed_files\` → \`get_file_diff\` (2-3 key files) → \`update_plan\` (decomposition) → \`run_subagent\` per concern group → aggregate → \`submit_review\`.`;
 }

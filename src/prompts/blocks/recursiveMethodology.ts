@@ -13,11 +13,9 @@ Read the diff structure:
 - Identify logical groupings (auth, API, data layer, tests, config)
 - Assess risk areas (security, correctness, breaking changes)
 
-### Step 2: Create Decomposition Plan (MANDATORY - FIRST ACTION)
+### Step 2: Create Decomposition Plan (After Examining Diffs)
 
-⚠️ **Your first tool call MUST be \`update_plan\`.** Do not investigate before planning.
-
-Call \`update_plan\` with your decomposition:
+After examining the changed files and 2-3 key diffs, call \`update_plan\` with your decomposition:
 \`\`\`markdown
 ## Recursive Review Plan
 
