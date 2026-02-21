@@ -51,15 +51,20 @@ You have direct access to the PR diff via tools:
 
         const recursionSection = canRecurse
             ? `
-### Spawning Sub-Agents
+### Decomposition Strategy (You CAN Spawn Sub-Agents)
 
-You have \`run_subagent\` available. Use it to delegate focused sub-investigations.
+You have \`run_subagent\` available and **${maxIterations} iterations** total.
 
-**When to spawn:**
-- Your investigation scope spans 4+ files
-- You need to trace a dependency chain across multiple modules
-- A separate concern emerged that deserves its own focused analysis
-- Understanding a function requires examining its callers AND callees in depth
+**RULE: If your task spans 4+ files, DECOMPOSE before investigating.**
+Do NOT try to review 4+ files directly — you'll exhaust your iterations and produce incomplete findings.
+
+**Decomposition approach:**
+1. Call \`get_file_diff\` for 1-2 key files to orient yourself (~2 iterations)
+2. Based on the diff, split your remaining files into focused sub-tasks
+3. Spawn sub-agents for each group (each gets ~${Math.max(5, maxIterations - 5)} iterations from your budget)
+4. Aggregate their findings into your response
+
+**If your task spans 1-3 files:** Investigate directly — no need to spawn.
 
 **Task format for sub-agents:**
 \`\`\`
@@ -72,7 +77,7 @@ Examine: [function1], [function2]"
 context: "[What you found so far and why this needs deeper investigation]"
 \`\`\`
 
-**Budget:** Each sub-agent gets its own allocated iteration budget. Spawning does not waste your remaining iterations—delegate when the scope warrants it.`
+**Budget:** Each sub-agent gets its own allocated budget from yours. After spawning, you keep enough iterations to aggregate results and write your findings.`
             : `
 ### Recursion Limit
 
@@ -100,8 +105,9 @@ ${toolList}
 ## Investigation Approach
 
 Follow this systematic approach:
+${diffAccessSection}
 
-1. **Orient First**: Use \`get_symbols_overview\` or \`list_directory\` to understand the area you're investigating.
+1. **Read the Diff FIRST**: Call \`get_file_diff\` immediately for the files listed in your task. This is your primary input — do this before anything else.
 
 2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
 
@@ -110,7 +116,8 @@ Follow this systematic approach:
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
-${diffAccessSection}
+
+**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.
 ${recursionSection}
 </investigation_approach>
 

@@ -1251,4 +1251,226 @@ describe('ConversationRunner', () => {
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
         });
     });
+
+    describe('Wind-down Mechanism', () => {
+        it('should force text response on last iteration for non-explicit-completion', async () => {
+            // 3 iterations: first 2 make tool calls, third is forced text
+            let callIndex = 0;
+            const modelManager = createMockModelManager(
+                Array(3).fill({
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: { name: 'find_symbol', arguments: '{}' },
+                        },
+                    ],
+                })
+            );
+            // Override to return text on 3rd call (when tools are empty)
+            (
+                modelManager.sendRequest as ReturnType<typeof vi.fn>
+            ).mockImplementation((request: any) => {
+                callIndex++;
+                if (request.tools.length === 0) {
+                    return Promise.resolve({
+                        content: 'Final findings from subagent',
+                        toolCalls: undefined,
+                    });
+                }
+                return Promise.resolve({
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: `call_${callIndex}`,
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{}',
+                            },
+                        },
+                    ],
+                });
+            });
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 3,
+                tools: [createMockTool('find_symbol')],
+                // No requiresExplicitCompletion — subagent mode
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Final findings from subagent');
+            expect(runner.hitMaxIterations).toBe(false);
+        });
+
+        it('should NOT force text on last iteration when requiresExplicitCompletion is true', async () => {
+            // Main analysis with requiresExplicitCompletion should keep tools on last iteration
+            const modelManager = createMockModelManager(
+                Array(3).fill({
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: { name: 'find_symbol', arguments: '{}' },
+                        },
+                    ],
+                })
+            );
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: true,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // All sendRequest calls should have tools
+            const calls = (modelManager.sendRequest as ReturnType<typeof vi.fn>)
+                .mock.calls;
+            for (const call of calls) {
+                expect(call[0].tools.length).toBeGreaterThan(0);
+            }
+        });
+
+        it('should return last substantive response when hitting max iterations', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    // Second call has substantive content alongside tool calls
+                    if (callCount === 2) {
+                        return Promise.resolve({
+                            content:
+                                'I found a critical security issue in the authentication module that needs immediate attention.',
+                            toolCalls: [
+                                {
+                                    id: `call_${callCount}`,
+                                    function: {
+                                        name: 'find_symbol',
+                                        arguments: '{}',
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 3,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Should return the substantive response from call #2, not generic message
+            expect(result).toContain('critical security issue');
+            expect(runner.hitMaxIterations).toBe(true);
+        });
+
+        it('should inject wind-down user message on last iteration', async () => {
+            const addUserMessageSpy = vi.spyOn(conversation, 'addUserMessage');
+
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'My final analysis',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Check that a wind-down message was injected
+            const windDownCalls = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('FINAL iteration')
+            );
+            expect(windDownCalls.length).toBe(1);
+        });
+    });
 });

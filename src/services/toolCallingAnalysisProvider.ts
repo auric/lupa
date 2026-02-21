@@ -190,7 +190,8 @@ export class ToolCallingAnalysisProvider {
                 userMessage = this.promptGenerator.generateRlmUserPrompt(
                     parsedDiff,
                     undefined,
-                    isRecursiveMode
+                    isRecursiveMode,
+                    this.workspaceSettings.getMaxIterations()
                 );
             } else {
                 // Legacy approach: full diff embedded in prompt

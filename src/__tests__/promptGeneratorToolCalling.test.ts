@@ -520,5 +520,41 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
             expect(metadataIndex).toBeLessThan(taskIndex);
         });
+
+        it('should include budget awareness when maxIterations is provided in recursive mode', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true,
+                100
+            );
+
+            expect(prompt).toContain('Budget');
+            expect(prompt).toContain('100');
+            // (100 - 5) / 25 = 3 affordable agents
+            expect(prompt).toContain('3');
+            expect(prompt).toContain('sub-agents');
+        });
+
+        it('should not include budget when maxIterations is not provided', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true
+            );
+
+            expect(prompt).not.toContain('Budget');
+        });
+
+        it('should not include budget in non-recursive mode', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                false,
+                100
+            );
+
+            expect(prompt).not.toContain('Budget');
+        });
     });
 });

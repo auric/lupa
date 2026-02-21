@@ -183,6 +183,9 @@ export class SubagentExecutor {
             // Track tool calls made by the subagent with full details
             const toolCalls: ToolCallRecord[] = [];
 
+            // Track iteration state in closure for iteration countdown
+            let currentIteration = 0;
+
             // Create subagent stream adapter for prefixed tool progress in chat UI
             // This shows tool calls with "🔹 child-1: Reading file..." format
             const subagentAdapter = this.chatHandler
@@ -206,12 +209,35 @@ export class SubagentExecutor {
                 token,
                 {
                     onIterationStart: (current, max) => {
+                        currentIteration = current;
                         // Report to VS Code progress bar (command palette flow).
                         // Chat UI iteration is suppressed by SubagentStreamAdapter's no-op onIterationStart.
                         this.reportProgress(
                             `Sub-analysis (${current}/${max})...`,
                             0.1
                         );
+                    },
+                    getContextStatusSuffix: async () => {
+                        const remaining = maxIterations - currentIteration;
+
+                        if (remaining <= 2) {
+                            return (
+                                `\n\n⚠️ **CRITICAL: ${remaining} iteration(s) remaining!** ` +
+                                'Produce your COMPLETE findings in your next response. ' +
+                                'A partial answer is far more valuable than no answer. ' +
+                                'Stop investigating and write up what you have found.'
+                            );
+                        }
+
+                        if (remaining <= Math.ceil(maxIterations * 0.3)) {
+                            return `\n\n[⏱️ Iterations: ${currentIteration}/${maxIterations} — ${remaining} remaining. Start wrapping up your investigation.]`;
+                        }
+
+                        if (currentIteration >= 3) {
+                            return `\n\n[Iteration ${currentIteration}/${maxIterations}]`;
+                        }
+
+                        return '';
                     },
                     onToolCallStart: (
                         toolName,

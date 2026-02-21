@@ -125,6 +125,7 @@ export class ConversationRunner {
         let iteration = 0;
         let completionNudgeCount = 0;
         let rateLimitRetries = 0;
+        let lastSubstantiveResponse = '';
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
@@ -150,6 +151,24 @@ export class ConversationRunner {
                 const vscodeTools = config.tools.map((tool) =>
                     tool.getVSCodeTool()
                 );
+
+                // Wind-down: on the last iteration for non-explicit-completion
+                // conversations (subagents), force text response by removing tools
+                // and injecting a wrap-up message.
+                const isLastIteration = iteration === config.maxIterations;
+                const forceFinalResponse =
+                    isLastIteration && !config.requiresExplicitCompletion;
+
+                if (forceFinalResponse) {
+                    conversation.addUserMessage(
+                        '\u26a0\ufe0f This is your FINAL iteration. You MUST respond with your complete findings NOW. ' +
+                            'Do NOT make any tool calls \u2014 provide your full analysis as a text response. ' +
+                            'Summarize everything you have found so far. A partial answer is far better than no answer.'
+                    );
+                }
+
+                const effectiveTools = forceFinalResponse ? [] : vscodeTools;
+
                 let messages = this.prepareMessagesForLLM(
                     config.systemPrompt,
                     conversation
@@ -216,7 +235,7 @@ export class ConversationRunner {
                 const response = await this.client.sendRequest(
                     {
                         messages,
-                        tools: vscodeTools,
+                        tools: effectiveTools,
                     },
                     token
                 );
@@ -231,6 +250,11 @@ export class ConversationRunner {
                     response.content || null,
                     response.toolCalls
                 );
+
+                // Track last substantive response for graceful degradation
+                if (response.content && response.content.trim().length > 50) {
+                    lastSubstantiveResponse = response.content;
+                }
 
                 // Re-check cancellation before processing branching logic —
                 // token may have fired during response processing
@@ -427,7 +451,10 @@ export class ConversationRunner {
             `${logPrefix} Reached maximum iterations (${config.maxIterations})`
         );
         this._hitMaxIterations = true;
-        return 'Conversation reached maximum iterations. The conversation may be incomplete.';
+        return (
+            lastSubstantiveResponse ||
+            'Conversation reached maximum iterations with no findings.'
+        );
     }
 
     private isFatalModelError(error: unknown): boolean {

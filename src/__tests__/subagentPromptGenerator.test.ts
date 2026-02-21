@@ -98,7 +98,7 @@ describe('SubagentPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('## Investigation Approach');
-            expect(prompt).toContain('Orient First');
+            expect(prompt).toContain('Read the Diff FIRST');
             expect(prompt).toContain('Gather Evidence');
             expect(prompt).toContain('Trace Dependencies');
         });

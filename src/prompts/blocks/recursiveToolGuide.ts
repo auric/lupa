@@ -23,9 +23,15 @@ export function generateRecursiveToolGuide(): string {
 | PR Size | Strategy |
 |---------|----------|
 | 1-3 files, <50 lines | Review directly (no sub-agents needed) |
-| 4-9 files | Spawn 2-3 sub-agents by logical concern |
-| 10-19 files | Spawn 3-5 sub-agents, include diff hunks in context |
-| 20+ files | Spawn 4-6 sub-agents, prioritize security and breaking changes |
+| 4-9 files | Spawn 2-3 sub-agents, 2-3 files each |
+| 10-19 files | Spawn 3-4 sub-agents, 3-5 files each |
+| 20+ files | Spawn 3-4 sub-agents, prioritize security and breaking changes |
+
+**Key rules:**
+- Target **2-4 files per sub-agent** for thorough review
+- Sub-agents with 4+ files will automatically decompose further (depth-2 recursion)
+- **Never spawn more sub-agents than your budget allows** — check the budget note in your task
+- Prefer fewer agents with more files over many agents with 1 file each
 
 ### Sub-Agent Task Template
 

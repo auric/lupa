@@ -604,7 +604,8 @@ export class ChatParticipantService implements vscode.Disposable {
                   return this.deps!.promptGenerator.generateRlmUserPrompt(
                       parsedDiff,
                       request.prompt || undefined,
-                      isRecursiveMode
+                      isRecursiveMode,
+                      this.deps!.workspaceSettings.getMaxIterations()
                   );
               })()
             : this.deps!.promptGenerator.generateToolCallingUserPrompt(

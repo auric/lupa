@@ -18,7 +18,9 @@ Call \`list_changed_files\` for a structured view, then:
 
 ### Step 2: Create Decomposition Plan
 
-Call \`update_plan\` with your decomposition based on the metadata:
+Call \`update_plan\` with your decomposition based on the metadata.
+**Check your budget** (shown in \`<analysis_task>\`) — only plan as many agents as you can afford.
+Target **1-3 files per concern group** for thorough review.
 \`\`\`markdown
 ## Recursive Review Plan
 
@@ -80,7 +82,9 @@ After all sub-agents return:
 Sub-agents receive full code exploration tools:
 - \`find_symbol\`, \`find_usages\`, \`read_file\`, \`search_for_pattern\`, etc.
 - They call \`get_file_diff\` to read diffs — no need to paste hunks in context
-- They CAN spawn their own sub-agents for deep dependency tracing
+- They CAN spawn their own sub-agents for large scopes (4+ files)
 - They return structured findings you can directly incorporate
+
+**Assign 2-4 files per sub-agent.** If a concern group has 6+ files, the sub-agent will automatically decompose further.
 </recursive_methodology>`;
 }

@@ -57,12 +57,14 @@ export class PromptGenerator {
      * @param parsedDiff Parsed diff structure (for metadata extraction)
      * @param userInstructions Optional user-provided instructions
      * @param recursiveMode Whether to use recursive review workflow
+     * @param maxIterations Total iteration budget (used for budget awareness in recursive mode)
      * @returns User prompt with diff metadata and tool usage instructions
      */
     public generateRlmUserPrompt(
         parsedDiff: DiffHunk[],
         userInstructions?: string,
-        recursiveMode: boolean = false
+        recursiveMode: boolean = false,
+        maxIterations?: number
     ): string {
         const metadataSection = this.generateDiffMetadataSection(parsedDiff);
         const userFocusSection = userInstructions?.trim()
@@ -70,7 +72,8 @@ export class PromptGenerator {
             : '';
         const reminder = this.generateRlmAnalysisReminder(
             parsedDiff.length,
-            recursiveMode
+            recursiveMode,
+            maxIterations
         );
 
         return `${metadataSection}${userFocusSection}${reminder}`;
@@ -157,10 +160,11 @@ export class PromptGenerator {
      */
     private generateRlmAnalysisReminder(
         fileCount: number,
-        recursiveMode: boolean
+        recursiveMode: boolean,
+        maxIterations?: number
     ): string {
         if (recursiveMode) {
-            return this.generateRecursiveRlmReminder(fileCount);
+            return this.generateRecursiveRlmReminder(fileCount, maxIterations);
         }
 
         const spawnSubagents = fileCount >= 4;
@@ -191,12 +195,33 @@ export class PromptGenerator {
     /**
      * Generate recursive RLM analysis reminder.
      */
-    private generateRecursiveRlmReminder(fileCount: number): string {
+    private generateRecursiveRlmReminder(
+        fileCount: number,
+        maxIterations?: number
+    ): string {
+        // Each sub-agent costs ~25 iterations; root uses ~5 for setup
+        const CHILD_BUDGET_ESTIMATE = 25;
+        const ROOT_OVERHEAD = 5;
+        const maxAffordableAgents = maxIterations
+            ? Math.floor(
+                  (maxIterations - ROOT_OVERHEAD) / CHILD_BUDGET_ESTIMATE
+              )
+            : undefined;
+
         let reminder = '<analysis_task>\n';
         reminder += `Review the ${fileCount} changed file(s) in this PR.\n\n`;
         reminder +=
             'The `<diff_metadata>` above shows all changed files with line counts. ' +
-            'Sub-agents have `get_file_diff` — they will read diffs themselves.\n\n';
+            'Sub-agents have `get_file_diff` \u2014 they will read diffs themselves.\n\n';
+
+        if (maxAffordableAgents !== undefined) {
+            reminder +=
+                `**Budget**: You have ~${maxIterations} total iterations. ` +
+                `Each sub-agent costs ~${CHILD_BUDGET_ESTIMATE} iterations. ` +
+                `You can afford approximately **${maxAffordableAgents}** sub-agents. ` +
+                'Target **2\u20134 files per sub-agent** for thorough review. ' +
+                'Do NOT spawn more sub-agents than your budget allows \u2014 excess spawns will fail.\n\n';
+        }
 
         reminder += '**Workflow**:\n';
         reminder +=

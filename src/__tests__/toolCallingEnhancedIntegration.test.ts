@@ -591,7 +591,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             );
 
             expect(result.analysis).toBe(
-                'Conversation reached maximum iterations. The conversation may be incomplete.'
+                'Conversation reached maximum iterations with no findings.'
             );
         });
     });
