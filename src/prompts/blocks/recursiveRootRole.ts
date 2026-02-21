@@ -20,7 +20,7 @@ You are the ROOT AGENT in a recursive review system:
 - **Delegate investigations** — Use \`run_subagent\` for deep code inspection
 - **You may orient yourself** using \`list_directory\`, \`get_symbols_overview\` (sparingly)
 - **Your primary tool is \`run_subagent\`** — It does the heavy investigation
-- **Do NOT read diffs yourself** — sub-agents have \`get_file_diff\` and will read diffs themselves
+- **Do NOT read diffs yourself** unless this is a trivial PR (1-3 files) — sub-agents have \`get_file_diff\` and read diffs themselves
 - Tell sub-agents WHICH files to examine; they handle the rest
 - Sub-agents CAN spawn their own sub-agents for deep dependency tracing
 

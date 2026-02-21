@@ -126,6 +126,7 @@ export class ConversationRunner {
         let completionNudgeCount = 0;
         let rateLimitRetries = 0;
         let lastSubstantiveResponse = '';
+        let windDownInjected = false;
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
@@ -157,9 +158,12 @@ export class ConversationRunner {
                 // and injecting a wrap-up message.
                 const isLastIteration = iteration === config.maxIterations;
                 const forceFinalResponse =
-                    isLastIteration && !config.requiresExplicitCompletion;
+                    isLastIteration &&
+                    !config.requiresExplicitCompletion &&
+                    !windDownInjected;
 
                 if (forceFinalResponse) {
+                    windDownInjected = true;
                     conversation.addUserMessage(
                         '\u26a0\ufe0f This is your FINAL iteration. You MUST respond with your complete findings NOW. ' +
                             'Do NOT make any tool calls \u2014 provide your full analysis as a text response. ' +
@@ -239,6 +243,11 @@ export class ConversationRunner {
                     },
                     token
                 );
+
+                // Reset rate-limit counter after successful API call.
+                // Without this, a later rate-limit hit would continue from
+                // the old retry count and prematurely exhaust retries.
+                rateLimitRetries = 0;
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);

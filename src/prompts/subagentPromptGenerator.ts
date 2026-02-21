@@ -44,10 +44,36 @@ ${task.context}
 
 You have direct access to the PR diff via tools:
 - \`get_file_diff\` — Read the actual diff for specific file(s)
-- \`list_changed_files\` — See all changed files (only if you need broader context)
-
-**Start by calling \`get_file_diff\`** for the files listed in your task. Your parent has already identified which files you need to examine.`
+- \`list_changed_files\` — See all changed files (only if you need broader context)`
             : '';
+
+        // When canRecurse, the investigation approach defers to decomposition for large scopes
+        const investigationSteps =
+            canRecurse && hasDiffTools
+                ? `
+1. **Check your scope**: Count the files in your task.
+   - **1-3 files**: Call \`get_file_diff\` for ALL of them, then investigate directly.
+   - **4+ files**: Follow the **Decomposition Strategy** below — read 1-2 key diffs to orient, then spawn sub-agents for the rest.
+
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
+
+3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
+
+4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+
+**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`
+                : `
+1. **Read the Diff FIRST**: Call \`get_file_diff\` immediately for the files listed in your task. This is your primary input — do this before anything else.
+
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
+
+3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
+
+4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+
+5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+
+**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`;
 
         const recursionSection = canRecurse
             ? `
@@ -106,18 +132,7 @@ ${toolList}
 
 Follow this systematic approach:
 ${diffAccessSection}
-
-1. **Read the Diff FIRST**: Call \`get_file_diff\` immediately for the files listed in your task. This is your primary input — do this before anything else.
-
-2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
-
-3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
-
-4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
-
-5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
-
-**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.
+${investigationSteps}
 ${recursionSection}
 </investigation_approach>
 

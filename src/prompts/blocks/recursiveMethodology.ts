@@ -20,7 +20,7 @@ Call \`list_changed_files\` for a structured view, then:
 
 Call \`update_plan\` with your decomposition based on the metadata.
 **Check your budget** (shown in \`<analysis_task>\`) — only plan as many agents as you can afford.
-Target **1-3 files per concern group** for thorough review.
+Target **2-4 files per concern group** for thorough review.
 \`\`\`markdown
 ## Recursive Review Plan
 

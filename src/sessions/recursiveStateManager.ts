@@ -306,7 +306,10 @@ export class RecursiveStateManager {
         const budget = this.calculateChildBudget(parentId);
         const parent = this.tree.get(parentId);
         if (parent && budget >= RecursionConstants.MIN_VIABLE_BUDGET) {
-            parent.iterationBudget -= budget;
+            parent.iterationBudget = Math.max(
+                0,
+                parent.iterationBudget - budget
+            );
         }
         return budget;
     }
