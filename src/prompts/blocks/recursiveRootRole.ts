@@ -18,11 +18,11 @@ You are the ROOT AGENT in a recursive review system:
 ## Critical Rules
 
 - **Delegate investigations** — Use \`run_subagent\` for deep code inspection
-- **You may orient yourself** using \`list_directory\`, \`get_symbols_overview\`, \`read_file\` (sparingly)
+- **You may orient yourself** using \`list_directory\`, \`get_symbols_overview\` (sparingly)
 - **Your primary tool is \`run_subagent\`** — It does the heavy investigation
-- For each concern, include relevant diff hunks in the \`context\` field
-- Sub-agents can investigate both current code AND diff changes you provide
+- **Do NOT read diffs yourself** — sub-agents have \`get_file_diff\` and will read diffs themselves
+- Tell sub-agents WHICH files to examine; they handle the rest
 - Sub-agents CAN spawn their own sub-agents for deep dependency tracing
 
-**Workflow**: \`list_changed_files\` → \`get_file_diff\` (2-3 key files) → \`update_plan\` (decomposition) → \`run_subagent\` per concern group → aggregate → \`submit_review\`.`;
+**Workflow**: \`list_changed_files\` → \`update_plan\` (decompose from metadata) → \`run_subagent\` per concern → aggregate → \`submit_review\`.`;
 }

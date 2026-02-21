@@ -9,13 +9,12 @@ export function generateRecursiveToolGuide(): string {
 
 | Tool | When to Use |
 |------|-------------|
-| \`list_changed_files\` | **FIRST ACTION** — see all changed files and statistics |
-| \`get_file_diff\` | **SECOND ACTION** — examine key files to understand changes before planning |
-| \`update_plan\` | After examining diffs — decompose PR into concern groups |
+| \`list_changed_files\` | **FIRST** — see all changed files and statistics |
+| \`update_plan\` | **SECOND** — decompose PR into concern groups from metadata |
 | \`run_subagent\` | **PRIMARY TOOL** — delegate each concern group to a focused investigator |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
-| \`read_file\` | Sparingly — only to understand file structure for better decomposition |
+| \`get_file_diff\` | Small PRs only — when reviewing directly without sub-agents |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 
@@ -32,8 +31,10 @@ export function generateRecursiveToolGuide(): string {
 
 Each \`run_subagent\` call should include:
 1. **Specific questions** about the change (not vague "review this")
-2. **Relevant diff hunks** in the \`context\` field
+2. **File paths** to examine (sub-agents call \`get_file_diff\` themselves)
 3. **Key functions** to examine
 4. **What to report back** (findings format)
+
+**Do NOT read diffs yourself and paste them into context.** Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand. This keeps YOUR context window clean for aggregation.
 </recursive_tool_guide>`;
 }

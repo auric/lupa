@@ -194,21 +194,25 @@ export class PromptGenerator {
     private generateRecursiveRlmReminder(fileCount: number): string {
         let reminder = '<analysis_task>\n';
         reminder += `Review the ${fileCount} changed file(s) in this PR.\n\n`;
-        reminder += `**Important**: The diff is NOT embedded in this message. Use these tools to access it:\n`;
-        reminder += `1. \`list_changed_files\` — See all changed files with statistics\n`;
-        reminder += `2. \`get_file_diff\` — Read the actual diff for specific file(s)\n\n`;
+        reminder +=
+            'The `<diff_metadata>` above shows all changed files with line counts. ' +
+            'Sub-agents have `get_file_diff` — they will read diffs themselves.\n\n';
 
-        reminder += `**Recursive Review Mode**: Understand the changes first, then decompose into concern groups and delegate to sub-agents.\n\n`;
+        reminder += '**Workflow**:\n';
+        reminder +=
+            '1. Call `list_changed_files` for a structured view of all changes\n';
+        reminder +=
+            '2. Call `update_plan` — decompose into concern groups based on file paths and change sizes\n';
+        reminder +=
+            '3. Spawn `run_subagent` for each concern group (list file paths in task)\n';
+        reminder += '4. After all agents return, aggregate findings\n';
+        reminder += '5. Check for cross-concern issues\n';
+        reminder +=
+            '6. Call `think_about_completion`, then `submit_review`\n\n';
 
-        reminder += `**Workflow**:\n`;
-        reminder += `1. Call \`list_changed_files\` to see all changed files with statistics\n`;
-        reminder += `2. Call \`get_file_diff\` on a few key files to understand the nature of changes\n`;
-        reminder += `3. Based on actual diff content, classify changes into logical concern groups\n`;
-        reminder += `4. Call \`update_plan\` with your decomposition plan (informed by diffs you examined)\n`;
-        reminder += `5. Spawn \`run_subagent\` for each concern group (include file paths in task!)\n`;
-        reminder += `6. After all agents return, aggregate findings\n`;
-        reminder += `7. Check for cross-concern issues\n`;
-        reminder += `8. Call \`think_about_completion\`, then \`submit_review\`\n`;
+        reminder +=
+            '**Do NOT call `get_file_diff` yourself** unless this is a trivial PR (1-3 files). ' +
+            'Reading diffs fills your context window and leaves less room for sub-agent results.\n';
         reminder += '</analysis_task>';
 
         return reminder;

@@ -524,6 +524,22 @@ export class ChatParticipantService implements vscode.Disposable {
         const isRlmApproach =
             this.deps!.workspaceSettings.getAnalysisApproach() === 'rlm';
 
+        // Warn when using RLM/recursive mode with a small-context model.
+        // Tool-calling workflows consume context rapidly; models with <50K tokens
+        // often run out of context or struggle with multi-step instruction following.
+        const SMALL_CONTEXT_THRESHOLD = 50_000;
+        if (
+            isRlmApproach &&
+            request.model.maxInputTokens < SMALL_CONTEXT_THRESHOLD
+        ) {
+            const msg =
+                `Model "${request.model.name}" has ${request.model.maxInputTokens} tokens — ` +
+                `RLM mode works best with larger context models (50K+). ` +
+                `Consider setting "analysisApproach": "legacy" in lupa.json for this model.`;
+            Log.warn(msg);
+            stream.progress(`⚠️ ${msg}`);
+        }
+
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode
             ? new RecursiveStateManager(

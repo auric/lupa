@@ -471,8 +471,8 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 true
             );
 
-            expect(prompt).toContain('Recursive Review Mode');
-            expect(prompt).toContain('decompose');
+            expect(prompt).toContain('Do NOT call `get_file_diff` yourself');
+            expect(prompt).toContain('update_plan');
             expect(prompt).toContain('run_subagent');
         });
 
@@ -483,7 +483,9 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 false
             );
 
-            expect(prompt).not.toContain('Recursive Review Mode');
+            expect(prompt).not.toContain(
+                'Do NOT call `get_file_diff` yourself'
+            );
         });
 
         it('should suggest subagents for large PRs', () => {

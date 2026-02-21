@@ -6,16 +6,19 @@ export function generateRecursiveMethodology(): string {
     return `<recursive_methodology>
 ## Recursive Review Process
 
-### Step 1: Scan the Diff
+### Step 1: Read the Metadata
 
-Read the diff structure:
-- Which files changed and how much
-- Identify logical groupings (auth, API, data layer, tests, config)
-- Assess risk areas (security, correctness, breaking changes)
+The \`<diff_metadata>\` in this conversation already shows which files changed and how much.
+Call \`list_changed_files\` for a structured view, then:
+- Group files by module/layer (auth, API, data layer, tests, config)
+- Assess risk from file names and change sizes
+- Identify new files, deleted files, and large modifications
 
-### Step 2: Create Decomposition Plan (After Examining Diffs)
+**Do NOT call \`get_file_diff\`** — sub-agents will read diffs. Keep your context clean.
 
-After examining the changed files and 2-3 key diffs, call \`update_plan\` with your decomposition:
+### Step 2: Create Decomposition Plan
+
+Call \`update_plan\` with your decomposition based on the metadata:
 \`\`\`markdown
 ## Recursive Review Plan
 
@@ -43,14 +46,14 @@ Questions:
 Focus on: [what to prioritize]
 Examine functions: [key functions]"
 
-context: "## Diff Context
-[paste relevant diff hunks from <files_to_review>]
+context: "## Files to Examine
+[list specific file paths this agent should focus on]
 
 ## Concern
 [why this needs investigation — what could go wrong]"
 \`\`\`
 
-**Include relevant diff hunks in \`context\`** — sub-agents need to see what changed.
+Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs themselves.
 
 ### Step 4: Aggregate Findings
 
@@ -76,7 +79,7 @@ After all sub-agents return:
 
 Sub-agents receive full code exploration tools:
 - \`find_symbol\`, \`find_usages\`, \`read_file\`, \`search_for_pattern\`, etc.
-- They CAN see diff context you provide in the \`context\` field
+- They call \`get_file_diff\` to read diffs — no need to paste hunks in context
 - They CAN spawn their own sub-agents for deep dependency tracing
 - They return structured findings you can directly incorporate
 </recursive_methodology>`;
