@@ -73,9 +73,9 @@ After all sub-agents return:
 
 ### When NOT to Spawn Sub-Agents
 
-- Trivial PRs (1-2 files, <30 lines changed): Review directly
+- Trivial PRs (1-3 files, <50 lines changed): Review directly
 - Config-only changes: Quick verification, no deep investigation needed
-- If remaining budget is too low for meaningful delegation
+- Budget exhausted: All iteration budget already allocated
 
 ### Sub-Agent Capabilities
 

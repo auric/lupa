@@ -203,8 +203,11 @@ export class PromptGenerator {
         const CHILD_BUDGET_ESTIMATE = 25;
         const ROOT_OVERHEAD = 5;
         const maxAffordableAgents = maxIterations
-            ? Math.floor(
-                  (maxIterations - ROOT_OVERHEAD) / CHILD_BUDGET_ESTIMATE
+            ? Math.max(
+                  0,
+                  Math.floor(
+                      (maxIterations - ROOT_OVERHEAD) / CHILD_BUDGET_ESTIMATE
+                  )
               )
             : undefined;
 

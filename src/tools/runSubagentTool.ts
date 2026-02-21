@@ -20,21 +20,25 @@ import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
  */
 export class RunSubagentTool extends BaseTool {
     name = 'run_subagent';
-    description = `Spawn a focused investigation agent for complex analysis.
+    description = `Spawn a focused investigation sub-agent for deep analysis.
 
-📋 USE THIS TEMPLATE:
-"Task about [module/file]:
+Sub-agents run autonomously with their own tool access and return structured findings.
+In review mode, they have PR diff tools (get_file_diff, list_changed_files) and review changes directly.
+
+📋 TASK TEMPLATE:
+"Review [concern] in [files]:
 Questions:
-1. How does [function] work?
-2. Does [function] handle [concern]?
-Examine: [function names]"
+1. [Specific question about code/changes]
+2. [Specific question about code/changes]
+Files: [file1.ts, file2.ts]
+Focus on: [key functions/classes]"
 
 RULES:
-- ONE MODULE per subagent (spawn multiple for multiple modules)
-- Questions about CURRENT code only (no "changes", "new", "old")
-- Subagent CANNOT run tests or execute code
+- Include specific file paths — sub-agents examine the files you assign
+- Target 2-4 files per sub-agent for thorough review
+- Sub-agents CANNOT run tests or execute code
 
-MANDATORY when: 4+ files, security code, 3+ file dependency chains.`;
+MANDATORY when: 4+ files to review, security-critical code, complex dependency chains.`;
 
     schema: z.ZodObject<{
         task: z.ZodString;
