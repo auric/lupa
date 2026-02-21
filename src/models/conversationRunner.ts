@@ -235,6 +235,14 @@ export class ConversationRunner {
                         logPrefix
                     );
 
+                    // Check cancellation after tool execution completes —
+                    // tools may finish normally even when the token fires mid-execution
+                    if (token.isCancellationRequested) {
+                        Log.info(`${logPrefix} Cancelled after tool execution`);
+                        this._wasCancelled = true;
+                        return '';
+                    }
+
                     // If submit_review was called, return its content as the final review
                     if (result.finalReview) {
                         Log.info(

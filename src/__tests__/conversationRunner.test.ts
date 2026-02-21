@@ -593,6 +593,119 @@ describe('ConversationRunner', () => {
             runner.reset();
             expect(runner.wasCancelled).toBe(false);
         });
+
+        it('should detect cancellation after tool execution completes', async () => {
+            // Simulates: token fires during tool execution, but tool completes normally
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"test"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            // Track cancellation state — becomes true during tool execution
+            let cancelled = false;
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() {
+                    return cancelled;
+                },
+                onCancellationRequested: vi.fn(),
+            };
+
+            const toolExecutor = {
+                executeTools: vi.fn().mockImplementation(() => {
+                    // Token fires during tool execution
+                    cancelled = true;
+                    return Promise.resolve([
+                        {
+                            name: 'find_symbol',
+                            success: true,
+                            result: 'Symbol found',
+                        },
+                    ]);
+                }),
+                getAvailableTools: vi.fn().mockReturnValue([]),
+            } as unknown as ToolExecutor;
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            const result = await runner.run(config, conversation, token);
+
+            expect(result).toBe('');
+            expect(runner.wasCancelled).toBe(true);
+            // Should not proceed to second LLM call
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+        });
+
+        it('should detect cancellation after tool execution even with finalReview', async () => {
+            // Simulates: submit_review completes but token fires during execution
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_submit',
+                            function: {
+                                name: 'submit_review',
+                                arguments: '{"review_content":"Review"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            let cancelled = false;
+            const token: vscode.CancellationToken = {
+                get isCancellationRequested() {
+                    return cancelled;
+                },
+                onCancellationRequested: vi.fn(),
+            };
+
+            const toolExecutor = {
+                executeTools: vi.fn().mockImplementation(() => {
+                    cancelled = true;
+                    return Promise.resolve([
+                        {
+                            name: 'submit_review',
+                            success: true,
+                            result: 'Review content',
+                            metadata: { isCompletion: true },
+                        },
+                    ]);
+                }),
+                getAvailableTools: vi.fn().mockReturnValue([]),
+            } as unknown as ToolExecutor;
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(config, conversation, token);
+
+            // Cancellation takes priority over finalReview
+            expect(result).toBe('');
+            expect(runner.wasCancelled).toBe(true);
+        });
     });
 
     describe('Error Handling', () => {
