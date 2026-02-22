@@ -1,5 +1,6 @@
 import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
+import { RecursionConstants } from '../sessions/recursiveStateManager';
 
 /**
  * Generates focused system prompts for subagent investigations.
@@ -87,7 +88,7 @@ Do NOT try to review 4+ files directly — you'll exhaust your iterations and pr
 **Decomposition approach:**
 1. Call \`get_file_diff\` for 1-2 key files to orient yourself (~2 iterations)
 2. Based on the diff, split your remaining files into focused sub-tasks
-3. Spawn sub-agents for each group (each gets ~${Math.max(3, maxIterations - 3)} iterations from your budget)
+3. Spawn sub-agents for each group (each costs ~${RecursionConstants.DEFAULT_CHILD_BUDGET} iterations from your budget)
 4. Aggregate their findings into your response
 
 **If your task spans 1-3 files:** Investigate directly — no need to spawn.
@@ -103,7 +104,7 @@ Examine: [function1], [function2]"
 context: "[What you found so far and why this needs deeper investigation]"
 \`\`\`
 
-**Budget:** Each sub-agent gets its own allocated budget from yours. After spawning, you keep enough iterations to aggregate results and write your findings.`
+**Budget:** You have **${maxIterations}** iterations total. Each sub-agent costs ~${RecursionConstants.DEFAULT_CHILD_BUDGET} iterations. You can afford approximately **${Math.max(0, Math.floor((maxIterations - RecursionConstants.MIN_VIABLE_BUDGET) / RecursionConstants.DEFAULT_CHILD_BUDGET)) || 1}** sub-agent(s). After spawning, you keep enough iterations to aggregate results and write your findings.`
             : `
 ### Recursion Limit
 

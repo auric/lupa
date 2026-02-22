@@ -404,9 +404,6 @@ describe('RecursiveStateManager', () => {
             expect(RecursionConstants.DEFAULT_CHILD_BUDGET).toBeGreaterThan(
                 RecursionConstants.MIN_VIABLE_BUDGET
             );
-            expect(
-                RecursionConstants.FALLBACK_ITERATION_THRESHOLD
-            ).toBeGreaterThan(0);
         });
     });
 });

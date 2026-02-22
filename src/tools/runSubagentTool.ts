@@ -24,7 +24,7 @@ export class RunSubagentTool extends BaseTool {
     description = `Spawn a focused investigation sub-agent for deep analysis.
 
 Sub-agents run autonomously with their own tool access and return structured findings.
-In review mode, they have PR diff tools (get_file_diff, list_changed_files) and review changes directly.
+When diff tools are available (RLM approach), sub-agents can examine PR changes directly via get_file_diff.
 
 📋 TASK TEMPLATE:
 "Review [concern] in [files]:

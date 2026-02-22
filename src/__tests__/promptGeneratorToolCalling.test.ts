@@ -471,7 +471,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 true
             );
 
-            expect(prompt).toContain('Do NOT bulk-read diffs yourself');
+            expect(prompt).toContain('Minimize direct diff reading');
             expect(prompt).toContain('update_plan');
             expect(prompt).toContain('run_subagent');
         });

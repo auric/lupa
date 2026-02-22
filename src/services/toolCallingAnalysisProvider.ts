@@ -90,11 +90,15 @@ export class ToolCallingAnalysisProvider {
             progressContext
         );
 
-        // Determine if recursive review mode is available
-        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
-        const isRecursiveMode = maxRecursionDepth >= 2;
+        // Determine analysis approach and recursive mode.
+        // Recursive mode requires BOTH: depth >= 1 AND RLM approach.
+        // The RLM paper's basic pattern is depth=1 (root orchestrator + leaf workers).
+        // Legacy approach is always flat — recursive prompts reference diff tools
+        // that subagents don't have in legacy mode.
         const isRlmApproach =
             this.workspaceSettings.getAnalysisApproach() === 'rlm';
+        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
+        const isRecursiveMode = maxRecursionDepth >= 1 && isRlmApproach;
 
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode

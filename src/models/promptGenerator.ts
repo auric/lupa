@@ -1,5 +1,6 @@
 import { DiffHunk } from '../types/contextTypes';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
+import { RecursionConstants } from '../sessions/recursiveStateManager';
 import { ITool } from '../tools/ITool';
 
 /**
@@ -199,14 +200,12 @@ export class PromptGenerator {
         fileCount: number,
         maxIterations?: number
     ): string {
-        // Each sub-agent costs ~20 iterations; root uses ~5 for setup
-        const CHILD_BUDGET_ESTIMATE = 20;
-        const ROOT_OVERHEAD = 5;
         const maxAffordableAgents = maxIterations
             ? Math.max(
                   0,
                   Math.floor(
-                      (maxIterations - ROOT_OVERHEAD) / CHILD_BUDGET_ESTIMATE
+                      (maxIterations - RecursionConstants.MIN_VIABLE_BUDGET) /
+                          RecursionConstants.DEFAULT_CHILD_BUDGET
                   )
               )
             : undefined;
@@ -220,7 +219,7 @@ export class PromptGenerator {
         if (maxAffordableAgents !== undefined) {
             reminder +=
                 `**Budget**: You have ~${maxIterations} total iterations. ` +
-                `Each sub-agent costs ~${CHILD_BUDGET_ESTIMATE} iterations. ` +
+                `Each sub-agent costs ~${RecursionConstants.DEFAULT_CHILD_BUDGET} iterations. ` +
                 `You can afford approximately **${maxAffordableAgents}** sub-agents. ` +
                 'Target **2\u20134 files per sub-agent** for thorough review. ' +
                 'Do NOT spawn more sub-agents than your budget allows \u2014 excess spawns will fail.\n\n';
@@ -241,8 +240,8 @@ export class PromptGenerator {
             '7. Call `think_about_completion`, then `submit_review`\n\n';
 
         reminder +=
-            '**Do NOT bulk-read diffs yourself** \u2014 sub-agents read diffs on their own. ' +
-            'You may skim 1-2 high-risk diffs with `get_file_diff` before planning to improve your decomposition.\n';
+            '**Minimize direct diff reading** \u2014 sub-agents read diffs on demand via `get_file_diff`. ' +
+            'You may skim 1-2 high-risk diffs to inform your decomposition plan, but leave thorough reading to sub-agents.\n';
         reminder += '</analysis_task>';
 
         return reminder;

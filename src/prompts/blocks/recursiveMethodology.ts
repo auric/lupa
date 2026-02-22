@@ -13,9 +13,9 @@ Call \`list_changed_files\` for a structured view, then:
 - Group files by module/layer (auth, API, data layer, tests, config)
 - Assess risk from file names and change sizes
 - Identify new files, deleted files, and large modifications
-- **Optionally** call \`get_file_diff\` on 1-2 high-risk files to understand the nature of the changes before planning
+- You may call \`get_file_diff\` on 1-2 high-risk files to inform your decomposition plan
 
-Keep your context clean — don't read all diffs. Sub-agents will do the thorough reading.
+Keep your context clean — sub-agents will do the thorough reading.
 
 ### Step 2: Create Decomposition Plan
 
@@ -56,7 +56,7 @@ context: "## Files to Examine
 [why this needs investigation — what could go wrong]"
 \`\`\`
 
-Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs themselves.
+Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
 
 ### Step 4: Aggregate Findings
 
