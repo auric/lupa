@@ -199,8 +199,8 @@ export class PromptGenerator {
         fileCount: number,
         maxIterations?: number
     ): string {
-        // Each sub-agent costs ~25 iterations; root uses ~5 for setup
-        const CHILD_BUDGET_ESTIMATE = 25;
+        // Each sub-agent costs ~20 iterations; root uses ~5 for setup
+        const CHILD_BUDGET_ESTIMATE = 20;
         const ROOT_OVERHEAD = 5;
         const maxAffordableAgents = maxIterations
             ? Math.max(
@@ -230,17 +230,19 @@ export class PromptGenerator {
         reminder +=
             '1. Call `list_changed_files` for a structured view of all changes\n';
         reminder +=
-            '2. Call `update_plan` — decompose into concern groups based on file paths and change sizes\n';
+            '2. Optionally skim 1-2 key diffs with `get_file_diff` to understand the nature of changes\n';
         reminder +=
-            '3. Spawn `run_subagent` for each concern group (list file paths in task)\n';
-        reminder += '4. After all agents return, aggregate findings\n';
-        reminder += '5. Check for cross-concern issues\n';
+            '3. Call `update_plan` — decompose into concern groups based on what you know\n';
         reminder +=
-            '6. Call `think_about_completion`, then `submit_review`\n\n';
+            '4. Spawn `run_subagent` for each concern group (list file paths in task)\n';
+        reminder += '5. After all agents return, aggregate findings\n';
+        reminder += '6. Check for cross-concern issues\n';
+        reminder +=
+            '7. Call `think_about_completion`, then `submit_review`\n\n';
 
         reminder +=
-            '**Do NOT call `get_file_diff` yourself** unless this is a trivial PR (1-3 files). ' +
-            'Reading diffs fills your context window and leaves less room for sub-agent results.\n';
+            '**Do NOT bulk-read diffs yourself** \u2014 sub-agents read diffs on their own. ' +
+            'You may skim 1-2 high-risk diffs with `get_file_diff` before planning to improve your decomposition.\n';
         reminder += '</analysis_task>';
 
         return reminder;

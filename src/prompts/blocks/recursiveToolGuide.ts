@@ -41,6 +41,6 @@ Each \`run_subagent\` call should include:
 3. **Key functions** to examine
 4. **What to report back** (findings format)
 
-**Do NOT read diffs yourself and paste them into context.** Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand. This keeps YOUR context window clean for aggregation.
+**Do NOT read diffs yourself and paste them into context.** Sub-agents have \`list_changed_files\` and \`get_file_diff\` \u2014 they read diffs on demand. You may skim 1-2 high-risk files with \`get_file_diff\` to improve your decomposition plan, but keep it brief.
 </recursive_tool_guide>`;
 }

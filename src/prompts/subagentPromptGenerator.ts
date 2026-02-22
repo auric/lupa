@@ -87,7 +87,7 @@ Do NOT try to review 4+ files directly — you'll exhaust your iterations and pr
 **Decomposition approach:**
 1. Call \`get_file_diff\` for 1-2 key files to orient yourself (~2 iterations)
 2. Based on the diff, split your remaining files into focused sub-tasks
-3. Spawn sub-agents for each group (each gets ~${Math.max(5, maxIterations - 5)} iterations from your budget)
+3. Spawn sub-agents for each group (each gets ~${Math.max(3, maxIterations - 3)} iterations from your budget)
 4. Aggregate their findings into your response
 
 **If your task spans 1-3 files:** Investigate directly — no need to spawn.

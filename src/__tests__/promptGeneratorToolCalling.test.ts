@@ -471,7 +471,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 true
             );
 
-            expect(prompt).toContain('Do NOT call `get_file_diff` yourself');
+            expect(prompt).toContain('Do NOT bulk-read diffs yourself');
             expect(prompt).toContain('update_plan');
             expect(prompt).toContain('run_subagent');
         });
@@ -531,8 +531,8 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
             expect(prompt).toContain('Budget');
             expect(prompt).toContain('100');
-            // (100 - 5) / 25 = 3 affordable agents
-            expect(prompt).toContain('3');
+            // (100 - 5) / 20 = 4 affordable agents
+            expect(prompt).toContain('**4**');
             expect(prompt).toContain('sub-agents');
         });
 

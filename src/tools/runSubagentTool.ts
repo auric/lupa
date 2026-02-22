@@ -2,6 +2,7 @@ import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
+import { RecursionConstants } from '../sessions/recursiveStateManager';
 import type { SubagentResult } from '../types/modelTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -102,8 +103,6 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
 
         const { task, context: taskContext } = validationResult.data;
         const maxSubagents = this.workspaceSettings.getMaxSubagentsPerSession();
-        const timeoutMs =
-            this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
         // Hard limit: session manager tracks total spawns across all depths.
         if (!sessionManager.canSpawn()) {
@@ -143,6 +142,18 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             );
             recursiveState.startAgent(childAgentId);
         }
+
+        // Compute subagent execution timeout.
+        // In recursive mode (childBudget defined): proportional to iteration budget,
+        // allowing ~30s per iteration with a 2-minute minimum floor.
+        // In flat mode: use the configured requestTimeoutSeconds.
+        const timeoutMs =
+            childBudget !== undefined
+                ? Math.max(
+                      RecursionConstants.MIN_SUBAGENT_TIMEOUT_MS,
+                      childBudget * RecursionConstants.TIMEOUT_PER_ITERATION_MS
+                  )
+                : this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
 
         // Subagent needs a combined cancellation signal: cancel on parent cancellation OR timeout.
         // We can't add timeout to the parent token (would cancel the entire analysis), so we

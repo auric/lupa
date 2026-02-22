@@ -69,11 +69,15 @@ export interface SpawnGuardResult {
  */
 export const RecursionConstants = {
     /** Below this budget a new agent is not worth spawning */
-    MIN_VIABLE_BUDGET: 5,
+    MIN_VIABLE_BUDGET: 3,
     /** Default iteration budget allocated to each child agent */
-    DEFAULT_CHILD_BUDGET: 25,
+    DEFAULT_CHILD_BUDGET: 20,
     /** If root hasn't spawned subagents after this many iterations, fall back to linear */
     FALLBACK_ITERATION_THRESHOLD: 5,
+    /** Timeout per allocated iteration (ms) — used to compute subagent execution timeout */
+    TIMEOUT_PER_ITERATION_MS: 30_000,
+    /** Minimum subagent execution timeout (ms) regardless of budget */
+    MIN_SUBAGENT_TIMEOUT_MS: 120_000,
 } as const;
 
 /**
