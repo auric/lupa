@@ -166,6 +166,24 @@ This is particularly effective for large PRs with many files across different do
 
 > **Fallback behavior**: Recursive mode gives the LLM the _capability_ to decompose work, but decomposition is not guaranteed. If the LLM does not spawn sub-agents (e.g., for trivial PRs), the analysis proceeds as a single root-agent investigation.
 
+### Disabling Recursive Mode
+
+To revert to flat, single-agent analysis, set `maxRecursionDepth` to `0` in your `.vscode/lupa.json`:
+
+```json
+{
+    "maxRecursionDepth": 0
+}
+```
+
+To switch back to the legacy approach (full diff embedded in prompt), set:
+
+```json
+{
+    "analysisApproach": "legacy"
+}
+```
+
 ## Documentation
 
 For detailed documentation, see the [docs](./docs/index.md) folder:

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     RecursiveStateManager,
     RecursionConstants,
@@ -154,8 +154,14 @@ describe('RecursiveStateManager', () => {
         });
 
         it('should reject spawning beyond max depth', () => {
-            manager.registerAgent('root', 'Child', 10);
-            manager.registerAgent('child-1', 'Grandchild', 5);
+            const child1Id = manager.registerAgent('root', 'Child', 10);
+            manager.startAgent(child1Id);
+            const grandchildId = manager.registerAgent(
+                'child-1',
+                'Grandchild',
+                5
+            );
+            manager.startAgent(grandchildId);
 
             // Depth 2 grandchild trying to spawn depth 3 → rejected
             const result = manager.canSpawnChild('child-1.1');
@@ -191,6 +197,50 @@ describe('RecursiveStateManager', () => {
             const result = manager.canSpawnChild('nonexistent');
             expect(result.allowed).toBe(false);
             expect(result.reason).toContain('not found');
+        });
+
+        it('should reject spawning from non-running parent', () => {
+            manager.completeAgent('root', [], []);
+            const result = manager.canSpawnChild('root');
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain('completed');
+        });
+
+        it('should reject spawning from failed parent', () => {
+            manager.failAgent('root', 'some error');
+            const result = manager.canSpawnChild('root');
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain('failed');
+        });
+
+        it('should reject spawning from cancelled parent', () => {
+            manager.cancelAgent('root');
+            const result = manager.canSpawnChild('root');
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain('cancelled');
+        });
+
+        it('should reject spawning from pending parent', () => {
+            // Create a manager and register without starting
+            const pendingManager = new RecursiveStateManager(2, 12);
+            pendingManager.registerAgent(undefined, 'Root', 25);
+            // Don't call startAgent — parent stays 'pending'
+            const result = pendingManager.canSpawnChild('root');
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain('pending');
+        });
+
+        it('should reject when budget is below MIN_VIABLE_BUDGET', () => {
+            // Spy on calculateChildBudget to return below-minimum budget
+            const spy = vi
+                .spyOn(manager, 'calculateChildBudget')
+                .mockReturnValue(RecursionConstants.MIN_VIABLE_BUDGET - 1);
+
+            const result = manager.canSpawnChild('root');
+            expect(result.allowed).toBe(false);
+            expect(result.reason).toContain('Insufficient budget');
+
+            spy.mockRestore();
         });
     });
 

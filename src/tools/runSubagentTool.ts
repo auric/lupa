@@ -135,11 +135,20 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
         let childBudget: number | undefined;
         if (recursiveState) {
             childBudget = recursiveState.allocateChildBudget(currentAgentId);
-            childAgentId = recursiveState.registerAgent(
-                currentAgentId,
-                task,
-                childBudget
-            );
+            try {
+                childAgentId = recursiveState.registerAgent(
+                    currentAgentId,
+                    task,
+                    childBudget
+                );
+            } catch (error) {
+                Log.error(
+                    `Failed to register agent in recursive tree: ${getErrorMessage(error)}`
+                );
+                return toolError(
+                    `Failed to register subagent: ${getErrorMessage(error)}`
+                );
+            }
             recursiveState.startAgent(childAgentId);
         }
 

@@ -409,9 +409,10 @@ describe('SubagentExecutor', () => {
             const allTools = [readTool, subagentTool, planTool];
 
             const executor = createExecutor(modelManager, allTools);
-            // depth=0, maxDepth=2 → canRecurse=true
+            // depth=0, maxDepth=2, subagentSessionManager present → canRecurse=true
             await executor.execute(defaultTask, tokenSource.token, 1, {
                 recursionDepth: 0,
+                subagentSessionManager: {} as any,
             });
 
             const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
@@ -474,6 +475,7 @@ describe('SubagentExecutor', () => {
             const executor = createExecutor(modelManager, tools);
             await executor.execute(defaultTask, tokenSource.token, 1, {
                 recursionDepth: 0,
+                subagentSessionManager: {} as any,
             });
 
             const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
@@ -494,9 +496,10 @@ describe('SubagentExecutor', () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
             const executor = createExecutor(modelManager);
 
-            // canRecurse=true (depth 0 < maxDepth 2)
+            // canRecurse=true (depth 0 < maxDepth 2, subagentSessionManager present)
             await executor.execute(defaultTask, tokenSource.token, 1, {
                 recursionDepth: 0,
+                subagentSessionManager: {} as any,
             });
 
             expect(promptGenerator.generateSystemPrompt).toHaveBeenCalledWith(
@@ -532,6 +535,29 @@ describe('SubagentExecutor', () => {
                 false // canRecurse
             );
         });
+
+        it('should set canRecurse=false when subagentSessionManager is missing (even at valid depth)', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const subagentTool = createMockTool('run_subagent');
+            const allTools = [readTool, subagentTool];
+
+            const executor = createExecutor(modelManager, allTools);
+            // depth=0, maxDepth=2 BUT no subagentSessionManager → canRecurse=false
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            // run_subagent should be filtered since canRecurse=false
+            expect(filteredNames).not.toContain('run_subagent');
+            expect(filteredNames).toContain('read_file');
+        });
     });
 
     describe('Recursive Child Context', () => {
@@ -543,7 +569,7 @@ describe('SubagentExecutor', () => {
                 defaultTask,
                 tokenSource.token,
                 1,
-                { recursionDepth: 0 }
+                { recursionDepth: 0, subagentSessionManager: {} as any }
             );
 
             expect(result.success).toBe(true);

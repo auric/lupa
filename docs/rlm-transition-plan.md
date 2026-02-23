@@ -248,43 +248,42 @@ ConversationRunner.run() — Root Agent Loop
 Depth 0 — ROOT AUDITOR (Controller)
 ├── Role: Decompose → Delegate → Aggregate → Synthesize
 ├── Tools: All tools available
-├── Budget: 25 iterations (keeps ~10 for self, distributes ~15 to children)
-├── Diff: Full diff available
+├── Budget: maxIterations (user-configured, default 100)
+├── Diff: Metadata in prompt; reads diffs on-demand via get_file_diff
 │
 ├── Depth 1 — RECURSIVE REVIEWER (Investigator)
 │   ├── Role: Focused investigation of specific concern
 │   ├── Tools: All except update_plan, submit_review, main-only reflection
-│   ├── Budget: 8-15 iterations (parent allocates)
-│   ├── Diff: Relevant hunks via `context` parameter
+│   ├── Budget: DEFAULT_CHILD_BUDGET (30 iterations, independent of parent)
+│   ├── Diff: Reads diffs on-demand via get_file_diff
 │   ├── Can recurse: YES (if depth < maxDepth)
 │   │
 │   └── Depth 2 — LEAF INVESTIGATOR (Deep Dive)
 │       ├── Role: Single-function or single-chain investigation
 │       ├── Tools: All except run_subagent + main-only tools
-│       ├── Budget: 5-8 iterations
-│       ├── Diff: None (investigates current code only)
+│       ├── Budget: DEFAULT_CHILD_BUDGET (30 iterations, independent of parent)
+│       ├── Diff: Reads diffs on-demand via get_file_diff
 │       └── Can recurse: NO (leaf node)
 ```
 
-### 5.3 Budget Allocation Formula
+### 5.3 Budget Allocation Model
+
+**Independent per-agent budgets** following the RLM paper model:
 
 ```
-rootBudget = workspaceSettings.getMaxIterations()  // e.g., 25
+Root agent:  maxIterations (user-configured, default 100)
+Child agents: RecursionConstants.DEFAULT_CHILD_BUDGET (30) each
+              — independent of parent budget, NOT deducted from parent
 
-Root keeps: ceil(rootBudget * 0.4) = 10 iterations
-  (for decomposition + orientation + aggregation + synthesis)
+Total compute bounded by:
+  - maxTotalAgents (default 12): limits the total number of agents in the tree
+  - maxSubagentsPerSession: session-level hard cap across all depths
+  - RecursionConstants.MIN_VIABLE_BUDGET (3): minimum to spawn a new agent
 
-Child pool: floor(rootBudget * 0.6) = 15 iterations
-  Distributed: floor(childPool / numChildren)
-
-Example with 3 children:
-  Root: 10, Child1: 5, Child2: 5, Child3: 5
-
-Each child at depth 1 can further split:
-  Child keeps: ceil(childBudget * 0.6) = 3 iterations
-  Grandchild: floor(childBudget * 0.4) = 2 iterations
-
-Minimum viable budget: 5 iterations (below this, don't spawn)
+Example with maxTotalAgents=12:
+  Root: 100 iterations
+  Up to 11 child agents, each with 30 iterations
+  Total worst-case: 100 + (11 × 30) = 430 iterations
 ```
 
 ### 5.4 ExecutionContext Changes

@@ -58,7 +58,6 @@ export class PromptGenerator {
      * @param parsedDiff Parsed diff structure (for metadata extraction)
      * @param userInstructions Optional user-provided instructions
      * @param recursiveMode Whether to use recursive review workflow
-     * @param maxIterations Total iteration budget for the root agent
      * @param maxTotalAgents Maximum total agents across all depths
      * @returns User prompt with diff metadata and tool usage instructions
      */
@@ -66,7 +65,6 @@ export class PromptGenerator {
         parsedDiff: DiffHunk[],
         userInstructions?: string,
         recursiveMode: boolean = false,
-        maxIterations?: number,
         maxTotalAgents?: number
     ): string {
         const metadataSection = this.generateDiffMetadataSection(parsedDiff);
@@ -79,7 +77,6 @@ export class PromptGenerator {
         const reminder = this.generateRlmAnalysisReminder(
             parsedDiff.length,
             recursiveMode,
-            maxIterations,
             maxTotalAgents
         );
 
@@ -171,15 +168,10 @@ export class PromptGenerator {
     private generateRlmAnalysisReminder(
         fileCount: number,
         recursiveMode: boolean,
-        maxIterations?: number,
         maxTotalAgents?: number
     ): string {
         if (recursiveMode) {
-            return this.generateRecursiveRlmReminder(
-                fileCount,
-                maxIterations,
-                maxTotalAgents
-            );
+            return this.generateRecursiveRlmReminder(fileCount, maxTotalAgents);
         }
 
         const spawnSubagents = fileCount >= 4;
@@ -212,7 +204,6 @@ export class PromptGenerator {
      */
     private generateRecursiveRlmReminder(
         fileCount: number,
-        maxIterations?: number,
         maxTotalAgents?: number
     ): string {
         // Each sub-agent gets its own independent budget (RLM paper model).
@@ -232,6 +223,10 @@ export class PromptGenerator {
                 `**Agent Budget**: You can spawn up to **${agentLimit}** sub-agents total across all depths. ` +
                 `Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours). ` +
                 'Target **2\u20134 files per sub-agent** for thorough review.\n\n';
+        } else if (agentLimit !== undefined) {
+            reminder +=
+                '**Agent Budget**: All sub-agent slots have been used. ' +
+                'Complete the review yourself using `get_file_diff` to read remaining files directly.\n\n';
         }
 
         reminder += '**Workflow**:\n';

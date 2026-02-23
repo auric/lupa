@@ -604,7 +604,6 @@ export class ChatParticipantService implements vscode.Disposable {
                       parsedDiff,
                       request.prompt || undefined,
                       isRecursiveMode,
-                      this.deps!.workspaceSettings.getMaxIterations(),
                       this.deps!.workspaceSettings.getMaxTotalAgents()
                   );
               })()

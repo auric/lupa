@@ -553,12 +553,11 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(metadataIndex).toBeLessThan(taskIndex);
         });
 
-        it('should include budget awareness when maxIterations is provided in recursive mode', () => {
+        it('should include budget awareness when maxTotalAgents is provided in recursive mode', () => {
             const prompt = promptGenerator.generateRlmUserPrompt(
                 sampleParsedDiff,
                 undefined,
                 true,
-                100,
                 12
             );
 
@@ -567,7 +566,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(prompt).toContain('sub-agents');
         });
 
-        it('should not include budget when maxIterations is not provided', () => {
+        it('should not include budget when maxTotalAgents is not provided', () => {
             const prompt = promptGenerator.generateRlmUserPrompt(
                 sampleParsedDiff,
                 undefined,
@@ -581,8 +580,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             const prompt = promptGenerator.generateRlmUserPrompt(
                 sampleParsedDiff,
                 undefined,
-                false,
-                100
+                false
             );
 
             expect(prompt).not.toContain('Budget');
@@ -593,12 +591,24 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 sampleParsedDiff,
                 undefined,
                 true,
-                100,
                 1
             );
 
-            expect(prompt).not.toContain('Agent Budget');
-            expect(prompt).not.toContain('sub-agents');
+            // agentLimit=0 → shows exhaustion note instead of budget
+            expect(prompt).not.toContain('You can spawn up to');
+            expect(prompt).toContain('All sub-agent slots have been used');
+        });
+
+        it('should include exhaustion note when agentLimit is zero', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true,
+                1 // maxTotalAgents=1 → agentLimit=0
+            );
+
+            expect(prompt).toContain('All sub-agent slots have been used');
+            expect(prompt).toContain('get_file_diff');
         });
     });
 });

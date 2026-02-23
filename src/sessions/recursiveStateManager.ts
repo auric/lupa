@@ -198,6 +198,13 @@ export class RecursiveStateManager {
             return { allowed: false, reason: `Parent "${parentId}" not found` };
         }
 
+        if (parentNode.status !== 'running') {
+            return {
+                allowed: false,
+                reason: `Parent agent "${parentId}" is ${parentNode.status}, only running agents can spawn children`,
+            };
+        }
+
         const childDepth = parentNode.depth + 1;
         if (childDepth > this.maxDepth) {
             return {

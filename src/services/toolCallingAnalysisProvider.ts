@@ -205,7 +205,6 @@ export class ToolCallingAnalysisProvider {
                     parsedDiff,
                     undefined,
                     isRecursiveMode,
-                    this.workspaceSettings.getMaxIterations(),
                     this.workspaceSettings.getMaxTotalAgents()
                 );
             } else {

@@ -107,7 +107,10 @@ export class SubagentExecutor {
 
         const depth = options?.recursionDepth ?? 0;
         const maxDepth = this.workspaceSettings.getMaxRecursionDepth();
-        const canRecurse = depth < maxDepth;
+        // Only allow recursion when depth permits AND the session manager is available
+        // (without a session manager, run_subagent would fail at runtime anyway).
+        const canRecurse =
+            depth < maxDepth && !!options?.subagentSessionManager;
 
         // Create short task label for logging and progress (first 30 chars)
         const taskLabel =

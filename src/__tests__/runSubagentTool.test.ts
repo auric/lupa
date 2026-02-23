@@ -1055,5 +1055,35 @@ describe('RunSubagentTool', () => {
                 })
             );
         });
+
+        it('should return toolError when registerAgent throws', async () => {
+            // Create a mock recursiveState where registerAgent throws
+            const mockRecursiveState = {
+                canSpawnChild: vi.fn().mockReturnValue({ allowed: true }),
+                allocateChildBudget: vi.fn().mockReturnValue(30),
+                registerAgent: vi.fn().mockImplementation(() => {
+                    throw new Error('Root agent already registered');
+                }),
+            };
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState: mockRecursiveState as any,
+                currentDepth: 0,
+                currentAgentId: 'root',
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Failed to register subagent');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
     });
 });
