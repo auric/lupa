@@ -125,12 +125,13 @@ Core business logic implementing specific capabilities.
 
 These components are created fresh for each analysis, not managed as singletons:
 
-| Component                 | Responsibility                           |
-| ------------------------- | ---------------------------------------- |
-| `SubagentExecutor`        | Isolated subagent investigations         |
-| `SubagentSessionManager`  | Subagent spawn count and limits          |
-| `PlanSessionManager`      | Review plan state for current analysis   |
-| `TokenValidator` instance | Context window tracking for one analysis |
+| Component                 | Responsibility                                |
+| ------------------------- | --------------------------------------------- |
+| `SubagentExecutor`        | Isolated subagent investigations              |
+| `SubagentSessionManager`  | Subagent spawn count and limits               |
+| `RecursiveStateManager`   | Agent tree tracking, depth/budget enforcement |
+| `PlanSessionManager`      | Review plan state for current analysis        |
+| `TokenValidator` instance | Context window tracking for one analysis      |
 
 ### Layer 3: Models (`src/models/`)
 
@@ -601,6 +602,32 @@ File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOvervi
     "preferredModelIdentifier": "copilot/gpt-4.1"
 }
 ```
+
+### Analysis Modes
+
+Lupa supports two analysis approaches, configured via `analysisApproach`:
+
+| Setting  | Behavior                                                                 |
+| -------- | ------------------------------------------------------------------------ |
+| `legacy` | Single-agent analysis with optional subagent delegation via tool calling |
+| `rlm`    | Recursive Language Model approach with agent tree decomposition          |
+
+**RLM mode** (`analysisApproach: 'rlm'`) enables recursive delegation where a root agent decomposes the PR into focused investigations. Key settings:
+
+| Setting             | Default | Description                                          |
+| ------------------- | ------- | ---------------------------------------------------- |
+| `maxRecursionDepth` | 2       | Maximum agent depth (0 = no recursion, 1+ = enabled) |
+| `maxTotalAgents`    | 12      | Upper bound on total agents spawned per analysis     |
+
+**Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`.
+
+**RecursiveStateManager** (`src/sessions/recursiveStateManager.ts`) tracks the agent tree during RLM analysis:
+
+- Registers agents with parent-child relationships and depth tracking
+- Enforces `maxRecursionDepth` and `maxTotalAgents` limits via `canSpawnChild()`
+- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (30 iterations) regardless of other agents' usage
+- Aggregates findings from all completed agents for final output
+- Manages agent lifecycle (registered → running → completed/failed/cancelled)
 
 ### Reset Limits Command
 

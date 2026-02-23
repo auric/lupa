@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import {
     ConversationRunner,
@@ -80,7 +80,7 @@ const createCancellationToken = (
     cancelled = false
 ): vscode.CancellationToken => ({
     isCancellationRequested: cancelled,
-    onCancellationRequested: vi.fn(),
+    onCancellationRequested: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 });
 
 describe('ConversationRunner', () => {
@@ -1471,6 +1471,311 @@ describe('ConversationRunner', () => {
                     call[0].includes('FINAL iteration')
             );
             expect(windDownCalls.length).toBe(1);
+        });
+    });
+
+    describe('Rate-Limit Retry', () => {
+        class ChatRateLimited extends Error {
+            constructor(message = 'Rate limited') {
+                super(message);
+                this.name = 'ChatRateLimited';
+            }
+        }
+
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('should retry on rate-limit error without consuming an iteration', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    return Promise.resolve({
+                        content: 'Success after retry',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Advance through the backoff sleep
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+
+            expect(result).toBe('Success after retry');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+            expect(runner.hitMaxIterations).toBe(false);
+        });
+
+        it('should return gracefully when retries are exhausted', async () => {
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    return Promise.reject(new ChatRateLimited());
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Advance through all retry backoffs (5 retries with exponential backoff)
+            for (let i = 0; i < 10; i++) {
+                await vi.advanceTimersByTimeAsync(60000);
+            }
+
+            const result = await resultPromise;
+
+            expect(result).toContain('Rate limited');
+            expect(runner.hitMaxIterations).toBe(true);
+        });
+
+        it('should return last substantive response when retries exhausted', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.resolve({
+                            content:
+                                'I found a critical issue: the authentication module has a bypass vulnerability that allows unauthenticated access.',
+                            toolCalls: [
+                                {
+                                    id: 'call_1',
+                                    function: {
+                                        name: 'find_symbol',
+                                        arguments: '{}',
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    return Promise.reject(new ChatRateLimited());
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            for (let i = 0; i < 10; i++) {
+                await vi.advanceTimersByTimeAsync(60000);
+            }
+
+            const result = await resultPromise;
+
+            expect(result).toContain('authentication module');
+        });
+
+        it('should keep tools disabled when rate-limit retry happens after wind-down', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    id: 'call_1',
+                                    function: {
+                                        name: 'find_symbol',
+                                        arguments: '{}',
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    if (callCount === 2) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    // Retry after rate-limit: tools should STILL be empty
+                    expect(request.tools).toHaveLength(0);
+                    return Promise.resolve({
+                        content: 'Final findings after rate-limit retry',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+
+            expect(result).toBe('Final findings after rate-limit retry');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
+
+        it('should detect rate-limit error by class name', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        const err = new Error('some error');
+                        Object.defineProperty(err, 'constructor', {
+                            value: { name: 'ChatRateLimited' },
+                        });
+                        return Promise.reject(err);
+                    }
+                    return Promise.resolve({
+                        content: 'Success',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+            expect(result).toBe('Success');
+        });
+
+        it('should detect rate-limit error by message content', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(
+                            new Error('Request was rate limited by the server')
+                        );
+                    }
+                    return Promise.resolve({
+                        content: 'Success',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+            expect(result).toBe('Success');
         });
     });
 });

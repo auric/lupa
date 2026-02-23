@@ -520,9 +520,9 @@ export class ChatParticipantService implements vscode.Disposable {
         // Determine if recursive review mode is available
         const maxRecursionDepth =
             this.deps!.workspaceSettings.getMaxRecursionDepth();
-        const isRecursiveMode = maxRecursionDepth >= 2;
         const isRlmApproach =
             this.deps!.workspaceSettings.getAnalysisApproach() === 'rlm';
+        const isRecursiveMode = maxRecursionDepth >= 1 && isRlmApproach;
 
         // Warn when using RLM/recursive mode with a small-context model.
         // Tool-calling workflows consume context rapidly; models with <50K tokens

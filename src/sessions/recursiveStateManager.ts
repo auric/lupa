@@ -148,28 +148,34 @@ export class RecursiveStateManager {
         filesExamined: string[] = []
     ): void {
         const node = this.getNode(agentId);
-        if (node) {
-            node.status = 'completed';
-            node.findings = findings;
-            node.filesExamined = filesExamined;
-            node.endTime = Date.now();
+        if (!node) {
+            Log.warn(`completeAgent called with unknown agentId: "${agentId}"`);
+            return;
         }
+        node.status = 'completed';
+        node.findings = findings;
+        node.filesExamined = filesExamined;
+        node.endTime = Date.now();
     }
 
     failAgent(agentId: string, _error: string): void {
         const node = this.getNode(agentId);
-        if (node) {
-            node.status = 'failed';
-            node.endTime = Date.now();
+        if (!node) {
+            Log.warn(`failAgent called with unknown agentId: "${agentId}"`);
+            return;
         }
+        node.status = 'failed';
+        node.endTime = Date.now();
     }
 
     cancelAgent(agentId: string): void {
         const node = this.getNode(agentId);
-        if (node) {
-            node.status = 'cancelled';
-            node.endTime = Date.now();
+        if (!node) {
+            Log.warn(`cancelAgent called with unknown agentId: "${agentId}"`);
+            return;
         }
+        node.status = 'cancelled';
+        node.endTime = Date.now();
     }
 
     /**
@@ -304,8 +310,9 @@ export class RecursiveStateManager {
     }
 
     /**
-     * Get the remaining iteration budget across the whole analysis.
-     * (Sum of budgets minus iterations used for all running/pending agents.)
+     * Get approximate total remaining iterations across all active agents.
+     * Informational only — with independent per-agent budgets, this sums
+     * individual budgets of running/pending agents for progress reporting.
      */
     getRemainingBudget(): number {
         let remaining = 0;
@@ -314,7 +321,7 @@ export class RecursiveStateManager {
                 remaining += node.iterationBudget;
             }
         }
-        return Math.min(remaining, this.totalBudget);
+        return remaining;
     }
 
     /**

@@ -171,7 +171,8 @@ export class ConversationRunner {
                     );
                 }
 
-                const effectiveTools = forceFinalResponse ? [] : vscodeTools;
+                const effectiveTools =
+                    forceFinalResponse || windDownInjected ? [] : vscodeTools;
 
                 let messages = this.prepareMessagesForLLM(
                     config.systemPrompt,
@@ -390,7 +391,9 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
                         );
-                        throw new Error(
+                        this._hitMaxIterations = true;
+                        return (
+                            lastSubstantiveResponse ||
                             'Rate limited by the API after multiple retries. Please try again later.'
                         );
                     }

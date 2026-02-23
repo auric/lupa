@@ -380,14 +380,14 @@ describe('RecursiveStateManager', () => {
             expect(manager.getRemainingBudget()).toBe(0);
         });
 
-        it('should cap at totalBudget', () => {
-            // totalBudget=25 but register agents with more
+        it('should return actual sum without totalBudget cap (independent model)', () => {
+            // Independent budget model: no global budget cap
             const tightManager = new RecursiveStateManager(2, 12, 25);
             tightManager.registerAgent(undefined, 'Root', 30);
             tightManager.startAgent('root');
 
-            // Remaining would be 30 but capped at totalBudget=25
-            expect(tightManager.getRemainingBudget()).toBe(25);
+            // Remaining is 30 — no cap applied with independent budgets
+            expect(tightManager.getRemainingBudget()).toBe(30);
         });
     });
 
