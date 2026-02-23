@@ -102,6 +102,18 @@ export class RecursiveStateManager {
         task: string,
         budget: number
     ): string {
+        if (!parentId && this.tree.has('root')) {
+            throw new Error(
+                'Root agent already registered. Each RecursiveStateManager supports a single root.'
+            );
+        }
+
+        if (parentId && !this.tree.has(parentId)) {
+            Log.warn(
+                `registerAgent: parent "${parentId}" not found in tree — child will be orphaned`
+            );
+        }
+
         const agentId = this.generateAgentId(parentId);
         const depth = parentId ? this.getDepthOf(parentId) + 1 : 0;
 

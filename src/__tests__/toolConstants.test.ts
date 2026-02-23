@@ -3,6 +3,8 @@ import {
     SubagentLimits,
     SubagentErrors,
     MAIN_ANALYSIS_ONLY_TOOLS,
+    RECURSIVE_CHILD_DISALLOWED_TOOLS,
+    DIFF_TOOLS,
 } from '../models/toolConstants';
 
 describe('toolConstants', () => {
@@ -83,6 +85,36 @@ describe('toolConstants', () => {
             );
             expect(message).toContain('Subagent failed');
             expect(message).toContain('LLM returned empty response');
+        });
+    });
+
+    describe('DRY tool list composition', () => {
+        it('should derive RECURSIVE_CHILD_DISALLOWED_TOOLS as subset of DISALLOWED_TOOLS', () => {
+            // Every recursive-child disallowed tool should also be disallowed for flat subagents
+            for (const tool of RECURSIVE_CHILD_DISALLOWED_TOOLS) {
+                expect(
+                    SubagentLimits.DISALLOWED_TOOLS.includes(tool as any),
+                    `${tool} is in RECURSIVE_CHILD but not in flat DISALLOWED_TOOLS`
+                ).toBe(true);
+            }
+        });
+
+        it('should allow run_subagent for recursive children but not flat subagents', () => {
+            expect(
+                SubagentLimits.DISALLOWED_TOOLS.includes('run_subagent')
+            ).toBe(true);
+            expect(
+                RECURSIVE_CHILD_DISALLOWED_TOOLS.includes('run_subagent' as any)
+            ).toBe(false);
+        });
+
+        it('should include DIFF_TOOLS in MAIN_ANALYSIS_ONLY_TOOLS', () => {
+            for (const tool of DIFF_TOOLS) {
+                expect(
+                    MAIN_ANALYSIS_ONLY_TOOLS.includes(tool as any),
+                    `${tool} should be in MAIN_ANALYSIS_ONLY_TOOLS`
+                ).toBe(true);
+            }
         });
     });
 });

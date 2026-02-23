@@ -22,13 +22,11 @@ export class SubagentStreamAdapter implements ToolCallHandler {
     /**
      * @param chatHandler The base chat handler to wrap
      * @param subagentId The unique subagent identifier (1, 2, 3...)
-     * @param depth Optional recursion depth for recursive mode visualization (0 = root, 1+ = child)
      * @param agentId Optional hierarchical agent ID (e.g., "child-1", "child-1.1")
      */
     constructor(
         chatHandler: ChatToolCallHandler,
         private readonly subagentId: number,
-        depth?: number,
         agentId?: string
     ) {
         // Use hierarchical agent ID when available (recursive mode), fall back to subagent number

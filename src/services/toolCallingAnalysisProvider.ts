@@ -26,6 +26,7 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import { DIFF_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -174,10 +175,20 @@ export class ToolCallingAnalysisProvider {
                 toolsDisabledMessage = diffResult.toolsDisabledMessage;
             }
 
-            // Get available tools and generate system prompt based on tool availability
-            const availableTools = toolsAvailable
+            // Get available tools and generate system prompt based on tool availability.
+            // In legacy mode, exclude diff tools — they require parsedDiff which is only
+            // set for RLM. Without filtering, the LLM could call them and get unhelpful errors.
+            let availableTools = toolsAvailable
                 ? toolExecutor.getAvailableTools()
                 : [];
+            if (!isRlmApproach) {
+                availableTools = availableTools.filter(
+                    (t) =>
+                        !DIFF_TOOLS.includes(
+                            t.name as (typeof DIFF_TOOLS)[number]
+                        )
+                );
+            }
             const systemPrompt = isRecursiveMode
                 ? this.promptGenerator.generateRecursiveSystemPrompt(
                       availableTools

@@ -164,6 +164,8 @@ When `maxRecursionDepth` is set to 1 or higher (and `analysisApproach` is `rlm`)
 
 This is particularly effective for large PRs with many files across different domains (e.g., API changes + frontend updates + test modifications).
 
+> **Fallback behavior**: Recursive mode gives the LLM the _capability_ to decompose work, but decomposition is not guaranteed. If the LLM does not spawn sub-agents (e.g., for trivial PRs), the analysis proceeds as a single root-agent investigation.
+
 ## Documentation
 
 For detailed documentation, see the [docs](./docs/index.md) folder:

@@ -59,6 +59,34 @@ describe('RecursiveStateManager', () => {
             const root = manager.getNode('root')!;
             expect(root.childIds).toEqual(['child-1', 'child-2']);
         });
+
+        it('should throw when registering a duplicate root agent', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+
+            expect(() =>
+                manager.registerAgent(undefined, 'Second root', 25)
+            ).toThrow('Root agent already registered');
+        });
+
+        it('should warn and create orphaned child when parentId is unknown', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+
+            // Should not throw, but child is orphaned (no parent link)
+            const childId = manager.registerAgent(
+                'nonexistent',
+                'Orphaned child',
+                10
+            );
+
+            // Child exists in tree
+            const childNode = manager.getNode(childId);
+            expect(childNode).toBeDefined();
+            expect(childNode!.parentId).toBe('nonexistent');
+
+            // But the root's childIds does NOT contain it (parent was not found)
+            const rootNode = manager.getNode('root')!;
+            expect(rootNode.childIds).not.toContain(childId);
+        });
     });
 
     describe('agent lifecycle', () => {

@@ -246,7 +246,14 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             clearTimeout(timeoutHandle);
 
             if (recursiveState && childAgentId) {
-                recursiveState.failAgent(childAgentId, getErrorMessage(error));
+                if (isCancellationError(error)) {
+                    recursiveState.cancelAgent(childAgentId);
+                } else {
+                    recursiveState.failAgent(
+                        childAgentId,
+                        getErrorMessage(error)
+                    );
+                }
             }
 
             if (isCancellationError(error)) {

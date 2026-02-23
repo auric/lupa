@@ -200,7 +200,6 @@ describe('SubagentStreamAdapter', () => {
             const recursiveAdapter = new SubagentStreamAdapter(
                 mockChatHandler,
                 1,
-                1,
                 'child-1'
             );
 
@@ -219,7 +218,6 @@ describe('SubagentStreamAdapter', () => {
         it('should use hierarchical agentId for deep recursion', () => {
             const deepAdapter = new SubagentStreamAdapter(
                 mockChatHandler,
-                2,
                 2,
                 'child-1.1'
             );

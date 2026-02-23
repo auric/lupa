@@ -355,4 +355,30 @@ describe('GetFileDiffTool', () => {
         expect(result.success).toBe(true);
         expect(result.data).toContain('src/services/auth.ts');
     });
+
+    it('strips leading / from requested paths', async () => {
+        const context = createMockExecutionContext({
+            parsedDiff: createTestDiff(),
+        });
+        const result = await tool.execute(
+            { file_paths: ['/src/services/auth.ts'] },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('src/services/auth.ts');
+    });
+
+    it('trims whitespace from file paths via schema', async () => {
+        const context = createMockExecutionContext({
+            parsedDiff: createTestDiff(),
+        });
+        const result = await tool.execute(
+            { file_paths: ['  src/services/auth.ts  '] },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('src/services/auth.ts');
+    });
 });

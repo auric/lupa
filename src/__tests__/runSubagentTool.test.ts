@@ -992,6 +992,40 @@ describe('RunSubagentTool', () => {
             expect(mockExecutor.execute).not.toHaveBeenCalled();
         });
 
+        it('should mark child agent as cancelled (not failed) when executor throws CancellationError', async () => {
+            const recursiveState = new RecursiveStateManager(3, 12);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockRejectedValue(new vscode.CancellationError()),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await expect(
+                tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    context
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Agent should be marked as cancelled, NOT failed
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('cancelled');
+        });
+
         it('should pass subagentSessionManager through to executor options', async () => {
             const recursiveState = new RecursiveStateManager(3, 12);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);

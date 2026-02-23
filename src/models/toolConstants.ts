@@ -35,38 +35,47 @@ export class ToolConstants {
 }
 
 /**
+ * Root-only tools: plan tracking, review submission, and reflection tools
+ * that require PR-level context and should never be given to subagents.
+ * Shared base for all disallowed-tool lists to prevent drift.
+ *
+ * NOTE: think_about_investigation is intentionally EXCLUDED from this list.
+ * It's the only think tool designed for focused investigations without
+ * needing diff context or PR-level review state that subagents don't have.
+ */
+const ROOT_ONLY_TOOLS = [
+    'update_plan',
+    'submit_review',
+    'think_about_completion',
+    'think_about_context',
+    'think_about_task',
+] as const;
+
+/**
+ * Diff tools that require parsedDiff in ExecutionContext (RLM approach only).
+ */
+export const DIFF_TOOLS = ['list_changed_files', 'get_file_diff'] as const;
+
+/**
  * Static limits for subagent execution that don't need user configuration.
  * Dynamic limits (max per session, timeout) come from WorkspaceSettingsService.
  */
 export const SubagentLimits = {
     /** Minimum task length to ensure meaningful instructions */
     MIN_TASK_LENGTH: 30,
-    /** Tools that subagents cannot access */
+    /** Tools that subagents cannot access (flat mode — no recursion) */
     DISALLOWED_TOOLS: [
         'run_subagent', // Prevent sub-subagent recursion
-        'update_plan', // Main agent only - subagents don't track review progress
-        'submit_review', // Main agent only - explicit completion signal
-        'think_about_completion', // Main agent only - for final review verification
-        'think_about_context', // Main agent only - references diff coverage
-        'think_about_task', // Main agent only - references PR review scope
-        // NOTE: think_about_investigation is intentionally ALLOWED for subagents.
-        // It's the only think tool designed for focused investigations without
-        // needing diff context or PR-level review state that subagents don't have.
+        ...ROOT_ONLY_TOOLS,
     ] as const,
 } as const;
 
 /**
- * Tools disallowed for depth-1 recursive agents.
+ * Tools disallowed for recursive child agents.
  * They CAN call run_subagent (enabling recursion) but cannot access
  * plan-tracking and final-review tools that belong to the root agent.
  */
-export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [
-    'update_plan', // Main agent only - subagents don't track review progress
-    'submit_review', // Main agent only - explicit completion signal
-    'think_about_completion', // Main agent only - for final review verification
-    'think_about_context', // Main agent only - references diff coverage
-    'think_about_task', // Main agent only - references PR review scope
-] as const;
+export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
 
 /**
  * Tools that are only available during main analysis mode (not exploration mode).
@@ -74,13 +83,8 @@ export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [
  * so these tools would either fail or return nonsensical guidance.
  */
 export const MAIN_ANALYSIS_ONLY_TOOLS = [
-    'update_plan', // Requires planManager from ExecutionContext
-    'submit_review', // Semantically for completing PR analysis
-    'think_about_completion', // References PR analysis completion criteria
-    'think_about_context', // References diff coverage and PR-level context
-    'think_about_task', // References PR review scope and task structure
-    'list_changed_files', // Requires parsedDiff from ExecutionContext
-    'get_file_diff', // Requires parsedDiff from ExecutionContext
+    ...ROOT_ONLY_TOOLS,
+    ...DIFF_TOOLS,
 ] as const;
 
 /**

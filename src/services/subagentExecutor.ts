@@ -192,7 +192,6 @@ export class SubagentExecutor {
                 ? new SubagentStreamAdapter(
                       this.chatHandler,
                       subagentId,
-                      depth,
                       options?.agentId
                   )
                 : undefined;

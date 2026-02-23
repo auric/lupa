@@ -17,7 +17,7 @@ export class GetFileDiffTool extends BaseTool {
 
     schema = z.object({
         file_paths: z
-            .array(z.string().min(1))
+            .array(z.string().trim().min(1))
             .min(1, 'At least one file path is required')
             .max(
                 10,
@@ -52,9 +52,11 @@ export class GetFileDiffTool extends BaseTool {
         const notFound: string[] = [];
 
         for (const rawPath of file_paths) {
-            // Normalize backslashes and strip leading './' (LLM may send these variants)
+            // Normalize backslashes, strip leading './' and '/' (LLM may send these variants)
             const requestedPath = rawPath
+                .trim()
                 .replace(/\\/g, '/')
+                .replace(/^\/+/, '')
                 .replace(/^\.\//, '');
 
             // Exact match first, then suffix match with path separator boundary
