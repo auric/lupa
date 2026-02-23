@@ -11,6 +11,7 @@ import {
     generateOutputFormat,
     generateExplorationOutputFormat,
     generateSelfReflectionGuidance,
+    generateRecursiveSelfReflectionGuidance,
     generateExplorationReflectionGuidance,
     generateRecursiveRootRole,
     generateRecursiveMethodology,
@@ -135,6 +136,15 @@ export class PromptBuilder {
     }
 
     /**
+     * Add self-reflection guidance for recursive root controller.
+     * Reinforces delegation pattern instead of direct investigation.
+     */
+    addRecursiveSelfReflection(): this {
+        this.sections.push(generateRecursiveSelfReflectionGuidance());
+        return this;
+    }
+
+    /**
      * Add role definition for recursive root auditor.
      */
     addRecursiveRootRole(): this {
@@ -223,7 +233,7 @@ export function createRecursiveRootPromptBuilder(
         .addRecursiveRootRole()
         .addToolInventory(tools)
         .addRecursiveToolGuide()
-        .addSelfReflection()
+        .addRecursiveSelfReflection()
         .addRecursiveMethodology()
         .addPROutputFormat();
 }

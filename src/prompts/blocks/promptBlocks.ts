@@ -25,5 +25,6 @@ export {
 } from './outputFormat';
 export {
     generateSelfReflectionGuidance,
+    generateRecursiveSelfReflectionGuidance,
     generateExplorationReflectionGuidance,
 } from './selfReflection';

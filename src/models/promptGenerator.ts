@@ -233,15 +233,16 @@ export class PromptGenerator {
         reminder +=
             '3. Call `update_plan` — decompose into concern groups based on what you know\n';
         reminder +=
-            '4. Spawn `run_subagent` for each concern group (list file paths in task)\n';
+            '4. **Spawn `run_subagent` for each concern group** (list file paths in task) — this is your PRIMARY action\n';
         reminder += '5. After all agents return, aggregate findings\n';
         reminder += '6. Check for cross-concern issues\n';
         reminder +=
             '7. Call `think_about_completion`, then `submit_review`\n\n';
 
         reminder +=
-            '**Minimize direct diff reading** \u2014 sub-agents read diffs on demand via `get_file_diff`. ' +
-            'You may skim 1-2 high-risk diffs to inform your decomposition plan, but leave thorough reading to sub-agents.\n';
+            '⚠️ **Delegation is mandatory** — Do NOT read diffs yourself and write the review directly. ' +
+            'Your job is to decompose and delegate via `run_subagent`. ' +
+            'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n';
         reminder += '</analysis_task>';
 
         return reminder;
@@ -320,12 +321,12 @@ export class PromptGenerator {
         let reminder = '<analysis_task>\n';
         reminder += `Review the ${fileCount} file(s) above.\n\n`;
 
-        reminder += `**Recursive Review Mode**: Decompose this PR into logical concern groups and spawn focused sub-agents for each. Include relevant diff hunks in each sub-agent's context.\n\n`;
+        reminder += `**Recursive Review Mode**: You MUST decompose this PR into logical concern groups and spawn focused sub-agents for each via \`run_subagent\`. Do NOT review files directly — delegate.\n\n`;
 
         reminder += `**Workflow**:
 1. Scan the diff structure and classify changes
 2. Call \`update_plan\` with your decomposition plan
-3. Spawn \`run_subagent\` for each concern group (include diff context!)
+3. **Spawn \`run_subagent\` for each concern group** (include diff context!) — this is your PRIMARY action
 4. After all agents return, aggregate findings
 5. Check for cross-concern issues
 6. Call \`think_about_completion\`, then \`submit_review\`

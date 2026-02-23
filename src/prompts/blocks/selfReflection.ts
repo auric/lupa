@@ -39,6 +39,43 @@ Static checklists ("Did I do X?") are less effective than explicit articulation:
 }
 
 /**
+ * Generate self-reflection guidance for the recursive root controller.
+ * Reinforces the decompose→delegate→aggregate pattern instead of direct investigation.
+ */
+export function generateRecursiveSelfReflectionGuidance(): string {
+    return `<self_reflection>
+## Self-Reflection Tools (Recursive Root)
+
+You are a **controller**, not an investigator. Reflection checkpoints must reinforce delegation.
+
+| Tool | When | What to Articulate |
+|------|------|-------------------|
+| \`think_about_context\` | After \`list_changed_files\` | files_seen, concern_groups_identified, decomposition_rationale, delegation_plan |
+| \`think_about_task\` | After all sub-agents return | agents_spawned, findings_received, cross_concern_patterns, gaps_in_coverage |
+| \`think_about_completion\` | Before \`submit_review\` | aggregated_issues, severity_counts, files_covered_vs_total, final_recommendation |
+
+### Delegation Checkpoints
+
+After calling \`list_changed_files\`:
+→ \`think_about_context\`: "I see N files. I will group them into K concern groups and delegate via \`run_subagent\`."
+
+After calling \`update_plan\`:
+→ Begin spawning \`run_subagent\` for each concern group. Do NOT investigate files yourself.
+
+After all sub-agents return:
+→ \`think_about_task\`: "I received findings from K agents. Cross-cutting patterns: [list]. Coverage gaps: [list]."
+
+Before submitting:
+→ \`think_about_completion\`: Verify all concern groups were delegated and findings aggregated.
+→ \`submit_review\` with the complete review output.
+
+### Anti-Pattern: Direct Investigation
+If you find yourself calling \`read_file\`, \`get_file_diff\`, or \`find_symbol\` on more than 2 files, STOP.
+You are falling into direct investigation mode. Spawn a \`run_subagent\` instead.
+</self_reflection>`;
+}
+
+/**
  * Generate guidance for exploration mode.
  * Uses think_about_investigation since exploration has no diff context.
  */

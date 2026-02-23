@@ -311,7 +311,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             );
 
             expect(userPrompt).toContain('Recursive Review Mode');
-            expect(userPrompt).toContain('Decompose this PR');
+            expect(userPrompt).toContain('MUST decompose this PR');
             expect(userPrompt).toContain('run_subagent');
         });
 
@@ -471,7 +471,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 true
             );
 
-            expect(prompt).toContain('Minimize direct diff reading');
+            expect(prompt).toContain('Delegation is mandatory');
             expect(prompt).toContain('update_plan');
             expect(prompt).toContain('run_subagent');
         });
