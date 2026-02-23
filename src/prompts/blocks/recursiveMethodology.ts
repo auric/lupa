@@ -6,16 +6,20 @@ export function generateRecursiveMethodology(): string {
     return `<recursive_methodology>
 ## Recursive Review Process
 
-### Step 1: Read the Metadata and Orient
+### Step 1: Orient and Read Key Diffs
 
 The \`<diff_metadata>\` in this conversation already shows which files changed and how much.
 Call \`list_changed_files\` for a structured view, then:
 - Group files by module/layer (auth, API, data layer, tests, config)
 - Assess risk from file names and change sizes
 - Identify new files, deleted files, and large modifications
-- You may call \`get_file_diff\` on 1-2 high-risk files to inform your decomposition plan
 
-Keep your context clean — sub-agents will do the thorough reading.
+**Then read 2-3 key diffs** with \`get_file_diff\` before planning:
+- The file with the **largest change** (most added/removed lines)
+- Any **new files** (understand what's being introduced)
+- Any file that looks **architecturally significant** (core modules, APIs, schemas)
+
+This gives you enough understanding to decompose intelligently. Sub-agents will do the exhaustive reading.
 
 ### Step 2: Create Decomposition Plan
 

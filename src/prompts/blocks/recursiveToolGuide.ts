@@ -10,11 +10,11 @@ export function generateRecursiveToolGuide(): string {
 | Tool | When to Use |
 |------|-------------|
 | \`list_changed_files\` | **FIRST** — see all changed files and statistics |
-| \`update_plan\` | **SECOND** — decompose PR into concern groups from metadata |
+| \`get_file_diff\` | **SECOND** — read 2-3 key diffs (largest change, new files, risky files) before planning |
+| \`update_plan\` | **THIRD** — decompose PR into concern groups from informed understanding |
 | \`run_subagent\` | **PRIMARY TOOL** — delegate each concern group to a focused investigator |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
-| \`get_file_diff\` | Small PRs only — when reviewing directly without sub-agents |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 
@@ -41,6 +41,6 @@ Each \`run_subagent\` call should include:
 3. **Key functions** to examine
 4. **What to report back** (findings format)
 
-**Do NOT read all diffs yourself and paste them into context.** Sub-agents have \`list_changed_files\` and \`get_file_diff\` \u2014 they read diffs on demand. You may skim 1-2 high-risk files with \`get_file_diff\` to improve your decomposition plan, but keep it brief.
+**Do NOT read all diffs yourself.** Read 2-3 key diffs with \`get_file_diff\` to inform your decomposition plan, then delegate to sub-agents for thorough analysis. Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
 </recursive_tool_guide>`;
 }

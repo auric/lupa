@@ -238,9 +238,9 @@ export class PromptGenerator {
         reminder +=
             '1. Call `list_changed_files` for a structured view of all changes\n';
         reminder +=
-            '2. Optionally skim 1-2 key diffs with `get_file_diff` to understand the nature of changes\n';
+            '2. Read 2-3 key diffs with `get_file_diff` (largest change, new files, risky areas) to understand what the PR does\n';
         reminder +=
-            '3. Call `update_plan` — decompose into concern groups based on what you know\n';
+            '3. Call `update_plan` — decompose into concern groups based on your informed understanding\n';
         reminder +=
             '4. **Spawn `run_subagent` for each concern group** (list file paths in task) — this is your PRIMARY action\n';
         reminder += '5. After all agents return, aggregate findings\n';
