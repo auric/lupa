@@ -223,7 +223,7 @@ export function createExplorationPromptBuilder(tools: ITool[]): PromptBuilder {
 
 /**
  * Create a pre-configured builder for recursive PR review prompts.
- * Used when maxRecursionDepth >= 2: the root agent decomposes the PR
+ * Used when maxRecursionDepth >= 1: the root agent decomposes the PR
  * into concern groups and delegates investigation to recursive sub-agents.
  */
 export function createRecursiveRootPromptBuilder(

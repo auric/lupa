@@ -5,6 +5,7 @@ import { GitService } from '../services/gitService';
 import { ConversationRunner } from '../models/conversationRunner';
 import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 import { createMockCopilotModelManager } from './testUtils/mockFactories';
+import { Log } from '../services/loggingService';
 
 vi.mock('vscode', async () => {
     const actualVscode = await vi.importActual('vscode');
@@ -439,6 +440,67 @@ describe('ChatParticipantService', () => {
             expect(
                 recursivePromptGenerator.generateRecursiveSystemPrompt
             ).toHaveBeenCalled();
+        });
+
+        it('should warn when using RLM approach with small-context model', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                compareBranches: vi.fn().mockResolvedValue({
+                    diffText:
+                        'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-old\n+new',
+                    refName: 'feature/test',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const smallContextSettings = {
+                ...mockWorkspaceSettings,
+                getMaxRecursionDepth: vi.fn().mockReturnValue(1),
+                getAnalysisApproach: vi.fn().mockReturnValue('rlm'),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
+            };
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: smallContextSettings,
+                promptGenerator: {
+                    ...mockPromptGenerator,
+                    generateRecursiveSystemPrompt: vi
+                        .fn()
+                        .mockReturnValue('Recursive prompt'),
+                },
+                gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
+            });
+
+            await capturedHandler(
+                {
+                    command: 'branch',
+                    model: {
+                        id: 'small-model',
+                        name: 'Small Model',
+                        maxInputTokens: 25000,
+                    },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    'RLM mode works best with larger context'
+                )
+            );
+            expect(mockStream.progress).toHaveBeenCalledWith(
+                expect.stringContaining(
+                    'RLM mode works best with larger context'
+                )
+            );
         });
 
         it('should use non-recursive system prompt when RLM approach but depth=0', async () => {

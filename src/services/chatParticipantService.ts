@@ -544,8 +544,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const recursiveState = isRecursiveMode
             ? new RecursiveStateManager(
                   maxRecursionDepth,
-                  this.deps!.workspaceSettings.getMaxTotalAgents(),
-                  this.deps!.workspaceSettings.getMaxIterations()
+                  this.deps!.workspaceSettings.getMaxTotalAgents()
               )
             : undefined;
 

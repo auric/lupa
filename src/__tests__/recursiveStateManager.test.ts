@@ -8,8 +8,8 @@ describe('RecursiveStateManager', () => {
     let manager: RecursiveStateManager;
 
     beforeEach(() => {
-        // maxDepth=2, maxTotalAgents=12, totalBudget=25
-        manager = new RecursiveStateManager(2, 12, 25);
+        // maxDepth=2, maxTotalAgents=12
+        manager = new RecursiveStateManager(2, 12);
     });
 
     describe('registerAgent', () => {
@@ -137,7 +137,7 @@ describe('RecursiveStateManager', () => {
 
         it('should reject spawning beyond max total agents', () => {
             // Create a manager with very low max agents
-            const tightManager = new RecursiveStateManager(2, 3, 25);
+            const tightManager = new RecursiveStateManager(2, 3);
             tightManager.registerAgent(undefined, 'Root', 25);
             tightManager.startAgent('root');
             tightManager.registerAgent('root', 'C1', 10);
@@ -151,7 +151,7 @@ describe('RecursiveStateManager', () => {
 
         it('should allow spawning regardless of parent budget (independent model)', () => {
             // Independent budget model: parent's low budget doesn't prevent child spawn
-            const lowBudgetManager = new RecursiveStateManager(2, 12, 5);
+            const lowBudgetManager = new RecursiveStateManager(2, 12);
             lowBudgetManager.registerAgent(undefined, 'Root', 5);
             lowBudgetManager.startAgent('root');
 
@@ -168,7 +168,7 @@ describe('RecursiveStateManager', () => {
 
     describe('budget allocation', () => {
         it('should allocate up to DEFAULT_CHILD_BUDGET per child', () => {
-            const bigManager = new RecursiveStateManager(2, 12, 100);
+            const bigManager = new RecursiveStateManager(2, 12);
             bigManager.registerAgent(undefined, 'Root', 100);
 
             const budget = bigManager.allocateChildBudget('root');
@@ -177,7 +177,7 @@ describe('RecursiveStateManager', () => {
 
         it('should return DEFAULT_CHILD_BUDGET regardless of parent budget', () => {
             // Independent budget model: parent budget doesn't limit child budget
-            const limitedManager = new RecursiveStateManager(2, 12, 15);
+            const limitedManager = new RecursiveStateManager(2, 12);
             limitedManager.registerAgent(undefined, 'Root', 15);
 
             const budget = limitedManager.allocateChildBudget('root');
@@ -191,7 +191,7 @@ describe('RecursiveStateManager', () => {
 
         it('should return DEFAULT_CHILD_BUDGET even when parent budget is low', () => {
             // Independent budget model: child gets its own budget
-            const lowManager = new RecursiveStateManager(2, 12, 5);
+            const lowManager = new RecursiveStateManager(2, 12);
             lowManager.registerAgent(undefined, 'Root', 5);
 
             const budget = lowManager.allocateChildBudget('root');
@@ -199,7 +199,7 @@ describe('RecursiveStateManager', () => {
         });
 
         it('should NOT deduct allocated budget from parent (independent model)', () => {
-            const bigManager = new RecursiveStateManager(2, 12, 100);
+            const bigManager = new RecursiveStateManager(2, 12);
             bigManager.registerAgent(undefined, 'Root', 100);
 
             const budget = bigManager.allocateChildBudget('root');
@@ -211,7 +211,7 @@ describe('RecursiveStateManager', () => {
         });
 
         it('should yield consistent budgets on repeated allocations (independent model)', () => {
-            const bigManager = new RecursiveStateManager(2, 12, 100);
+            const bigManager = new RecursiveStateManager(2, 12);
             bigManager.registerAgent(undefined, 'Root', 100);
 
             // Independent model: every allocation returns DEFAULT_CHILD_BUDGET
@@ -329,7 +329,7 @@ describe('RecursiveStateManager', () => {
         });
 
         it('should return message for empty tree', () => {
-            const emptyManager = new RecursiveStateManager(2, 12, 25);
+            const emptyManager = new RecursiveStateManager(2, 12);
             expect(emptyManager.getTreeSummary()).toBe('No agents registered.');
         });
     });
@@ -382,7 +382,7 @@ describe('RecursiveStateManager', () => {
 
         it('should return actual sum without totalBudget cap (independent model)', () => {
             // Independent budget model: no global budget cap
-            const tightManager = new RecursiveStateManager(2, 12, 25);
+            const tightManager = new RecursiveStateManager(2, 12);
             tightManager.registerAgent(undefined, 'Root', 30);
             tightManager.startAgent('root');
 

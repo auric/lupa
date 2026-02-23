@@ -741,7 +741,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should use RecursiveStateManager spawn guard when available', async () => {
-            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const recursiveState = new RecursiveStateManager(3, 12);
             const rootId = recursiveState.registerAgent(
                 undefined,
                 'root task',
@@ -770,7 +770,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should reject spawn when RecursiveStateManager depth limit reached', async () => {
-            const recursiveState = new RecursiveStateManager(1, 12, 100);
+            const recursiveState = new RecursiveStateManager(1, 12);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);
             recursiveState.startAgent(rootId);
             const childId = recursiveState.registerAgent(rootId, 'child', 50);
@@ -797,7 +797,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should reject spawn when RecursiveStateManager total agents limit reached', async () => {
-            const recursiveState = new RecursiveStateManager(3, 2, 100);
+            const recursiveState = new RecursiveStateManager(3, 2);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);
             recursiveState.startAgent(rootId);
             const childId = recursiveState.registerAgent(rootId, 'child1', 50);
@@ -824,7 +824,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should pass recursiveState through to executor options', async () => {
-            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const recursiveState = new RecursiveStateManager(3, 12);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);
             recursiveState.startAgent(rootId);
 
@@ -854,7 +854,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should mark child agent as completed on success', async () => {
-            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const recursiveState = new RecursiveStateManager(3, 12);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);
             recursiveState.startAgent(rootId);
 
@@ -881,7 +881,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should mark child agent as failed on executor error', async () => {
-            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const recursiveState = new RecursiveStateManager(3, 12);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);
             recursiveState.startAgent(rootId);
 
@@ -908,7 +908,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should mark child agent as cancelled on cancellation result', async () => {
-            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const recursiveState = new RecursiveStateManager(3, 12);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);
             recursiveState.startAgent(rootId);
 
@@ -964,7 +964,7 @@ describe('RunSubagentTool', () => {
                 sessionManager.recordSpawn();
             }
 
-            const recursiveState = new RecursiveStateManager(3, 100, 200);
+            const recursiveState = new RecursiveStateManager(3, 100);
             const rootId = recursiveState.registerAgent(
                 undefined,
                 'root task',
@@ -993,7 +993,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should pass subagentSessionManager through to executor options', async () => {
-            const recursiveState = new RecursiveStateManager(3, 12, 100);
+            const recursiveState = new RecursiveStateManager(3, 12);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);
             recursiveState.startAgent(rootId);
 

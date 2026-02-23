@@ -104,8 +104,7 @@ export class ToolCallingAnalysisProvider {
         const recursiveState = isRecursiveMode
             ? new RecursiveStateManager(
                   maxRecursionDepth,
-                  this.workspaceSettings.getMaxTotalAgents(),
-                  this.maxIterations
+                  this.workspaceSettings.getMaxTotalAgents()
               )
             : undefined;
 

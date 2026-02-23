@@ -50,7 +50,7 @@ export interface ExecutionContext {
     /**
      * Recursive state manager for the current analysis.
      * Tracks the agent tree, enforces depth/budget limits, aggregates findings.
-     * Present when recursive review mode is enabled (maxRecursionDepth >= 2).
+     * Present when recursive review mode is enabled (maxRecursionDepth >= 1 and analysisApproach is 'rlm').
      */
     recursiveState?: RecursiveStateManager;
 

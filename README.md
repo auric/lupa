@@ -155,7 +155,7 @@ The RLM approach is inspired by the [Recursive Language Models paper](https://ar
 
 ### Recursive Review Mode
 
-When `maxRecursionDepth` is set to 2 or higher, Lupa uses recursive review mode:
+When `maxRecursionDepth` is set to 1 or higher (and `analysisApproach` is `rlm`), Lupa uses recursive review mode:
 
 1. The **root agent** scans the PR scope and decomposes it into concern groups
 2. **Sub-agents** are spawned to analyze each concern group independently

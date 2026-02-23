@@ -52,18 +52,18 @@ export class GetFileDiffTool extends BaseTool {
         const notFound: string[] = [];
 
         for (const rawPath of file_paths) {
-            // Normalize backslashes (LLM may send Windows paths)
-            const requestedPath = rawPath.replace(/\\/g, '/');
+            // Normalize backslashes and strip leading './' (LLM may send these variants)
+            const requestedPath = rawPath
+                .replace(/\\/g, '/')
+                .replace(/^\.\//, '');
 
-            // Exact match first, then match with path separator boundary
+            // Exact match first, then suffix match with path separator boundary
             // to prevent "Button.tsx" matching both "src/components/Button.tsx"
             // and "src/utils/Button.tsx".
             const matches = parsedDiff.filter(
                 (f) =>
                     f.filePath === requestedPath ||
-                    requestedPath === f.filePath ||
-                    f.filePath.endsWith('/' + requestedPath) ||
-                    requestedPath.endsWith('/' + f.filePath)
+                    f.filePath.endsWith('/' + requestedPath)
             );
 
             if (matches.length > 1) {

@@ -329,4 +329,30 @@ describe('GetFileDiffTool', () => {
         expect(result.success).toBe(true);
         expect(result.data).toContain(' import { hash } from "crypto";');
     });
+
+    it('normalizes Windows-style backslash paths', async () => {
+        const context = createMockExecutionContext({
+            parsedDiff: createTestDiff(),
+        });
+        const result = await tool.execute(
+            { file_paths: ['src\\services\\auth.ts'] },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('src/services/auth.ts');
+    });
+
+    it('strips leading ./ from requested paths', async () => {
+        const context = createMockExecutionContext({
+            parsedDiff: createTestDiff(),
+        });
+        const result = await tool.execute(
+            { file_paths: ['./src/services/auth.ts'] },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('src/services/auth.ts');
+    });
 });

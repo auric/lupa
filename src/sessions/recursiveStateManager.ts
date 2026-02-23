@@ -91,8 +91,7 @@ export class RecursiveStateManager {
 
     constructor(
         private readonly maxDepth: number,
-        private readonly maxTotalAgents: number,
-        private readonly totalBudget: number
+        private readonly maxTotalAgents: number
     ) {}
 
     /**

@@ -70,8 +70,11 @@ export class PromptGenerator {
         maxTotalAgents?: number
     ): string {
         const metadataSection = this.generateDiffMetadataSection(parsedDiff);
-        const userFocusSection = userInstructions?.trim()
-            ? `<user_focus>\nThe developer has requested you focus on: ${userInstructions.trim()}\n\nWhile performing comprehensive analysis, prioritize findings related to this request.\n</user_focus>\n\n`
+        const sanitizedInstructions = userInstructions
+            ?.trim()
+            .replace(/[<>]/g, '');
+        const userFocusSection = sanitizedInstructions
+            ? `<user_focus>\nThe developer has requested you focus on: ${sanitizedInstructions}\n\nWhile performing comprehensive analysis, prioritize findings related to this request.\n</user_focus>\n\n`
             : '';
         const reminder = this.generateRlmAnalysisReminder(
             parsedDiff.length,
@@ -100,8 +103,11 @@ export class PromptGenerator {
         const fileContentSection = this.generateFileContentSection(parsedDiff);
 
         // 2. User-provided focus instructions (if any)
-        const userFocusSection = userInstructions?.trim()
-            ? `<user_focus>\nThe developer has requested you focus on: ${userInstructions.trim()}\n\nWhile performing comprehensive analysis, prioritize findings related to this request.\n</user_focus>\n\n`
+        const sanitizedInstructions = userInstructions
+            ?.trim()
+            .replace(/[<>]/g, '');
+        const userFocusSection = sanitizedInstructions
+            ? `<user_focus>\nThe developer has requested you focus on: ${sanitizedInstructions}\n\nWhile performing comprehensive analysis, prioritize findings related to this request.\n</user_focus>\n\n`
             : '';
 
         // 3. Concise analysis reminder (main instructions are in system prompt)
@@ -221,7 +227,7 @@ export class PromptGenerator {
             'The `<diff_metadata>` above shows all changed files with line counts. ' +
             'Sub-agents have `get_file_diff` \u2014 they will read diffs themselves.\n\n';
 
-        if (agentLimit !== undefined) {
+        if (agentLimit !== undefined && agentLimit > 0) {
             reminder +=
                 `**Agent Budget**: You can spawn up to **${agentLimit}** sub-agents total across all depths. ` +
                 `Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours). ` +

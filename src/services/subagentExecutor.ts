@@ -156,7 +156,7 @@ export class SubagentExecutor {
                     ? options?.subagentSessionManager
                     : undefined,
                 recursiveState: options?.recursiveState,
-                currentDepth: options?.recursiveState ? depth : undefined,
+                currentDepth: depth,
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,
             };
