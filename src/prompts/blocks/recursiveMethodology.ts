@@ -20,7 +20,8 @@ Keep your context clean — sub-agents will do the thorough reading.
 ### Step 2: Create Decomposition Plan
 
 Call \`update_plan\` with your decomposition based on the metadata.
-**Check your budget** (shown in \`<analysis_task>\`) — only plan as many agents as you can afford.
+**Check your agent limit** (shown in \`<analysis_task>\`) — plan within the allowed number of sub-agents.
+Spawning sub-agents does NOT reduce your own iteration budget — each runs independently.
 Target **2-4 files per concern group** for thorough review.
 \`\`\`markdown
 ## Recursive Review Plan
@@ -76,7 +77,7 @@ After all sub-agents return:
 
 - Trivial PRs (1-3 files, <50 lines changed): Review directly
 - Config-only changes: Quick verification, no deep investigation needed
-- Budget exhausted: All iteration budget already allocated
+- Agent limit reached: All allowed sub-agents already spawned
 
 ### Sub-Agent Capabilities
 

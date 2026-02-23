@@ -80,7 +80,7 @@ You have direct access to the PR diff via tools:
             ? `
 ### Decomposition Strategy (You CAN Spawn Sub-Agents)
 
-You have \`run_subagent\` available and **${maxIterations} iterations** total.
+You have \`run_subagent\` available and **${maxIterations} iterations** for your own work.
 
 **RULE: If your task spans 4+ files, DECOMPOSE before investigating.**
 Do NOT try to review 4+ files directly — you'll exhaust your iterations and produce incomplete findings.
@@ -88,7 +88,7 @@ Do NOT try to review 4+ files directly — you'll exhaust your iterations and pr
 **Decomposition approach:**
 1. Call \`get_file_diff\` for 1-2 key files to orient yourself (~2 iterations)
 2. Based on the diff, split your remaining files into focused sub-tasks
-3. Spawn sub-agents for each group (each costs ~${RecursionConstants.DEFAULT_CHILD_BUDGET} iterations from your budget)
+3. Spawn sub-agents for each group — each gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
 4. Aggregate their findings into your response
 
 **If your task spans 1-3 files:** Investigate directly — no need to spawn.
@@ -104,7 +104,7 @@ Examine: [function1], [function2]"
 context: "[What you found so far and why this needs deeper investigation]"
 \`\`\`
 
-**Budget:** You have **${maxIterations}** iterations total. Each sub-agent costs ~${RecursionConstants.DEFAULT_CHILD_BUDGET} iterations. You can afford approximately **${Math.max(0, Math.floor((maxIterations - RecursionConstants.MIN_VIABLE_BUDGET) / RecursionConstants.DEFAULT_CHILD_BUDGET)) || 1}** sub-agent(s). After spawning, you keep enough iterations to aggregate results and write your findings.`
+**Budget:** Your sub-agents each get their own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iterations (not deducted from your budget). After they return, you still have your remaining iterations to aggregate results and write findings.`
             : `
 ### Recursion Limit
 

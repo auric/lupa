@@ -63,15 +63,16 @@ export interface SpawnGuardResult {
  * Constants controlling recursive agent behavior.
  * These are internal / non-user-configurable.
  *
- * Budget model: Flat per-child allocation instead of exponential decay.
- * Each child gets up to DEFAULT_CHILD_BUDGET iterations, deducted from parent.
- * Parent always retains at least MIN_VIABLE_BUDGET for its own orchestration.
+ * Budget model: Independent per-agent allocation following the RLM paper.
+ * Each child gets DEFAULT_CHILD_BUDGET as its OWN iteration budget,
+ * independent of the parent (not deducted from parent's budget).
+ * Total compute is bounded by maxTotalAgents and maxSubagentsPerSession settings.
  */
 export const RecursionConstants = {
     /** Below this budget a new agent is not worth spawning */
     MIN_VIABLE_BUDGET: 3,
-    /** Default iteration budget allocated to each child agent */
-    DEFAULT_CHILD_BUDGET: 20,
+    /** Independent iteration budget allocated to each child agent */
+    DEFAULT_CHILD_BUDGET: 30,
     /** Timeout per allocated iteration (ms) — used to compute subagent execution timeout */
     TIMEOUT_PER_ITERATION_MS: 30_000,
     /** Minimum subagent execution timeout (ms) regardless of budget */
@@ -283,37 +284,23 @@ export class RecursiveStateManager {
 
     /**
      * Calculate the iteration budget for a single child without mutating state.
-     * Uses flat allocation: each child gets up to DEFAULT_CHILD_BUDGET,
-     * bounded by what the parent can afford (must retain MIN_VIABLE_BUDGET).
+     * RLM paper model: each child gets an independent budget, not deducted from parent.
+     * Total compute is controlled by maxTotalAgents and maxSubagentsPerSession.
      */
     calculateChildBudget(parentId: string): number {
         const parent = this.tree.get(parentId);
         if (!parent) {
             return 0;
         }
-
-        const available =
-            parent.iterationBudget - RecursionConstants.MIN_VIABLE_BUDGET;
-        if (available < RecursionConstants.MIN_VIABLE_BUDGET) {
-            return 0;
-        }
-
-        return Math.min(RecursionConstants.DEFAULT_CHILD_BUDGET, available);
+        return RecursionConstants.DEFAULT_CHILD_BUDGET;
     }
 
     /**
-     * Allocate iteration budget for a single child and deduct from parent.
+     * Allocate iteration budget for a single child.
+     * RLM paper model: independent budget per agent — no deduction from parent.
      */
     allocateChildBudget(parentId: string): number {
-        const budget = this.calculateChildBudget(parentId);
-        const parent = this.tree.get(parentId);
-        if (parent && budget >= RecursionConstants.MIN_VIABLE_BUDGET) {
-            parent.iterationBudget = Math.max(
-                0,
-                parent.iterationBudget - budget
-            );
-        }
-        return budget;
+        return this.calculateChildBudget(parentId);
     }
 
     /**

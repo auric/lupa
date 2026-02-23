@@ -526,13 +526,12 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 sampleParsedDiff,
                 undefined,
                 true,
-                100
+                100,
+                12
             );
 
-            expect(prompt).toContain('Budget');
-            expect(prompt).toContain('100');
-            // (100 - 5) / 20 = 4 affordable agents
-            expect(prompt).toContain('**4**');
+            expect(prompt).toContain('Agent Budget');
+            expect(prompt).toContain('**11**'); // 12 - 1 (root) = 11 sub-agents
             expect(prompt).toContain('sub-agents');
         });
 
