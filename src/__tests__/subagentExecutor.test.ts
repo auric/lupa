@@ -684,5 +684,30 @@ describe('SubagentExecutor', () => {
             expect(filteredNames).toContain('list_changed_files');
             expect(filteredNames).toContain('get_file_diff');
         });
+
+        it('should remove diff tools when parsedDiff is empty array', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const listChangedTool = createMockTool('list_changed_files');
+            const getFileDiffTool = createMockTool('get_file_diff');
+            const allTools = [readTool, listChangedTool, getFileDiffTool];
+
+            const executor = createExecutor(modelManager, allTools);
+
+            // Empty parsedDiff should behave like undefined (no data)
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                parsedDiff: [] as any,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).not.toContain('list_changed_files');
+            expect(filteredNames).not.toContain('get_file_diff');
+        });
     });
 });

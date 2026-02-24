@@ -63,7 +63,8 @@ You have direct access to the PR diff via tools:
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
 **Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`
-                : `
+                : hasDiffTools
+                  ? `
 1. **Read the Diff FIRST**: Call \`get_file_diff\` immediately for the files listed in your task. This is your primary input — do this before anything else.
 
 2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
@@ -74,7 +75,17 @@ You have direct access to the PR diff via tools:
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
 
-**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`;
+**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`
+                  : `
+1. **Review Parent Context**: Study the code and information the parent agent provided in context above — this is your primary input.
+
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
+
+3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
+
+4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+
+5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.`;
 
         const recursionSection = canRecurse
             ? `

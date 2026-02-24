@@ -98,7 +98,6 @@ describe('SubagentPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
             expect(prompt).toContain('## Investigation Approach');
-            expect(prompt).toContain('Read the Diff FIRST');
             expect(prompt).toContain('Gather Evidence');
             expect(prompt).toContain('Trace Dependencies');
         });
@@ -136,6 +135,45 @@ describe('SubagentPromptGenerator', () => {
 
             expect(prompt).not.toContain('### Diff Access');
             expect(prompt).toContain('CANNOT see the PR diff');
+        });
+
+        describe('without diff tools', () => {
+            const noDiffTools = [
+                createMockTool('find_symbol', 'Finds symbols in code'),
+                createMockTool('find_usages', 'Find usages of a symbol'),
+            ];
+
+            it('should not instruct to read diffs when diff tools are absent', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    noDiffTools,
+                    10
+                );
+
+                expect(prompt).not.toContain('Read the Diff FIRST');
+                expect(prompt).not.toContain('get_file_diff');
+                expect(prompt).toContain('Review Parent Context');
+            });
+
+            it('should instruct to read diffs when diff tools are present', () => {
+                const tools = [
+                    createMockTool(
+                        'list_changed_files',
+                        'List all changed files'
+                    ),
+                    createMockTool(
+                        'get_file_diff',
+                        'Get diff for specific files'
+                    ),
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+                expect(prompt).toContain('Read the Diff FIRST');
+                expect(prompt).not.toContain('Review Parent Context');
+            });
         });
 
         describe('canRecurse=true', () => {

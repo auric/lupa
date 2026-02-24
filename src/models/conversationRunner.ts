@@ -572,6 +572,9 @@ export class ConversationRunner {
         ms: number,
         token: vscode.CancellationToken
     ): Promise<void> {
+        if (token.isCancellationRequested) {
+            return Promise.resolve();
+        }
         return new Promise((resolve) => {
             const timer = setTimeout(resolve, ms);
             const disposable = token.onCancellationRequested(() => {

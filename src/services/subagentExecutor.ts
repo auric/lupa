@@ -133,7 +133,7 @@ export class SubagentExecutor {
             // Remove diff tools when parsedDiff is unavailable (legacy mode).
             // Without parsedDiff the tools would return errors, and the prompt
             // would misleadingly instruct the subagent to call them.
-            if (!options?.parsedDiff) {
+            if (!options?.parsedDiff?.length) {
                 filteredTools = filteredTools.filter(
                     (t) =>
                         t.name !== 'list_changed_files' &&

@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.
 - **README version badge**: Updated from 0.1.11 to 0.2.0.
 - **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
 
