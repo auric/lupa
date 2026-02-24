@@ -289,6 +289,7 @@ Use subagents strategically to preserve context and parallelize work:
 - Provide clear, specific instructions with examples
 - Include relevant context the subagent needs
 - Verify subagent results before trusting them
+- Always use general purpose subagents, don't use `Explore` subagents
 - Always use Claude Opus 4.6 model in subagents for best results
 
 **Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
