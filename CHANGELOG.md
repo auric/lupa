@@ -56,7 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.
-- **Parallel tool-calling prompt strengthened**: System prompts now include explicit instructions for batching independent tool calls in the same turn, improving throughput with models that support parallel tool execution (e.g., GPT-4.1).
+- **Parallel tool-calling prompt**: Subagent prompts include guidance for batching independent tool calls. Root agent and standard review prompts retain concise parallel hints to avoid over-preparation with models that cannot execute parallel tool calls.
 - **README version badge**: Updated from 0.1.11 to 0.2.0.
 - **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
 
