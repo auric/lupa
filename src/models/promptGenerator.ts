@@ -146,8 +146,9 @@ export class PromptGenerator {
                 : file.isDeletedFile
                   ? 'deleted'
                   : 'modified';
+            const sanitizedPath = file.filePath.replace(/[<>]/g, '');
             fileSummaries.push(
-                `  - ${file.filePath} [${status}] (+${added} -${removed})`
+                `  - ${sanitizedPath} [${status}] (+${added} -${removed})`
             );
         }
 
@@ -259,7 +260,8 @@ export class PromptGenerator {
         let fileContentXml = '<files_to_review>\n';
 
         for (const fileDiff of parsedDiff) {
-            fileContentXml += `<file>\n<path>${fileDiff.filePath}</path>\n<changes>\n`;
+            const sanitizedPath = fileDiff.filePath.replace(/[<>]/g, '');
+            fileContentXml += `<file>\n<path>${sanitizedPath}</path>\n<changes>\n`;
 
             for (const hunk of fileDiff.hunks) {
                 // Use the stored hunk header instead of regex matching

@@ -180,6 +180,7 @@ If you find NO issues, explicitly state what you checked and why it passed.
 
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
+- **Parallelize**: If you intend to call multiple tools and there are no dependencies between calls, make ALL independent calls in the same turn
 ${hasDiffTools ? '- Use `list_changed_files` and `get_file_diff` to access the PR diff on demand' : '- You CANNOT see the PR diff - only what the parent provided in context'}
 - You CANNOT execute code or run tests
 

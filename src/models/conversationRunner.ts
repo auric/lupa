@@ -261,8 +261,16 @@ export class ConversationRunner {
                     response.toolCalls
                 );
 
-                // Track last substantive response for graceful degradation
-                if (response.content && response.content.trim().length > 50) {
+                // Track last substantive response for graceful degradation.
+                // Threshold filters trivial LLM responses like "OK." or "Error." so
+                // the fallback message delivered on rate-limit exhaustion or max-iterations
+                // contains actual review content.
+                const MIN_SUBSTANTIVE_RESPONSE_LENGTH = 50;
+                if (
+                    response.content &&
+                    response.content.trim().length >
+                        MIN_SUBSTANTIVE_RESPONSE_LENGTH
+                ) {
                     lastSubstantiveResponse = response.content;
                 }
 

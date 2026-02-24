@@ -96,6 +96,13 @@ These components are created fresh for each analysis session, not managed by Ser
 | `GetSymbolsOverviewTool` | `getSymbolsOverviewTool.ts` | `get_symbols_overview` | Hierarchical symbol structure       |
 | `SearchForPatternTool`   | `searchForPatternTool.ts`   | `search_for_pattern`   | Text/regex search via ripgrep       |
 
+### Diff Tools (RLM)
+
+| Tool                   | File                      | Name                 | Description                             |
+| ---------------------- | ------------------------- | -------------------- | --------------------------------------- |
+| `ListChangedFilesTool` | `listChangedFilesTool.ts` | `list_changed_files` | List changed files with diff statistics |
+| `GetFileDiffTool`      | `getFileDiffTool.ts`      | `get_file_diff`      | Retrieve diff for specific file(s)      |
+
 ### Reasoning Tools
 
 | Tool                          | File                             | Name                        | Description            |

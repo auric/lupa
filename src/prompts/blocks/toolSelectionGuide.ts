@@ -28,7 +28,7 @@ export function generateToolSelectionGuide(): string {
 1. **Plan first**: Call \`update_plan\` before any investigation to structure your review
 2. **Verify before claiming**: Use tools to confirm behavior, don't assume
 3. **Symbols over text**: Use \`find_symbol\` for code, \`read_file\` for configs only
-4. **Parallelize**: Call independent tools in one turn
+4. **Parallelize**: If you intend to call multiple tools and there are no dependencies between the calls, make ALL of the independent calls in the same turn. For example, when reading 3 files, call all 3 tools in parallel rather than sequentially. Maximize parallel tool calls for speed and efficiency.
 5. **Scope searches**: Provide \`relative_path\` when you know the area
 6. **Track progress**: Update your plan as you complete checklist items
 7. **Delegate complexity**: Spawn subagent for 4+ file investigations
@@ -66,7 +66,7 @@ export function generateExplorationToolGuide(): string {
 
 1. **Verify before answering**: Confirm with tools, don't assume
 2. **Symbols over text**: Use \`find_symbol\` for code entities
-3. **Parallelize**: Call independent tools together
+3. **Parallelize**: If you intend to call multiple tools and there are no dependencies between the calls, make ALL of the independent calls in the same turn. Maximize parallel tool calls for speed and efficiency.
 4. **Build incrementally**: Start with overview, then drill down
 5. **Delegate complexity**: Use \`run_subagent\` for multi-module questions
 

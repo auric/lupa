@@ -59,23 +59,28 @@ export class GetFileDiffTool extends BaseTool {
                 .replace(/^\/+/, '')
                 .replace(/^\.\//, '');
 
-            // Exact match first, then suffix match with path separator boundary
-            // to prevent "Button.tsx" matching both "src/components/Button.tsx"
-            // and "src/utils/Button.tsx".
-            const matches = parsedDiff.filter(
-                (f) =>
-                    f.filePath === requestedPath ||
-                    f.filePath.endsWith('/' + requestedPath)
+            // Exact match first, then suffix match with path separator boundary.
+            // Prioritize exact match to avoid false ambiguity when "Button.tsx"
+            // exists alongside "src/components/Button.tsx".
+            const exactMatch = parsedDiff.find(
+                (f) => f.filePath === requestedPath
             );
+            let fileDiff = exactMatch;
 
-            if (matches.length > 1) {
-                notFound.push(
-                    `${requestedPath} (ambiguous — matches: ${matches.map((m) => m.filePath).join(', ')})`
+            if (!fileDiff) {
+                const suffixMatches = parsedDiff.filter((f) =>
+                    f.filePath.endsWith('/' + requestedPath)
                 );
-                continue;
-            }
 
-            const fileDiff = matches[0];
+                if (suffixMatches.length > 1) {
+                    notFound.push(
+                        `${requestedPath} (ambiguous — matches: ${suffixMatches.map((m) => m.filePath).join(', ')})`
+                    );
+                    continue;
+                }
+
+                fileDiff = suffixMatches[0];
+            }
             if (!fileDiff) {
                 notFound.push(requestedPath);
                 continue;

@@ -158,7 +158,9 @@ export class SubagentExecutor {
                 subagentSessionManager: canRecurse
                     ? options?.subagentSessionManager
                     : undefined,
-                recursiveState: options?.recursiveState,
+                recursiveState: canRecurse
+                    ? options?.recursiveState
+                    : undefined,
                 currentDepth: depth,
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,

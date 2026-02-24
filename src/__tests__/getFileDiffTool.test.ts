@@ -381,4 +381,84 @@ describe('GetFileDiffTool', () => {
         expect(result.success).toBe(true);
         expect(result.data).toContain('src/services/auth.ts');
     });
+
+    it('prioritizes exact match over suffix matches', async () => {
+        const diffWithExactAndSuffix: DiffHunk[] = [
+            {
+                filePath: 'Button.tsx',
+                isNewFile: true,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/Button.tsx b/Button.tsx',
+                hunks: [
+                    {
+                        oldStart: 0,
+                        oldLines: 0,
+                        newStart: 1,
+                        newLines: 1,
+                        hunkId: 'Button.tsx:1',
+                        hunkHeader: '@@ -0,0 +1,1 @@',
+                        parsedLines: [
+                            {
+                                type: 'added',
+                                content: 'export const Root = 1;',
+                            },
+                        ],
+                    },
+                ],
+            },
+            {
+                filePath: 'src/components/Button.tsx',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader:
+                    'diff --git a/src/components/Button.tsx b/src/components/Button.tsx',
+                hunks: [
+                    {
+                        oldStart: 1,
+                        oldLines: 1,
+                        newStart: 1,
+                        newLines: 1,
+                        hunkId: 'src/components/Button.tsx:1',
+                        hunkHeader: '@@ -1,1 +1,1 @@',
+                        parsedLines: [
+                            {
+                                type: 'added',
+                                content: 'export const Comp = 2;',
+                            },
+                        ],
+                    },
+                ],
+            },
+        ];
+
+        const context = createMockExecutionContext({
+            parsedDiff: diffWithExactAndSuffix,
+        });
+        const result = await tool.execute(
+            { file_paths: ['Button.tsx'] },
+            context
+        );
+
+        // Should match the exact "Button.tsx", not report ambiguous
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('=== Button.tsx (new file) ===');
+        expect(result.data).toContain('Root = 1');
+        expect(result.data).not.toContain('Comp = 2');
+    });
+
+    it('rejects more than 10 files via schema validation', () => {
+        const elevenFiles = Array.from({ length: 11 }, (_, i) => `file${i}.ts`);
+
+        // Schema validation happens in ToolExecutor, not execute() directly.
+        // Test the Zod schema rejects > 10 items.
+        const result = tool.schema.safeParse({ file_paths: elevenFiles });
+        expect(result.success).toBe(false);
+    });
+
+    it('accepts exactly 10 files via schema validation', () => {
+        const tenFiles = Array.from({ length: 10 }, (_, i) => `file${i}.ts`);
+
+        const result = tool.schema.safeParse({ file_paths: tenFiles });
+        expect(result.success).toBe(true);
+    });
 });

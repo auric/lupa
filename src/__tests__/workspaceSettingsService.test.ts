@@ -311,4 +311,54 @@ describe('WorkspaceSettingsService', () => {
             });
         });
     });
+
+    describe('recursion and analysis getters', () => {
+        it('should return default maxRecursionDepth when no custom config', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('{}');
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxRecursionDepth()).toBe(2);
+        });
+
+        it('should return custom maxRecursionDepth from settings file', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxRecursionDepth: 0 })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxRecursionDepth()).toBe(0);
+        });
+
+        it('should return default maxTotalAgents when no custom config', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('{}');
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxTotalAgents()).toBe(12);
+        });
+
+        it('should return custom maxTotalAgents from settings file', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxTotalAgents: 5 })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxTotalAgents()).toBe(5);
+        });
+
+        it('should return default analysisApproach when no custom config', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('{}');
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getAnalysisApproach()).toBe('rlm');
+        });
+
+        it('should return custom analysisApproach from settings file', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ analysisApproach: 'legacy' })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getAnalysisApproach()).toBe('legacy');
+        });
+    });
 });

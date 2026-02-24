@@ -6,6 +6,7 @@ import {
     RECURSIVE_CHILD_DISALLOWED_TOOLS,
     DIFF_TOOLS,
 } from '../models/toolConstants';
+import { TokenConstants } from '../models/tokenConstants';
 
 describe('toolConstants', () => {
     describe('SubagentLimits.DISALLOWED_TOOLS', () => {
@@ -115,6 +116,16 @@ describe('toolConstants', () => {
                     `${tool} should be in MAIN_ANALYSIS_ONLY_TOOLS`
                 ).toBe(true);
             }
+        });
+    });
+
+    describe('TokenConstants regression guards', () => {
+        it('should maintain MAX_TOOL_RESPONSE_CHARS at 60000', () => {
+            expect(TokenConstants.MAX_TOOL_RESPONSE_CHARS).toBe(60000);
+        });
+
+        it('should maintain MAX_FILE_READ_LINES at 400', () => {
+            expect(TokenConstants.MAX_FILE_READ_LINES).toBe(400);
         });
     });
 });
