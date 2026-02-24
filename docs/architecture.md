@@ -617,14 +617,15 @@ Lupa supports two analysis approaches, configured via `analysisApproach`:
 | Setting             | Default | Description                                          |
 | ------------------- | ------- | ---------------------------------------------------- |
 | `maxRecursionDepth` | 2       | Maximum agent depth (0 = no recursion, 1+ = enabled) |
-| `maxTotalAgents`    | 12      | Upper bound on total agents spawned per analysis     |
+
+Total spawns per analysis are capped by `maxSubagentsPerSession` (default 20).
 
 **Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. If the LLM does not spawn sub-agents in recursive mode, analysis proceeds as a single root-agent investigation—recursive mode provides the capability, not a guarantee of decomposition.
 
 **RecursiveStateManager** (`src/sessions/recursiveStateManager.ts`) tracks the agent tree during RLM analysis:
 
 - Registers agents with parent-child relationships and depth tracking
-- Enforces `maxRecursionDepth` and `maxTotalAgents` limits via `canSpawnChild()`
+- Enforces `maxRecursionDepth` via `canSpawnChild()` (total spawn count is guarded by `SubagentSessionManager`)
 - Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (30 iterations) regardless of other agents' usage
 - Aggregates findings from all completed agents for final output
 - Manages agent lifecycle (registered → running → completed/failed/cancelled)

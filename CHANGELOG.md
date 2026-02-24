@@ -51,12 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Test Coverage
 
-- Added schema validation tests for `maxRecursionDepth`, `maxTotalAgents`, and `analysisApproach` settings (bounds and invalid values).
+- Added schema validation tests for `maxRecursionDepth` and `analysisApproach` settings (bounds and invalid values).
 
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.
 - **Parallel tool-calling prompt**: Subagent prompts include guidance for batching independent tool calls. Root agent and standard review prompts retain concise parallel hints to avoid over-preparation with models that cannot execute parallel tool calls.
+- **Removed `maxTotalAgents` setting**: Consolidated redundant agent limits. `maxSubagentsPerSession` (default 20) is the single spawn cap — it already works in both flat and recursive modes. `maxRecursionDepth` controls nesting depth separately. The separate tree-size limit added confusion without providing distinct value.
 - **README version badge**: Updated from 0.1.11 to 0.2.0.
 - **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
 

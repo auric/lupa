@@ -103,10 +103,7 @@ export class ToolCallingAnalysisProvider {
 
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode
-            ? new RecursiveStateManager(
-                  maxRecursionDepth,
-                  this.workspaceSettings.getMaxTotalAgents()
-              )
+            ? new RecursiveStateManager(maxRecursionDepth)
             : undefined;
 
         // Register root agent in recursive state tree
@@ -205,7 +202,7 @@ export class ToolCallingAnalysisProvider {
                     parsedDiff,
                     undefined,
                     isRecursiveMode,
-                    this.workspaceSettings.getMaxTotalAgents()
+                    this.workspaceSettings.getMaxSubagentsPerSession()
                 );
             } else {
                 // Legacy approach: full diff embedded in prompt

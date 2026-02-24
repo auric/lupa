@@ -168,7 +168,6 @@ describe('ChatParticipantService', () => {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getMaxTotalAgents: vi.fn().mockReturnValue(12),
                 getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
@@ -582,7 +581,6 @@ describe('ChatParticipantService', () => {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getMaxTotalAgents: vi.fn().mockReturnValue(12),
                 getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
@@ -1051,7 +1049,6 @@ describe('ChatParticipantService', () => {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getMaxTotalAgents: vi.fn().mockReturnValue(12),
                 getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
@@ -1490,7 +1487,6 @@ describe('ChatParticipantService', () => {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getMaxTotalAgents: vi.fn().mockReturnValue(12),
                 getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {
@@ -2238,7 +2234,6 @@ describe('ChatParticipantService', () => {
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getMaxTotalAgents: vi.fn().mockReturnValue(12),
                 getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
             };
             mockPromptGenerator = {

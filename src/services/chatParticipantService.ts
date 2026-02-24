@@ -542,10 +542,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode
-            ? new RecursiveStateManager(
-                  maxRecursionDepth,
-                  this.deps!.workspaceSettings.getMaxTotalAgents()
-              )
+            ? new RecursiveStateManager(maxRecursionDepth)
             : undefined;
 
         if (recursiveState) {
@@ -604,7 +601,7 @@ export class ChatParticipantService implements vscode.Disposable {
                       parsedDiff,
                       request.prompt || undefined,
                       isRecursiveMode,
-                      this.deps!.workspaceSettings.getMaxTotalAgents()
+                      this.deps!.workspaceSettings.getMaxSubagentsPerSession()
                   );
               })()
             : this.deps!.promptGenerator.generateToolCallingUserPrompt(

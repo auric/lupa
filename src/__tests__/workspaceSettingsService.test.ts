@@ -329,22 +329,6 @@ describe('WorkspaceSettingsService', () => {
             expect(service.getMaxRecursionDepth()).toBe(0);
         });
 
-        it('should return default maxTotalAgents when no custom config', () => {
-            vi.mocked(fs.readFileSync).mockReturnValue('{}');
-            service = new WorkspaceSettingsService(mockContext);
-
-            expect(service.getMaxTotalAgents()).toBe(12);
-        });
-
-        it('should return custom maxTotalAgents from settings file', () => {
-            vi.mocked(fs.readFileSync).mockReturnValue(
-                JSON.stringify({ maxTotalAgents: 5 })
-            );
-            service = new WorkspaceSettingsService(mockContext);
-
-            expect(service.getMaxTotalAgents()).toBe(5);
-        });
-
         it('should return default analysisApproach when no custom config', () => {
             vi.mocked(fs.readFileSync).mockReturnValue('{}');
             service = new WorkspaceSettingsService(mockContext);

@@ -12,7 +12,6 @@ export const SUBAGENT_LIMITS = {
 
 export const RECURSION_LIMITS = {
     maxDepth: { default: 2, min: 0, max: 3 },
-    maxTotalAgents: { default: 12, min: 1, max: 20 },
 } as const;
 
 /**
@@ -51,12 +50,6 @@ export const WorkspaceSettingsSchema = z.looseObject({
         .min(RECURSION_LIMITS.maxDepth.min)
         .max(RECURSION_LIMITS.maxDepth.max)
         .default(RECURSION_LIMITS.maxDepth.default),
-    /** Maximum total agents across all depths per analysis */
-    maxTotalAgents: z
-        .number()
-        .min(RECURSION_LIMITS.maxTotalAgents.min)
-        .max(RECURSION_LIMITS.maxTotalAgents.max)
-        .default(RECURSION_LIMITS.maxTotalAgents.default),
     /** Analysis approach: "rlm" (diff-on-demand) or "legacy" (full diff in prompt) */
     analysisApproach: z.enum(ANALYSIS_APPROACHES).default('rlm'),
     logLevel: z.enum(LOG_LEVELS).default('info'),

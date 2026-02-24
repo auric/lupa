@@ -554,7 +554,6 @@ export function createMockWorkspaceSettings(
         requestTimeoutSeconds: number;
         maxSubagentsPerSession: number;
         maxRecursionDepth: number;
-        maxTotalAgents: number;
         analysisApproach: AnalysisApproach;
     }> = {}
 ): WorkspaceSettingsService {
@@ -569,8 +568,6 @@ export function createMockWorkspaceSettings(
             SUBAGENT_LIMITS.maxPerSession.default,
         getMaxRecursionDepth: () =>
             overrides.maxRecursionDepth ?? RECURSION_LIMITS.maxDepth.default,
-        getMaxTotalAgents: () =>
-            overrides.maxTotalAgents ?? RECURSION_LIMITS.maxTotalAgents.default,
         getAnalysisApproach: () => overrides.analysisApproach ?? 'rlm',
     } as WorkspaceSettingsService;
 }

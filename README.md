@@ -134,7 +134,7 @@ Settings are stored in `.vscode/lupa.json`:
     "preferredModelIdentifier": "copilot/gpt-4.1",
     "maxIterations": 100,
     "requestTimeoutSeconds": 300,
-    "maxSubagentsPerSession": 10,
+    "maxSubagentsPerSession": 20,
     "analysisApproach": "rlm",
     "maxRecursionDepth": 2,
     "maxTotalAgents": 12,

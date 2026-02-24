@@ -316,13 +316,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the maximum total agents across all depths per analysis.
-     */
-    public getMaxTotalAgents(): number {
-        return this.settings.maxTotalAgents;
-    }
-
-    /**
      * Get the analysis approach strategy.
      * "rlm" = diff-on-demand via tools, "legacy" = full diff embedded in prompt.
      */
@@ -340,7 +333,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
         this.settings.maxSubagentsPerSession =
             SUBAGENT_LIMITS.maxPerSession.default;
         this.settings.maxRecursionDepth = RECURSION_LIMITS.maxDepth.default;
-        this.settings.maxTotalAgents = RECURSION_LIMITS.maxTotalAgents.default;
         this.debouncedSaveSettings();
     }
 

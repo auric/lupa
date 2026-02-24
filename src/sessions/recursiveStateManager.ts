@@ -66,7 +66,7 @@ export interface SpawnGuardResult {
  * Budget model: Independent per-agent allocation following the RLM paper.
  * Each child gets DEFAULT_CHILD_BUDGET as its OWN iteration budget,
  * independent of the parent (not deducted from parent's budget).
- * Total compute is bounded by maxTotalAgents and maxSubagentsPerSession settings.
+ * Total compute is bounded by maxSubagentsPerSession and maxRecursionDepth settings.
  */
 export const RecursionConstants = {
     /** Below this budget a new agent is not worth spawning */
@@ -89,10 +89,7 @@ export class RecursiveStateManager {
     private readonly tree = new Map<string, RecursiveStateNode>();
     private nextChildIndex = new Map<string, number>();
 
-    constructor(
-        private readonly maxDepth: number,
-        private readonly maxTotalAgents: number
-    ) {}
+    constructor(private readonly maxDepth: number) {}
 
     /**
      * Register a new agent in the tree and return its unique ID.
@@ -213,13 +210,6 @@ export class RecursiveStateManager {
             };
         }
 
-        if (this.getTotalAgentCount() >= this.maxTotalAgents) {
-            return {
-                allowed: false,
-                reason: `Maximum total agents (${this.maxTotalAgents}) reached`,
-            };
-        }
-
         const budget = this.calculateChildBudget(parentId);
         // Future-proofing: currently always returns DEFAULT_CHILD_BUDGET (30),
         // but this guard activates if the budget model evolves (e.g., dynamic allocation).
@@ -312,7 +302,7 @@ export class RecursiveStateManager {
     /**
      * Calculate the iteration budget for a single child without mutating state.
      * RLM paper model: each child gets an independent budget, not deducted from parent.
-     * Total compute is controlled by maxTotalAgents and maxSubagentsPerSession.
+     * Total compute is controlled by maxSubagentsPerSession and maxRecursionDepth.
      */
     calculateChildBudget(parentId: string): number {
         const parent = this.tree.get(parentId);

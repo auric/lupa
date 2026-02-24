@@ -276,14 +276,14 @@ Child agents: RecursionConstants.DEFAULT_CHILD_BUDGET (30) each
               — independent of parent budget, NOT deducted from parent
 
 Total compute bounded by:
-  - maxTotalAgents (default 12): limits the total number of agents in the tree
-  - maxSubagentsPerSession: session-level hard cap across all depths
+  - maxSubagentsPerSession (default 20): session-level hard cap across all depths
+  - maxRecursionDepth (default 2): limits nesting depth
   - RecursionConstants.MIN_VIABLE_BUDGET (3): minimum to spawn a new agent
 
-Example with maxTotalAgents=12:
+Example with maxSubagentsPerSession=20:
   Root: 100 iterations
-  Up to 11 child agents, each with 30 iterations
-  Total worst-case: 100 + (11 × 30) = 430 iterations
+  Up to 20 child agents, each with 30 iterations
+  Total worst-case: 100 + (20 × 30) = 700 iterations
 ```
 
 ### 5.4 ExecutionContext Changes
@@ -348,7 +348,6 @@ interface RecursiveReviewFinding {
 class RecursiveStateManager {
     private tree: Map<string, RecursiveStateNode>;
     private maxDepth: number;
-    private maxTotalAgents: number;
 
     // Lifecycle
     registerAgent(
@@ -399,7 +398,7 @@ Hierarchical naming enables:
 ### 6.3 Loop Prevention
 
 1. **Hard depth limit**: `maxDepth` setting (default 2)
-2. **Total agent cap**: `maxTotalAgents` setting (default 12)
+2. **Session spawn cap**: `maxSubagentsPerSession` setting (default 20)
 3. **Minimum budget**: Won't spawn with < MIN_VIABLE_BUDGET (3) iterations allocated
 4. **File deduplication**: Warns if spawning agent for files already covered
 5. **Cancellation cascade**: Parent cancel → all children cancelled
@@ -754,7 +753,7 @@ Changes in `analyze()`:
 
 **Modify**: `src/services/workspaceSettingsService.ts`
 
-- Add settings: `maxRecursionDepth`, `maxTotalAgents`
+- Add settings: `maxRecursionDepth`, `maxSubagentsPerSession`
 - Add getters with defaults
 - Add to `resetAnalysisLimitsToDefaults()`
 
@@ -870,7 +869,7 @@ Key principles applied in all prompts:
 | Risk                                            | Likelihood | Impact   | Mitigation                                                                         |
 | ----------------------------------------------- | ---------- | -------- | ---------------------------------------------------------------------------------- |
 | GPT-4.1 ignores decomposition, reviews directly | Medium     | High     | Strong prompt + fallback to linear mode if no subagents spawned after 5 iterations |
-| Too many API calls (slow analysis)              | Medium     | Medium   | Budget allocation limits total calls; configurable maxTotalAgents                  |
+| Too many API calls (slow analysis)              | Medium     | Medium   | Budget allocation limits total calls; configurable maxSubagentsPerSession          |
 | Sub-agents return unstructured results          | Medium     | Low      | Structured format is prompted; parent can still use free-text                      |
 | Recursive loop (infinite spawning)              | Low        | Critical | Hard depth limit + total agent cap + budget exhaustion                             |
 | Cross-concern issues missed                     | Medium     | Medium   | Root agent does cross-concern analysis after aggregation                           |
@@ -892,7 +891,7 @@ If the root agent doesn't spawn any subagents within the first 5 iterations (det
 
 - Tree construction: register agents at various depths
 - Depth limits: reject spawns beyond maxDepth
-- Total agent limits: reject spawns beyond maxTotalAgents
+- Session spawn limits: reject spawns beyond maxSubagentsPerSession
 - Budget allocation: correct splitting at each depth
 - Minimum budget enforcement: reject spawns with < 5 iterations
 - Findings aggregation: collect findings across all agents
@@ -946,16 +945,16 @@ If the root agent doesn't spawn any subagents within the first 5 iterations (det
 ```json
 {
     "maxRecursionDepth": 2,
-    "maxTotalAgents": 12
+    "maxSubagentsPerSession": 20
 }
 ```
 
 ### Setting Definitions
 
-| Setting             | Type   | Default | Range | Description                                         |
-| ------------------- | ------ | ------- | ----- | --------------------------------------------------- |
-| `maxRecursionDepth` | number | 2       | 0-3   | Maximum recursive depth (0 = flat/current behavior) |
-| `maxTotalAgents`    | number | 12      | 1-20  | Maximum total agents across all depths per analysis |
+| Setting                  | Type   | Default | Range | Description                                         |
+| ------------------------ | ------ | ------- | ----- | --------------------------------------------------- |
+| `maxRecursionDepth`      | number | 2       | 0-3   | Maximum recursive depth (0 = flat/current behavior) |
+| `maxSubagentsPerSession` | number | 20      | 1-50  | Maximum subagent spawns per analysis                |
 
 ### Behavior When `maxRecursionDepth = 0`
 

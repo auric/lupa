@@ -58,14 +58,14 @@ export class PromptGenerator {
      * @param parsedDiff Parsed diff structure (for metadata extraction)
      * @param userInstructions Optional user-provided instructions
      * @param recursiveMode Whether to use recursive review workflow
-     * @param maxTotalAgents Maximum total agents across all depths
+     * @param maxSubagents Maximum subagents the root can spawn
      * @returns User prompt with diff metadata and tool usage instructions
      */
     public generateRlmUserPrompt(
         parsedDiff: DiffHunk[],
         userInstructions?: string,
         recursiveMode: boolean = false,
-        maxTotalAgents?: number
+        maxSubagents?: number
     ): string {
         const metadataSection = this.generateDiffMetadataSection(parsedDiff);
         const sanitizedInstructions = userInstructions
@@ -77,7 +77,7 @@ export class PromptGenerator {
         const reminder = this.generateRlmAnalysisReminder(
             parsedDiff.length,
             recursiveMode,
-            maxTotalAgents
+            maxSubagents
         );
 
         return `${metadataSection}${userFocusSection}${reminder}`;
@@ -169,10 +169,10 @@ export class PromptGenerator {
     private generateRlmAnalysisReminder(
         fileCount: number,
         recursiveMode: boolean,
-        maxTotalAgents?: number
+        maxSubagents?: number
     ): string {
         if (recursiveMode) {
-            return this.generateRecursiveRlmReminder(fileCount, maxTotalAgents);
+            return this.generateRecursiveRlmReminder(fileCount, maxSubagents);
         }
 
         const spawnSubagents = fileCount >= 4;
@@ -205,13 +205,10 @@ export class PromptGenerator {
      */
     private generateRecursiveRlmReminder(
         fileCount: number,
-        maxTotalAgents?: number
+        maxSubagents?: number
     ): string {
-        // Each sub-agent gets its own independent budget (RLM paper model).
-        // The real constraint is the total number of agents, not iteration budget math.
-        const agentLimit = maxTotalAgents
-            ? maxTotalAgents - 1 // -1 for root agent
-            : undefined;
+        // The real constraint is the total number of subagent spawns.
+        const agentLimit = maxSubagents;
 
         let reminder = '<analysis_task>\n';
         reminder += `Review the ${fileCount} changed file(s) in this PR.\n\n`;

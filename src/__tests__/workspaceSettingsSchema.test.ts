@@ -41,7 +41,6 @@ describe('WorkspaceSettingsSchema', () => {
                 expect(result.data).toEqual({
                     ...validSettings,
                     maxRecursionDepth: RECURSION_LIMITS.maxDepth.default,
-                    maxTotalAgents: RECURSION_LIMITS.maxTotalAgents.default,
                     analysisApproach: 'rlm',
                 });
             }
@@ -180,35 +179,6 @@ describe('WorkspaceSettingsSchema', () => {
             expect(
                 WorkspaceSettingsSchema.safeParse({
                     maxRecursionDepth: RECURSION_LIMITS.maxDepth.max + 1,
-                }).success
-            ).toBe(false);
-        });
-
-        it('should accept valid maxTotalAgents values', () => {
-            for (const agents of [
-                RECURSION_LIMITS.maxTotalAgents.min,
-                RECURSION_LIMITS.maxTotalAgents.default,
-                RECURSION_LIMITS.maxTotalAgents.max,
-            ]) {
-                const result = WorkspaceSettingsSchema.safeParse({
-                    maxTotalAgents: agents,
-                });
-                expect(result.success).toBe(true);
-                if (result.success) {
-                    expect(result.data.maxTotalAgents).toBe(agents);
-                }
-            }
-        });
-
-        it('should reject maxTotalAgents outside bounds', () => {
-            expect(
-                WorkspaceSettingsSchema.safeParse({
-                    maxTotalAgents: RECURSION_LIMITS.maxTotalAgents.min - 1,
-                }).success
-            ).toBe(false);
-            expect(
-                WorkspaceSettingsSchema.safeParse({
-                    maxTotalAgents: RECURSION_LIMITS.maxTotalAgents.max + 1,
                 }).success
             ).toBe(false);
         });
