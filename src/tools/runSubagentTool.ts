@@ -142,6 +142,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     childBudget
                 );
             } catch (error) {
+                sessionManager.rollbackSpawn();
                 Log.error(
                     `Failed to register agent in recursive tree: ${getErrorMessage(error)}`
                 );

@@ -1084,6 +1084,8 @@ describe('RunSubagentTool', () => {
             expect(result.success).toBe(false);
             expect(result.error).toContain('Failed to register subagent');
             expect(mockExecutor.execute).not.toHaveBeenCalled();
+            // Spawn count should be rolled back so the budget slot isn't consumed
+            expect(sessionManager.getCount()).toBe(0);
         });
     });
 });

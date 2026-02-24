@@ -137,14 +137,14 @@ LLM calls submit_review → Final review output
 
 ### 3.4 Key Limitations Identified
 
-| Limitation                 | Impact                              | RLM Solution                                     |
-| -------------------------- | ----------------------------------- | ------------------------------------------------ |
-| Full diff in root context  | Context rot on large PRs            | Root decomposes, children inspect                |
-| Flat subagent structure    | Can't follow deep dependency chains | Recursive depth (max 2-3)                        |
-| Free-text subagent results | Parent wastes tokens parsing        | Structured summary protocol                      |
-| All-in-one review          | One bad agent = no review           | Multiple focused agents, partial results         |
-| Fixed iteration budget     | Not allocated efficiently           | Depth-aware budget splitting                     |
-| Subagents can't see diff   | Limits their usefulness             | Children receive relevant diff hunks via context |
+| Limitation                 | Impact                              | RLM Solution                                           |
+| -------------------------- | ----------------------------------- | ------------------------------------------------------ |
+| Full diff in root context  | Context rot on large PRs            | Root decomposes, children inspect                      |
+| Flat subagent structure    | Can't follow deep dependency chains | Recursive depth (max 2-3)                              |
+| Free-text subagent results | Parent wastes tokens parsing        | Structured summary protocol                            |
+| All-in-one review          | One bad agent = no review           | Multiple focused agents, partial results               |
+| Fixed iteration budget     | Not allocated efficiently           | Independent per-agent budget (DEFAULT_CHILD_BUDGET=30) |
+| Subagents can't see diff   | Limits their usefulness             | Children receive relevant diff hunks via context       |
 
 ---
 
@@ -375,7 +375,7 @@ class RecursiveStateManager {
     getTreeSummary(): string;
 
     // Budget
-    allocateChildBudget(parentId: string, numChildren: number): number;
+    allocateChildBudget(parentId: string): number;
 }
 ```
 
@@ -400,7 +400,7 @@ Hierarchical naming enables:
 
 1. **Hard depth limit**: `maxDepth` setting (default 2)
 2. **Total agent cap**: `maxTotalAgents` setting (default 12)
-3. **Minimum budget**: Won't spawn with < 5 iterations allocated
+3. **Minimum budget**: Won't spawn with < MIN_VIABLE_BUDGET (3) iterations allocated
 4. **File deduplication**: Warns if spawning agent for files already covered
 5. **Cancellation cascade**: Parent cancel → all children cancelled
 

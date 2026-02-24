@@ -535,9 +535,9 @@ export class ChatParticipantService implements vscode.Disposable {
             const msg =
                 `Model "${request.model.name}" has ${request.model.maxInputTokens} tokens — ` +
                 `RLM mode works best with larger context models (50K+). ` +
-                `Consider setting "analysisApproach": "legacy" in lupa.json for this model.`;
+                `Analysis quality may be limited. Consider using a model with a larger context window.`;
             Log.warn(msg);
-            stream.progress(`⚠️ ${msg}`);
+            stream.progress(`\u26A0\uFE0F ${msg}`);
         }
 
         // Create RecursiveStateManager when in recursive mode

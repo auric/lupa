@@ -27,6 +27,16 @@ export class SubagentSessionManager {
         return this.count;
     }
 
+    /**
+     * Roll back a spawn when post-spawn registration fails.
+     * Decrements the count so the budget slot isn't permanently consumed.
+     */
+    rollbackSpawn(): void {
+        if (this.count > 0) {
+            this.count--;
+        }
+    }
+
     getCount(): number {
         return this.count;
     }

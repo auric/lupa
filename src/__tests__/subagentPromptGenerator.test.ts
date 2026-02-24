@@ -137,5 +137,81 @@ describe('SubagentPromptGenerator', () => {
             expect(prompt).not.toContain('### Diff Access');
             expect(prompt).toContain('CANNOT see the PR diff');
         });
+
+        describe('canRecurse=true', () => {
+            const diffTools = [
+                createMockTool('list_changed_files', 'List all changed files'),
+                createMockTool('get_file_diff', 'Get diff for specific files'),
+                createMockTool('find_symbol', 'Finds symbols in code'),
+                createMockTool('run_subagent', 'Spawn a sub-agent'),
+            ];
+
+            it('should include decomposition strategy when canRecurse with diff tools', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain('Decomposition Strategy');
+                expect(prompt).toContain('You CAN Spawn Sub-Agents');
+                expect(prompt).toContain('run_subagent');
+            });
+
+            it('should show file-count-based investigation guidance', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain('1-3 files');
+                expect(prompt).toContain('4+ files');
+                expect(prompt).not.toContain('Read the Diff FIRST');
+            });
+
+            it('should not include recursion limit message', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).not.toContain('maximum recursion depth');
+                expect(prompt).not.toContain('cannot');
+            });
+
+            it('should show recursion limit when canRecurse=false', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    false
+                );
+
+                expect(prompt).toContain('Recursion Limit');
+                expect(prompt).toContain('cannot');
+                expect(prompt).not.toContain('Decomposition Strategy');
+            });
+
+            it('should include maxIterations in decomposition prompt', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    25,
+                    true
+                );
+
+                expect(prompt).toContain('25 iterations');
+            });
+        });
     });
 });

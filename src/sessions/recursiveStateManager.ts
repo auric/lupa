@@ -221,6 +221,8 @@ export class RecursiveStateManager {
         }
 
         const budget = this.calculateChildBudget(parentId);
+        // Future-proofing: currently always returns DEFAULT_CHILD_BUDGET (30),
+        // but this guard activates if the budget model evolves (e.g., dynamic allocation).
         if (budget < RecursionConstants.MIN_VIABLE_BUDGET) {
             return {
                 allowed: false,
@@ -245,12 +247,13 @@ export class RecursiveStateManager {
 
     /**
      * Check if a file is already being analyzed by another agent.
+     * Includes failed/cancelled agents since they already examined the file.
      */
     isFileAlreadyCovered(file: string): boolean {
         for (const node of this.tree.values()) {
             if (
                 node.filesExamined.includes(file) &&
-                (node.status === 'running' || node.status === 'completed')
+                node.status !== 'pending'
             ) {
                 return true;
             }
@@ -261,7 +264,7 @@ export class RecursiveStateManager {
     getCoveredFiles(): Set<string> {
         const files = new Set<string>();
         for (const node of this.tree.values()) {
-            if (node.status === 'running' || node.status === 'completed') {
+            if (node.status !== 'pending') {
                 for (const file of node.filesExamined) {
                     files.add(file);
                 }

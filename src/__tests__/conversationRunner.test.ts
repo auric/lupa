@@ -1777,5 +1777,51 @@ describe('ConversationRunner', () => {
             const result = await resultPromise;
             expect(result).toBe('Success');
         });
+
+        it('should not retry non-rate-limit errors with backoff', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(
+                            new Error('Internal server error')
+                        );
+                    }
+                    return Promise.resolve({
+                        content: 'Recovery',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 3,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // No timer advancement needed — non-rate-limit errors don't backoff sleep
+            const result = await resultPromise;
+
+            // Error consumed an iteration (unlike rate-limit which doesn't),
+            // then the next iteration succeeded
+            expect(result).toBe('Recovery');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+        });
     });
 });

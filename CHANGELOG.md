@@ -14,18 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **RLM mode no longer disables tools for large diffs**: `processDiffSize()` was calculating token usage using the legacy full-diff prompt even in RLM mode, causing tools to be disabled for large PRs. RLM mode now always keeps tools enabled since diff is accessed on-demand.
 - **Tool response limit tripled** (`MAX_TOOL_RESPONSE_CHARS`: 20K → 60K): Large file diffs (e.g., docs, generated code) no longer rejected by the response size validator.
 - **File read limit doubled** (`MAX_FILE_READ_LINES`: 200 → 400): LLM can read larger file sections in a single call.
-- **Budget increased** (`DEFAULT_CHILD_BUDGET`: 15 → 20, `MIN_VIABLE_BUDGET`: 5 → 3): Subagents get 20 iterations each (up from 15) for meaningful investigation. Root can spawn 5 children from 100 iterations.
+- **Budget increased** (`DEFAULT_CHILD_BUDGET`: 15 → 30, `MIN_VIABLE_BUDGET`: 5 → 3): Subagents get 30 iterations each (up from 15) for meaningful investigation.
 - **Removed dead `iterationsUsed` field**: Never-incremented field removed from `RecursiveStateNode`.
 - **Workflow: examine diffs before planning**: Both recursive and non-recursive RLM prompts now instruct the LLM to read key file diffs before creating the review plan, preventing blind decomposition.
 - **Rate limit backoff**: `ConversationRunner` now detects `ChatRateLimited` errors and retries with exponential backoff (2s → 30s, up to 5 retries) without burning iterations. Previously, rate limit errors consumed an iteration each and retried immediately.
 - **Max iterations error shows actual budget**: `RunSubagentTool` error message now reports the child's allocated budget (e.g., 20) instead of the global `maxIterations` setting (e.g., 100).
 - **Root agent plans from metadata, not diffs**: Recursive root no longer calls `get_file_diff` — it decomposes from `<diff_metadata>` and `list_changed_files` metadata only. Subagents read diffs themselves via `get_file_diff`. Keeps root context clean for aggregation.
 - **Subagents skip `list_changed_files`**: Subagent diff prompt now starts with `get_file_diff` for assigned files instead of wasting an iteration listing all changed files.
-- **Small model warning**: When using RLM mode with a model under 50K context tokens, logs a warning suggesting `"analysisApproach": "legacy"` for better results.
+- **Small model warning**: When using RLM mode with a model under 50K context tokens, logs a warning recommending a larger context model.
 
 #### Recursive Review
 
-- **Budget model: flat allocation replaces exponential decay**: Replaced the `CHILD_BUDGET_RATIO` model (each child got 60% of remaining, causing rapid depletion after 3 spawns) with flat per-child allocation (`DEFAULT_CHILD_BUDGET=20`). Root with 100 iterations can now spawn 5 children consistently.
+- **Budget model: flat allocation replaces exponential decay**: Replaced the `CHILD_BUDGET_RATIO` model (each child got 60% of remaining, causing rapid depletion after 3 spawns) with flat per-child allocation (`DEFAULT_CHILD_BUDGET=30`). Each child gets its own independent 30-iteration budget.
 - **Budget now controls child iteration limits**: Allocated budget is passed to `SubagentExecutor` as `maxIterations`, so children actually respect their budget instead of all getting the full global limit.
 - **find_usages handles LocationLink responses**: `vscode.executeDefinitionProvider` can return `LocationLink` (with `targetUri`/`targetRange`) not just `Location` (with `uri`/`range`). Added proper type discrimination instead of optional chaining that silently lost valid definitions.
 - **Recursive agent prefix uses hierarchical IDs**: Subagent progress in chat now shows `🔹 child-1:` or `🔹 child-1.1:` instead of cryptic `L1#1` format.

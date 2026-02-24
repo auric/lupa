@@ -91,6 +91,37 @@ describe('SubagentSessionManager', () => {
         });
     });
 
+    describe('Rollback', () => {
+        it('should decrement count on rollback', () => {
+            sessionManager.recordSpawn();
+            sessionManager.recordSpawn();
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.getCount()).toBe(1);
+        });
+
+        it('should restore remaining budget on rollback', () => {
+            sessionManager.recordSpawn();
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
+        });
+
+        it('should re-allow spawning after rollback from limit', () => {
+            for (let i = 0; i < defaultMax; i++) {
+                sessionManager.recordSpawn();
+            }
+            expect(sessionManager.canSpawn()).toBe(false);
+
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.canSpawn()).toBe(true);
+        });
+
+        it('should not decrement below zero', () => {
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.getCount()).toBe(0);
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
+        });
+    });
+
     describe('Reset', () => {
         it('should reset count to zero', () => {
             sessionManager.recordSpawn();
