@@ -20,6 +20,12 @@ export type AgentStatus =
     | 'failed'
     | 'cancelled';
 
+const TERMINAL_STATUSES: ReadonlySet<AgentStatus> = new Set([
+    'completed',
+    'failed',
+    'cancelled',
+]);
+
 /**
  * A single finding reported by a recursive review agent.
  */
@@ -160,6 +166,12 @@ export class RecursiveStateManager {
             Log.warn(`completeAgent called with unknown agentId: "${agentId}"`);
             return;
         }
+        if (TERMINAL_STATUSES.has(node.status)) {
+            Log.warn(
+                `completeAgent: agent "${agentId}" already in terminal state "${node.status}", ignoring`
+            );
+            return;
+        }
         node.status = 'completed';
         node.findings = findings;
         node.filesExamined = filesExamined;
@@ -172,6 +184,12 @@ export class RecursiveStateManager {
             Log.warn(`failAgent called with unknown agentId: "${agentId}"`);
             return;
         }
+        if (TERMINAL_STATUSES.has(node.status)) {
+            Log.warn(
+                `failAgent: agent "${agentId}" already in terminal state "${node.status}", ignoring`
+            );
+            return;
+        }
         node.status = 'failed';
         node.endTime = Date.now();
     }
@@ -180,6 +198,12 @@ export class RecursiveStateManager {
         const node = this.getNode(agentId);
         if (!node) {
             Log.warn(`cancelAgent called with unknown agentId: "${agentId}"`);
+            return;
+        }
+        if (TERMINAL_STATUSES.has(node.status)) {
+            Log.warn(
+                `cancelAgent: agent "${agentId}" already in terminal state "${node.status}", ignoring`
+            );
             return;
         }
         node.status = 'cancelled';
@@ -236,14 +260,15 @@ export class RecursiveStateManager {
     }
 
     /**
-     * Check if a file is already being analyzed by another agent.
-     * Includes failed/cancelled agents since they already examined the file.
+     * Check if a file was successfully analyzed by a completed agent.
+     * Only completed agents count — failed/cancelled agents may not have
+     * actually examined their assigned files.
      */
     isFileAlreadyCovered(file: string): boolean {
         for (const node of this.tree.values()) {
             if (
                 node.filesExamined.includes(file) &&
-                node.status !== 'pending'
+                node.status === 'completed'
             ) {
                 return true;
             }
@@ -254,7 +279,7 @@ export class RecursiveStateManager {
     getCoveredFiles(): Set<string> {
         const files = new Set<string>();
         for (const node of this.tree.values()) {
-            if (node.status !== 'pending') {
+            if (node.status === 'completed') {
                 for (const file of node.filesExamined) {
                     files.add(file);
                 }

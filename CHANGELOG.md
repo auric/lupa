@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Finding audit in analysis methodology**: Added `finding_audit` step to "Before conclusions" checkpoint — 5 verification questions (tool-verified? concrete scenario? checked callers? searched for existing handling? intentional design?) with instruction to drop failing findings.
 - **`hasDiffTools` in `PromptBuilder` uses `DIFF_TOOLS.every()`**: Consistent with `SubagentPromptGenerator` — requires both diff tools, not just `list_changed_files`.
 
+#### Recursive State Manager Hardening
+
+- **Lifecycle transition guards**: `completeAgent()`, `failAgent()`, and `cancelAgent()` now ignore calls on agents already in a terminal state (`completed`, `failed`, `cancelled`), logging a warning instead of silently overwriting state.
+- **Root agent lifecycle completion**: Both `ToolCallingAnalysisProvider` and `ChatParticipantService` now complete/fail/cancel the root agent in their `finally` blocks, so the recursive state tree accurately reflects the analysis outcome.
+- **File coverage only counts completed agents**: `isFileAlreadyCovered()` and `getCoveredFiles()` now check `status === 'completed'` instead of `status !== 'pending'`, ensuring failed/cancelled agents don't incorrectly mark files as analyzed.
+
 #### Prompt Hygiene
 
 - **File path sanitization in prompts**: Angle brackets (`<>`) in file paths are now stripped before injecting into prompt metadata and file content XML, preventing paths like `src/</path>` from breaking prompt tag structure.
@@ -90,14 +96,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added test for `RunSubagentTool` parsedDiff propagation to executor.
 - Added tests for finding quality guidance: verification gates in PR review prompt, counterexample requirement, false positive examples, finding audit in self-reflection, subagent finding quality guidance with scope/scenario/search checks.
 - Fixed `hasDiffTools` test to provide both diff tools (was only providing `list_changed_files`).
+- Added tests for lifecycle transition guards: ignore complete on already-completed/cancelled, ignore fail on already-completed, ignore cancel on already-failed.
+- Added test for budget == `MIN_VIABLE_BUDGET` boundary (allowed, not rejected).
+- Added tests for file coverage: failed and cancelled agents do not mark files as covered.
 
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.
 - **Parallel tool-calling prompt**: Subagent prompts include guidance for batching independent tool calls. Root agent and standard review prompts retain concise parallel hints to avoid over-preparation with models that cannot execute parallel tool calls.
-- **Removed `maxTotalAgents` setting**: Consolidated redundant agent limits. `maxSubagentsPerSession` (default 20) is the single spawn cap — it already works in both flat and recursive modes. `maxRecursionDepth` controls nesting depth separately. The separate tree-size limit added confusion without providing distinct value.
+- **Removed `maxTotalAgents` setting**: Consolidated redundant agent limits. `maxSubagentsPerSession` (default 30) is the single spawn cap — it already works in both flat and recursive modes. `maxRecursionDepth` controls nesting depth separately. The separate tree-size limit added confusion without providing distinct value.
 - **README version badge**: Updated from 0.1.11 to 0.2.0.
 - **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
+- **Documentation**: Fixed `maxSubagentsPerSession` in `docs/architecture.md` — sample config showed 3 and prose said "default 20", both corrected to 30 (actual default). Strengthened delegation rules language to match prompt strength (MUST, MANDATORY).
+- **Documentation**: Added small-context-model warning note to README Analysis Approach section.
 - **Documentation**: Updated `docs/rlm-transition-plan.md` Section 13 to reflect actual flat-allocation constants (`RecursionConstants`) replacing the planned ratio-based model.
 - **Documentation**: Added `RecursiveStateManager` to component inventory; linked `rlm-transition-plan.md` in docs index.
 

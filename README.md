@@ -152,6 +152,8 @@ Lupa supports two analysis strategies, controlled by the `analysisApproach` sett
 
 The RLM approach is inspired by the [Recursive Language Models paper](https://arxiv.org/abs/2512.24601) — the key insight is that LLMs work better when they actively explore context on demand rather than passively receiving it all at once. This prevents "context rot" on large PRs and allows the LLM to prioritize which files to examine.
 
+> **Note:** When using RLM mode with a model under 50K context tokens, Lupa logs a warning recommending a larger context model for best results.
+
 ### Recursive Review Mode
 
 When `maxRecursionDepth` is set to 1 or higher (and `analysisApproach` is `rlm`), Lupa uses recursive review mode:

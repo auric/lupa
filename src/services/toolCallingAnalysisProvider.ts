@@ -335,7 +335,16 @@ export class ToolCallingAnalysisProvider {
         } finally {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
-            // No other cleanup needed - all per-analysis instances are garbage collected
+            // Complete root agent lifecycle in recursive state tree
+            if (recursiveState) {
+                if (analysisCompleted) {
+                    recursiveState.completeAgent('root');
+                } else if (analysisError) {
+                    recursiveState.failAgent('root', analysisError);
+                } else {
+                    recursiveState.cancelAgent('root');
+                }
+            }
         }
 
         return this.buildAnalysisResult(

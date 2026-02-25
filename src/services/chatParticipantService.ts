@@ -659,6 +659,8 @@ export class ChatParticipantService implements vscode.Disposable {
             };
         } finally {
             subagentSessionManager.setParentCancellationToken(undefined);
+            // Complete root agent lifecycle in recursive state tree
+            recursiveState?.completeAgent('root');
         }
     }
 

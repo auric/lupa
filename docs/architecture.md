@@ -598,7 +598,7 @@ File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOvervi
 {
     "maxIterations": 25,
     "requestTimeoutSeconds": 180,
-    "maxSubagentsPerSession": 3,
+    "maxSubagentsPerSession": 30,
     "preferredModelIdentifier": "copilot/gpt-4.1"
 }
 ```
@@ -618,9 +618,9 @@ Lupa supports two analysis approaches, configured via `analysisApproach`:
 | ------------------- | ------- | ---------------------------------------------------- |
 | `maxRecursionDepth` | 2       | Maximum agent depth (0 = no recursion, 1+ = enabled) |
 
-Total spawns per analysis are capped by `maxSubagentsPerSession` (default 20).
+Total spawns per analysis are capped by `maxSubagentsPerSession` (default 30).
 
-**Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then delegates all investigation to sub-agents via `run_subagent`. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` must further decompose when assigned 4+ files.
+**Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
 
 **Non-recursive RLM mode** (`maxRecursionDepth === 0`): Subagent guidance adapts to tool availability — when diff tools are present, the prompt tells the LLM that subagents _can_ read diffs via `get_file_diff`, instead of the legacy constraint "subagents cannot see the diff."
 

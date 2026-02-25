@@ -140,6 +140,57 @@ describe('RecursiveStateManager', () => {
 
             expect(manager.getNode('root')!.status).toBe('cancelled');
         });
+
+        it('should ignore completeAgent on already-completed agent', () => {
+            manager.startAgent('root');
+            manager.completeAgent(
+                'root',
+                [
+                    {
+                        severity: 'high',
+                        category: 'bug',
+                        file: 'a.ts',
+                        line: 1,
+                        title: 'First',
+                        description: '',
+                        confidence: 'verified',
+                        agentId: 'root',
+                    },
+                ],
+                ['a.ts']
+            );
+
+            // Second complete should be ignored — findings stay from first call
+            manager.completeAgent('root', [], ['b.ts']);
+            expect(manager.getNode('root')!.status).toBe('completed');
+            expect(manager.getNode('root')!.findings).toHaveLength(1);
+            expect(manager.getNode('root')!.filesExamined).toEqual(['a.ts']);
+        });
+
+        it('should ignore failAgent on already-completed agent', () => {
+            manager.startAgent('root');
+            manager.completeAgent('root', [], []);
+
+            manager.failAgent('root', 'late error');
+            expect(manager.getNode('root')!.status).toBe('completed');
+        });
+
+        it('should ignore cancelAgent on already-failed agent', () => {
+            manager.startAgent('root');
+            manager.failAgent('root', 'error');
+
+            manager.cancelAgent('root');
+            expect(manager.getNode('root')!.status).toBe('failed');
+        });
+
+        it('should ignore completeAgent on already-cancelled agent', () => {
+            manager.startAgent('root');
+            manager.cancelAgent('root');
+
+            manager.completeAgent('root', [], ['file.ts']);
+            expect(manager.getNode('root')!.status).toBe('cancelled');
+            expect(manager.getNode('root')!.filesExamined).toEqual([]);
+        });
     });
 
     describe('canSpawnChild', () => {
@@ -225,6 +276,17 @@ describe('RecursiveStateManager', () => {
             const result = manager.canSpawnChild('root');
             expect(result.allowed).toBe(false);
             expect(result.reason).toContain('Insufficient budget');
+
+            spy.mockRestore();
+        });
+
+        it('should allow spawning when budget equals MIN_VIABLE_BUDGET', () => {
+            const spy = vi
+                .spyOn(manager, 'calculateChildBudget')
+                .mockReturnValue(RecursionConstants.MIN_VIABLE_BUDGET);
+
+            const result = manager.canSpawnChild('root');
+            expect(result.allowed).toBe(true);
 
             spy.mockRestore();
         });
@@ -334,6 +396,37 @@ describe('RecursiveStateManager', () => {
             // Root is still pending, not running/completed
 
             expect(manager.isFileAlreadyCovered('file1.ts')).toBe(false);
+        });
+
+        it('should not include files from failed agents', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.completeAgent('root', [], ['file1.ts']);
+
+            const childId = manager.registerAgent('root', 'Child', 10);
+            manager.startAgent(childId);
+            // Child fails — its files should NOT be marked as covered
+            manager.failAgent(childId, 'error');
+
+            // Root's file is covered (completed), but child has no files since failAgent doesn't set them
+            expect(manager.isFileAlreadyCovered('file1.ts')).toBe(true);
+
+            const covered = manager.getCoveredFiles();
+            expect(covered).toEqual(new Set(['file1.ts']));
+        });
+
+        it('should not include files from cancelled agents', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.completeAgent('root', [], ['a.ts']);
+
+            const childId = manager.registerAgent('root', 'Child', 10);
+            manager.startAgent(childId);
+            manager.cancelAgent(childId);
+
+            // Only completed agent's files counted
+            const covered = manager.getCoveredFiles();
+            expect(covered).toEqual(new Set(['a.ts']));
         });
     });
 
