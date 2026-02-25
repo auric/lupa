@@ -53,6 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`get_file_diff` exact-match priority**: Exact path matches are now preferred over suffix matches. Previously, requesting `Button.tsx` when both `Button.tsx` and `src/components/Button.tsx` existed would return an ambiguous error instead of the exact match.
 - **Diff tool detection checks both tools**: `SubagentPromptGenerator.hasDiffTools` now verifies both `list_changed_files` and `get_file_diff` are present (via `DIFF_TOOLS.every()`), instead of only checking for `list_changed_files`. Prevents stale prompt instructions if tools are ever registered independently.
 
+#### Finding Quality (False Positive Reduction)
+
+- **New `findingQualityGuidance` prompt block**: Added verification gates per claim type (missing error handling, arithmetic overflow, missing tests, etc.), counterexample requirements for "X can fail" findings, false positive pattern examples, and confidence-severity matrix binding (SPECULATIVE ≤ LOW, CRITICAL requires VERIFIED).
+- **Subagent finding quality guidance**: Compact 5-rule verification checklist added to subagent investigation prompts — verify scope, prove it, search first, check callers, consider intent.
+- **Self-reflection enhanced with finding validation**: `think_about_task` articulation in both PR review and recursive modes now includes `findings_validated` checkpoint, prompting the LLM to audit finding quality before concluding.
+- **Finding audit in analysis methodology**: Added `finding_audit` step to "Before conclusions" checkpoint — 5 verification questions (tool-verified? concrete scenario? checked callers? searched for existing handling? intentional design?) with instruction to drop failing findings.
+- **`hasDiffTools` in `PromptBuilder` uses `DIFF_TOOLS.every()`**: Consistent with `SubagentPromptGenerator` — requires both diff tools, not just `list_changed_files`.
+
 #### Prompt Hygiene
 
 - **File path sanitization in prompts**: Angle brackets (`<>`) in file paths are now stripped before injecting into prompt metadata and file content XML, preventing paths like `src/</path>` from breaking prompt tag structure.
@@ -80,6 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for diff content sanitization: angle brackets stripped from hunk headers and content lines.
 - Added tests for `ReadFileTool` EOF clamping: `end_line` and `line_count` past file length are silently clamped.
 - Added test for `RunSubagentTool` parsedDiff propagation to executor.
+- Added tests for finding quality guidance: verification gates in PR review prompt, counterexample requirement, false positive examples, finding audit in self-reflection, subagent finding quality guidance with scope/scenario/search checks.
+- Fixed `hasDiffTools` test to provide both diff tools (was only providing `list_changed_files`).
 
 ### Changed
 

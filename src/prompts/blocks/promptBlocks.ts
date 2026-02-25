@@ -28,3 +28,4 @@ export {
     generateRecursiveSelfReflectionGuidance,
     generateExplorationReflectionGuidance,
 } from './selfReflection';
+export { generateFindingQualityGuidance } from './findingQualityGuidance';

@@ -16,7 +16,9 @@ import {
     generateRecursiveRootRole,
     generateRecursiveMethodology,
     generateRecursiveToolGuide,
+    generateFindingQualityGuidance,
 } from './blocks/promptBlocks';
+import { DIFF_TOOLS } from '../models/toolConstants';
 
 /**
  * Builder for composing system prompts from modular blocks.
@@ -169,6 +171,11 @@ export class PromptBuilder {
         return this;
     }
 
+    addFindingQualityGuidance(): this {
+        this.sections.push(generateFindingQualityGuidance());
+        return this;
+    }
+
     /**
      * Add a custom section.
      */
@@ -199,12 +206,15 @@ export class PromptBuilder {
  * Create a pre-configured builder for PR review prompts.
  */
 export function createPRReviewPromptBuilder(tools: ITool[]): PromptBuilder {
-    const hasDiffTools = tools.some((t) => t.name === 'list_changed_files');
+    const hasDiffTools = DIFF_TOOLS.every((name) =>
+        tools.some((t) => t.name === name)
+    );
     return new PromptBuilder()
         .addPRReviewerRole()
         .addToolInventory(tools)
         .addPRToolGuide()
         .addSubagentGuidance(hasDiffTools)
+        .addFindingQualityGuidance()
         .addSelfReflection()
         .addAnalysisMethodology()
         .addPROutputFormat();
@@ -236,6 +246,7 @@ export function createRecursiveRootPromptBuilder(
         .addToolInventory(tools)
         .addRecursiveToolGuide()
         .addRecursiveMethodology()
+        .addFindingQualityGuidance()
         .addRecursiveSelfReflection()
         .addPROutputFormat();
 }

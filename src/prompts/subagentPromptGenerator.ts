@@ -2,6 +2,7 @@ import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 import { DIFF_TOOLS } from '../models/toolConstants';
+import { generateSubagentFindingQualityGuidance } from './blocks/findingQualityGuidance';
 
 /**
  * Generates focused system prompts for subagent investigations.
@@ -190,6 +191,7 @@ ${hasDiffTools ? '- Use `list_changed_files` and `get_file_diff` to access the P
 **Self-Reflection:**
 - Use \`think_about_investigation\` to check if you're staying focused
 - Return partial findings if running low on iterations - partial evidence is valuable
+${generateSubagentFindingQualityGuidance()}
 </constraints>`;
     }
 

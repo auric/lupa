@@ -51,6 +51,7 @@ At each checkpoint, **explicitly articulate** your current state—don't just ac
 **Before conclusions** → \`think_about_task\`:
 - analysis_focus: What are you analyzing?
 - issues_found: List with file, description, severity
+- finding_audit: For each issue — did I verify with tools? Can I provide a concrete failing scenario? Should I downgrade or drop any?
 - areas_needing_investigation: What's not covered?
 - decision: Are you ready or need more work?
 

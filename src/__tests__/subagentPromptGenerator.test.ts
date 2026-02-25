@@ -296,5 +296,29 @@ describe('SubagentPromptGenerator', () => {
                 );
             });
         });
+
+        describe('finding quality guidance', () => {
+            it('should include finding quality guidance in subagent prompt', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool(
+                        'list_changed_files',
+                        'List all changed files'
+                    ),
+                    createMockTool(
+                        'get_file_diff',
+                        'Get diff for specific files'
+                    ),
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 30);
+
+                expect(prompt).toContain('Finding Quality');
+                expect(prompt).toContain('Verify scope');
+                expect(prompt).toContain('Prove it');
+                expect(prompt).toContain('Search first');
+                expect(prompt).toContain('Consider intent');
+            });
+        });
     });
 });

@@ -265,9 +265,22 @@ describe('ToolAwareSystemPromptGenerator', () => {
                 execute: async () => ({ success: true, data: '' }),
             };
 
+            const diffTool2: ITool = {
+                name: 'get_file_diff',
+                description: 'Get file diff',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'get_file_diff',
+                    description: '',
+                    parametersSchema: {} as any,
+                }),
+                execute: async () => ({ success: true, data: '' }),
+            };
+
             const prompt = generator.generateSystemPrompt([
                 ...mockTools,
                 diffTool,
+                diffTool2,
             ]);
 
             expect(prompt).toContain('Subagent Diff Access');

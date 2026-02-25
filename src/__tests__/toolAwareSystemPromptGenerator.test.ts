@@ -139,4 +139,52 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(toneEnd).toBeGreaterThan(toneStart);
         });
     });
+
+    describe('finding quality guidance', () => {
+        it('should include finding quality section in PR review prompt', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('<finding_quality>');
+            expect(prompt).toContain('</finding_quality>');
+        });
+
+        it('should include verification gates for common claim types', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Verification Gates');
+            expect(prompt).toContain('Missing error handling');
+            expect(prompt).toContain('Missing test for X');
+            expect(prompt).toContain('Design inconsistency');
+        });
+
+        it('should require counterexamples for "can fail" findings', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Counterexample Requirement');
+            expect(prompt).toContain('Concrete scenario');
+            expect(prompt).toContain('drop the finding');
+        });
+
+        it('should include confidence-severity matrix', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Confidence Levels');
+            expect(prompt).toContain('VERIFIED');
+            expect(prompt).toContain('SPECULATIVE');
+        });
+
+        it('should include false positive anti-pattern examples', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('False Positive Patterns');
+            expect(prompt).toContain('outer scope already handles');
+            expect(prompt).toContain('without searching the test directory');
+        });
+
+        it('should include finding quality in recursive root prompt', () => {
+            const prompt = generator.generateRecursiveSystemPrompt([]);
+            expect(prompt).toContain('<finding_quality>');
+            expect(prompt).toContain('Verification Gates');
+        });
+
+        it('should include finding audit in self-reflection think_about_task', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('finding_audit');
+        });
+    });
 });
