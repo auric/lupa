@@ -26,6 +26,7 @@ import type { SubagentSessionManager } from './subagentSessionManager';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { DIFF_TOOLS } from '../models/toolConstants';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
@@ -139,8 +140,9 @@ export class SubagentExecutor {
             if (!options?.parsedDiff?.length) {
                 filteredTools = filteredTools.filter(
                     (t) =>
-                        t.name !== 'list_changed_files' &&
-                        t.name !== 'get_file_diff'
+                        !DIFF_TOOLS.includes(
+                            t.name as (typeof DIFF_TOOLS)[number]
+                        )
                 );
             }
 

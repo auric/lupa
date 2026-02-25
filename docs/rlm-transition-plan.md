@@ -962,12 +962,15 @@ Identical to current linear behavior. SubagentExecutor uses existing DISALLOWED_
 
 ### Constants (Non-Configurable)
 
+> **Note**: The original plan used a ratio-based budget model (ROOT_BUDGET_RATIO, CHILD_BUDGET_RATIO).
+> During implementation this was replaced with flat per-child allocation to avoid exponential budget depletion after 3+ spawns.
+
 ```typescript
 const RecursionConstants = {
-    MIN_VIABLE_BUDGET: 5, // Min iterations for a new agent
-    ROOT_BUDGET_RATIO: 0.4, // Root keeps 40% of total budget
-    CHILD_BUDGET_RATIO: 0.6, // Children get 60% of parent's remaining
-    FALLBACK_ITERATION_THRESHOLD: 5, // Fall back to linear if no subagents after N iterations
+    MIN_VIABLE_BUDGET: 3, // Min iterations to justify spawning a new agent
+    DEFAULT_CHILD_BUDGET: 30, // Each child gets a flat 30-iteration budget (independent of parent)
+    TIMEOUT_PER_ITERATION_MS: 30_000, // ~30s per iteration for subagent timeout calculation
+    MIN_SUBAGENT_TIMEOUT_MS: 120_000, // 2-minute minimum timeout floor
 };
 ```
 

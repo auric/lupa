@@ -260,8 +260,9 @@ export class PromptGenerator {
             fileContentXml += `<file>\n<path>${sanitizedPath}</path>\n<changes>\n`;
 
             for (const hunk of fileDiff.hunks) {
-                // Use the stored hunk header instead of regex matching
-                fileContentXml += `${hunk.hunkHeader}\n`;
+                // Sanitize hunk header to prevent prompt-structural interference
+                const sanitizedHeader = hunk.hunkHeader.replace(/[<>]/g, '');
+                fileContentXml += `${sanitizedHeader}\n`;
 
                 // Reconstruct diff lines from parsed data
                 const diffLines = hunk.parsedLines.map((parsedLine) => {
@@ -271,7 +272,9 @@ export class PromptGenerator {
                             : parsedLine.type === 'removed'
                               ? '-'
                               : ' ';
-                    return prefix + parsedLine.content;
+                    // Sanitize diff content to prevent angle brackets from
+                    // interfering with the XML-like prompt structure
+                    return prefix + parsedLine.content.replace(/[<>]/g, '');
                 });
 
                 fileContentXml += diffLines.join('\n') + '\n\n';

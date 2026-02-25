@@ -1631,7 +1631,7 @@ describe('ConversationRunner', () => {
         it('should keep tools disabled when rate-limit retry happens after wind-down', async () => {
             let callCount = 0;
             const modelManager = {
-                sendRequest: vi.fn().mockImplementation((request: any) => {
+                sendRequest: vi.fn().mockImplementation((_request: any) => {
                     callCount++;
                     if (callCount === 1) {
                         return Promise.resolve({
@@ -1650,8 +1650,7 @@ describe('ConversationRunner', () => {
                     if (callCount === 2) {
                         return Promise.reject(new ChatRateLimited());
                     }
-                    // Retry after rate-limit: tools should STILL be empty
-                    expect(request.tools).toHaveLength(0);
+                    // Retry after rate-limit: tools should STILL be empty (verified below)
                     return Promise.resolve({
                         content: 'Final findings after rate-limit retry',
                         toolCalls: undefined,
@@ -1688,6 +1687,11 @@ describe('ConversationRunner', () => {
 
             expect(result).toBe('Final findings after rate-limit retry');
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+            // The 3rd call (after rate-limit retry) should have empty tools
+            const thirdCallArgs = (
+                modelManager.sendRequest as ReturnType<typeof vi.fn>
+            ).mock.calls[2][0];
+            expect(thirdCallArgs.tools).toHaveLength(0);
         });
 
         it('should detect rate-limit error by class name', async () => {

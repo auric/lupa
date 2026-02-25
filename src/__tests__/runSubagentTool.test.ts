@@ -192,6 +192,81 @@ describe('RunSubagentTool', () => {
             expect(result.success).toBe(false);
             expect(result.error).toContain('Maximum subagents');
         });
+
+        it('should rollback spawn count on generic executor failure', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'LLM service error',
+                toolCallsMade: 0,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            expect(sessionManager.getCount()).toBe(0);
+
+            await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Slot should be recovered — agent barely started
+            expect(sessionManager.getCount()).toBe(0);
+        });
+
+        it('should NOT rollback spawn count on max_iterations (agent completed work)', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Partial findings',
+                error: 'max_iterations',
+                toolCallsMade: 30,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Slot stays consumed — agent ran to iteration limit
+            expect(sessionManager.getCount()).toBe(1);
+        });
+
+        it('should rollback spawn count when executor throws non-cancellation error', async () => {
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockRejectedValue(new Error('Unexpected executor crash')),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            expect(sessionManager.getCount()).toBe(0);
+
+            await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Slot should be recovered — executor crashed
+            expect(sessionManager.getCount()).toBe(0);
+        });
     });
 
     describe('Result Formatting', () => {

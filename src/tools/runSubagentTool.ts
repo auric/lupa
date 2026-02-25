@@ -247,6 +247,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
 
             // Any other failure (LLM errors, service errors, etc.)
             if (!result.success) {
+                sessionManager.rollbackSpawn();
                 return toolError(
                     SubagentErrors.failed(result.error || 'Unknown error')
                 );
@@ -281,6 +282,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             }
 
             const errorMessage = getErrorMessage(error);
+            sessionManager.rollbackSpawn();
             return toolError(SubagentErrors.failed(errorMessage));
         } finally {
             parentCancellationDisposable?.dispose();

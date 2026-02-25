@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Budget model: flat allocation replaces exponential decay**: Replaced the `CHILD_BUDGET_RATIO` model (each child got 60% of remaining, causing rapid depletion after 3 spawns) with flat per-child allocation (`DEFAULT_CHILD_BUDGET=30`). Each child gets its own independent 30-iteration budget.
 - **Budget now controls child iteration limits**: Allocated budget is passed to `SubagentExecutor` as `maxIterations`, so children actually respect their budget instead of all getting the full global limit.
+- **Subagent budget rollback on startup failure**: `RunSubagentTool` now rolls back the spawn slot when `SubagentExecutor` returns a generic failure (e.g., LLM connection error). Timeout and max-iteration outcomes still consume a slot since the agent ran and used resources.
+- **Diff tools constant in SubagentExecutor**: Replaced hardcoded tool name strings with the shared `DIFF_TOOLS` constant for maintainability.
 - **find_usages handles LocationLink responses**: `vscode.executeDefinitionProvider` can return `LocationLink` (with `targetUri`/`targetRange`) not just `Location` (with `uri`/`range`). Added proper type discrimination instead of optional chaining that silently lost valid definitions.
 - **Recursive agent prefix uses hierarchical IDs**: Subagent progress in chat now shows `🔹 child-1:` or `🔹 child-1.1:` instead of cryptic `L1#1` format.
 - **Recursion now works beyond depth 1**: Fixed critical bug where subagent child contexts had `subagentSessionManager: undefined`, causing `RunSubagentTool`'s guard clause to reject all spawns at depth > 0. Session manager is now propagated through `SubagentExecuteOptions`.
@@ -53,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Prompt Hygiene
 
 - **File path sanitization in prompts**: Angle brackets (`<>`) in file paths are now stripped before injecting into prompt metadata and file content XML, preventing paths like `src/</path>` from breaking prompt tag structure.
+- **Diff content sanitization in prompts**: Angle brackets (`<>`) in diff hunk headers and content lines are now stripped before embedding in prompt XML, preventing crafted diff content from breaking `<changes>` tag structure.
 
 #### Legacy Mode Hardening
 
@@ -71,6 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for recursive prompt delegation enforcement: 1-key-diff orientation, parallel spawning mandate, methodology-before-self-reflection ordering, tighter escape hatch thresholds, `get_file_diff` limited to 1 file in workflow, and correct 7-step workflow in RLM reminder.
 - Added tests for mandatory recursive delegation: "MUST Spawn" language, parallel sub-agent spawning in canRecurse prompt, and 4+ file mandatory delegation in investigation steps.
 - Added tests for RLM-aware subagent guidance: diff constraint shown when no diff tools, diff access guidance shown when diff tools present.
+- Fixed in-mock assertion in `ConversationRunner` rate-limit test — moved `expect()` from inside mock callback to post-execution verification.
+- Added tests for `RunSubagentTool` budget rollback: generic failure rolls back, timeout does not, max-iterations does not.
+- Added tests for diff content sanitization: angle brackets stripped from hunk headers and content lines.
 
 ### Changed
 
@@ -79,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Removed `maxTotalAgents` setting**: Consolidated redundant agent limits. `maxSubagentsPerSession` (default 20) is the single spawn cap — it already works in both flat and recursive modes. `maxRecursionDepth` controls nesting depth separately. The separate tree-size limit added confusion without providing distinct value.
 - **README version badge**: Updated from 0.1.11 to 0.2.0.
 - **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
+- **Documentation**: Updated `docs/rlm-transition-plan.md` Section 13 to reflect actual flat-allocation constants (`RecursionConstants`) replacing the planned ratio-based model.
 
 ## [0.1.12] - 2026-02-21
 
