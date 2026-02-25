@@ -7,7 +7,7 @@ export const ANALYSIS_LIMITS = {
 } as const;
 
 export const SUBAGENT_LIMITS = {
-    maxPerSession: { default: 20, min: 1, max: 50 },
+    maxPerSession: { default: 30, min: 1, max: 100 },
 } as const;
 
 export const RECURSION_LIMITS = {
