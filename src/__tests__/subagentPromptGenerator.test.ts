@@ -319,6 +319,19 @@ describe('SubagentPromptGenerator', () => {
                 expect(prompt).toContain('Search first');
                 expect(prompt).toContain('Consider intent');
             });
+
+            it('should include scope boundary and revert test in subagent prompt', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 30);
+
+                expect(prompt).toContain('Changed code only');
+                expect(prompt).toContain('Revert Test');
+                expect(prompt).toContain('Suggestions');
+                expect(prompt).toContain('When uncertain, omit');
+            });
         });
     });
 });

@@ -176,6 +176,31 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('without searching the test directory');
         });
 
+        it('should include scope boundary rule with revert test', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Scope: Changed Code Only');
+            expect(prompt).toContain('Revert Test');
+            expect(prompt).toContain('Would reverting this PR fix');
+        });
+
+        it('should include false positive cost statement', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('False Positive Cost');
+            expect(prompt).toContain('Three verified');
+        });
+
+        it('should include design flaw and feature request verification gates', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Design flaw / should refactor');
+            expect(prompt).toContain('Should add X feature');
+            expect(prompt).toContain('Pre-existing issue');
+        });
+
+        it('should cap feature suggestions at LOW severity', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('suggestion, not a bug');
+        });
+
         it('should include finding quality in recursive root prompt', () => {
             const prompt = generator.generateRecursiveSystemPrompt([]);
             expect(prompt).toContain('<finding_quality>');

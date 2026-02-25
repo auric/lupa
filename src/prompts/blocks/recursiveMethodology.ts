@@ -68,6 +68,8 @@ Sub-agents with 4+ files will decompose further by spawning their own sub-agents
 After all sub-agents return:
 - Merge findings by severity (critical first)
 - Remove duplicates across agents
+- **Quality filter**: For each MEDIUM+ finding, verify it has cited evidence and is about changed code. Apply the Revert Test — if reverting this PR wouldn't fix it, drop it
+- **Challenge speculative claims**: Drop any finding where the sub-agent used language like "could potentially," "might," or "consider adding" without concrete evidence
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
 - Assess overall PR risk
 - Call \`update_plan\` to mark all concern groups as complete

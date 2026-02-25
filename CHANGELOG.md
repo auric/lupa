@@ -61,6 +61,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Finding audit in analysis methodology**: Added `finding_audit` step to "Before conclusions" checkpoint — 5 verification questions (tool-verified? concrete scenario? checked callers? searched for existing handling? intentional design?) with instruction to drop failing findings.
 - **`hasDiffTools` in `PromptBuilder` uses `DIFF_TOOLS.every()`**: Consistent with `SubagentPromptGenerator` — requires both diff tools, not just `list_changed_files`.
 
+#### Finding Quality — False Positive Reduction (Phase 2)
+
+- **Scope boundary rule**: New "Changed Code Only" section at the top of finding quality guidance — establishes that only issues introduced or worsened by the PR are valid findings. Catches the most common FP category: reporting pre-existing issues in unchanged code.
+- **Revert Test**: Universal validation filter — "Would reverting this PR fix this issue? If no, drop it." Applied in main prompt, subagent prompt, and recursive aggregation.
+- **Design intent verification gate**: New row in verification gates table requiring search for comments, docs, tests, or commit history explaining design choices before reporting "design flaw / should refactor." If any plausible rationale exists, the finding is dropped.
+- **Feature request ≠ bug distinction**: New verification gate and false positive pattern explicitly capping "should add X" suggestions at LOW severity. Prevents feature requests from being inflated to MEDIUM/HIGH.
+- **False positive cost statement**: Anchoring statement — "Three verified, actionable findings are worth more than twelve mixed-quality observations. When uncertain, omit."
+- **Expanded false positive patterns**: Added 4 new anti-patterns: suggestions as MEDIUM+, issues in unchanged code, architecture preferences without evidence, pre-existing tech debt.
+- **Stronger subagent finding quality**: Expanded compact guidance from 4 to 7 points, adding scope boundary, revert test, suggestion severity cap, and uncertainty omission rule.
+- **Recursive aggregation quality filter**: Root agent's Step 4 (Aggregate Findings) now instructs challenging MEDIUM+ findings against the Revert Test and dropping speculative claims without evidence.
+- **Recursive self-reflection validation**: Aggregation checkpoint now explicitly requires verifying each MEDIUM+ finding is about changed code with cited evidence.
+
 #### Recursive State Manager Hardening
 
 - **Lifecycle transition guards**: `completeAgent()`, `failAgent()`, and `cancelAgent()` now ignore calls on agents already in a terminal state (`completed`, `failed`, `cancelled`), logging a warning instead of silently overwriting state.
@@ -106,6 +118,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for max_iterations → completed agent status and filesExamined propagation on success.
 - Added test for tree summary depth-then-agentId ordering.
 - Added `createTestRecursiveState()` mock factory helper, eliminating 11 occurrences of 3-line setup boilerplate in `runSubagentTool.test.ts`.
+- Added tests for FP reduction phase 2: scope boundary/revert test in PR and recursive prompts, false positive cost statement, design flaw and feature request verification gates, subagent scope boundary and revert test, recursive aggregation quality filter.
 
 ### Changed
 

@@ -292,6 +292,15 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).toContain('Aggregate Findings');
         });
 
+        it('should include quality filter in aggregation step', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('Quality filter');
+            expect(systemPrompt).toContain('Revert Test');
+            expect(systemPrompt).toContain('Challenge speculative claims');
+        });
+
         it('should include recursive tool guide', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
