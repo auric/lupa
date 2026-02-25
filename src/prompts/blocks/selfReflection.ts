@@ -60,7 +60,7 @@ After calling \`list_changed_files\`:
 → \`think_about_context\`: "I see N files. I will group them into K concern groups and delegate via \`run_subagent\`."
 
 After calling \`update_plan\`:
-→ Begin spawning \`run_subagent\` for each concern group. Do NOT investigate files yourself.
+→ Spawn \`run_subagent\` for **ALL** concern groups in a **single response**. They execute in parallel. Do NOT investigate files yourself.
 
 After all sub-agents return:
 → \`think_about_task\`: "I received findings from K agents. Cross-cutting patterns: [list]. Coverage gaps: [list]."
@@ -70,7 +70,7 @@ Before submitting:
 → \`submit_review\` with the complete review output.
 
 ### Anti-Pattern: Direct Investigation
-If you find yourself calling \`read_file\`, \`get_file_diff\`, or \`find_symbol\` on more than 2 files, STOP.
+If you find yourself calling \`read_file\`, \`find_symbol\`, or \`get_file_diff\` more than once, STOP.
 You are falling into direct investigation mode. Spawn a \`run_subagent\` instead.
 </self_reflection>`;
 }

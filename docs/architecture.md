@@ -620,7 +620,7 @@ Lupa supports two analysis approaches, configured via `analysisApproach`:
 
 Total spawns per analysis are capped by `maxSubagentsPerSession` (default 20).
 
-**Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent orients via metadata only (`list_changed_files` statistics and `<diff_metadata>`) and delegates all investigation to sub-agents via `run_subagent`. Direct diff reading by the root agent is explicitly prohibited to prevent context pollution.
+**Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then delegates all investigation to sub-agents via `run_subagent`. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` must further decompose when assigned 4+ files.
 
 **Non-recursive RLM mode** (`maxRecursionDepth === 0`): Subagent guidance adapts to tool availability — when diff tools are present, the prompt tells the LLM that subagents _can_ read diffs via `get_file_diff`, instead of the legacy constraint "subagents cannot see the diff."
 

@@ -194,7 +194,9 @@ describe('SubagentPromptGenerator', () => {
                 );
 
                 expect(prompt).toContain('Decomposition Strategy');
-                expect(prompt).toContain('You CAN Spawn Sub-Agents');
+                expect(prompt).toContain(
+                    'You MUST Spawn Sub-Agents for 4+ Files'
+                );
                 expect(prompt).toContain('run_subagent');
             });
 
@@ -249,6 +251,47 @@ describe('SubagentPromptGenerator', () => {
                 );
 
                 expect(prompt).toContain('25 iterations');
+            });
+
+            it('should use mandatory language for 4+ file decomposition', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain('MANDATORY');
+                expect(prompt).toContain('you MUST spawn sub-agents');
+                expect(prompt).toContain('This is not optional');
+            });
+
+            it('should instruct parallel sub-agent spawning', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain('ALL sub-agents in one turn');
+                expect(prompt).toContain('parallel');
+            });
+
+            it('should tell 4+ file scope to use MUST spawn in investigation steps', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain(
+                    '4+ files**: You **MUST** spawn sub-agents'
+                );
             });
         });
     });

@@ -6,15 +6,17 @@ export function generateRecursiveMethodology(): string {
     return `<recursive_methodology>
 ## Recursive Review Process
 
-### Step 1: Orient via Metadata
+### Step 1: Orient
 
 The \`<diff_metadata>\` in this conversation already shows which files changed and how much.
-Call \`list_changed_files\` for a structured view, then:
+Call \`list_changed_files\` for a structured view. Then call \`get_file_diff\` on **1 key file** (the largest change or most architecturally significant) to understand what the PR does.
+
+From the metadata and this one diff:
 - Group files by module/layer (auth, API, data layer, tests, config)
-- Assess risk from file names and change sizes
+- Assess risk from file names, change sizes, and the key diff
 - Identify new files, deleted files, and large modifications
 
-This metadata gives you enough understanding to decompose intelligently. **Do NOT read diffs** — sub-agents will do all file reading and analysis.
+**Stop after 1 diff.** You now have enough to decompose. Sub-agents will read all remaining diffs.
 
 ### Step 2: Create Decomposition Plan
 
@@ -37,7 +39,9 @@ Target **2-4 files per concern group** for thorough review.
 - [Any cross-cutting concerns to check after agents complete]
 \`\`\`
 
-### Step 3: Spawn Sub-Agents
+### Step 3: Spawn ALL Sub-Agents (In Parallel)
+
+⚠️ **Call \`run_subagent\` for ALL concern groups in a single response.** They execute in parallel — do NOT wait for one to finish before spawning the next.
 
 For each concern group, call \`run_subagent\`:
 
@@ -57,6 +61,7 @@ context: "## Files to Examine
 \`\`\`
 
 Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
+Sub-agents with 4+ files will decompose further by spawning their own sub-agents.
 
 ### Step 4: Aggregate Findings
 

@@ -54,7 +54,7 @@ You have direct access to the PR diff via tools:
                 ? `
 1. **Check your scope**: Count the files in your task.
    - **1-3 files**: Call \`get_file_diff\` for ALL of them, then investigate directly.
-   - **4+ files**: Follow the **Decomposition Strategy** below — read 1-2 key diffs to orient, then spawn sub-agents for the rest.
+   - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
 2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
 
@@ -89,18 +89,18 @@ You have direct access to the PR diff via tools:
 
         const recursionSection = canRecurse
             ? `
-### Decomposition Strategy (You CAN Spawn Sub-Agents)
+### Decomposition Strategy (You MUST Spawn Sub-Agents for 4+ Files)
 
 You have \`run_subagent\` available and **${maxIterations} iterations** for your own work.
 
-**RULE: If your task spans 4+ files, DECOMPOSE before investigating.**
-Do NOT try to review 4+ files directly — you'll exhaust your iterations and produce incomplete findings.
+⚠️ **MANDATORY: If your task spans 4+ files, you MUST spawn sub-agents.**
+Do NOT try to review 4+ files directly — you'll exhaust your iterations and produce incomplete findings. This is not optional.
 
 **Decomposition approach:**
-1. Call \`get_file_diff\` for 1-2 key files to orient yourself (~2 iterations)
+1. Call \`get_file_diff\` for 1 key file to orient yourself (~1 iteration)
 2. Based on the diff, split your remaining files into focused sub-tasks
-3. Spawn sub-agents for each group — each gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
-4. Aggregate their findings into your response
+3. **Spawn ALL sub-agents in one turn** — they execute in parallel, each gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
+4. After sub-agents return, aggregate their findings into your response
 
 **If your task spans 1-3 files:** Investigate directly — no need to spawn.
 
@@ -115,7 +115,7 @@ Examine: [function1], [function2]"
 context: "[What you found so far and why this needs deeper investigation]"
 \`\`\`
 
-**Budget:** Your sub-agents each get their own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iterations (not deducted from your budget). After they return, you still have your remaining iterations to aggregate results and write findings.`
+**Budget:** Sub-agents each get **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iterations (not deducted from your budget). After they return, you still have your remaining iterations to aggregate results and write findings.`
             : `
 ### Recursion Limit
 

@@ -18,13 +18,13 @@ You are the ROOT AGENT in a recursive review system:
 ## Critical Rules
 
 - **You MUST delegate via \`run_subagent\`** — For any PR with 3+ files, spawn sub-agents. Direct file-by-file investigation is a failure mode for the root agent.
-- **Orient via metadata ONLY** — Use \`list_changed_files\` and the \`<diff_metadata>\` to understand scope. Do NOT read diffs yourself — that is sub-agent work.
-- **You may orient yourself** using \`list_directory\`, \`get_symbols_overview\` (sparingly)
+- **Orient briefly, then delegate** — Use \`list_changed_files\` for scope and read at most **1 key diff** (the largest or riskiest file) to understand the PR's purpose. Then plan and delegate everything else.
+- **Spawn ALL sub-agents in one turn** — Call \`run_subagent\` for every concern group in a single response. They execute in parallel.
 - **Your primary tool is \`run_subagent\`** — It does the heavy investigation
 - Tell sub-agents WHICH files to examine; they handle the rest
 - Sub-agents CAN spawn their own sub-agents for deep dependency tracing
 
-**Mandatory Workflow**: \`list_changed_files\` → \`update_plan\` (decompose based on metadata) → \`run_subagent\` per concern → aggregate → \`submit_review\`.
+**Mandatory Workflow**: \`list_changed_files\` → \`get_file_diff\` (1 key file) → \`update_plan\` → \`run_subagent\` (ALL groups in one turn) → aggregate → \`submit_review\`.
 
-⚠️ **Do NOT read diffs or investigate files.** If you find yourself calling \`read_file\`, \`find_symbol\`, or \`get_file_diff\`, you are doing it wrong. Spawn a \`run_subagent\` instead.`;
+⚠️ **Do NOT read more than 1 diff.** If you find yourself calling \`get_file_diff\` a second time, or calling \`read_file\` or \`find_symbol\`, you are doing it wrong. Spawn a \`run_subagent\` instead.`;
 }

@@ -672,11 +672,10 @@ describe('PromptGenerator - Tool Calling Features', () => {
     });
 
     describe('recursive prompt delegation enforcement', () => {
-        it('should NOT tell root agent to read diffs in recursive system prompt', () => {
+        it('should NOT tell root agent to read 2-3 diffs', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            // The root agent should orient via metadata only, not read diffs
             expect(systemPrompt).not.toContain(
                 'Read key diffs before planning'
             );
@@ -684,12 +683,12 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).not.toContain('SECOND — read 2-3 key diffs');
         });
 
-        it('should instruct root agent to orient via metadata only', () => {
+        it('should allow reading at most 1 key diff for orientation', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            expect(systemPrompt).toContain('Orient via metadata ONLY');
-            expect(systemPrompt).toContain('Orient via Metadata');
+            expect(systemPrompt).toContain('1 key diff');
+            expect(systemPrompt).toContain('1 key file');
         });
 
         it('should order RecursiveMethodology before RecursiveSelfReflection', () => {
@@ -717,26 +716,24 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).not.toContain('<50 lines');
         });
 
-        it('should NOT include get_file_diff in recursive mandatory workflow', () => {
+        it('should limit root to 1 diff in mandatory workflow', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            // The mandatory workflow should go directly from list_changed_files to update_plan
-            expect(systemPrompt).toContain(
-                '`list_changed_files` → `update_plan`'
-            );
-            // Should NOT have get_file_diff in tool guide table as SECOND step
-            expect(systemPrompt).not.toContain('SECOND — read');
+            expect(systemPrompt).toContain('`get_file_diff` (1 key file)');
+            expect(systemPrompt).toContain('Read at most 1 diff');
+            expect(systemPrompt).not.toContain('2-3 key diffs');
         });
 
-        it('should warn against using get_file_diff in recursive root prompt', () => {
+        it('should instruct root to spawn ALL sub-agents in one turn (parallel)', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            expect(systemPrompt).toContain('Do NOT use `get_file_diff`');
+            expect(systemPrompt).toContain('ALL sub-agents in one turn');
+            expect(systemPrompt).toContain('parallel');
         });
 
-        it('should NOT tell root to read diffs in recursive RLM user prompt', () => {
+        it('should instruct parallel spawning in RLM user prompt', () => {
             const prompt = promptGenerator.generateRlmUserPrompt(
                 sampleParsedDiff,
                 undefined,
@@ -744,23 +741,35 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 10
             );
 
-            expect(prompt).not.toContain('Read 2-3 key diffs');
+            expect(prompt).toContain('ALL concern groups in one turn');
+            expect(prompt).toContain('parallel');
+        });
+
+        it('should have 7 workflow steps in recursive RLM reminder', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true,
+                10
+            );
+
+            expect(prompt).toContain('1. Call `list_changed_files`');
+            expect(prompt).toContain(
+                '2. Call `get_file_diff` on **1 key file**'
+            );
+            expect(prompt).toContain('7. Call `think_about_completion`');
+        });
+
+        it('should enforce delegation as mandatory in RLM user prompt', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true,
+                10
+            );
+
             expect(prompt).toContain('Delegation is mandatory');
-            expect(prompt).toContain('Do NOT read diffs');
-        });
-
-        it('should have 6 workflow steps in recursive RLM reminder (no diff-reading step)', () => {
-            const prompt = promptGenerator.generateRlmUserPrompt(
-                sampleParsedDiff,
-                undefined,
-                true,
-                10
-            );
-
-            // Step 6 should be the last workflow step
-            expect(prompt).toContain('6. Call `think_about_completion`');
-            // There should be no step 7
-            expect(prompt).not.toMatch(/^7\./m);
+            expect(prompt).not.toContain('Read 2-3 key diffs');
         });
 
         it('should use 3+ files threshold for delegation in delegation strategy table', () => {
