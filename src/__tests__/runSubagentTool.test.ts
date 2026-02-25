@@ -826,6 +826,37 @@ describe('RunSubagentTool', () => {
             );
         });
 
+        it('should default currentDepth to 0 when undefined with recursiveState', async () => {
+            const recursiveState = new RecursiveStateManager(3);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                // currentDepth intentionally omitted — should default to 0
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            // recursionDepth should be currentDepth(0) + 1 = 1
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursionDepth: 1,
+                })
+            );
+        });
+
         it('should mark child agent as completed on success', async () => {
             const recursiveState = new RecursiveStateManager(3);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);

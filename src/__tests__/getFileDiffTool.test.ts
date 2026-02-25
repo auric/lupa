@@ -284,6 +284,66 @@ describe('GetFileDiffTool', () => {
         expect(result.error).toContain('ambiguous');
     });
 
+    it('returns partial success when mixing valid and ambiguous paths', async () => {
+        const mixedDiff: DiffHunk[] = [
+            {
+                filePath: 'src/components/Button.tsx',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader:
+                    'diff --git a/src/components/Button.tsx b/src/components/Button.tsx',
+                hunks: [
+                    {
+                        oldStart: 1,
+                        oldLines: 1,
+                        newStart: 1,
+                        newLines: 1,
+                        hunkId: 'src/components/Button.tsx:1',
+                        hunkHeader: '@@ -1,1 +1,1 @@',
+                        parsedLines: [
+                            { type: 'added', content: 'export const A = 1;' },
+                        ],
+                    },
+                ],
+            },
+            {
+                filePath: 'src/utils/Button.tsx',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader:
+                    'diff --git a/src/utils/Button.tsx b/src/utils/Button.tsx',
+                hunks: [
+                    {
+                        oldStart: 1,
+                        oldLines: 1,
+                        newStart: 1,
+                        newLines: 1,
+                        hunkId: 'src/utils/Button.tsx:1',
+                        hunkHeader: '@@ -1,1 +1,1 @@',
+                        parsedLines: [
+                            { type: 'added', content: 'export const B = 2;' },
+                        ],
+                    },
+                ],
+            },
+        ];
+
+        const context = createMockExecutionContext({
+            parsedDiff: mixedDiff,
+        });
+        // 'src/components/Button.tsx' is a valid full path; 'Button.tsx' is ambiguous
+        const result = await tool.execute(
+            {
+                file_paths: ['src/components/Button.tsx', 'Button.tsx'],
+            },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('=== src/components/Button.tsx ===');
+        expect(result.data).toContain('ambiguous');
+    });
+
     it('includes not-found note when some files match and some do not', async () => {
         const context = createMockExecutionContext({
             parsedDiff: createTestDiff(),

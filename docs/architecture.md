@@ -622,6 +622,11 @@ Total spawns per analysis are capped by `maxSubagentsPerSession` (default 20).
 
 **Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. If the LLM does not spawn sub-agents in recursive mode, analysis proceeds as a single root-agent investigation—recursive mode provides the capability, not a guarantee of decomposition.
 
+**Legacy mode isolation**: When `analysisApproach === 'legacy'`, recursive tooling is fully disabled:
+
+- `SubagentExecutor` sets `canRecurse=false` because there is no `recursiveState` (even if depth permits recursion)
+- Both analysis providers filter out diff tools (`list_changed_files`, `get_file_diff`) since they require `parsedDiff` which is only set in RLM mode
+
 **RecursiveStateManager** (`src/sessions/recursiveStateManager.ts`) tracks the agent tree during RLM analysis:
 
 - Registers agents with parent-child relationships and depth tracking

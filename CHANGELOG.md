@@ -49,9 +49,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **File path sanitization in prompts**: Angle brackets (`<>`) in file paths are now stripped before injecting into prompt metadata and file content XML, preventing paths like `src/</path>` from breaking prompt tag structure.
 
+#### Legacy Mode Hardening
+
+- **Legacy mode no longer leaks recursive tools**: `canRecurse` in `SubagentExecutor` now requires `recursiveState` to be present (in addition to depth check and session manager). Previously, legacy-mode subagents at `depth < maxDepth` could receive `run_subagent` without any budget tracking, getting the full global iteration limit instead of the child budget.
+- **Diff tools filtered in `ChatParticipantService` legacy mode**: Added the same `DIFF_TOOLS` filter that `ToolCallingAnalysisProvider` already applied. Without parsedDiff, these tools return unhelpful errors.
+- **Stale `maxTotalAgents` removed from README**: Configuration example referenced the removed setting.
+
 #### Test Coverage
 
 - Added schema validation tests for `maxRecursionDepth` and `analysisApproach` settings (bounds and invalid values).
+- Added test for `canRecurse=false` when `recursiveState` is missing (legacy-mode gating).
+- Added test for `ChatParticipantService` diff tools filtering in legacy mode.
+- Added test for rate-limit counter reset after successful API response.
+- Added test for `getFileDiffTool` mixed valid + ambiguous paths in same request.
+- Added test for `RunSubagentTool` defaulting `currentDepth` to 0 when undefined with `recursiveState`.
 
 ### Changed
 

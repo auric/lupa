@@ -1823,5 +1823,69 @@ describe('ConversationRunner', () => {
             expect(result).toBe('Recovery');
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
         });
+
+        it('should reset rate-limit counter after a successful response', async () => {
+            // Sequence: rate-limit → success (with tool call) → rate-limit → success
+            // If counter doesn't reset, the second rate-limit would start at retry=1
+            // instead of retry=0, reaching the max faster.
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    if (callCount === 2) {
+                        // Successful response with tool call to trigger another iteration
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    name: 'test_tool',
+                                    callId: '1',
+                                    input: {},
+                                },
+                            ],
+                        });
+                    }
+                    if (callCount === 3) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    // Final success
+                    return Promise.resolve({
+                        content: 'Final result',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Advance through both rate-limit backoffs
+            await vi.advanceTimersByTimeAsync(120000);
+
+            const result = await resultPromise;
+            expect(result).toBe('Final result');
+            // All 4 calls should have been made (2 rate-limits + 2 successes)
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(4);
+        });
     });
 });

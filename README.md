@@ -137,7 +137,6 @@ Settings are stored in `.vscode/lupa.json`:
     "maxSubagentsPerSession": 20,
     "analysisApproach": "rlm",
     "maxRecursionDepth": 2,
-    "maxTotalAgents": 12,
     "logLevel": "info"
 }
 ```

@@ -18,7 +18,7 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
+import { MAIN_ANALYSIS_ONLY_TOOLS, DIFF_TOOLS } from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -580,7 +580,15 @@ export class ChatParticipantService implements vscode.Disposable {
         const client = new ChatLLMClient(request.model, timeoutMs);
         const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
-        const availableTools = toolExecutor.getAvailableTools();
+        // In legacy mode, exclude diff tools — they require parsedDiff which is only
+        // set for RLM. Without filtering, the LLM could call them and get unhelpful errors.
+        let availableTools = toolExecutor.getAvailableTools();
+        if (!isRlmApproach) {
+            availableTools = availableTools.filter(
+                (t) =>
+                    !DIFF_TOOLS.includes(t.name as (typeof DIFF_TOOLS)[number])
+            );
+        }
         const systemPrompt = isRecursiveMode
             ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
                   availableTools

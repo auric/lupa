@@ -551,6 +551,70 @@ describe('ChatParticipantService', () => {
                 mockPromptGenerator.generateToolAwareSystemPrompt
             ).toHaveBeenCalled();
         });
+
+        it('should filter diff tools in legacy mode', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                compareBranches: vi.fn().mockResolvedValue({
+                    diffText:
+                        'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-old\n+new',
+                    refName: 'feature/test',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const diffTools = [
+                { name: 'list_changed_files', getVSCodeTool: vi.fn() },
+                { name: 'get_file_diff', getVSCodeTool: vi.fn() },
+                { name: 'read_file', getVSCodeTool: vi.fn() },
+                { name: 'find_symbol', getVSCodeTool: vi.fn() },
+            ];
+            const legacyToolRegistry = {
+                ...mockToolRegistry,
+                getAllTools: vi.fn().mockReturnValue(diffTools),
+            };
+
+            const legacySettings = {
+                ...mockWorkspaceSettings,
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
+                getAnalysisApproach: vi.fn().mockReturnValue('legacy'),
+            };
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: legacyToolRegistry,
+                workspaceSettings: legacySettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
+            });
+
+            await capturedHandler(
+                {
+                    command: 'branch',
+                    model: {
+                        id: 'test-model',
+                        name: 'test-model',
+                        maxInputTokens: 100000,
+                    },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            const toolsArg =
+                mockPromptGenerator.generateToolAwareSystemPrompt.mock
+                    .calls[0]?.[0];
+            const toolNames = toolsArg?.map((t: any) => t.name) ?? [];
+            expect(toolNames).not.toContain('list_changed_files');
+            expect(toolNames).not.toContain('get_file_diff');
+            expect(toolNames).toContain('read_file');
+            expect(toolNames).toContain('find_symbol');
+        });
     });
 
     describe('/changes command', () => {
