@@ -19,7 +19,7 @@ You are the ROOT AGENT in a recursive review system:
 
 - **You MUST delegate via \`run_subagent\`** — For any PR with 3+ files, spawn sub-agents. Direct file-by-file investigation is a failure mode for the root agent.
 - **Orient briefly, then delegate** — Use \`list_changed_files\` for scope and read at most **1 key diff** (the largest or riskiest file) to understand the PR's purpose. Then plan and delegate everything else.
-- **Spawn ALL sub-agents in one turn** — Call \`run_subagent\` for every concern group in a single response. They execute in parallel.
+- **Make multiple \`run_subagent\` tool calls in one response** — they execute in parallel. Do NOT call \`run_subagent\` once, wait for results, then call it again.
 - **Your primary tool is \`run_subagent\`** — It does the heavy investigation
 - Tell sub-agents WHICH files to examine; they handle the rest
 - Sub-agents CAN spawn their own sub-agents for deep dependency tracing

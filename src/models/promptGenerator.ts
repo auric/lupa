@@ -234,7 +234,7 @@ export class PromptGenerator {
             '2. Call `get_file_diff` on **1 key file** (largest change or riskiest) to understand the PR\n';
         reminder += '3. Call `update_plan` — decompose into concern groups\n';
         reminder +=
-            '4. **Spawn `run_subagent` for ALL concern groups in one turn** — they run in parallel\n';
+            '4. **Make multiple `run_subagent` calls in one response** — one per concern group (parallel execution)\n';
         reminder += '5. After all agents return, aggregate findings\n';
         reminder += '6. Check for cross-concern issues\n';
         reminder +=
@@ -328,7 +328,7 @@ export class PromptGenerator {
         reminder += `**Workflow**:
 1. Scan the diff structure and classify changes
 2. Call \`update_plan\` with your decomposition plan
-3. **Spawn \`run_subagent\` for each concern group** (include diff context!) — this is your PRIMARY action
+3. **Make multiple \`run_subagent\` calls in one response** — one per concern group (parallel execution)
 4. After all agents return, aggregate findings
 5. Check for cross-concern issues
 6. Call \`think_about_completion\`, then \`submit_review\`

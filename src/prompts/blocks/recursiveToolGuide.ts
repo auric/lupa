@@ -12,7 +12,7 @@ export function generateRecursiveToolGuide(): string {
 | \`list_changed_files\` | **FIRST** — see all changed files and statistics |
 | \`get_file_diff\` | **ONCE** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
 | \`update_plan\` | **THIRD** — decompose PR into concern groups |
-| \`run_subagent\` | **PRIMARY TOOL** — spawn ALL concern groups in one turn (parallel execution) |
+| \`run_subagent\` | **PRIMARY TOOL** — make multiple calls in one response (parallel execution) |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
@@ -45,6 +45,6 @@ Each \`run_subagent\` call should include:
 
 **Read at most 1 diff, then delegate.** Orient via \`list_changed_files\` + 1 key diff, decompose with \`update_plan\`, then spawn ALL sub-agents in one turn. Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
 
-**Parallel spawning**: Call \`run_subagent\` for every concern group in a single response. They run in parallel — do NOT wait for one to finish before spawning the next.
+**Parallel spawning**: Make multiple \`run_subagent\` tool calls in one response \u2014 one call per concern group. They execute in parallel. Do NOT call \`run_subagent\` once, wait for results, then call it again.
 </recursive_tool_guide>`;
 }

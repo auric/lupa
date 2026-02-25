@@ -53,7 +53,7 @@ You have direct access to the PR diff via tools:
             canRecurse && hasDiffTools
                 ? `
 1. **Check your scope**: Count the files in your task.
-   - **1-3 files**: Call \`get_file_diff\` for ALL of them, then investigate directly.
+   - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate.
    - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
 2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
@@ -65,7 +65,7 @@ You have direct access to the PR diff via tools:
 **Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
                   ? `
-1. **Read the Diff FIRST**: Call \`get_file_diff\` immediately for the files listed in your task. This is your primary input — do this before anything else.
+1. **Read the Diff FIRST**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This is your primary input — do this before anything else.
 
 2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
 
@@ -99,7 +99,7 @@ Do NOT try to review 4+ files directly — you'll exhaust your iterations and pr
 **Decomposition approach:**
 1. Call \`get_file_diff\` for 1 key file to orient yourself (~1 iteration)
 2. Based on the diff, split your remaining files into focused sub-tasks
-3. **Spawn ALL sub-agents in one turn** — they execute in parallel, each gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
+3. **Make multiple \`run_subagent\` tool calls in the same response** — they execute in parallel. Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
 4. After sub-agents return, aggregate their findings into your response
 
 **If your task spans 1-3 files:** Investigate directly — no need to spawn.
@@ -180,7 +180,7 @@ If you find NO issues, explicitly state what you checked and why it passed.
 
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
-- **Parallelize**: If you intend to call multiple tools and there are no dependencies between calls, make ALL independent calls in the same turn
+- **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent`' : ''} calls at once). Do NOT call tools one at a time when they are independent
 ${hasDiffTools ? '- Use `list_changed_files` and `get_file_diff` to access the PR diff on demand' : '- You CANNOT see the PR diff - only what the parent provided in context'}
 - You CANNOT execute code or run tests
 

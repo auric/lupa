@@ -11,7 +11,8 @@ import { ExecutionContext } from '../types/executionContext';
 export class GetFileDiffTool extends BaseTool {
     name = 'get_file_diff';
     description =
-        'Get the diff (code changes) for one or more specific files from the current PR. ' +
+        'Get the diff (code changes) for specific files from the current PR. ' +
+        'Pass ALL file paths you need in a SINGLE call via the file_paths array — do NOT call this tool once per file. ' +
         'Returns the unified diff with added/removed/context lines and hunk headers. ' +
         'Use list_changed_files first to see what files changed, then this tool to examine specific files.';
 
@@ -24,7 +25,9 @@ export class GetFileDiffTool extends BaseTool {
                 'Maximum 10 files per request to avoid overwhelming context'
             )
             .describe(
-                'File path(s) to get the diff for. Must match paths from list_changed_files.'
+                'Array of file paths to fetch diffs for IN ONE CALL (up to 10). ' +
+                    'Pass ALL paths you need at once — do NOT make separate calls per file. ' +
+                    'Paths must match those from list_changed_files.'
             ),
         context_lines: z
             .boolean()

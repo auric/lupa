@@ -26,6 +26,8 @@ export class RunSubagentTool extends BaseTool {
 Sub-agents run autonomously with their own tool access and return structured findings.
 When diff tools are available (RLM approach), sub-agents can examine PR changes directly via get_file_diff.
 
+⚡ PARALLEL: You can make MULTIPLE run_subagent calls in the same response — they execute in parallel. Spawn ALL sub-agents at once, do NOT call run_subagent one at a time.
+
 📋 TASK TEMPLATE:
 "Review [concern] in [files]:
 Questions:
@@ -38,6 +40,7 @@ RULES:
 - Include specific file paths — sub-agents examine the files you assign
 - Target 2-4 files per sub-agent for thorough review
 - Sub-agents CANNOT run tests or execute code
+- ALWAYS spawn ALL sub-agents in the same response (parallel execution)
 
 MANDATORY when: 4+ files to review, security-critical code, complex dependency chains.`;
 

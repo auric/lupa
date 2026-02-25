@@ -39,9 +39,9 @@ Target **2-4 files per concern group** for thorough review.
 - [Any cross-cutting concerns to check after agents complete]
 \`\`\`
 
-### Step 3: Spawn ALL Sub-Agents (In Parallel)
+### Step 3: Spawn ALL Sub-Agents (Parallel — Multiple Tool Calls in One Response)
 
-⚠️ **Call \`run_subagent\` for ALL concern groups in a single response.** They execute in parallel — do NOT wait for one to finish before spawning the next.
+\u26a0\ufe0f **Make multiple \`run_subagent\` tool calls in your response — one per concern group.** They execute in parallel. Do NOT spawn one agent, wait for it, then spawn the next.
 
 For each concern group, call \`run_subagent\`:
 

@@ -725,11 +725,13 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).not.toContain('2-3 key diffs');
         });
 
-        it('should instruct root to spawn ALL sub-agents in one turn (parallel)', () => {
+        it('should instruct root to make multiple run_subagent calls in one response (parallel)', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            expect(systemPrompt).toContain('ALL sub-agents in one turn');
+            expect(systemPrompt).toContain('multiple');
+            expect(systemPrompt).toContain('run_subagent');
+            expect(systemPrompt).toContain('in one response');
             expect(systemPrompt).toContain('parallel');
         });
 
@@ -741,7 +743,9 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 10
             );
 
-            expect(prompt).toContain('ALL concern groups in one turn');
+            expect(prompt).toContain('multiple');
+            expect(prompt).toContain('run_subagent');
+            expect(prompt).toContain('in one response');
             expect(prompt).toContain('parallel');
         });
 

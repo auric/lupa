@@ -276,7 +276,9 @@ describe('SubagentPromptGenerator', () => {
                     true
                 );
 
-                expect(prompt).toContain('ALL sub-agents in one turn');
+                expect(prompt).toContain('multiple');
+                expect(prompt).toContain('run_subagent');
+                expect(prompt).toContain('in the same response');
                 expect(prompt).toContain('parallel');
             });
 

@@ -60,7 +60,7 @@ After calling \`list_changed_files\`:
 → \`think_about_context\`: "I see N files. I will group them into K concern groups and delegate via \`run_subagent\`."
 
 After calling \`update_plan\`:
-→ Spawn \`run_subagent\` for **ALL** concern groups in a **single response**. They execute in parallel. Do NOT investigate files yourself.
+\u2192 Make multiple \`run_subagent\` tool calls in one response \u2014 one per concern group. They execute in parallel. Do NOT investigate files yourself.
 
 After all sub-agents return:
 → \`think_about_task\`: "I received findings from K agents. Cross-cutting patterns: [list]. Coverage gaps: [list]."
