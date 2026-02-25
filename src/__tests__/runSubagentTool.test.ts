@@ -11,8 +11,8 @@ import type { ExecutionContext } from '../types/executionContext';
 import {
     createMockWorkspaceSettings,
     createMockExecutionContext,
+    createTestRecursiveState,
 } from './testUtils/mockFactories';
-import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { TimeoutError } from '../types/errorTypes';
 
 const createMockExecutor = (
@@ -816,13 +816,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should use RecursiveStateManager spawn guard when available', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(
-                undefined,
-                'root task',
-                100
-            );
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
@@ -845,9 +839,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should reject spawn when RecursiveStateManager depth limit reached', async () => {
-            const recursiveState = new RecursiveStateManager(1);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState(1);
             const childId = recursiveState.registerAgent(rootId, 'child', 50);
             recursiveState.startAgent(childId);
 
@@ -872,9 +864,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should pass recursiveState through to executor options', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
@@ -902,9 +892,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should pass parsedDiff through to executor options', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const parsedDiff = [
                 {
@@ -943,9 +931,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should default currentDepth to 0 when undefined with recursiveState', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
@@ -974,9 +960,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should mark child agent as completed on success', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = createMockExecutor({ success: true });
             const tool = new RunSubagentTool(workspaceSettings);
@@ -1001,9 +985,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should mark child agent as failed on executor error', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = {
                 execute: vi.fn().mockRejectedValue(new Error('LLM failure')),
@@ -1028,9 +1010,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should mark child agent as cancelled on cancellation result', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = createMockExecutor({
                 success: false,
@@ -1053,6 +1033,95 @@ describe('RunSubagentTool', () => {
             const rootNode = recursiveState.getNode(rootId)!;
             const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
             expect(childNode.status).toBe('cancelled');
+        });
+
+        it('should mark child agent as completed on max_iterations', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'max_iterations',
+                toolCallsMade: 30,
+                response: 'Some partial findings',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should propagate filesExamined from tool calls on success', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: true,
+                toolCalls: [
+                    {
+                        id: '1',
+                        toolName: 'read_file',
+                        arguments: { filePath: 'src/foo.ts' },
+                        result: 'content',
+                        success: true,
+                        error: undefined,
+                        durationMs: 10,
+                        timestamp: Date.now(),
+                    },
+                    {
+                        id: '2',
+                        toolName: 'get_file_diff',
+                        arguments: { filePath: 'src/bar.ts' },
+                        result: 'diff',
+                        success: true,
+                        error: undefined,
+                        durationMs: 10,
+                        timestamp: Date.now(),
+                    },
+                    {
+                        id: '3',
+                        toolName: 'search_for_pattern',
+                        arguments: { pattern: 'foo' },
+                        result: 'matches',
+                        success: true,
+                        error: undefined,
+                        durationMs: 10,
+                        timestamp: Date.now(),
+                    },
+                ],
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.filesExamined).toEqual(
+                expect.arrayContaining(['src/foo.ts', 'src/bar.ts'])
+            );
+            // search_for_pattern has no filePath arg, so only 2 files
+            expect(childNode.filesExamined).toHaveLength(2);
         });
 
         it('should fall back to flat SessionManager when no recursiveState', async () => {
@@ -1084,13 +1153,7 @@ describe('RunSubagentTool', () => {
                 sessionManager.recordSpawn();
             }
 
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(
-                undefined,
-                'root task',
-                200
-            );
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState(3, 200);
 
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
@@ -1113,9 +1176,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should mark child agent as cancelled (not failed) when executor throws CancellationError', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = {
                 execute: vi
@@ -1147,9 +1208,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should pass subagentSessionManager through to executor options', async () => {
-            const recursiveState = new RecursiveStateManager(3);
-            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
-            recursiveState.startAgent(rootId);
+            const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
@@ -1206,6 +1265,86 @@ describe('RunSubagentTool', () => {
             expect(mockExecutor.execute).not.toHaveBeenCalled();
             // Spawn count should be rolled back so the budget slot isn't consumed
             expect(sessionManager.getCount()).toBe(0);
+        });
+    });
+
+    describe('extractFilesExamined', () => {
+        it('should extract filePath arguments from tool calls', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'read_file',
+                    arguments: { filePath: 'src/a.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: '2',
+                    toolName: 'get_file_diff',
+                    arguments: { filePath: 'src/b.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            expect(result).toEqual(['src/a.ts', 'src/b.ts']);
+        });
+
+        it('should deduplicate file paths', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'read_file',
+                    arguments: { filePath: 'src/a.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: '2',
+                    toolName: 'read_file',
+                    arguments: { filePath: 'src/a.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            expect(result).toEqual(['src/a.ts']);
+        });
+
+        it('should skip tool calls without file path arguments', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'foo' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            expect(result).toEqual([]);
+        });
+
+        it('should return empty array for empty tool calls', () => {
+            expect(RunSubagentTool.extractFilesExamined([])).toEqual([]);
         });
     });
 });

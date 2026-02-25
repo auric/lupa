@@ -12,6 +12,7 @@ import {
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
 import type { ExecutionContext } from '../../types/executionContext';
+import { RecursiveStateManager } from '../../sessions/recursiveStateManager';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -643,4 +644,26 @@ export function createCancelledExecutionContext(
         subagentExecutor: undefined,
         ...overrides,
     };
+}
+
+/**
+ * Creates a RecursiveStateManager with a root agent registered and started.
+ * Eliminates the 3-line repetitive setup pattern in recursive tool tests.
+ *
+ * @param maxDepth Maximum recursion depth (default: 3)
+ * @param rootBudget Iteration budget for the root agent (default: 100)
+ * @returns Object with the state manager and root agent ID
+ */
+export function createTestRecursiveState(
+    maxDepth = 3,
+    rootBudget = 100
+): { recursiveState: RecursiveStateManager; rootId: string } {
+    const recursiveState = new RecursiveStateManager(maxDepth);
+    const rootId = recursiveState.registerAgent(
+        undefined,
+        'root task',
+        rootBudget
+    );
+    recursiveState.startAgent(rootId);
+    return { recursiveState, rootId };
 }

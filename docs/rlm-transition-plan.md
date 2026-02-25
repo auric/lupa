@@ -276,14 +276,14 @@ Child agents: RecursionConstants.DEFAULT_CHILD_BUDGET (30) each
               — independent of parent budget, NOT deducted from parent
 
 Total compute bounded by:
-  - maxSubagentsPerSession (default 20): session-level hard cap across all depths
+  - maxSubagentsPerSession (default 30): session-level hard cap across all depths
   - maxRecursionDepth (default 2): limits nesting depth
   - RecursionConstants.MIN_VIABLE_BUDGET (3): minimum to spawn a new agent
 
-Example with maxSubagentsPerSession=20:
+Example with maxSubagentsPerSession=30:
   Root: 100 iterations
-  Up to 20 child agents, each with 30 iterations
-  Total worst-case: 100 + (20 × 30) = 700 iterations
+  Up to 30 child agents, each with 30 iterations
+  Total worst-case: 100 + (30 × 30) = 1000 iterations
 ```
 
 ### 5.4 ExecutionContext Changes
@@ -398,7 +398,7 @@ Hierarchical naming enables:
 ### 6.3 Loop Prevention
 
 1. **Hard depth limit**: `maxDepth` setting (default 2)
-2. **Session spawn cap**: `maxSubagentsPerSession` setting (default 20)
+2. **Session spawn cap**: `maxSubagentsPerSession` setting (default 30)
 3. **Minimum budget**: Won't spawn with < MIN_VIABLE_BUDGET (3) iterations allocated
 4. **File deduplication**: Warns if spawning agent for files already covered
 5. **Cancellation cascade**: Parent cancel → all children cancelled
@@ -866,20 +866,20 @@ Key principles applied in all prompts:
 
 ## 11. Risk Assessment & Mitigations
 
-| Risk                                            | Likelihood | Impact   | Mitigation                                                                         |
-| ----------------------------------------------- | ---------- | -------- | ---------------------------------------------------------------------------------- |
-| GPT-4.1 ignores decomposition, reviews directly | Medium     | High     | Strong prompt + fallback to linear mode if no subagents spawned after 5 iterations |
-| Too many API calls (slow analysis)              | Medium     | Medium   | Budget allocation limits total calls; configurable maxSubagentsPerSession          |
-| Sub-agents return unstructured results          | Medium     | Low      | Structured format is prompted; parent can still use free-text                      |
-| Recursive loop (infinite spawning)              | Low        | Critical | Hard depth limit + total agent cap + budget exhaustion                             |
-| Cross-concern issues missed                     | Medium     | Medium   | Root agent does cross-concern analysis after aggregation                           |
-| Increased complexity for contributors           | Medium     | Medium   | Feature flag, clear documentation, encapsulated in 2-3 files                       |
-| Budget allocation too aggressive                | Medium     | Medium   | Conservative defaults (40% root, 60% children), configurable                       |
-| Subagent fails → partial review                 | Low        | Low      | Other agents compensate; root reports partial coverage                             |
+| Risk                                            | Likelihood | Impact   | Mitigation                                                                                        |
+| ----------------------------------------------- | ---------- | -------- | ------------------------------------------------------------------------------------------------- |
+| GPT-4.1 ignores decomposition, reviews directly | Medium     | High     | Strong prompt guidance; root agent continues with direct investigation if no decomposition occurs |
+| Too many API calls (slow analysis)              | Medium     | Medium   | Budget allocation limits total calls; configurable maxSubagentsPerSession                         |
+| Sub-agents return unstructured results          | Medium     | Low      | Structured format is prompted; parent can still use free-text                                     |
+| Recursive loop (infinite spawning)              | Low        | Critical | Hard depth limit + total agent cap + budget exhaustion                                            |
+| Cross-concern issues missed                     | Medium     | Medium   | Root agent does cross-concern analysis after aggregation                                          |
+| Increased complexity for contributors           | Medium     | Medium   | Feature flag, clear documentation, encapsulated in 2-3 files                                      |
+| Budget allocation too aggressive                | Medium     | Medium   | Conservative defaults (40% root, 60% children), configurable                                      |
+| Subagent fails → partial review                 | Low        | Low      | Other agents compensate; root reports partial coverage                                            |
 
 ### Fallback Mechanism
 
-If the root agent doesn't spawn any subagents within the first 5 iterations (detected via RecursiveStateManager), the system automatically falls back to the current linear review mode by allowing the root agent to continue with direct investigation. This prevents the RLM approach from reducing quality on simple PRs where decomposition isn't needed.
+The root agent naturally falls back to direct investigation if decomposition isn't appropriate — no explicit iteration-counting mechanism is needed. The prompt instructs the root agent to decompose when beneficial, and for simple PRs it simply proceeds with direct analysis. Budget limits and session caps ensure resources are bounded regardless of approach.
 
 ---
 
@@ -945,7 +945,7 @@ If the root agent doesn't spawn any subagents within the first 5 iterations (det
 ```json
 {
     "maxRecursionDepth": 2,
-    "maxSubagentsPerSession": 20
+    "maxSubagentsPerSession": 30
 }
 ```
 
@@ -954,7 +954,7 @@ If the root agent doesn't spawn any subagents within the first 5 iterations (det
 | Setting                  | Type   | Default | Range | Description                                         |
 | ------------------------ | ------ | ------- | ----- | --------------------------------------------------- |
 | `maxRecursionDepth`      | number | 2       | 0-3   | Maximum recursive depth (0 = flat/current behavior) |
-| `maxSubagentsPerSession` | number | 20      | 1-50  | Maximum subagent spawns per analysis                |
+| `maxSubagentsPerSession` | number | 30      | 1-50  | Maximum subagent spawns per analysis                |
 
 ### Behavior When `maxRecursionDepth = 0`
 

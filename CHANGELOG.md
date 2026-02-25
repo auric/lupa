@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lifecycle transition guards**: `completeAgent()`, `failAgent()`, and `cancelAgent()` now ignore calls on agents already in a terminal state (`completed`, `failed`, `cancelled`), logging a warning instead of silently overwriting state.
 - **Root agent lifecycle completion**: Both `ToolCallingAnalysisProvider` and `ChatParticipantService` now complete/fail/cancel the root agent in their `finally` blocks, so the recursive state tree accurately reflects the analysis outcome.
 - **File coverage only counts completed agents**: `isFileAlreadyCovered()` and `getCoveredFiles()` now check `status === 'completed'` instead of `status !== 'pending'`, ensuring failed/cancelled agents don't incorrectly mark files as analyzed.
+- **Subagent filesExamined propagated to recursive state**: `RunSubagentTool` now extracts file paths from subagent tool call records and passes them to `completeAgent()`, so `getCoveredFiles()` returns accurate coverage data instead of always being empty.
+- **Max iterations marks agent completed, not failed**: Subagents that hit their iteration cap performed real work — `RunSubagentTool` now calls `completeAgent()` instead of `failAgent()`, so their files count toward coverage and findings are preserved.
+- **Tree summary deterministic ordering**: `getTreeSummary()` now sorts nodes by depth then agentId for consistent log output regardless of registration order.
 
 #### Prompt Hygiene
 
@@ -99,6 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for lifecycle transition guards: ignore complete on already-completed/cancelled, ignore fail on already-completed, ignore cancel on already-failed.
 - Added test for budget == `MIN_VIABLE_BUDGET` boundary (allowed, not rejected).
 - Added tests for file coverage: failed and cancelled agents do not mark files as covered.
+- Added tests for `RunSubagentTool.extractFilesExamined()`: deduplication, skips non-file tools, empty input.
+- Added tests for max_iterations → completed agent status and filesExamined propagation on success.
+- Added test for tree summary depth-then-agentId ordering.
+- Added `createTestRecursiveState()` mock factory helper, eliminating 11 occurrences of 3-line setup boilerplate in `runSubagentTool.test.ts`.
 
 ### Changed
 
@@ -111,6 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: Added small-context-model warning note to README Analysis Approach section.
 - **Documentation**: Updated `docs/rlm-transition-plan.md` Section 13 to reflect actual flat-allocation constants (`RecursionConstants`) replacing the planned ratio-based model.
 - **Documentation**: Added `RecursiveStateManager` to component inventory; linked `rlm-transition-plan.md` in docs index.
+- **Documentation**: Fixed stale `maxSubagentsPerSession` defaults in `docs/rlm-transition-plan.md` — 5 occurrences of "default 20" corrected to 30 (matching actual code). Updated worst-case iteration example to reflect 30 agents.
+- **Documentation**: Replaced unimplemented "5-iteration fallback" mechanism in `docs/rlm-transition-plan.md` with accurate description of natural fallback behavior.
 
 ## [0.1.12] - 2026-02-21
 

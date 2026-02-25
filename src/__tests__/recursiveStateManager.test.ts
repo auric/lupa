@@ -489,6 +489,31 @@ describe('RecursiveStateManager', () => {
             const emptyManager = new RecursiveStateManager(2);
             expect(emptyManager.getTreeSummary()).toBe('No agents registered.');
         });
+
+        it('should order nodes by depth then agentId', () => {
+            const deepManager = new RecursiveStateManager(3);
+            deepManager.registerAgent(undefined, 'Root', 100);
+            deepManager.startAgent('root');
+
+            // Register children in reverse alphabetical order
+            deepManager.registerAgent('root', 'Child B', 30);
+            deepManager.startAgent('child-2');
+            deepManager.registerAgent('root', 'Child A', 30);
+            deepManager.startAgent('child-1');
+
+            // Register grandchild under child-2
+            deepManager.registerAgent('child-2', 'Grandchild', 10);
+            deepManager.startAgent('child-2.1');
+
+            const summary = deepManager.getTreeSummary();
+            const lines = summary.split('\n');
+
+            // Depth 0 first, then depth 1 (sorted by id), then depth 2
+            expect(lines[0]).toContain('root');
+            expect(lines[1]).toContain('child-1');
+            expect(lines[2]).toContain('child-2');
+            expect(lines[3]).toContain('child-2.1');
+        });
     });
 
     describe('getTotalAgentCount', () => {

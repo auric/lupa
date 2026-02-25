@@ -307,8 +307,15 @@ export class RecursiveStateManager {
             return 'No agents registered.';
         }
 
+        const sortedNodes = [...this.tree.values()].sort((a, b) => {
+            if (a.depth !== b.depth) {
+                return a.depth - b.depth;
+            }
+            return a.agentId.localeCompare(b.agentId);
+        });
+
         const lines: string[] = [];
-        for (const node of this.tree.values()) {
+        for (const node of sortedNodes) {
             const indent = '  '.repeat(node.depth);
             const duration = node.endTime
                 ? `${node.endTime - node.startTime}ms`

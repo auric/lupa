@@ -4,6 +4,7 @@ import { BaseTool } from './baseTool';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 import type { SubagentResult } from '../types/modelTypes';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
@@ -204,10 +205,24 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             clearTimeout(timeoutHandle);
 
             if (recursiveState && childAgentId) {
+                const filesExamined = RunSubagentTool.extractFilesExamined(
+                    result.toolCalls
+                );
                 if (result.success) {
-                    recursiveState.completeAgent(childAgentId);
+                    recursiveState.completeAgent(
+                        childAgentId,
+                        [],
+                        filesExamined
+                    );
                 } else if (result.error === 'cancelled') {
                     recursiveState.cancelAgent(childAgentId);
+                } else if (result.error === 'max_iterations') {
+                    // Agent did real work but hit iteration cap — mark completed with partial data
+                    recursiveState.completeAgent(
+                        childAgentId,
+                        [],
+                        filesExamined
+                    );
                 } else {
                     recursiveState.failAgent(
                         childAgentId,
@@ -299,5 +314,21 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             `**Tool calls made:** ${result.toolCallsMade}\n\n` +
             `---\n\n${result.response}`
         );
+    }
+
+    /**
+     * Extract unique file paths from subagent tool call records.
+     * Looks for common file path argument names across tool types.
+     */
+    static extractFilesExamined(toolCalls: ToolCallRecord[]): string[] {
+        const files = new Set<string>();
+        for (const call of toolCalls) {
+            const args = call.arguments;
+            const filePath = args['filePath'] ?? args['path'] ?? args['file'];
+            if (typeof filePath === 'string') {
+                files.add(filePath);
+            }
+        }
+        return [...files];
     }
 }
