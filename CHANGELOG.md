@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rate limit backoff**: `ConversationRunner` now detects `ChatRateLimited` errors and retries with exponential backoff (2s → 30s, up to 5 retries) without burning iterations. Previously, rate limit errors consumed an iteration each and retried immediately.
 - **Max iterations error shows actual budget**: `RunSubagentTool` error message now reports the child's allocated budget (e.g., 20) instead of the global `maxIterations` setting (e.g., 100).
 - **Root agent plans from metadata, not diffs**: Recursive root no longer calls `get_file_diff` — it decomposes from `<diff_metadata>` and `list_changed_files` metadata only. Subagents read diffs themselves via `get_file_diff`. Keeps root context clean for aggregation.
+- **Recursive root delegation enforcement**: Eliminated contradictory "read 2-3 key diffs before planning" instructions that appeared across 4 prompt locations (`recursiveRootRole`, `recursiveMethodology`, `recursiveToolGuide`, `promptGenerator`). Root agent now orients via metadata only, never reading diffs itself. Previously, after reading 25-60% of the PR, the LLM would continue analyzing directly rather than delegating to subagents.
+- **Tighter escape hatches for delegation**: Reduced the "trivial PR" threshold from 1-3 files/<50 lines to 1-2 files/<30 lines, and removed the broad "config-only changes" exception that LLMs used to rationalize skipping delegation for 3-5 file PRs.
+- **Prompt section reordering**: Moved `RecursiveMethodology` before `RecursiveSelfReflection` in the prompt builder so the action steps (decompose → delegate → aggregate) appear earlier where LLMs weight instructions more heavily.
+- **RLM-aware subagent guidance**: `subagentGuidance` now detects whether diff tools are available. In RLM mode, shows "Subagents have `get_file_diff`" instead of the false "Subagents CANNOT see the diff" constraint that was blocking diff-related subagent tasks.
 - **Subagents skip `list_changed_files`**: Subagent diff prompt now starts with `get_file_diff` for assigned files instead of wasting an iteration listing all changed files.
 - **Small model warning**: When using RLM mode with a model under 50K context tokens, logs a warning recommending a larger context model.
 
@@ -63,6 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added test for rate-limit counter reset after successful API response.
 - Added test for `getFileDiffTool` mixed valid + ambiguous paths in same request.
 - Added test for `RunSubagentTool` defaulting `currentDepth` to 0 when undefined with `recursiveState`.
+- Added tests for recursive prompt delegation enforcement: no diff-reading instructions, metadata-only orientation, methodology-before-self-reflection ordering, tighter escape hatch thresholds, no `get_file_diff` in mandatory workflow, and correct 6-step workflow in RLM reminder.
+- Added tests for RLM-aware subagent guidance: diff constraint shown when no diff tools, diff access guidance shown when diff tools present.
 
 ### Changed
 

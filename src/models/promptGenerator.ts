@@ -231,18 +231,16 @@ export class PromptGenerator {
         reminder +=
             '1. Call `list_changed_files` for a structured view of all changes\n';
         reminder +=
-            '2. Read 2-3 key diffs with `get_file_diff` (largest change, new files, risky areas) to understand what the PR does\n';
+            '2. Call `update_plan` — decompose into concern groups based on metadata (file names, change sizes, risk)\n';
         reminder +=
-            '3. Call `update_plan` — decompose into concern groups based on your informed understanding\n';
+            '3. **Spawn `run_subagent` for each concern group** (list file paths in task) — this is your PRIMARY action\n';
+        reminder += '4. After all agents return, aggregate findings\n';
+        reminder += '5. Check for cross-concern issues\n';
         reminder +=
-            '4. **Spawn `run_subagent` for each concern group** (list file paths in task) — this is your PRIMARY action\n';
-        reminder += '5. After all agents return, aggregate findings\n';
-        reminder += '6. Check for cross-concern issues\n';
-        reminder +=
-            '7. Call `think_about_completion`, then `submit_review`\n\n';
+            '6. Call `think_about_completion`, then `submit_review`\n\n';
 
         reminder +=
-            '⚠️ **Delegation is mandatory** — Do NOT read diffs yourself and write the review directly. ' +
+            '⚠️ **Delegation is mandatory** — Do NOT read diffs or investigate files yourself. ' +
             'Your job is to decompose and delegate via `run_subagent`. ' +
             'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n';
         reminder += '</analysis_task>';

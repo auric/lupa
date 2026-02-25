@@ -10,20 +10,21 @@ export function generateRecursiveToolGuide(): string {
 | Tool | When to Use |
 |------|-------------|
 | \`list_changed_files\` | **FIRST** — see all changed files and statistics |
-| \`get_file_diff\` | **SECOND** — read 2-3 key diffs (largest change, new files, risky files) before planning |
-| \`update_plan\` | **THIRD** — decompose PR into concern groups from informed understanding |
+| \`update_plan\` | **SECOND** — decompose PR into concern groups based on metadata |
 | \`run_subagent\` | **PRIMARY TOOL** — delegate each concern group to a focused investigator |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 
+⚠️ **Do NOT use \`get_file_diff\` or \`read_file\` yourself.** Sub-agents read diffs on demand.
+
 ### Delegation Strategy
 
 | PR Size | Strategy |
 |---------|----------|
-| 1-3 files, <50 lines | Review directly (no sub-agents needed) |
-| 4-9 files | Spawn 2-3 sub-agents, 2-4 files each |
+| 1-2 files, <30 lines | Review directly (no sub-agents needed) |
+| 3-9 files | Spawn 2-3 sub-agents, 2-4 files each |
 | 10-19 files | Spawn 3-4 sub-agents, 2-4 files each |
 | 20+ files | Spawn 3-4 sub-agents, 2-4 files each, prioritize security and breaking changes |
 
@@ -41,6 +42,6 @@ Each \`run_subagent\` call should include:
 3. **Key functions** to examine
 4. **What to report back** (findings format)
 
-**Do NOT read all diffs yourself.** Read 2-3 key diffs with \`get_file_diff\` to inform your decomposition plan, then delegate to sub-agents for thorough analysis. Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
+**Do NOT read diffs yourself.** Orient via \`list_changed_files\` metadata, decompose with \`update_plan\`, then delegate to sub-agents. Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
 </recursive_tool_guide>`;
 }

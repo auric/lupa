@@ -81,9 +81,10 @@ export class PromptBuilder {
 
     /**
      * Add subagent delegation guidance.
+     * @param subagentsHaveDiffTools Whether subagents will have access to diff tools (RLM mode).
      */
-    addSubagentGuidance(): this {
-        this.sections.push(generateSubagentGuidance());
+    addSubagentGuidance(subagentsHaveDiffTools: boolean = false): this {
+        this.sections.push(generateSubagentGuidance(subagentsHaveDiffTools));
         return this;
     }
 
@@ -198,11 +199,12 @@ export class PromptBuilder {
  * Create a pre-configured builder for PR review prompts.
  */
 export function createPRReviewPromptBuilder(tools: ITool[]): PromptBuilder {
+    const hasDiffTools = tools.some((t) => t.name === 'list_changed_files');
     return new PromptBuilder()
         .addPRReviewerRole()
         .addToolInventory(tools)
         .addPRToolGuide()
-        .addSubagentGuidance()
+        .addSubagentGuidance(hasDiffTools)
         .addSelfReflection()
         .addAnalysisMethodology()
         .addPROutputFormat();
@@ -233,7 +235,7 @@ export function createRecursiveRootPromptBuilder(
         .addRecursiveRootRole()
         .addToolInventory(tools)
         .addRecursiveToolGuide()
-        .addRecursiveSelfReflection()
         .addRecursiveMethodology()
+        .addRecursiveSelfReflection()
         .addPROutputFormat();
 }

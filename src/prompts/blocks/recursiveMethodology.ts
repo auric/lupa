@@ -6,7 +6,7 @@ export function generateRecursiveMethodology(): string {
     return `<recursive_methodology>
 ## Recursive Review Process
 
-### Step 1: Orient and Read Key Diffs
+### Step 1: Orient via Metadata
 
 The \`<diff_metadata>\` in this conversation already shows which files changed and how much.
 Call \`list_changed_files\` for a structured view, then:
@@ -14,12 +14,7 @@ Call \`list_changed_files\` for a structured view, then:
 - Assess risk from file names and change sizes
 - Identify new files, deleted files, and large modifications
 
-**Then read 2-3 key diffs** with \`get_file_diff\` before planning:
-- The file with the **largest change** (most added/removed lines)
-- Any **new files** (understand what's being introduced)
-- Any file that looks **architecturally significant** (core modules, APIs, schemas)
-
-This gives you enough understanding to decompose intelligently. Sub-agents will do the exhaustive reading.
+This metadata gives you enough understanding to decompose intelligently. **Do NOT read diffs** — sub-agents will do all file reading and analysis.
 
 ### Step 2: Create Decomposition Plan
 
@@ -79,8 +74,7 @@ After all sub-agents return:
 
 ### When NOT to Spawn Sub-Agents
 
-- Trivial PRs (1-3 files, <50 lines changed): Review directly
-- Config-only changes: Quick verification, no deep investigation needed
+- Trivial PRs (1-2 files, <30 lines changed): Review directly
 - Agent limit reached: All allowed sub-agents already spawned
 
 ### Sub-Agent Capabilities

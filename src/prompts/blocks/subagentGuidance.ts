@@ -5,23 +5,18 @@
 
 /**
  * Generate subagent guidance for PR review mode.
- * Focuses on the critical constraint that subagents cannot see the diff.
+ * @param subagentsHaveDiffTools Whether subagents have access to diff tools (RLM mode).
  */
-export function generateSubagentGuidance(): string {
-    return `<subagent_guidance>
-## Subagent Delegation
+export function generateSubagentGuidance(
+    subagentsHaveDiffTools: boolean = false
+): string {
+    const diffConstraint = subagentsHaveDiffTools
+        ? `### Subagent Diff Access
 
-\`run_subagent\` spawns an isolated agent to investigate specific questions about the **current codebase**.
+✅ **Subagents have \`get_file_diff\` and \`list_changed_files\`.** They can read diffs on demand.
 
-### When to Spawn (MANDATORY)
-
-| Trigger | Action |
-|---------|--------|
-| 4+ files modified | Spawn 2+ subagents for parallel analysis |
-| Security-sensitive code | Dedicated security investigation subagent |
-| Complex dependency chain (3+ files) | Dependency-tracing subagent |
-
-### Critical Constraint
+When spawning, tell subagents **which files to examine** and **what concerns to investigate**. They will read the diffs themselves.`
+        : `### Critical Constraint
 
 ⚠️ **Subagents CANNOT see the diff.** They explore current code only.
 
@@ -31,15 +26,30 @@ export function generateSubagentGuidance(): string {
 | "How does Y handle errors?" | "Was the refactoring correct?" |
 | "Does Z have method W?" | "What was removed?" |
 
-**Before spawning, ask yourself:** "Could someone who never saw the git history answer this?"
+**Before spawning, ask yourself:** "Could someone who never saw the git history answer this?"`;
+
+    return `<subagent_guidance>
+## Subagent Delegation
+
+\`run_subagent\` spawns an isolated agent to investigate specific questions.
+
+### When to Spawn (MANDATORY)
+
+| Trigger | Action |
+|---------|--------|
+| 4+ files modified | Spawn 2+ subagents for parallel analysis |
+| Security-sensitive code | Dedicated security investigation subagent |
+| Complex dependency chain (3+ files) | Dependency-tracing subagent |
+
+${diffConstraint}
 
 ### Task Format
 
 \`\`\`
 task: "Investigate [module] for [concern].
 Questions:
-1. [Question about current behavior]
-2. [Question about current behavior]
+1. [Question about ${subagentsHaveDiffTools ? 'the changes and their impact' : 'current behavior'}]
+2. [Question about ${subagentsHaveDiffTools ? 'the changes and their impact' : 'current behavior'}]
 Examine: [function1], [function2]"
 
 context: "[Your concern - what prompted this investigation]"
@@ -57,8 +67,6 @@ Examine: login, authenticate, hashPassword"
 
 context: "Reviewing authentication changes - need to verify security patterns"
 \`\`\`
-
-Subagent findings are about current code—correlate with your diff to determine relevance.
 </subagent_guidance>`;
 }
 

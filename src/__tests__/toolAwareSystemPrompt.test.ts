@@ -242,4 +242,38 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('**simple_tool**: A simple tool');
         });
     });
+
+    describe('RLM-aware subagent guidance', () => {
+        it('should show "Subagents CANNOT see the diff" when no diff tools present', () => {
+            const prompt = generator.generateSystemPrompt(mockTools);
+
+            expect(prompt).toContain('Subagents CANNOT see the diff');
+            expect(prompt).toContain('Valid Questions');
+            expect(prompt).toContain('Invalid Questions');
+        });
+
+        it('should show diff access guidance when diff tools are present (RLM mode)', () => {
+            const diffTool: ITool = {
+                name: 'list_changed_files',
+                description: 'List changed files',
+                schema: z.object({}),
+                getVSCodeTool: () => ({
+                    name: 'list_changed_files',
+                    description: '',
+                    parametersSchema: {} as any,
+                }),
+                execute: async () => ({ success: true, data: '' }),
+            };
+
+            const prompt = generator.generateSystemPrompt([
+                ...mockTools,
+                diffTool,
+            ]);
+
+            expect(prompt).toContain('Subagent Diff Access');
+            expect(prompt).toContain('get_file_diff');
+            expect(prompt).not.toContain('Subagents CANNOT see the diff');
+            expect(prompt).not.toContain('Invalid Questions');
+        });
+    });
 });

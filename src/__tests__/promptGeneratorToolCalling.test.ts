@@ -670,4 +670,105 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(closePathTags.length).toBe(1);
         });
     });
+
+    describe('recursive prompt delegation enforcement', () => {
+        it('should NOT tell root agent to read diffs in recursive system prompt', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            // The root agent should orient via metadata only, not read diffs
+            expect(systemPrompt).not.toContain(
+                'Read key diffs before planning'
+            );
+            expect(systemPrompt).not.toContain('read 2-3 key diffs');
+            expect(systemPrompt).not.toContain('SECOND — read 2-3 key diffs');
+        });
+
+        it('should instruct root agent to orient via metadata only', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('Orient via metadata ONLY');
+            expect(systemPrompt).toContain('Orient via Metadata');
+        });
+
+        it('should order RecursiveMethodology before RecursiveSelfReflection', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            const methodologyIndex = systemPrompt.indexOf(
+                '<recursive_methodology>'
+            );
+            const selfReflectionIndex =
+                systemPrompt.indexOf('<self_reflection>');
+
+            expect(methodologyIndex).toBeGreaterThan(-1);
+            expect(selfReflectionIndex).toBeGreaterThan(-1);
+            expect(methodologyIndex).toBeLessThan(selfReflectionIndex);
+        });
+
+        it('should use tighter escape hatch threshold (1-2 files, <30 lines)', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('1-2 files');
+            expect(systemPrompt).toContain('<30 lines');
+            expect(systemPrompt).not.toContain('1-3 files');
+            expect(systemPrompt).not.toContain('<50 lines');
+        });
+
+        it('should NOT include get_file_diff in recursive mandatory workflow', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            // The mandatory workflow should go directly from list_changed_files to update_plan
+            expect(systemPrompt).toContain(
+                '`list_changed_files` → `update_plan`'
+            );
+            // Should NOT have get_file_diff in tool guide table as SECOND step
+            expect(systemPrompt).not.toContain('SECOND — read');
+        });
+
+        it('should warn against using get_file_diff in recursive root prompt', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('Do NOT use `get_file_diff`');
+        });
+
+        it('should NOT tell root to read diffs in recursive RLM user prompt', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true,
+                10
+            );
+
+            expect(prompt).not.toContain('Read 2-3 key diffs');
+            expect(prompt).toContain('Delegation is mandatory');
+            expect(prompt).toContain('Do NOT read diffs');
+        });
+
+        it('should have 6 workflow steps in recursive RLM reminder (no diff-reading step)', () => {
+            const prompt = promptGenerator.generateRlmUserPrompt(
+                sampleParsedDiff,
+                undefined,
+                true,
+                10
+            );
+
+            // Step 6 should be the last workflow step
+            expect(prompt).toContain('6. Call `think_about_completion`');
+            // There should be no step 7
+            expect(prompt).not.toMatch(/^7\./m);
+        });
+
+        it('should use 3+ files threshold for delegation in delegation strategy table', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('3-9 files');
+            expect(systemPrompt).not.toContain('4-9 files');
+        });
+    });
 });
