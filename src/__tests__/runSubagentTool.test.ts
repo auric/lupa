@@ -901,6 +901,47 @@ describe('RunSubagentTool', () => {
             );
         });
 
+        it('should pass parsedDiff through to executor options', async () => {
+            const recursiveState = new RecursiveStateManager(3);
+            const rootId = recursiveState.registerAgent(undefined, 'root', 100);
+            recursiveState.startAgent(rootId);
+
+            const parsedDiff = [
+                {
+                    filePath: 'file.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: 'diff --git a/file.ts b/file.ts',
+                },
+            ];
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+                parsedDiff,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    parsedDiff,
+                })
+            );
+        });
+
         it('should default currentDepth to 0 when undefined with recursiveState', async () => {
             const recursiveState = new RecursiveStateManager(3);
             const rootId = recursiveState.registerAgent(undefined, 'root', 100);

@@ -37,11 +37,12 @@
 
 These components are created fresh for each analysis session, not managed by ServiceManager:
 
-| Component                | File                        | Description                                    |
-| ------------------------ | --------------------------- | ---------------------------------------------- |
-| `SubagentExecutor`       | `subagentExecutor.ts`       | Isolated subagent execution for one analysis   |
-| `SubagentSessionManager` | `subagentSessionManager.ts` | Subagent lifecycle and limits for one analysis |
-| `PlanSessionManager`     | `planSessionManager.ts`     | Review plan state for current analysis         |
+| Component                | File                        | Description                                                 |
+| ------------------------ | --------------------------- | ----------------------------------------------------------- |
+| `SubagentExecutor`       | `subagentExecutor.ts`       | Isolated subagent execution for one analysis                |
+| `SubagentSessionManager` | `subagentSessionManager.ts` | Subagent lifecycle and limits for one analysis              |
+| `PlanSessionManager`     | `planSessionManager.ts`     | Review plan state for current analysis                      |
+| `RecursiveStateManager`  | `recursiveStateManager.ts`  | Recursive agent tree, budget allocation, file deduplication |
 
 ---
 

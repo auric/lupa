@@ -51,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Path normalization in `get_file_diff`**: Backslash paths from LLM are normalized to forward slashes before matching against diff entries.
 - **Diff tools filtered in legacy mode**: `SubagentExecutor` removes `list_changed_files` and `get_file_diff` from subagent tools when `parsedDiff` is unavailable (legacy approach), preventing misleading prompt instructions and tool call errors.
 - **`get_file_diff` exact-match priority**: Exact path matches are now preferred over suffix matches. Previously, requesting `Button.tsx` when both `Button.tsx` and `src/components/Button.tsx` existed would return an ambiguous error instead of the exact match.
+- **Diff tool detection checks both tools**: `SubagentPromptGenerator.hasDiffTools` now verifies both `list_changed_files` and `get_file_diff` are present (via `DIFF_TOOLS.every()`), instead of only checking for `list_changed_files`. Prevents stale prompt instructions if tools are ever registered independently.
 
 #### Prompt Hygiene
 
@@ -77,6 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed in-mock assertion in `ConversationRunner` rate-limit test — moved `expect()` from inside mock callback to post-execution verification.
 - Added tests for `RunSubagentTool` budget rollback: generic failure rolls back, timeout does not, max-iterations does not.
 - Added tests for diff content sanitization: angle brackets stripped from hunk headers and content lines.
+- Added tests for `ReadFileTool` EOF clamping: `end_line` and `line_count` past file length are silently clamped.
+- Added test for `RunSubagentTool` parsedDiff propagation to executor.
 
 ### Changed
 
@@ -86,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **README version badge**: Updated from 0.1.11 to 0.2.0.
 - **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
 - **Documentation**: Updated `docs/rlm-transition-plan.md` Section 13 to reflect actual flat-allocation constants (`RecursionConstants`) replacing the planned ratio-based model.
+- **Documentation**: Added `RecursiveStateManager` to component inventory; linked `rlm-transition-plan.md` in docs index.
 
 ## [0.1.12] - 2026-02-21
 

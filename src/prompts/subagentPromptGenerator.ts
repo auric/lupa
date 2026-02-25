@@ -1,6 +1,7 @@
 import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
+import { DIFF_TOOLS } from '../models/toolConstants';
 
 /**
  * Generates focused system prompts for subagent investigations.
@@ -28,7 +29,9 @@ export class SubagentPromptGenerator {
         canRecurse: boolean = false
     ): string {
         const toolList = this.formatToolList(tools);
-        const hasDiffTools = tools.some((t) => t.name === 'list_changed_files');
+        const hasDiffTools = DIFF_TOOLS.every((name) =>
+            tools.some((t) => t.name === name)
+        );
         const contextSection = task.context
             ? `<context_from_parent>
 ## Context from Parent Agent
