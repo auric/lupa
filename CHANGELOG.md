@@ -118,6 +118,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for max_iterations → completed agent status and filesExamined propagation on success.
 - Added test for tree summary depth-then-agentId ordering.
 - Added `createTestRecursiveState()` mock factory helper, eliminating 11 occurrences of 3-line setup boilerplate in `runSubagentTool.test.ts`.
+
+#### Recursive State Manager Hardening (Round 19)
+
+- **`startAgent` lifecycle guards**: Added unknown-agent warning and terminal-state guard to `startAgent()`, matching the pattern already used by `completeAgent()`, `failAgent()`, and `cancelAgent()`. Previously, calling `startAgent()` on a completed/failed/cancelled agent silently overwrote the terminal state back to `running`.
+- **`ChatParticipantService` root completion triage**: Fixed the `finally` block to properly triage between `completeAgent`/`failAgent`/`cancelAgent` based on outcome, matching `ToolCallingAnalysisProvider`. Previously, it unconditionally called `completeAgent('root')` regardless of errors or cancellation.
+
+#### Prompt & Documentation Fixes (Round 19)
+
+- **Recursive methodology threshold consistency**: Fixed `recursiveMethodology.ts` to use "4+ files" consistently for the sub-agent decomposition threshold. Previously stated "4+ files" in Step 3 but "6+ files" in the Sub-Agent Capabilities section.
+- **Architecture docs config example**: Added `analysisApproach` and `maxRecursionDepth` to the `.vscode/lupa.json` example in `architecture.md` — key RLM settings that were documented in prose but missing from the config example.
+- **Session slot documentation**: Added class-level doc explaining why subagent slots are intentionally not freed on cancellation/timeout (they consumed model resources, so budget should reflect actual usage).
+
+#### Test Coverage (Round 19)
+
+- Added tests for `startAgent` guards: warns on unknown agentId, ignores call on already-completed/failed/cancelled agents.
 - Added tests for FP reduction phase 2: scope boundary/revert test in PR and recursive prompts, false positive cost statement, design flaw and feature request verification gates, subagent scope boundary and revert test, recursive aggregation quality filter.
 
 ### Changed

@@ -92,6 +92,6 @@ Sub-agents receive full code exploration tools:
 - They CAN spawn their own sub-agents for large scopes (4+ files)
 - They return structured findings you can directly incorporate
 
-**Assign 2-4 files per sub-agent.** If a concern group has 6+ files, the sub-agent will automatically decompose further.
+**Assign 2-4 files per sub-agent.** If a concern group has 4+ files, the sub-agent will automatically decompose further.
 </recursive_methodology>`;
 }

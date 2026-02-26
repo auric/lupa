@@ -599,7 +599,9 @@ File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOvervi
     "maxIterations": 25,
     "requestTimeoutSeconds": 180,
     "maxSubagentsPerSession": 30,
-    "preferredModelIdentifier": "copilot/gpt-4.1"
+    "preferredModelIdentifier": "copilot/gpt-4.1",
+    "analysisApproach": "rlm",
+    "maxRecursionDepth": 2
 }
 ```
 

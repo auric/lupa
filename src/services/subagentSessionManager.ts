@@ -4,6 +4,11 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
 /**
  * Tracks subagent usage per analysis session.
  * Prevents excessive subagent spawning that could exhaust resources.
+ *
+ * Session slots are intentionally never freed on cancellation or timeout —
+ * a cancelled subagent still consumed model resources, so the budget should
+ * reflect actual usage. Only `rollbackSpawn` reclaims a slot, and only when
+ * post-spawn registration fails before the subagent starts work.
  */
 export class SubagentSessionManager {
     private count = 0;

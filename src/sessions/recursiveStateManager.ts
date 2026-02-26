@@ -151,9 +151,17 @@ export class RecursiveStateManager {
 
     startAgent(agentId: string): void {
         const node = this.getNode(agentId);
-        if (node) {
-            node.status = 'running';
+        if (!node) {
+            Log.warn(`startAgent called with unknown agentId: "${agentId}"`);
+            return;
         }
+        if (TERMINAL_STATUSES.has(node.status)) {
+            Log.warn(
+                `startAgent: agent "${agentId}" already in terminal state "${node.status}", ignoring`
+            );
+            return;
+        }
+        node.status = 'running';
     }
 
     completeAgent(

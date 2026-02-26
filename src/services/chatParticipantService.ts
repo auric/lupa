@@ -619,6 +619,9 @@ export class ChatParticipantService implements vscode.Disposable {
               );
         conversation.addUserMessage(userPrompt);
 
+        let analysisCompleted = false;
+        let analysisError: string | undefined;
+
         try {
             const analysisResult = await runner.run(
                 {
@@ -640,6 +643,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
+            analysisCompleted = true;
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
             const contentAnalysis = this.analyzeResultContent(analysisResult);
@@ -657,10 +661,23 @@ export class ChatParticipantService implements vscode.Disposable {
                     analysisTimestamp: Date.now(),
                 } satisfies ChatAnalysisMetadata,
             };
+        } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+            analysisError = getErrorMessage(error);
+            throw error;
         } finally {
             subagentSessionManager.setParentCancellationToken(undefined);
-            // Complete root agent lifecycle in recursive state tree
-            recursiveState?.completeAgent('root');
+            if (recursiveState) {
+                if (analysisCompleted) {
+                    recursiveState.completeAgent('root');
+                } else if (analysisError) {
+                    recursiveState.failAgent('root', analysisError);
+                } else {
+                    recursiveState.cancelAgent('root');
+                }
+            }
         }
     }
 

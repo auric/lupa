@@ -3,6 +3,16 @@ import {
     RecursiveStateManager,
     RecursionConstants,
 } from '../sessions/recursiveStateManager';
+import { Log } from '../services/loggingService';
+
+vi.mock('../services/loggingService', () => ({
+    Log: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+    },
+}));
 
 describe('RecursiveStateManager', () => {
     let manager: RecursiveStateManager;
@@ -190,6 +200,40 @@ describe('RecursiveStateManager', () => {
             manager.completeAgent('root', [], ['file.ts']);
             expect(manager.getNode('root')!.status).toBe('cancelled');
             expect(manager.getNode('root')!.filesExamined).toEqual([]);
+        });
+
+        it('should warn and ignore startAgent for unknown agentId', () => {
+            manager.startAgent('nonexistent');
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('unknown agentId')
+            );
+        });
+
+        it('should ignore startAgent on already-completed agent', () => {
+            manager.startAgent('root');
+            manager.completeAgent('root', [], []);
+
+            manager.startAgent('root');
+            expect(manager.getNode('root')!.status).toBe('completed');
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('terminal state')
+            );
+        });
+
+        it('should ignore startAgent on already-failed agent', () => {
+            manager.startAgent('root');
+            manager.failAgent('root', 'error');
+
+            manager.startAgent('root');
+            expect(manager.getNode('root')!.status).toBe('failed');
+        });
+
+        it('should ignore startAgent on already-cancelled agent', () => {
+            manager.startAgent('root');
+            manager.cancelAgent('root');
+
+            manager.startAgent('root');
+            expect(manager.getNode('root')!.status).toBe('cancelled');
         });
     });
 
