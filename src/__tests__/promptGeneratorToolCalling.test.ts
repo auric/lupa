@@ -309,6 +309,14 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).toContain('Test suggestion filter');
         });
 
+        it('should include production caller and performance filters in aggregation', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('Production caller filter');
+            expect(systemPrompt).toContain('Performance claim filter');
+        });
+
         it('should include recursive tool guide', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);

@@ -230,6 +230,37 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('unreachable');
         });
 
+        it('should include integration test complexity gate', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Missing integration test');
+            expect(prompt).toContain('3+ mocked layers');
+        });
+
+        it('should include production caller verification gate', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('production callers');
+            expect(prompt).toContain('future API surface');
+        });
+
+        it('should include role-aware asymmetry in FP patterns', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain(
+                'Verify the ROLE before claiming inconsistency'
+            );
+        });
+
+        it('should include performance quantification in FP patterns', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('quantifying actual n and m');
+            expect(prompt).toContain('Premature optimization is not a finding');
+        });
+
+        it('should include defense-in-depth boundary clarification', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('trust boundaries');
+            expect(prompt).toContain('internal method calls');
+        });
+
         it('should include finding quality in recursive root prompt', () => {
             const prompt = generator.generateRecursiveSystemPrompt([]);
             expect(prompt).toContain('<finding_quality>');

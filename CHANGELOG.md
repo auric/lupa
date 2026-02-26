@@ -179,6 +179,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for `canRecurse=true` without diff tools: decomposition strategy omits `get_file_diff`, uses context-based investigation steps.
 - Added integration tests for recursive mode prompt selection: RLM approach with depth >= 1 uses recursive prompt, legacy approach uses standard prompt, RLM with depth 0 uses standard prompt.
 
+#### Finding Quality — False Positive Reduction (Phase 4)
+
+- **Integration test complexity gate**: New verification gate requiring complexity estimation for proposed integration tests spanning 3+ mocked layers. If the test primarily exercises mock wiring rather than real logic, it's not a valid finding.
+- **Production caller verification gate**: New verification gate requiring check for production callers before reporting public method behavior as a bug. Methods with only test consumers may be future API surface.
+- **Role-aware asymmetry in FP patterns**: Expanded "inconsistent thresholds" anti-pattern with explicit guidance to verify the ROLE before claiming inconsistency (e.g., coordinator vs worker thresholds are intentionally different).
+- **Performance quantification required**: New FP pattern blocking "O(n\*m) is slow" claims without quantifying actual n and m values. For bounded inputs (schema-capped arrays), linear scans are often optimal. Premature optimization is not a finding.
+- **Defense-in-depth boundary clarification**: Layered Validation Awareness section now explicitly states defense-in-depth is for trust boundaries (user input, external APIs), not internal method calls within the same module.
+- **Recursive aggregation filters expanded**: Added Production caller filter (drop findings about methods with zero production callers) and Performance claim filter (drop unquantified performance concerns) to Step 4 aggregation.
+- **Self-reflection aggregation checkpoint expanded**: Root controller aggregation now also checks whether flagged methods have production callers and whether agent verified role intent before claiming threshold inconsistency.
+- **Subagent quality guidance expanded**: Grew from 8 to 10 points — added production caller check and performance quantification requirement.
+
+#### Test Coverage (Round 22 — Phase 4)
+
+- Added tests for integration test complexity gate in PR review prompt.
+- Added tests for production caller verification gate.
+- Added tests for role-aware asymmetry FP pattern.
+- Added tests for performance quantification FP pattern.
+- Added tests for defense-in-depth boundary clarification.
+- Added tests for production caller and performance aggregation filters in recursive mode.
+- Added tests for production caller and performance gates in subagent prompt.
+
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.

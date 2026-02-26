@@ -394,6 +394,17 @@ describe('SubagentPromptGenerator', () => {
                 expect(prompt).toContain('trace ALL callers');
                 expect(prompt).toContain('real regression');
             });
+
+            it('should include production caller and performance gates in subagent prompt', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 30);
+
+                expect(prompt).toContain('production callers');
+                expect(prompt).toContain('Quantify performance');
+            });
         });
     });
 });

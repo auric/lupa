@@ -41,6 +41,8 @@ Before reporting a finding, complete the verification for its claim type:
 | "Design inconsistency" | Check for comments/docs explaining rationale; if plausible intent exists, **drop it** |
 | "Should validate X" | Trace all producers of X to prove an invalid value is reachable. Check if a **caller or middleware** already validates — redundant validation is not a finding |
 | "Should add try-catch" | Check if an outer scope (middleware, executor, framework) already catches and handles the error — redundant error handling is not a finding |
+| "Missing integration test" | Check if each layer already has unit tests covering the code paths. Estimate test complexity: if the test spans 3+ mocked layers and primarily exercises mock wiring rather than real logic, it is likely not worth adding |
+| "Unused / incorrect public method" | Before reporting an issue about a public method's behavior, verify it has **production callers** (not just test consumers). Methods with only test callers may be future API surface — not a bug |
 | "Missing cleanup/disposal" | Check framework config (vitest.config, jest.config) for global settings |
 | "Design flaw / should refactor" | Search for comments, docs, tests, or commit history explaining the design. If ANY plausible rationale exists, drop the finding |
 | "Should add X feature" | This is a suggestion, not a bug. Only report as 🟢 LOW if directly relevant to changed code |
@@ -57,6 +59,8 @@ Many codebases use layered architecture where validation happens at specific bou
 - **Type system constrains values** → runtime validation is redundant for typed internals
 
 Before suggesting "add validation/error handling at X", check whether a **surrounding layer already provides it**. Redundant defensive code is not an improvement — it's noise.
+
+**Defense-in-depth is for trust boundaries**, not internal method calls. Adding redundant validation between two methods in the same module is noise, not safety. Reserve defensive checks for system boundaries: user input, external APIs, plugin interfaces.
 
 ### Counterexample Requirement
 
@@ -83,14 +87,16 @@ CRITICAL/HIGH findings MUST be 🟢 VERIFIED. Speculative findings may only be �
 - ❌ "Missing try-catch" when an outer scope already handles the error
 - ❌ "Can go negative" without proving a concrete input exists that causes it
 - ❌ "No tests for X" without searching the test directory first
-- ❌ "Inconsistent thresholds" for intentionally asymmetric designs (e.g., different roles)
+- ❌ "Inconsistent thresholds" for intentionally asymmetric designs — different roles may have different thresholds by design (e.g., coordinator delegates at 3+ files, workers decompose at 4+). Verify the ROLE before claiming inconsistency
 - ❌ "Missing cleanup" when the test framework config handles it globally
 - ❌ "Unused callback/dead code" when the interface is an extension point
 - ❌ "Should validate X" when X is internal state already constrained by producers
 - ❌ "Should add try-catch" when a middleware/executor already catches and converts errors
 - ❌ "Should add X" (logging, metrics, retry logic) as MEDIUM or higher — suggestions are 🟢 LOW at most
 - ❌ "Missing test" when the test exists under a different name, or the proposed test only exercises trivial pass-through logic (e.g., testing that a spread operator works, that a mock factory returns defaults)
-- ❌ "Missing integration test" when each layer has unit tests covering the same code paths — multi-layer integration tests are only valuable when the wiring itself is error-prone
+- ❌ "Missing integration test" when each layer has unit tests covering the same code paths — if the proposed test spans 3+ mocked layers, it primarily exercises mock infrastructure, not real logic
+- ❌ "O(n*m) is slow" or similar performance concerns without quantifying actual n and m — for bounded inputs (schema-capped arrays, typical PR sizes), linear scans are often optimal. Premature optimization is not a finding
+- ❌ Reporting a public method's behavior as incorrect when the method has zero production callers — it may be future API surface. Check for actual usage before reporting
 - ❌ "Should document rationale" when the rationale is in CHANGELOG, commit messages, or design docs — not every constant needs inline comments
 - ❌ Issues in unchanged code that the PR doesn't make worse
 - ❌ "Architecture should use X pattern" without evidence the current approach causes concrete problems
@@ -121,5 +127,7 @@ Before reporting any issue:
 5. **Consider intent**: For "design flaw" — check if the design is intentional (comments, docs, tests, changelogs). If plausible rationale exists, drop it
 6. **Layered architecture**: Before suggesting validation/error handling, check if a surrounding layer already provides it. Don't suggest try-catch when a middleware catches, or input validation when the caller already validates
 7. **Suggestions ≠ bugs**: "Should add X" is a suggestion, not a bug. Report as LOW only, never higher
-8. **When uncertain, omit**: Three verified findings beat twelve speculative ones`;
+8. **When uncertain, omit**: Three verified findings beat twelve speculative ones
+9. **Check callers exist**: Before reporting a public method's behavior as a bug, verify it has production callers — methods with only test consumers may be future API surface
+10. **Quantify performance**: Don't flag "O(n*m) is slow" without knowing actual n and m. For bounded inputs (schema-capped, small collections), linear scans are fine`;
 }

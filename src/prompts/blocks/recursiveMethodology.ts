@@ -72,6 +72,8 @@ After all sub-agents return:
 - **Challenge speculative claims**: Drop any finding where the sub-agent used language like "could potentially," "might," or "consider adding" without concrete evidence
 - **Architecture-aware filter**: Drop findings that suggest validation/error handling that a higher layer already provides (e.g., middleware catches errors, caller validates inputs). Redundant defense is not a finding
 - **Test suggestion filter**: Drop "missing test" findings unless the sub-agent searched the test directory AND identified a concrete regression the test would catch
+- **Production caller filter**: Drop findings about public method behavior when the method has zero production callers (only test consumers) — it may be future API surface
+- **Performance claim filter**: Drop "O(n*m) is slow" or similar performance concerns unless the sub-agent quantified actual n and m values for this codebase. For bounded inputs, linear scans are often optimal
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
 - Assess overall PR risk
 - Call \`update_plan\` to mark all concern groups as complete
