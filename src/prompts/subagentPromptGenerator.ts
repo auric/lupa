@@ -101,8 +101,8 @@ You have \`run_subagent\` available and **${maxIterations} iterations** for your
 Do NOT try to review 4+ files directly — you'll exhaust your iterations and produce incomplete findings. This is not optional.
 
 **Decomposition approach:**
-1. Call \`get_file_diff\` for 1 key file to orient yourself (~1 iteration)
-2. Based on the diff, split your remaining files into focused sub-tasks
+1. ${hasDiffTools ? 'Call `get_file_diff` for 1 key file to orient yourself (~1 iteration)' : 'Review the parent context to understand the scope of changes'}
+2. Based on ${hasDiffTools ? 'the diff' : 'what you know'}, split your remaining files into focused sub-tasks
 3. **Make multiple \`run_subagent\` tool calls in the same response** — they execute in parallel. Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
 4. After sub-agents return, aggregate their findings into your response
 

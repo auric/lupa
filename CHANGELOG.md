@@ -164,6 +164,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for architecture-aware and test suggestion aggregation filters in recursive mode.
 - Added tests for layered architecture awareness in subagent prompt.
 
+#### Prompt Consistency (Round 21)
+
+- **Decomposition strategy respects diff tool availability**: `recursionSection` in `SubagentPromptGenerator` now checks `hasDiffTools` before referencing `get_file_diff`. Previously, when `canRecurse=true` but diff tools were unavailable, the decomposition strategy told agents to "Call `get_file_diff` for 1 key file" — referencing a tool they didn't have. Now falls back to "Review the parent context" guidance.
+
+#### Documentation Fixes (Round 21)
+
+- **RLM transition plan: fixed stale budget model reference**: Risk table still referenced the old "40% root, 60% children" budget allocation ratio. Updated to describe the flat `DEFAULT_CHILD_BUDGET=30` model.
+- **RLM transition plan: fixed stale MIN_VIABLE_BUDGET reference**: Testing section referenced `< 5 iterations` but the actual constant is `MIN_VIABLE_BUDGET = 3`.
+- **RLM transition plan: clarified migration schema claim**: Migration section claimed "No schema changes" but new settings (`maxRecursionDepth`, `maxSubagentsPerSession`) were added. Clarified that there are no breaking changes and defaults preserve backward compatibility.
+
+#### Test Coverage (Round 21)
+
+- Added tests for `canRecurse=true` without diff tools: decomposition strategy omits `get_file_diff`, uses context-based investigation steps.
+- Added integration tests for recursive mode prompt selection: RLM approach with depth >= 1 uses recursive prompt, legacy approach uses standard prompt, RLM with depth 0 uses standard prompt.
+
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.

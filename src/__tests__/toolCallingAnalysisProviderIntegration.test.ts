@@ -814,4 +814,90 @@ index 3333333..4444444 100644
             tokenSource2.dispose();
         });
     });
+
+    describe('recursive mode integration', () => {
+        it('should use recursive system prompt when analysisApproach is rlm with depth >= 1', async () => {
+            const rlmSettings = createMockWorkspaceSettings({
+                analysisApproach: 'rlm',
+                maxRecursionDepth: 2,
+            });
+
+            const rlmProvider = new ToolCallingAnalysisProvider(
+                mockToolRegistry,
+                mockCopilotModelManager,
+                mockPromptGenerator,
+                rlmSettings
+            );
+
+            const generateRecursiveSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateRecursiveSystemPrompt'
+            );
+            const generateToolAwareSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolAwareSystemPrompt'
+            );
+
+            await rlmProvider.analyze(sampleDiff, tokenSource.token);
+
+            expect(generateRecursiveSpy).toHaveBeenCalled();
+            expect(generateToolAwareSpy).not.toHaveBeenCalled();
+        });
+
+        it('should use non-recursive prompt when analysisApproach is legacy', async () => {
+            const legacySettings = createMockWorkspaceSettings({
+                analysisApproach: 'legacy',
+                maxRecursionDepth: 2,
+            });
+
+            const legacyProvider = new ToolCallingAnalysisProvider(
+                mockToolRegistry,
+                mockCopilotModelManager,
+                mockPromptGenerator,
+                legacySettings
+            );
+
+            const generateRecursiveSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateRecursiveSystemPrompt'
+            );
+            const generateToolAwareSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolAwareSystemPrompt'
+            );
+
+            await legacyProvider.analyze(sampleDiff, tokenSource.token);
+
+            expect(generateToolAwareSpy).toHaveBeenCalled();
+            expect(generateRecursiveSpy).not.toHaveBeenCalled();
+        });
+
+        it('should use non-recursive prompt when rlm approach with depth 0', async () => {
+            const noRecursionSettings = createMockWorkspaceSettings({
+                analysisApproach: 'rlm',
+                maxRecursionDepth: 0,
+            });
+
+            const noRecursionProvider = new ToolCallingAnalysisProvider(
+                mockToolRegistry,
+                mockCopilotModelManager,
+                mockPromptGenerator,
+                noRecursionSettings
+            );
+
+            const generateRecursiveSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateRecursiveSystemPrompt'
+            );
+            const generateToolAwareSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolAwareSystemPrompt'
+            );
+
+            await noRecursionProvider.analyze(sampleDiff, tokenSource.token);
+
+            expect(generateToolAwareSpy).toHaveBeenCalled();
+            expect(generateRecursiveSpy).not.toHaveBeenCalled();
+        });
+    });
 });

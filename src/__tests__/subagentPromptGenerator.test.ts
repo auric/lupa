@@ -312,6 +312,40 @@ describe('SubagentPromptGenerator', () => {
             });
         });
 
+        describe('canRecurse=true without diff tools', () => {
+            const noDiffTools = [
+                createMockTool('find_symbol', 'Finds symbols in code'),
+                createMockTool('run_subagent', 'Spawn a sub-agent'),
+            ];
+
+            it('should not reference get_file_diff in decomposition when diff tools absent', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    noDiffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain('Decomposition Strategy');
+                expect(prompt).not.toContain('get_file_diff');
+                expect(prompt).toContain('Review the parent context');
+            });
+
+            it('should use context-based investigation steps', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    noDiffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain('Review Parent Context');
+                expect(prompt).not.toContain('Read the Diff FIRST');
+            });
+        });
+
         describe('finding quality guidance', () => {
             it('should include finding quality guidance in subagent prompt', () => {
                 const task: SubagentTask = { task: 'Test task' };

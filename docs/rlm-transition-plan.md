@@ -874,7 +874,7 @@ Key principles applied in all prompts:
 | Recursive loop (infinite spawning)              | Low        | Critical | Hard depth limit + total agent cap + budget exhaustion                                            |
 | Cross-concern issues missed                     | Medium     | Medium   | Root agent does cross-concern analysis after aggregation                                          |
 | Increased complexity for contributors           | Medium     | Medium   | Feature flag, clear documentation, encapsulated in 2-3 files                                      |
-| Budget allocation too aggressive                | Medium     | Medium   | Conservative defaults (40% root, 60% children), configurable                                      |
+| Budget allocation too aggressive                | Medium     | Medium   | Conservative defaults (flat DEFAULT_CHILD_BUDGET=30 per child, bounded by maxSubagentsPerSession) |
 | Subagent fails → partial review                 | Low        | Low      | Other agents compensate; root reports partial coverage                                            |
 
 ### Fallback Mechanism
@@ -893,7 +893,7 @@ The root agent naturally falls back to direct investigation if decomposition isn
 - Depth limits: reject spawns beyond maxDepth
 - Session spawn limits: reject spawns beyond maxSubagentsPerSession
 - Budget allocation: correct splitting at each depth
-- Minimum budget enforcement: reject spawns with < 5 iterations
+- Minimum budget enforcement: reject spawns with < MIN_VIABLE_BUDGET (3) iterations
 - Findings aggregation: collect findings across all agents
 - File coverage tracking: deduplication detection
 - Agent lifecycle: pending → running → completed/failed transitions
@@ -983,7 +983,7 @@ const RecursionConstants = {
 1. Deploy with `maxRecursionDepth: 2` (default ON)
 2. All new analyses use recursive architecture
 3. Old SubagentSessionManager still works internally (RecursiveStateManager wraps it)
-4. No schema changes, no data migration needed
+4. No breaking schema changes — new settings (`maxRecursionDepth`, `maxSubagentsPerSession`) have backward-compatible defaults. Existing configurations work unchanged
 
 ### Rollback
 
