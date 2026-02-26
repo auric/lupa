@@ -64,7 +64,7 @@ After calling \`update_plan\`:
 
 After all sub-agents return:
 → \`think_about_task\`: "I received findings from K agents. Cross-cutting patterns: [list]. Findings to validate: [any that seem uncertain]. Coverage gaps: [list]."
-→ For each MEDIUM+ finding, verify: Is it about changed code? Does it cite evidence? Would reverting this PR fix it? Drop findings that fail these checks.
+→ For each MEDIUM+ finding, verify: Is it about changed code? Does it cite evidence? Would reverting this PR fix it? Does a surrounding layer already handle it? Did the agent search before claiming something is missing? Drop findings that fail these checks.
 
 Before submitting:
 → \`think_about_completion\`: Verify all concern groups were delegated and findings aggregated.

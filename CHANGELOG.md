@@ -143,6 +143,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added test for `task.context` angle bracket sanitization in subagent prompts.
 - Added tests for FP reduction phase 2: scope boundary/revert test in PR and recursive prompts, false positive cost statement, design flaw and feature request verification gates, subagent scope boundary and revert test, recursive aggregation quality filter.
 
+#### Finding Quality — False Positive Reduction (Phase 3)
+
+- **Layered Validation Awareness**: New section in finding quality guidance teaching the LLM that middleware/executor catch blocks, caller validation, framework lifecycle management, and type systems already provide guarantees — redundant defensive code is not a finding.
+- **Try-catch verification gate**: New row in verification gates requiring check for outer scope error handling before suggesting try-catch. Explicitly flags redundant error handling as not a finding.
+- **Missing-test verification strengthened**: Verification gate now requires confirming the proposed test would catch a **concrete regression**, not just exercise a trivial code path (spread operators, mock factory defaults, parameter pass-through).
+- **Caller trace requirement**: Counterexample requirement now demands tracing ALL callers to prove a bad input can actually reach the code. If no caller can produce the problematic input, the path is unreachable — finding dropped.
+- **Expanded false positive patterns**: Added 5 new anti-patterns: try-catch when middleware catches, missing test for trivial pass-through, missing integration test when unit tests cover the paths, document rationale when it's in CHANGELOG/design docs, untested unreachable code path.
+- **Missing-docs verification expanded**: Now checks README, `docs/`, AND CHANGELOG for concept presence before reporting missing documentation.
+- **Subagent quality guidance expanded**: Grew from 8 to 8 points with restructured content — added layered architecture awareness (check surrounding layers), caller trace requirement (trace ALL callers), and concrete regression requirement for test suggestions.
+- **Recursive aggregation filters**: Added Architecture-aware filter (drop findings for validation a higher layer provides) and Test suggestion filter (drop missing-test findings unless agent searched test directory AND identified concrete regression).
+- **Recursive self-reflection validation**: Aggregation checkpoint now verifies whether a surrounding layer handles the issue and whether agents searched before claiming absence.
+
+#### Test Coverage (Round 20 — Phase 3)
+
+- Added tests for layered validation awareness section in PR review prompt.
+- Added tests for try-catch verification gate.
+- Added tests for caller trace in counterexample requirement.
+- Added tests for expanded false positive patterns (trivial tests, integration tests, doc rationale, unreachable paths).
+- Added tests for architecture-aware and test suggestion aggregation filters in recursive mode.
+- Added tests for layered architecture awareness in subagent prompt.
+
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.

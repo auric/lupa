@@ -347,6 +347,19 @@ describe('SubagentPromptGenerator', () => {
                 expect(prompt).toContain('Suggestions');
                 expect(prompt).toContain('When uncertain, omit');
             });
+
+            it('should include layered architecture awareness in subagent prompt', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 30);
+
+                expect(prompt).toContain('Layered architecture');
+                expect(prompt).toContain('surrounding layer');
+                expect(prompt).toContain('trace ALL callers');
+                expect(prompt).toContain('real regression');
+            });
         });
     });
 });

@@ -301,6 +301,14 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).toContain('Challenge speculative claims');
         });
 
+        it('should include architecture-aware and test filters in aggregation', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('Architecture-aware filter');
+            expect(systemPrompt).toContain('Test suggestion filter');
+        });
+
         it('should include recursive tool guide', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);

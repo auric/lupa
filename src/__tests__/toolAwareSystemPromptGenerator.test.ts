@@ -201,6 +201,35 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('suggestion, not a bug');
         });
 
+        it('should include layered validation awareness', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Layered Validation Awareness');
+            expect(prompt).toContain('Middleware/executor catches errors');
+            expect(prompt).toContain('Caller validates before calling');
+            expect(prompt).toContain('surrounding layer already provides it');
+        });
+
+        it('should include try-catch verification gate', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Should add try-catch');
+            expect(prompt).toContain('redundant error handling');
+        });
+
+        it('should require caller trace in counterexample requirement', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('trace ALL callers');
+            expect(prompt).toContain('unreachable');
+        });
+
+        it('should include expanded false positive patterns for tests and docs', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Missing test');
+            expect(prompt).toContain('trivial pass-through');
+            expect(prompt).toContain('Missing integration test');
+            expect(prompt).toContain('Should document rationale');
+            expect(prompt).toContain('unreachable');
+        });
+
         it('should include finding quality in recursive root prompt', () => {
             const prompt = generator.generateRecursiveSystemPrompt([]);
             expect(prompt).toContain('<finding_quality>');
