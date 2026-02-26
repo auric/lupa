@@ -39,7 +39,7 @@ export class SubagentPromptGenerator {
 
 The parent agent has provided the following code/information relevant to your investigation:
 
-${task.context}
+${task.context.replace(/[<>]/g, '')}
 </context_from_parent>`
             : '';
 

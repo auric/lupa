@@ -54,6 +54,21 @@ describe('SubagentPromptGenerator', () => {
             expect(prompt).not.toContain('Context from Parent Agent');
         });
 
+        it('should sanitize angle brackets in context to prevent XML tag injection', () => {
+            const task: SubagentTask = {
+                task: 'Check for security issues',
+                context:
+                    'Found issue in <script>alert("xss")</script> and src/</path>',
+            };
+
+            const prompt = generator.generateSystemPrompt(task, [], 10);
+
+            expect(prompt).not.toContain('<script>');
+            expect(prompt).not.toContain('</path>');
+            expect(prompt).toContain('alert("xss")');
+            expect(prompt).toContain('src//path');
+        });
+
         it('should list available tools', () => {
             const tools = [
                 createMockTool('find_symbol', 'Finds symbols in code'),

@@ -133,6 +133,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Test Coverage (Round 19)
 
 - Added tests for `startAgent` guards: warns on unknown agentId, ignores call on already-completed/failed/cancelled agents.
+
+#### Prompt Sanitization (Round 20)
+
+- **Subagent context sanitization**: `SubagentPromptGenerator` now strips angle brackets from `task.context` before embedding in `<context_from_parent>` XML tags, matching the existing sanitization pattern in `PromptGenerator` for diff content and file paths. Prevents second-order prompt tag injection where LLM-generated context (containing file content with `<>`) could break the XML structure.
+
+#### Test Coverage (Round 20)
+
+- Added test for `task.context` angle bracket sanitization in subagent prompts.
 - Added tests for FP reduction phase 2: scope boundary/revert test in PR and recursive prompts, false positive cost statement, design flaw and feature request verification gates, subagent scope boundary and revert test, recursive aggregation quality filter.
 
 ### Changed
