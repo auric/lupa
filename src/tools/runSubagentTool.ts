@@ -146,6 +146,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     childBudget
                 );
             } catch (error) {
+                // Rollback: registration failed, subagent never ran
                 sessionManager.rollbackSpawn();
                 Log.error(
                     `Failed to register agent in recursive tree: ${getErrorMessage(error)}`
@@ -232,6 +233,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             }
 
             if (!result.success && result.error === 'cancelled') {
+                // No rollback: subagent did real work before cancellation — slot is consumed
                 // Only attribute to timeout if parent wasn't also cancelled.
                 // Race condition: timeout timer can fire while executor unwinds
                 // from parent cancellation, setting cancelledByTimeout incorrectly.
@@ -245,6 +247,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             }
 
             if (!result.success && result.error === 'max_iterations') {
+                // No rollback: subagent exhausted its iteration budget doing real work
                 const actualMaxIterations =
                     childBudget ?? this.workspaceSettings.getMaxIterations();
                 const maxIterMsg = SubagentErrors.maxIterations(
@@ -261,6 +264,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             }
 
             // Any other failure (LLM errors, service errors, etc.)
+            // Rollback: subagent failed to produce useful work
             if (!result.success) {
                 sessionManager.rollbackSpawn();
                 return toolError(
@@ -286,6 +290,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             }
 
             if (isCancellationError(error)) {
+                // No rollback: parent cancellation — analysis is ending, slot consumed
                 throw error;
             }
 
@@ -293,9 +298,11 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                 cancelledByTimeout &&
                 !context.cancellationToken.isCancellationRequested
             ) {
+                // No rollback: subagent ran until timeout — slot consumed
                 return toolError(SubagentErrors.timeout(timeoutMs));
             }
 
+            // Rollback: unexpected error, subagent failed
             const errorMessage = getErrorMessage(error);
             sessionManager.rollbackSpawn();
             return toolError(SubagentErrors.failed(errorMessage));

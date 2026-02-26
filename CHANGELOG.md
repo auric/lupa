@@ -223,6 +223,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for call-site contract in self-reflection checkpoint.
 - Added tests for call-site contract and centralized handler in subagent prompt.
 
+#### Code Quality (Round 24)
+
+- **Fixed diff content sanitization**: Legacy mode stripped `<`/`>` from actual code content in diffs, destroying TypeScript generics (`Array<string>` → `Arraystring`), comparison operators (`a > b` → `a  b`), and JSX/HTML tags. Now escapes to `&lt;`/`&gt;` to preserve code semantics while preventing XML tag injection. Also fixed the same issue in subagent context passing.
+- **Rollback semantics documentation**: Added inline comments in `RunSubagentTool` explaining the session slot rollback policy — slots are reclaimed when subagents fail before doing work (registration failure, unknown errors), but consumed when subagents did real work (cancellation, timeout, max iterations).
+
+#### Test Coverage (Round 24)
+
+- Added tests for unknown agentId handling in `completeAgent`, `failAgent`, and `cancelAgent` lifecycle methods (previously only `startAgent` was tested).
+- Added test verifying diff content escaping preserves TypeScript generics and comparison operators.
+- Updated existing sanitization test assertions for escape-based approach (subagentPromptGenerator, promptGenerator).
+
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.

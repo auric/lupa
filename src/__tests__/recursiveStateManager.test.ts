@@ -209,6 +209,27 @@ describe('RecursiveStateManager', () => {
             );
         });
 
+        it('should warn and ignore completeAgent for unknown agentId', () => {
+            manager.completeAgent('nonexistent', [], ['file.ts']);
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('unknown agentId')
+            );
+        });
+
+        it('should warn and ignore failAgent for unknown agentId', () => {
+            manager.failAgent('nonexistent', 'some error');
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('unknown agentId')
+            );
+        });
+
+        it('should warn and ignore cancelAgent for unknown agentId', () => {
+            manager.cancelAgent('nonexistent');
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('unknown agentId')
+            );
+        });
+
         it('should ignore startAgent on already-completed agent', () => {
             manager.startAgent('root');
             manager.completeAgent('root', [], []);

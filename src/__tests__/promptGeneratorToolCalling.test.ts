@@ -743,11 +743,52 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
             expect(prompt).not.toContain('<fake_instruction>');
             expect(prompt).not.toContain('</fake_instruction>');
+            // Code content should be escaped, not stripped
+            expect(prompt).toContain('&lt;fake_instruction&gt;');
             // The legitimate <changes> structure should remain intact
             const changesTags = prompt.match(/<changes>/g) || [];
             const closeChangesTags = prompt.match(/<\/changes>/g) || [];
             expect(changesTags.length).toBe(1);
             expect(closeChangesTags.length).toBe(1);
+        });
+
+        it('should preserve code semantics in diff content via escaping', () => {
+            const codeWithGenerics: DiffHunk[] = [
+                {
+                    filePath: 'src/utils.ts',
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: 'diff --git a/utils b/utils',
+                    hunks: [
+                        {
+                            oldStart: 1,
+                            oldLines: 1,
+                            newStart: 1,
+                            newLines: 1,
+                            hunkId: 'utils:1',
+                            hunkHeader: '@@ -1,1 +1,1 @@',
+                            parsedLines: [
+                                {
+                                    type: 'added',
+                                    content: 'const items: Array<string> = [];',
+                                },
+                                {
+                                    type: 'added',
+                                    content: 'if (a > b && c < d) return;',
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ];
+
+            const prompt =
+                promptGenerator.generateToolCallingUserPrompt(codeWithGenerics);
+
+            // Generics and comparisons are escaped, not stripped
+            expect(prompt).toContain('Array&lt;string&gt;');
+            expect(prompt).toContain('a &gt; b');
+            expect(prompt).toContain('c &lt; d');
         });
 
         it('should sanitize angle brackets in hunk headers', () => {

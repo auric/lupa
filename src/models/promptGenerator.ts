@@ -272,9 +272,15 @@ export class PromptGenerator {
                             : parsedLine.type === 'removed'
                               ? '-'
                               : ' ';
-                    // Sanitize diff content to prevent angle brackets from
-                    // interfering with the XML-like prompt structure
-                    return prefix + parsedLine.content.replace(/[<>]/g, '');
+                    // Escape angle brackets in diff content to prevent
+                    // interference with the XML-like prompt structure
+                    return (
+                        prefix +
+                        parsedLine.content
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                    );
                 });
 
                 fileContentXml += diffLines.join('\n') + '\n\n';

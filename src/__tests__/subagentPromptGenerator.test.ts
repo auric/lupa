@@ -66,7 +66,8 @@ describe('SubagentPromptGenerator', () => {
             expect(prompt).not.toContain('<script>');
             expect(prompt).not.toContain('</path>');
             expect(prompt).toContain('alert("xss")');
-            expect(prompt).toContain('src//path');
+            expect(prompt).toContain('&lt;script&gt;');
+            expect(prompt).toContain('&lt;/path&gt;');
         });
 
         it('should list available tools', () => {
