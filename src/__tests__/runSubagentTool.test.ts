@@ -891,6 +891,34 @@ describe('RunSubagentTool', () => {
             );
         });
 
+        it('should pass childAgentId through to executor options when recursiveState is present', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    agentId: 'child-1',
+                })
+            );
+        });
+
         it('should pass parsedDiff through to executor options', async () => {
             const { recursiveState, rootId } = createTestRecursiveState();
 

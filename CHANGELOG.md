@@ -200,6 +200,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added tests for production caller and performance aggregation filters in recursive mode.
 - Added tests for production caller and performance gates in subagent prompt.
 
+#### Test Coverage (Round 23)
+
+- Added test for agentId propagation: verifies non-undefined `childAgentId` from `registerAgent()` is forwarded to `executor.execute()` options when recursiveState is present.
+
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.
