@@ -74,6 +74,8 @@ After all sub-agents return:
 - **Test suggestion filter**: Drop "missing test" findings unless the sub-agent searched the test directory AND identified a concrete regression the test would catch
 - **Production caller filter**: Drop findings about public method behavior when the method has zero production callers (only test consumers) — it may be future API surface
 - **Performance claim filter**: Drop "O(n*m) is slow" or similar performance concerns unless the sub-agent quantified actual n and m values for this codebase. For bounded inputs, linear scans are often optimal
+- **Call-site contract filter**: Drop findings about missing validation/guards in a method when ALL callers of that method already perform the validation before calling. Single-entry-point methods protected by their caller are safe by contract
+- **Centralized handler filter**: Drop "missing try-catch" findings when a centralized error handler (middleware, executor) wraps the call and already handles the error type
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
 - Assess overall PR risk
 - Call \`update_plan\` to mark all concern groups as complete

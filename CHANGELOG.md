@@ -204,6 +204,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added test for agentId propagation: verifies non-undefined `childAgentId` from `registerAgent()` is forwarded to `executor.execute()` options when recursiveState is present.
 
+#### Finding Quality — False Positive Reduction (Phase 5)
+
+- **Call-site contract verification gate**: New verification gate requiring the agent to find ALL callers of a flagged method before reporting missing validation. If every call-site already performs the validation (pre-flight guard pattern), the method is safe by contract. Addresses the most persistent FP category: `registerAgent` depth guard (5x), orphan registration (4x), budget validation (3x).
+- **Call-site contract FP pattern**: New anti-pattern blocking "method X doesn't validate Y" findings when all callers already validate Y before calling X. Covers pre-flight guards, schema validation, and permission checks.
+- **Centralized error handler FP pattern**: New anti-pattern blocking "missing try-catch" suggestions when a centralized handler (ToolExecutor, Express middleware, Redux middleware) wraps all callees. Addresses 3+ rounds of false try-catch suggestions.
+- **Construction-guaranteed invariant FP pattern**: New anti-pattern blocking "missing filtering/dedup" in data aggregation when the data model guarantees the property by construction (e.g., only one method populates a field for completed items).
+- **Recursive aggregation filters expanded**: Added Call-site contract filter and Centralized handler filter to Step 4 aggregation.
+- **Self-reflection aggregation checkpoint expanded**: Root controller aggregation now checks for call-site contract verification and centralized error handler presence before accepting findings.
+- **Subagent quality guidance expanded**: Grew from 10 to 12 points — added call-site contract check and centralized handler awareness.
+
+#### Test Coverage (Phase 5)
+
+- Added tests for call-site contract verification gate in PR review prompt.
+- Added tests for centralized error handler FP pattern.
+- Added tests for construction-guaranteed invariant FP pattern.
+- Added tests for call-site contract and centralized handler aggregation filters in recursive mode.
+- Added tests for call-site contract in self-reflection checkpoint.
+- Added tests for call-site contract and centralized handler in subagent prompt.
+
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.

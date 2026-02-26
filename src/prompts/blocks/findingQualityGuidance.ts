@@ -41,6 +41,7 @@ Before reporting a finding, complete the verification for its claim type:
 | "Design inconsistency" | Check for comments/docs explaining rationale; if plausible intent exists, **drop it** |
 | "Should validate X" | Trace all producers of X to prove an invalid value is reachable. Check if a **caller or middleware** already validates — redundant validation is not a finding |
 | "Should add try-catch" | Check if an outer scope (middleware, executor, framework) already catches and handles the error — redundant error handling is not a finding |
+| "Method X lacks guard Y" | Before reporting, find ALL callers of X. If every call-site already performs Y before calling X, the method is safe by **call-site contract**. Single-entry-point methods protected by their caller do not need redundant internal guards |
 | "Missing integration test" | Check if each layer already has unit tests covering the code paths. Estimate test complexity: if the test spans 3+ mocked layers and primarily exercises mock wiring rather than real logic, it is likely not worth adding |
 | "Unused / incorrect public method" | Before reporting an issue about a public method's behavior, verify it has **production callers** (not just test consumers). Methods with only test callers may be future API surface — not a bug |
 | "Missing cleanup/disposal" | Check framework config (vitest.config, jest.config) for global settings |
@@ -91,7 +92,9 @@ CRITICAL/HIGH findings MUST be 🟢 VERIFIED. Speculative findings may only be �
 - ❌ "Missing cleanup" when the test framework config handles it globally
 - ❌ "Unused callback/dead code" when the interface is an extension point
 - ❌ "Should validate X" when X is internal state already constrained by producers
-- ❌ "Should add try-catch" when a middleware/executor already catches and converts errors
+- ❌ "Should add try-catch" when a middleware/executor already catches and converts errors — this includes centralized error handlers (e.g., ToolExecutor, Express middleware, Redux middleware) that wrap all callees
+- ❌ "Method X doesn't validate Y" when ALL callers of X already validate Y before calling — the method is safe by call-site contract. This applies to pre-flight guards (e.g., \`canSpawn\` before \`register\`), schema validation before processing, and permission checks before action
+- ❌ "Missing filtering/dedup" in data aggregation when the data model guarantees the property by construction — e.g., if only one method populates a field and it runs only for completed items, aggregating all items is already correct without runtime filtering
 - ❌ "Should add X" (logging, metrics, retry logic) as MEDIUM or higher — suggestions are 🟢 LOW at most
 - ❌ "Missing test" when the test exists under a different name, or the proposed test only exercises trivial pass-through logic (e.g., testing that a spread operator works, that a mock factory returns defaults)
 - ❌ "Missing integration test" when each layer has unit tests covering the same code paths — if the proposed test spans 3+ mocked layers, it primarily exercises mock infrastructure, not real logic
@@ -129,5 +132,7 @@ Before reporting any issue:
 7. **Suggestions ≠ bugs**: "Should add X" is a suggestion, not a bug. Report as LOW only, never higher
 8. **When uncertain, omit**: Three verified findings beat twelve speculative ones
 9. **Check callers exist**: Before reporting a public method's behavior as a bug, verify it has production callers — methods with only test consumers may be future API surface
-10. **Quantify performance**: Don't flag "O(n*m) is slow" without knowing actual n and m. For bounded inputs (schema-capped, small collections), linear scans are fine`;
+10. **Quantify performance**: Don't flag "O(n*m) is slow" without knowing actual n and m. For bounded inputs (schema-capped, small collections), linear scans are fine
+11. **Call-site contract**: Before reporting "method X lacks guard Y", find ALL callers of X. If every caller performs Y before calling X (pre-flight pattern), the method is safe — don't suggest redundant internal guards
+12. **Centralized handlers**: If a middleware/executor catches errors at the call boundary, don't suggest try-catch in individual callees. The handler exists for a reason`;
 }

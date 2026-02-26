@@ -261,6 +261,24 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('internal method calls');
         });
 
+        it('should include call-site contract verification gate', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('call-site contract');
+            expect(prompt).toContain('Method X lacks guard Y');
+        });
+
+        it('should include centralized error handler FP pattern', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('centralized error handler');
+            expect(prompt).toContain('ToolExecutor');
+        });
+
+        it('should include construction-guaranteed invariant FP pattern', () => {
+            const prompt = generator.generateSystemPrompt([]);
+            expect(prompt).toContain('Missing filtering/dedup');
+            expect(prompt).toContain('guarantees the property by construction');
+        });
+
         it('should include finding quality in recursive root prompt', () => {
             const prompt = generator.generateRecursiveSystemPrompt([]);
             expect(prompt).toContain('<finding_quality>');

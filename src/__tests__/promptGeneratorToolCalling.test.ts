@@ -317,6 +317,22 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).toContain('Performance claim filter');
         });
 
+        it('should include call-site contract and centralized handler filters in aggregation', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('Call-site contract filter');
+            expect(systemPrompt).toContain('Centralized handler filter');
+        });
+
+        it('should include call-site contract in self-reflection aggregation checkpoint', () => {
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+
+            expect(systemPrompt).toContain('call-site contract');
+            expect(systemPrompt).toContain('centralized error handler');
+        });
+
         it('should include recursive tool guide', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);

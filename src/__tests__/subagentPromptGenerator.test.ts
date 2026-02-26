@@ -405,6 +405,17 @@ describe('SubagentPromptGenerator', () => {
                 expect(prompt).toContain('production callers');
                 expect(prompt).toContain('Quantify performance');
             });
+
+            it('should include call-site contract and centralized handler guidance in subagent prompt', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 30);
+
+                expect(prompt).toContain('Call-site contract');
+                expect(prompt).toContain('Centralized handlers');
+            });
         });
     });
 });
