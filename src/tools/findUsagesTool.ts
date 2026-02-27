@@ -17,6 +17,7 @@ import { Log } from '../services/loggingService';
 
 const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
 const DEFINITION_CHECK_TIMEOUT = 10000; // 10 seconds per definition check (non-fatal)
+const MAX_DEFINITION_CHECKS = 10; // Cap definition provider calls per symbol to bound accumulated latency
 
 /**
  * Extract URI from a definition result, handling both Location and LocationLink types.
@@ -282,6 +283,9 @@ Requires file_path where the symbol is defined as starting point.`;
         const text = document.getText();
         const lines = text.split('\n');
 
+        let definitionChecks = 0;
+        let firstOccurrence: vscode.Position | null = null;
+
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             if (token.isCancellationRequested) {
                 throw new vscode.CancellationError();
@@ -295,6 +299,17 @@ Requires file_path where the symbol is defined as starting point.`;
 
             if (symbolIndex !== -1) {
                 const position = new vscode.Position(lineIndex, symbolIndex);
+                if (!firstOccurrence) {
+                    firstOccurrence = position;
+                }
+
+                if (definitionChecks >= MAX_DEFINITION_CHECKS) {
+                    Log.debug(
+                        `Definition check cap (${MAX_DEFINITION_CHECKS}) reached for ${symbolName}, using first occurrence`
+                    );
+                    return firstOccurrence;
+                }
+                definitionChecks++;
 
                 try {
                     const definitions = await withCancellableTimeout(
@@ -367,18 +382,17 @@ Requires file_path where the symbol is defined as starting point.`;
     private deduplicateReferences(
         references: vscode.Location[]
     ): vscode.Location[] {
-        const valid = references.filter((ref) => ref?.uri && ref?.range);
-        return valid.filter((ref, index, arr) => {
-            return (
-                arr.findIndex(
-                    (r) =>
-                        r.uri.toString() === ref.uri.toString() &&
-                        r.range.start.line === ref.range.start.line &&
-                        r.range.start.character === ref.range.start.character &&
-                        r.range.end.line === ref.range.end.line &&
-                        r.range.end.character === ref.range.end.character
-                ) === index
-            );
+        const seen = new Set<string>();
+        return references.filter((ref) => {
+            if (!ref?.uri || !ref?.range) {
+                return false;
+            }
+            const key = `${ref.uri.toString()}:${ref.range.start.line}:${ref.range.start.character}:${ref.range.end.line}:${ref.range.end.character}`;
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
         });
     }
 }

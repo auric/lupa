@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import * as path from 'path';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
@@ -55,12 +56,18 @@ export class GetFileDiffTool extends BaseTool {
         const notFound: string[] = [];
 
         for (const rawPath of file_paths) {
-            // Normalize backslashes, strip leading './' and '/' (LLM may send these variants)
-            const requestedPath = rawPath
+            // Normalize backslashes, strip leading './' and '/', resolve '..' segments
+            const normalized = rawPath
                 .trim()
                 .replace(/\\/g, '/')
                 .replace(/^\/+/, '')
                 .replace(/^\.\//, '');
+            const requestedPath = path.posix.normalize(normalized);
+
+            if (requestedPath.startsWith('..')) {
+                notFound.push(`${rawPath.trim()} (path traversal not allowed)`);
+                continue;
+            }
 
             // Exact match first, then suffix match with path separator boundary.
             // Prioritize exact match to avoid false ambiguity when "Button.tsx"

@@ -36,11 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`find_usages` handles `LocationLink` responses**: Definition lookups no longer silently lose valid definitions that use `LocationLink` format.
 - **Prompt sanitization**: File paths and diff content containing `<>` characters no longer break prompt XML structure.
 
+#### Performance
+
+- **`find_usages` O(n) deduplication**: Reference deduplication replaced O(n²) `filter/findIndex` with a `Set`-based linear scan, reducing overhead for large reference lists.
+- **Bounded definition provider calls**: `findSymbolPosition` now caps definition provider invocations at 10 per symbol, preventing accumulated latency on common identifiers. Falls back to first textual occurrence when the cap is reached.
+- **`get_file_diff` path hardening**: Added `path.posix.normalize` for LLM-provided paths and rejection of `..` path traversal segments.
+
 ### Changed
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2. Set to 0 in `.vscode/lupa.json` to use flat single-agent analysis.
 - **Tool response limit tripled** (20K → 60K chars) and **file read limit doubled** (200 → 400 lines) for better context gathering.
 - **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (default 30) is the single spawn cap for both flat and recursive modes.
+- **`generateToolCallingUserPrompt` renamed to `generateUserPrompt`**: The method now accepts `recursiveMode` and `maxSubagents` parameters for recursive prompt generation.
 - **Updated documentation**: Architecture docs, component inventory, and project overview updated for RLM architecture.
 
 ## [0.1.12] - 2026-02-21

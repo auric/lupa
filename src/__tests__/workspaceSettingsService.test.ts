@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { RECURSION_LIMITS } from '../models/workspaceSettingsSchema';
 
 vi.mock('fs', () => ({
     existsSync: vi.fn(),
@@ -317,7 +318,9 @@ describe('WorkspaceSettingsService', () => {
             vi.mocked(fs.readFileSync).mockReturnValue('{}');
             service = new WorkspaceSettingsService(mockContext);
 
-            expect(service.getMaxRecursionDepth()).toBe(2);
+            expect(service.getMaxRecursionDepth()).toBe(
+                RECURSION_LIMITS.maxDepth.default
+            );
         });
 
         it('should return custom maxRecursionDepth from settings file', () => {
