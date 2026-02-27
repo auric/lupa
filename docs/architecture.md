@@ -622,7 +622,7 @@ Total spawns per analysis are capped by `maxSubagentsPerSession` (default 30).
 
 - Registers agents with parent-child relationships and depth tracking
 - Enforces `maxRecursionDepth` via `canSpawnChild()` (total spawn count is guarded by `SubagentSessionManager`)
-- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (30 iterations) regardless of other agents' usage
+- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (30 iterations) regardless of other agents' usage. For example, at depth 2 with 3 sub-agents each spawning 2 sub-sub-agents, the system runs up to 9 agents × 30 iterations = 270 total iterations, bounded by `maxSubagentsPerSession` (default 30)
 - Aggregates findings from all completed agents for final output
 - Manages agent lifecycle (registered → running → completed/failed/cancelled)
 

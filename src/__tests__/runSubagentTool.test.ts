@@ -614,47 +614,64 @@ describe('RunSubagentTool', () => {
 
         it('should prioritize parent cancellation over timeout when both occur', async () => {
             // Race condition: timeout fires during executor unwinding from parent cancellation.
-            // Use 10ms timeout; executor delays 100ms to ensure timeout fires first.
-            const shortTimeoutSettings = createMockWorkspaceSettings({
-                requestTimeoutSeconds: 0.01,
-            });
+            // Use fake timers to avoid CI flakiness from real wall-clock delays.
+            vi.useFakeTimers();
+            try {
+                const shortTimeoutSettings = createMockWorkspaceSettings({
+                    requestTimeoutSeconds: 0.01, // 10ms timeout
+                });
 
-            const parentTokenSource = new vscode.CancellationTokenSource();
-            sessionManager.setParentCancellationToken(parentTokenSource.token);
+                const parentTokenSource = new vscode.CancellationTokenSource();
+                sessionManager.setParentCancellationToken(
+                    parentTokenSource.token
+                );
 
-            const mockExecutor = {
-                execute: vi.fn().mockImplementation(async () => {
-                    // Wait for the 10ms timeout to fire
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                    // Parent also cancels during execution (the race)
-                    parentTokenSource.cancel();
-                    return {
-                        success: false,
-                        response: '',
-                        error: 'cancelled',
-                        toolCallsMade: 0,
-                        toolCalls: [],
-                    };
-                }),
-            } as unknown as SubagentExecutor;
+                let resolveExecutor!: (value: any) => void;
+                const executorPromise = new Promise((resolve) => {
+                    resolveExecutor = resolve;
+                });
 
-            const tool = new RunSubagentTool(shortTimeoutSettings);
-            const context = createMockExecutionContext({
-                subagentExecutor: mockExecutor,
-                subagentSessionManager: sessionManager,
-                cancellationToken: parentTokenSource.token,
-            });
+                const mockExecutor = {
+                    execute: vi.fn().mockReturnValue(executorPromise),
+                } as unknown as SubagentExecutor;
 
-            const result = await tool.execute(
-                {
-                    task: 'Investigate the authentication flow thoroughly',
-                },
-                context
-            );
+                const tool = new RunSubagentTool(shortTimeoutSettings);
+                const context = createMockExecutionContext({
+                    subagentExecutor: mockExecutor,
+                    subagentSessionManager: sessionManager,
+                    cancellationToken: parentTokenSource.token,
+                });
 
-            // Both timeout AND parent cancellation occurred, but parent wins
-            expect(result.success).toBe(false);
-            expect(result.error).not.toContain('timed out');
+                const resultPromise = tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    context
+                );
+
+                // Advance past the 10ms timeout
+                await vi.advanceTimersByTimeAsync(50);
+
+                // Parent also cancels (the race)
+                parentTokenSource.cancel();
+
+                // Executor finishes after both timeout and cancellation fired
+                resolveExecutor({
+                    success: false,
+                    response: '',
+                    error: 'cancelled',
+                    toolCallsMade: 0,
+                    toolCalls: [],
+                });
+
+                const result = await resultPromise;
+
+                // Both timeout AND parent cancellation occurred, but parent wins
+                expect(result.success).toBe(false);
+                expect(result.error).not.toContain('timed out');
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 
@@ -836,6 +853,34 @@ describe('RunSubagentTool', () => {
             expect(result.success).toBe(true);
             // Should have registered a child agent
             expect(recursiveState.getTotalAgentCount()).toBe(2);
+        });
+
+        it('should reject spawn when budget is insufficient', async () => {
+            const mockRecursiveState = {
+                canSpawnChild: vi.fn().mockReturnValue({
+                    allowed: false,
+                    reason: `Insufficient budget (2 < ${3})`,
+                }),
+            };
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState: mockRecursiveState as any,
+                currentDepth: 1,
+                currentAgentId: 'child-1',
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Insufficient budget');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
         });
 
         it('should reject spawn when RecursiveStateManager depth limit reached', async () => {
