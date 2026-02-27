@@ -330,10 +330,10 @@ interface RecursiveStateNode {
     findings: RecursiveReviewFinding[];
     filesExamined: string[];
     iterationBudget: number;
-    iterationsUsed: number;
     childIds: string[];
     startTime: number;
     endTime: number | undefined;
+    error: string | undefined; // Stored by failAgent for tree summary diagnostics
 }
 
 interface RecursiveReviewFinding {
@@ -358,8 +358,13 @@ class RecursiveStateManager {
         budget: number
     ): string;
     startAgent(agentId: string): void;
-    completeAgent(agentId: string, findings: RecursiveReviewFinding[]): void;
+    completeAgent(
+        agentId: string,
+        findings?: RecursiveReviewFinding[],
+        filesExamined?: string[]
+    ): void;
     failAgent(agentId: string, error: string): void;
+    cancelAgent(agentId: string): void;
 
     // Guards
     canSpawnChild(parentId: string): { allowed: boolean; reason?: string };
