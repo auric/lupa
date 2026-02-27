@@ -68,14 +68,10 @@ Sub-agents with 4+ files will decompose further by spawning their own sub-agents
 After all sub-agents return:
 - Merge findings by severity (critical first)
 - Remove duplicates across agents
-- **Quality filter**: For each MEDIUM+ finding, verify it has cited evidence and is about changed code. Apply the Revert Test — if reverting this PR wouldn't fix it, drop it
-- **Challenge speculative claims**: Drop any finding where the sub-agent used language like "could potentially," "might," or "consider adding" without concrete evidence
-- **Architecture-aware filter**: Drop findings that suggest validation/error handling that a higher layer already provides (e.g., middleware catches errors, caller validates inputs). Redundant defense is not a finding
-- **Test suggestion filter**: Drop "missing test" findings unless the sub-agent searched the test directory AND identified a concrete regression the test would catch
-- **Production caller filter**: Drop findings about public method behavior when the method has zero production callers (only test consumers) — it may be future API surface
-- **Performance claim filter**: Drop "O(n*m) is slow" or similar performance concerns unless the sub-agent quantified actual n and m values for this codebase. For bounded inputs, linear scans are often optimal
-- **Call-site contract filter**: Drop findings about missing validation/guards in a method when ALL callers of that method already perform the validation before calling. Single-entry-point methods protected by their caller are safe by contract
-- **Centralized handler filter**: Drop "missing try-catch" findings when a centralized error handler (middleware, executor) wraps the call and already handles the error type
+- **Quality filter**: Apply ALL checks from \`<finding_quality>\` above to each MEDIUM+ finding. Specifically verify: (a) cites evidence from changed code, (b) passes the Revert Test, (c) has a concrete failing scenario for bug claims
+- **Challenge speculative claims**: Drop any finding where the sub-agent used speculative language ("could potentially," "might," "consider adding") without concrete evidence
+- **Conflicting findings**: If two agents disagree about the same code, investigate the specific disagreement with one targeted tool call before choosing a side
+- **Coverage gaps**: If any sub-agent returned incomplete results (timeout, remaining areas noted), cover those gaps yourself with targeted \`get_file_diff\` calls
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
 - Assess overall PR risk
 - Call \`update_plan\` to mark all concern groups as complete

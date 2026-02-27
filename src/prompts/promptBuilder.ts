@@ -209,9 +209,9 @@ export function createPRReviewPromptBuilder(tools: ITool[]): PromptBuilder {
         .addToolInventory(tools)
         .addPRToolGuide()
         .addSubagentGuidance()
+        .addAnalysisMethodology()
         .addFindingQualityGuidance()
         .addSelfReflection()
-        .addAnalysisMethodology()
         .addPROutputFormat();
 }
 

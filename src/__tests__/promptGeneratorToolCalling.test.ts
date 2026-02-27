@@ -140,37 +140,42 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(systemPrompt).toContain('Aggregate Findings');
         });
 
-        it('should include quality filter in aggregation step', () => {
+        it('should include quality filter reference in aggregation step', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
             expect(systemPrompt).toContain('Quality filter');
-            expect(systemPrompt).toContain('Revert Test');
+            expect(systemPrompt).toContain('<finding_quality>');
             expect(systemPrompt).toContain('Challenge speculative claims');
         });
 
-        it('should include architecture-aware and test filters in aggregation', () => {
+        it('should include architecture-aware and test filters in finding quality guidance', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            expect(systemPrompt).toContain('Architecture-aware filter');
-            expect(systemPrompt).toContain('Test suggestion filter');
+            // Filters are now in the <finding_quality> block, not duplicated in Step 4
+            expect(systemPrompt).toContain(
+                'surrounding layer already provides it'
+            );
+            expect(systemPrompt).toContain('Missing test');
         });
 
-        it('should include production caller and performance filters in aggregation', () => {
+        it('should include production caller and performance filters in finding quality guidance', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            expect(systemPrompt).toContain('Production caller filter');
-            expect(systemPrompt).toContain('Performance claim filter');
+            // Filters are in the <finding_quality> block
+            expect(systemPrompt).toContain('zero production callers');
+            expect(systemPrompt).toContain('performance concerns');
         });
 
-        it('should include call-site contract and centralized handler filters in aggregation', () => {
+        it('should include call-site contract and centralized handler filters in finding quality guidance', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt(mockTools);
 
-            expect(systemPrompt).toContain('Call-site contract filter');
-            expect(systemPrompt).toContain('Centralized handler filter');
+            // Filters are in the <finding_quality> block
+            expect(systemPrompt).toContain('call-site contract');
+            expect(systemPrompt).toContain('centralized error handler');
         });
 
         it('should include call-site contract in self-reflection aggregation checkpoint', () => {

@@ -53,7 +53,7 @@ Use the `@lupa` chat participant directly in VS Code's chat for quick inline ana
 Type `@lupa` in the chat and use one of the available slash commands. The chat interface provides a clean, conversational experience with:
 
 - **Clickable file references** - File paths appear as links you can click to open
-- **Visible subagent work** - When subagents investigate, their tool calls show with a "🔹 #N:" prefix
+- **Visible subagent work** - When subagents investigate, their tool calls show with a "🔹 child-N:" prefix (e.g., "🔹 child-1: 📂 Read src/auth.ts"). Deep subagents show hierarchical IDs like "🔹 child-1.1:"
 
 ### Exploration Mode
 
@@ -103,7 +103,7 @@ Recommended for Lupa:
 | **GPT-4.1** (default) | Free | Recommended — works well with the recursive approach for PRs of all sizes |
 | **Raptor Mini**       | Free | Good alternative, but may not run subagents in parallel                   |
 
-> **Note:** Some smaller models (GPT5-mini, Raptor Mini) may not reliably spawn subagents in parallel, leading to sequential analysis that takes longer. GPT-4.1 handles parallel delegation well.
+> **Note:** Some smaller models (GPT-5 mini, Raptor Mini) may not reliably spawn subagents in parallel, leading to sequential analysis that takes longer. GPT-4.1 handles parallel delegation well.
 
 ### 💰 Using Your Own API Key
 

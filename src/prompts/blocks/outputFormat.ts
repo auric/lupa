@@ -38,14 +38,16 @@ export function generateOutputFormat(): string {
 **Code Quality**
 - 🟢 **Issue** at [file.ts:45](file.ts:45) - Recommendation
 
-### Test Considerations
-- What tests should be added?
-- Edge cases needing coverage?
+### Test Considerations (Only if verified)
+- Only include test suggestions you verified by searching \`__tests__/\` first
+- Identify concrete regressions the test would catch
 
-### What's Good (REQUIRED)
-Always note at least one positive:
+### What's Good (Include when genuine)
+Note positive patterns when they exist:
 - Good pattern at [file.ts:20](file.ts:20)
 - Clean implementation of [feature]
+
+Omit this section if there's nothing genuine to highlight — don't fabricate praise.
 
 ### Severity Guide
 - 🔴 **CRITICAL**: Blocks merge (security, data loss, crashes)
@@ -62,6 +64,11 @@ For uncertain areas, add:
 - Use markdown links: \`[file.ts:42](file.ts:42)\`
 - Code fences on own line with language identifier
 - Be specific and actionable
+
+### Output Anti-Patterns
+- ❌ Don't list every file with "no issues found" — only mention files with findings
+- ❌ Don't repeat the same finding for multiple files — consolidate as a pattern
+- ❌ Don't include findings you downgraded to DROP during quality filtering
 </output_format>
 
 <tone>

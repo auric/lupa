@@ -22,7 +22,7 @@ Use these to improve analysis quality. Each requires **structured articulation**
 
 ### Submitting Your Review (REQUIRED)
 After completing \`think_about_completion\`, you MUST call \`submit_review\` to deliver your findings.
-**Never respond without tool calls** - use \`submit_review\` as the explicit completion signal.
+**Your final action MUST be \`submit_review\`** — this is the explicit completion signal. Do not write a review response without calling \`submit_review\`.
 
 ### Why Articulation Matters
 Static checklists ("Did I do X?") are less effective than explicit articulation:
@@ -64,7 +64,8 @@ After calling \`update_plan\`:
 
 After all sub-agents return:
 → \`think_about_task\`: "I received findings from K agents. Cross-cutting patterns: [list]. Findings to validate: [any that seem uncertain]. Coverage gaps: [list]."
-→ For each MEDIUM+ finding, verify: Is it about changed code? Does it cite evidence? Would reverting this PR fix it? Does a surrounding layer already handle it? Did the agent search before claiming something is missing? Does the flagged method have production callers? Did the agent verify role intent before claiming threshold inconsistency? Did the agent check ALL callers before claiming a method lacks validation (call-site contract)? Is there a centralized error handler that already catches what the agent wants try-caught? Drop findings that fail these checks.
+→ Apply ALL verification checks from \`<finding_quality>\` above to each MEDIUM+ finding. Drop findings that fail.
+→ Bias check: Am I reporting too many issues (noisy review) or too few (shallow review)? For a typical PR, 3\u20138 findings across all severities is normal. More than 12 suggests insufficient filtering.
 
 Before submitting:
 → \`think_about_completion\`: Verify all concern groups were delegated and findings aggregated.

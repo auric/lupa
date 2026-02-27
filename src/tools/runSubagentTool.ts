@@ -331,9 +331,24 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
         const files = new Set<string>();
         for (const call of toolCalls) {
             const args = call.arguments;
-            const filePath = args['filePath'] ?? args['path'] ?? args['file'];
+            // Check all known file path argument names across tools
+            const filePath =
+                args['file_path'] ??
+                args['filePath'] ??
+                args['path'] ??
+                args['relative_path'] ??
+                args['file'];
             if (typeof filePath === 'string') {
                 files.add(filePath);
+            }
+            // Handle array-based file paths (e.g., get_file_diff's file_paths)
+            const filePaths = args['file_paths'];
+            if (Array.isArray(filePaths)) {
+                for (const fp of filePaths) {
+                    if (typeof fp === 'string') {
+                        files.add(fp);
+                    }
+                }
             }
         }
         return [...files];

@@ -105,6 +105,8 @@ CRITICAL/HIGH findings MUST be 🟢 VERIFIED. Speculative findings may only be �
 - ❌ "Architecture should use X pattern" without evidence the current approach causes concrete problems
 - ❌ Reporting pre-existing tech debt as a PR finding
 - ❌ Flagging an untested code path that is unreachable — if no caller can produce the input, there's nothing to test
+- ❌ "Race condition" in single-threaded JavaScript/Node.js when operations are serialized by async/await — verify the runtime is multi-threaded AND shared state is accessed without synchronization before reporting
+- ❌ "Value could be undefined/null" when TypeScript's type narrowing already guarantees the type at that point in control flow — check the actual types, not just the parameter signature
 
 ### False Positive Cost
 
@@ -134,5 +136,7 @@ Before reporting any issue:
 9. **Check callers exist**: Before reporting a public method's behavior as a bug, verify it has production callers — methods with only test consumers may be future API surface
 10. **Quantify performance**: Don't flag "O(n*m) is slow" without knowing actual n and m. For bounded inputs (schema-capped, small collections), linear scans are fine
 11. **Call-site contract**: Before reporting "method X lacks guard Y", find ALL callers of X. If every caller performs Y before calling X (pre-flight pattern), the method is safe — don't suggest redundant internal guards
-12. **Centralized handlers**: If a middleware/executor catches errors at the call boundary, don't suggest try-catch in individual callees. The handler exists for a reason`;
+12. **Centralized handlers**: If a middleware/executor catches errors at the call boundary, don't suggest try-catch in individual callees. The handler exists for a reason
+13. **Confidence caps**: CRITICAL/HIGH findings MUST be tool-verified with cited evidence. Speculative findings (pattern-match without tool verification) may only be 🟢 LOW severity
+14. **When uncertain, flag**: If you suspect a real issue but can't fully verify, report it as 🔍 **Verify** with your reasoning — let the reviewer decide. Flagged uncertainty is better than silence on real bugs`;
 }

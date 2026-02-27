@@ -42,9 +42,5 @@ Each \`run_subagent\` call should include:
 2. **File paths** to examine (sub-agents call \`get_file_diff\` themselves)
 3. **Key functions** to examine
 4. **What to report back** (findings format)
-
-**Read at most 1 diff, then delegate.** Orient via \`list_changed_files\` + 1 key diff, decompose with \`update_plan\`, then spawn ALL sub-agents in one turn. Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
-
-**Parallel spawning**: Make multiple \`run_subagent\` tool calls in one response \u2014 one call per concern group. They execute in parallel. Do NOT call \`run_subagent\` once, wait for results, then call it again.
 </recursive_tool_guide>`;
 }

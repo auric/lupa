@@ -127,12 +127,18 @@ You are at maximum recursion depth—you **cannot** spawn sub-agents.
 Complete your investigation within your iteration budget.
 Note any uninvestigated areas in your response so the parent agent can follow up.`;
 
+        // Sanitize task text to prevent prompt injection from PR descriptions/commit messages
+        const sanitizedTask = task.task
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+
         return `You are a focused investigation subagent. A senior engineer reviewing a pull request has delegated a specific investigation to you.
 
 <your_task>
 ## Your Assigned Task
 
-${task.task}
+${sanitizedTask}
 </your_task>
 
 ${contextSection}
@@ -142,6 +148,10 @@ ${contextSection}
 
 ${toolList}
 </available_tools>
+
+<quality_standards>
+${generateSubagentFindingQualityGuidance()}
+</quality_standards>
 
 <investigation_approach>
 ## Investigation Approach
@@ -191,7 +201,7 @@ ${hasDiffTools ? '- Use `list_changed_files` and `get_file_diff` to access the P
 **Self-Reflection:**
 - Use \`think_about_investigation\` to check if you're staying focused
 - Return partial findings if running low on iterations - partial evidence is valuable
-${generateSubagentFindingQualityGuidance()}
+- Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;
     }
 
