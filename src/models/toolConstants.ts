@@ -52,7 +52,7 @@ const ROOT_ONLY_TOOLS = [
 ] as const;
 
 /**
- * Diff tools that require parsedDiff in ExecutionContext (RLM approach only).
+ * Diff tools that require parsedDiff in ExecutionContext.
  */
 export const DIFF_TOOLS = ['list_changed_files', 'get_file_diff'] as const;
 

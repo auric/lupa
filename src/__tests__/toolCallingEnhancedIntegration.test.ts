@@ -41,8 +41,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     };
     let mockPromptGenerator: {
         generateToolAwareSystemPrompt: Mock;
-        generateToolCallingUserPrompt: Mock;
-        generateRlmUserPrompt: Mock;
+        generateUserPrompt: Mock;
     };
     let mockModel: {
         countTokens: Mock;
@@ -69,8 +68,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
         mockPromptGenerator = {
             generateToolAwareSystemPrompt: vi.fn(() => 'System prompt'),
-            generateToolCallingUserPrompt: vi.fn(() => 'User message'),
-            generateRlmUserPrompt: vi.fn(() => 'RLM user message'),
+            generateUserPrompt: vi.fn(() => 'RLM user message'),
         };
 
         const mockWorkspaceSettings = createMockWorkspaceSettings({
@@ -287,145 +285,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
                 'Analysis based on error message. Adding padding to ensure minimum 100 character requirement for review_content field.'
             );
             // The tool error is passed to the LLM internally, verifiable through the final result
-        });
-    });
-
-    describe('Diff size processing and tool availability', () => {
-        // These tests verify legacy mode's processDiffSize behavior.
-        // In RLM mode, tools are always available (diff accessed on-demand).
-        let legacyProvider: ToolCallingAnalysisProvider;
-
-        beforeEach(() => {
-            const legacySettings = createMockWorkspaceSettings({
-                maxRecursionDepth: 0,
-                analysisApproach: 'legacy',
-            });
-            legacyProvider = new ToolCallingAnalysisProvider(
-                mockToolRegistry as any,
-                mockCopilotModelManager as any,
-                mockPromptGenerator as any,
-                legacySettings
-            );
-        });
-
-        it('should disable tools when diff is too large', async () => {
-            // Mock high token count for the diff
-            mockModel.countTokens.mockImplementation(async (text: string) => {
-                if (text.includes('System')) {
-                    return 100;
-                }
-                if (text.includes('User message')) {
-                    return 5700;
-                } // user message is where the diff is included
-                return 50;
-            });
-
-            // Register SubmitReviewTool for final submission (even when tools are disabled for analysis)
-            const submitReviewTool = new SubmitReviewTool();
-            mockToolRegistry.getTool.mockImplementation((name: string) => {
-                if (name === 'submit_review') {
-                    return submitReviewTool;
-                }
-                return undefined;
-            });
-
-            mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: null,
-                toolCalls: [
-                    {
-                        id: 'call_final',
-                        function: {
-                            name: 'submit_review',
-                            arguments: JSON.stringify({
-                                review_content:
-                                    'Analysis of truncated diff without tools. Adding padding to ensure minimum 100 character requirement for review_content field.',
-                            }),
-                        },
-                    },
-                ],
-            });
-
-            const doesntMatterDiff =
-                'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
-            const result = await legacyProvider.analyze(
-                doesntMatterDiff,
-                tokenSource.token
-            );
-
-            expect(result.analysis).toBe(
-                'Analysis of truncated diff without tools. Adding padding to ensure minimum 100 character requirement for review_content field.'
-            );
-
-            // Should generate system prompt with no tools
-            expect(
-                mockPromptGenerator.generateToolAwareSystemPrompt
-            ).toHaveBeenCalledWith([]);
-
-            // Should add tools disabled message to user prompt
-            expect(
-                mockPromptGenerator.generateToolCallingUserPrompt
-            ).toHaveBeenCalledWith(expect.any(Object));
-        });
-
-        it('should keep tools available when diff is reasonably sized', async () => {
-            const reasonableDiff =
-                'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
-
-            const submitReviewTool = new SubmitReviewTool();
-            const mockTools = [
-                { name: 'read_file', getVSCodeTool: () => ({}) },
-                { name: 'find_symbol', getVSCodeTool: () => ({}) },
-                submitReviewTool,
-            ];
-
-            mockToolRegistry.getAllTools.mockReturnValue(mockTools);
-            mockToolRegistry.getTool.mockImplementation((name: string) => {
-                if (name === 'submit_review') {
-                    return submitReviewTool;
-                }
-                return mockTools.find((t) => t.name === name);
-            });
-
-            // Mock reasonable token counts
-            mockModel.countTokens.mockImplementation(async (text: string) => {
-                if (text.includes('System')) {
-                    return 100;
-                }
-                if (text === reasonableDiff) {
-                    return 200;
-                } // Small diff
-                return 50;
-            });
-
-            mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: null,
-                toolCalls: [
-                    {
-                        id: 'call_final',
-                        function: {
-                            name: 'submit_review',
-                            arguments: JSON.stringify({
-                                review_content:
-                                    'Analysis with tools available. Adding padding to ensure minimum 100 character requirement for review_content field.',
-                            }),
-                        },
-                    },
-                ],
-            });
-
-            const result = await legacyProvider.analyze(
-                reasonableDiff,
-                tokenSource.token
-            );
-
-            expect(result.analysis).toBe(
-                'Analysis with tools available. Adding padding to ensure minimum 100 character requirement for review_content field.'
-            );
-
-            // Should generate system prompt with tools available
-            expect(
-                mockPromptGenerator.generateToolAwareSystemPrompt
-            ).toHaveBeenCalledWith(mockTools);
         });
     });
 

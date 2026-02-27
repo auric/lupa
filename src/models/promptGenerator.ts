@@ -4,15 +4,8 @@ import { RecursionConstants } from '../sessions/recursiveStateManager';
 import { ITool } from '../tools/ITool';
 
 /**
- * Centralized prompt generation service following Anthropic best practices
- * - Focused system prompt for role definition only
- * - Task instructions in user messages
- * - Proper XML structure with underscores
- * - Optimized for long context (query at end)
- *
- * Supports two analysis approaches:
- * - RLM (Recursive Language Model): Diff metadata only in prompt; LLM uses tools for diff access
- * - Legacy: Full diff embedded in prompt (traditional approach)
+ * Centralized prompt generation service.
+ * Generates system and user prompts for PR analysis with diff-on-demand via tools.
  */
 export class PromptGenerator {
     private toolAwarePromptGenerator = new ToolAwareSystemPromptGenerator();
@@ -53,7 +46,7 @@ export class PromptGenerator {
     }
 
     /**
-     * Generate RLM-style user prompt with diff metadata only.
+     * Generate user prompt with diff metadata only.
      * The LLM uses list_changed_files and get_file_diff tools to access diff on demand.
      * @param parsedDiff Parsed diff structure (for metadata extraction)
      * @param userInstructions Optional user-provided instructions
@@ -61,7 +54,7 @@ export class PromptGenerator {
      * @param maxSubagents Maximum subagents the root can spawn
      * @returns User prompt with diff metadata and tool usage instructions
      */
-    public generateRlmUserPrompt(
+    public generateUserPrompt(
         parsedDiff: DiffHunk[],
         userInstructions?: string,
         recursiveMode: boolean = false,
@@ -84,40 +77,7 @@ export class PromptGenerator {
     }
 
     /**
-     * Generate tool-calling focused user prompt (legacy mode).
-     * Embeds the full diff content in the prompt.
-     * @param parsedDiff Parsed diff structure
-     * @param userInstructions Optional user-provided instructions to focus the analysis
-     * @param recursiveMode Whether to use recursive review workflow reminders
-     * @returns User prompt with full diff content
-     */
-    public generateToolCallingUserPrompt(
-        parsedDiff: DiffHunk[],
-        userInstructions?: string,
-        recursiveMode: boolean = false
-    ): string {
-        // 1. File content at top for long context optimization
-        const fileContentSection = this.generateFileContentSection(parsedDiff);
-
-        // 2. User-provided focus instructions (if any)
-        const sanitizedInstructions = userInstructions
-            ?.trim()
-            .replace(/[<>]/g, '');
-        const userFocusSection = sanitizedInstructions
-            ? `<user_focus>\nThe developer has requested you focus on: ${sanitizedInstructions}\n\nWhile performing comprehensive analysis, prioritize findings related to this request.\n</user_focus>\n\n`
-            : '';
-
-        // 3. Concise analysis reminder (main instructions are in system prompt)
-        const analysisReminder = this.generateAnalysisReminder(
-            parsedDiff.length,
-            recursiveMode
-        );
-
-        return `${fileContentSection}${userFocusSection}${analysisReminder}`;
-    }
-
-    /**
-     * Generate diff metadata section for RLM approach.
+     * Generate diff metadata section.
      * Provides a high-level summary instead of full diff content.
      */
     private generateDiffMetadataSection(parsedDiff: DiffHunk[]): string {

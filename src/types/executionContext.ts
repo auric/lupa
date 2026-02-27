@@ -50,7 +50,7 @@ export interface ExecutionContext {
     /**
      * Recursive state manager for the current analysis.
      * Tracks the agent tree, enforces depth/budget limits, aggregates findings.
-     * Present when recursive review mode is enabled (maxRecursionDepth >= 1 and analysisApproach is 'rlm').
+     * Present when recursive review mode is enabled (maxRecursionDepth >= 1).
      */
     recursiveState?: RecursiveStateManager;
 
@@ -68,7 +68,7 @@ export interface ExecutionContext {
 
     /**
      * Parsed diff data for on-demand access via diff tools.
-     * Stored in context instead of being embedded in the prompt (RLM approach).
+     * Stored in context for on-demand access via diff tools.
      * Tools like list_changed_files and get_file_diff read from this.
      * Present only during analysis mode (not exploration mode).
      */

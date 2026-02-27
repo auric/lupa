@@ -127,7 +127,7 @@ index 1234567..abcdefg 100644
         mockPromptGenerator = new PromptGenerator();
 
         const mockWorkspaceSettings = createMockWorkspaceSettings({
-            analysisApproach: 'legacy',
+            maxRecursionDepth: 0,
         });
 
         provider = new ToolCallingAnalysisProvider(
@@ -155,9 +155,9 @@ index 1234567..abcdefg 100644
                 mockPromptGenerator,
                 'generateToolAwareSystemPrompt'
             );
-            const generateToolCallingUserPromptSpy = vi.spyOn(
+            const generateUserPromptSpy = vi.spyOn(
                 mockPromptGenerator,
-                'generateToolCallingUserPrompt'
+                'generateUserPrompt'
             );
 
             await provider.analyze(sampleDiff, tokenSource.token);
@@ -168,9 +168,12 @@ index 1234567..abcdefg 100644
                 expect.any(SubmitReviewTool),
             ]);
 
-            // Verify tool-calling user prompt was generated
-            expect(generateToolCallingUserPromptSpy).toHaveBeenCalledWith(
-                expect.any(Array) // parsed diff
+            // Verify user prompt was generated with parsed diff
+            expect(generateUserPromptSpy).toHaveBeenCalledWith(
+                expect.any(Array), // parsed diff
+                undefined, // no user instructions
+                false, // non-recursive mode (maxRecursionDepth=0)
+                expect.any(Number) // maxSubagents
             );
         });
 
@@ -283,15 +286,14 @@ index 1234567..abcdefg 100644
         });
 
         it('should structure user prompt for optimal tool usage', async () => {
-            const generateToolCallingUserPromptSpy = vi.spyOn(
+            const generateUserPromptSpy = vi.spyOn(
                 mockPromptGenerator,
-                'generateToolCallingUserPrompt'
+                'generateUserPrompt'
             );
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            const userPromptCall =
-                generateToolCallingUserPromptSpy.mock.calls[0];
+            const userPromptCall = generateUserPromptSpy.mock.calls[0];
             const [parsedDiffParam] = userPromptCall;
 
             expect(parsedDiffParam).toBeInstanceOf(Array);
@@ -499,14 +501,14 @@ index 0000000..3333333
 +    return 'new';
 +}`;
 
-            const generateToolCallingUserPromptSpy = vi.spyOn(
+            const generateUserPromptSpy = vi.spyOn(
                 mockPromptGenerator,
-                'generateToolCallingUserPrompt'
+                'generateUserPrompt'
             );
 
             await provider.analyze(complexDiff, tokenSource.token);
 
-            const parsedDiff = generateToolCallingUserPromptSpy.mock
+            const parsedDiff = generateUserPromptSpy.mock
                 .calls[0][0] as DiffHunk[];
 
             expect(parsedDiff).toHaveLength(2);
@@ -818,7 +820,6 @@ index 3333333..4444444 100644
     describe('recursive mode integration', () => {
         it('should use recursive system prompt when analysisApproach is rlm with depth >= 1', async () => {
             const rlmSettings = createMockWorkspaceSettings({
-                analysisApproach: 'rlm',
                 maxRecursionDepth: 2,
             });
 
@@ -844,37 +845,8 @@ index 3333333..4444444 100644
             expect(generateToolAwareSpy).not.toHaveBeenCalled();
         });
 
-        it('should use non-recursive prompt when analysisApproach is legacy', async () => {
-            const legacySettings = createMockWorkspaceSettings({
-                analysisApproach: 'legacy',
-                maxRecursionDepth: 2,
-            });
-
-            const legacyProvider = new ToolCallingAnalysisProvider(
-                mockToolRegistry,
-                mockCopilotModelManager,
-                mockPromptGenerator,
-                legacySettings
-            );
-
-            const generateRecursiveSpy = vi.spyOn(
-                mockPromptGenerator,
-                'generateRecursiveSystemPrompt'
-            );
-            const generateToolAwareSpy = vi.spyOn(
-                mockPromptGenerator,
-                'generateToolAwareSystemPrompt'
-            );
-
-            await legacyProvider.analyze(sampleDiff, tokenSource.token);
-
-            expect(generateToolAwareSpy).toHaveBeenCalled();
-            expect(generateRecursiveSpy).not.toHaveBeenCalled();
-        });
-
         it('should use non-recursive prompt when rlm approach with depth 0', async () => {
             const noRecursionSettings = createMockWorkspaceSettings({
-                analysisApproach: 'rlm',
                 maxRecursionDepth: 0,
             });
 

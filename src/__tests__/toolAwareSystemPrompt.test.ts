@@ -109,8 +109,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('4+');
             expect(prompt).toContain('Security');
             expect(prompt).toContain('Task Format');
-            expect(prompt).toContain('Valid Questions');
-            expect(prompt).toContain('Invalid Questions');
+            expect(prompt).toContain('Subagent Diff Access');
         });
 
         it('should include analysis methodology section', () => {
@@ -243,16 +242,16 @@ describe('ToolAwareSystemPromptGenerator', () => {
         });
     });
 
-    describe('RLM-aware subagent guidance', () => {
-        it('should show "Subagents CANNOT see the diff" when no diff tools present', () => {
+    describe('Subagent guidance', () => {
+        it('should always show subagent diff access guidance', () => {
             const prompt = generator.generateSystemPrompt(mockTools);
 
-            expect(prompt).toContain('Subagents CANNOT see the diff');
-            expect(prompt).toContain('Valid Questions');
-            expect(prompt).toContain('Invalid Questions');
+            expect(prompt).toContain('Subagent Diff Access');
+            expect(prompt).toContain('get_file_diff');
+            expect(prompt).not.toContain('Subagents CANNOT see the diff');
         });
 
-        it('should show diff access guidance when diff tools are present (RLM mode)', () => {
+        it('should include diff tool names when diff tools are present', () => {
             const diffTool: ITool = {
                 name: 'list_changed_files',
                 description: 'List changed files',
@@ -285,8 +284,6 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
             expect(prompt).toContain('Subagent Diff Access');
             expect(prompt).toContain('get_file_diff');
-            expect(prompt).not.toContain('Subagents CANNOT see the diff');
-            expect(prompt).not.toContain('Invalid Questions');
         });
     });
 });

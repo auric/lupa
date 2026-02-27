@@ -10,7 +10,6 @@ import {
     ANALYSIS_LIMITS,
     SUBAGENT_LIMITS,
     RECURSION_LIMITS,
-    type AnalysisApproach,
 } from '../models/workspaceSettingsSchema';
 
 const getDefaultSettings = (): WorkspaceSettings =>
@@ -313,14 +312,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
      */
     public getMaxRecursionDepth(): number {
         return this.settings.maxRecursionDepth;
-    }
-
-    /**
-     * Get the analysis approach strategy.
-     * "rlm" = diff-on-demand via tools, "legacy" = full diff embedded in prompt.
-     */
-    public getAnalysisApproach(): AnalysisApproach {
-        return this.settings.analysisApproach;
     }
 
     /**

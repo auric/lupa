@@ -5,29 +5,8 @@
 
 /**
  * Generate subagent guidance for PR review mode.
- * @param subagentsHaveDiffTools Whether subagents have access to diff tools (RLM mode).
  */
-export function generateSubagentGuidance(
-    subagentsHaveDiffTools: boolean = false
-): string {
-    const diffConstraint = subagentsHaveDiffTools
-        ? `### Subagent Diff Access
-
-✅ **Subagents have \`get_file_diff\` and \`list_changed_files\`.** They can read diffs on demand.
-
-When spawning, tell subagents **which files to examine** and **what concerns to investigate**. They will read the diffs themselves.`
-        : `### Critical Constraint
-
-⚠️ **Subagents CANNOT see the diff.** They explore current code only.
-
-| ✅ Valid Questions | ❌ Invalid Questions |
-|-------------------|---------------------|
-| "What does X do?" | "What changed in X?" |
-| "How does Y handle errors?" | "Was the refactoring correct?" |
-| "Does Z have method W?" | "What was removed?" |
-
-**Before spawning, ask yourself:** "Could someone who never saw the git history answer this?"`;
-
+export function generateSubagentGuidance(): string {
     return `<subagent_guidance>
 ## Subagent Delegation
 
@@ -41,15 +20,19 @@ When spawning, tell subagents **which files to examine** and **what concerns to 
 | Security-sensitive code | Dedicated security investigation subagent |
 | Complex dependency chain (3+ files) | Dependency-tracing subagent |
 
-${diffConstraint}
+### Subagent Diff Access
+
+✅ **Subagents have \`get_file_diff\` and \`list_changed_files\`.** They can read diffs on demand.
+
+When spawning, tell subagents **which files to examine** and **what concerns to investigate**. They will read the diffs themselves.
 
 ### Task Format
 
 \`\`\`
 task: "Investigate [module] for [concern].
 Questions:
-1. [Question about ${subagentsHaveDiffTools ? 'the changes and their impact' : 'current behavior'}]
-2. [Question about ${subagentsHaveDiffTools ? 'the changes and their impact' : 'current behavior'}]
+1. [Question about the changes and their impact]
+2. [Question about the changes and their impact]
 Examine: [function1], [function2]"
 
 context: "[Your concern - what prompted this investigation]"

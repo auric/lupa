@@ -15,7 +15,6 @@ import type {
     AnalysisProgressCallback,
     SubagentProgressContext,
 } from '../types/toolCallTypes';
-import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
@@ -26,7 +25,6 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import { DIFF_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -92,14 +90,8 @@ export class ToolCallingAnalysisProvider {
         );
 
         // Determine analysis approach and recursive mode.
-        // Recursive mode requires BOTH: depth >= 1 AND RLM approach.
-        // The RLM paper's basic pattern is depth=1 (root orchestrator + leaf workers).
-        // Legacy approach is always flat — recursive prompts reference diff tools
-        // that subagents don't have in legacy mode.
-        const isRlmApproach =
-            this.workspaceSettings.getAnalysisApproach() === 'rlm';
         const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
-        const isRecursiveMode = maxRecursionDepth >= 1 && isRlmApproach;
+        const isRecursiveMode = maxRecursionDepth >= 1;
 
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode
@@ -117,7 +109,7 @@ export class ToolCallingAnalysisProvider {
         }
 
         // Create execution context as a mutable reference so parsedDiff can be
-        // set after diff processing (RLM approach needs it on the context for tools)
+        // set after diff processing
         const executionContext: ExecutionContext = {
             planManager,
             subagentSessionManager,
@@ -152,40 +144,12 @@ export class ToolCallingAnalysisProvider {
             progressCallback?.('Processing diff...', 0.5);
             const parsedDiff = DiffUtils.parseDiff(diff);
 
-            // RLM approach: tools always available — diff accessed on-demand via tools,
-            // so context window size is irrelevant for tool availability.
-            // Legacy approach: check if diff fits in context alongside tools.
-            let toolsAvailable: boolean;
-            let processedDiff: string;
-            let toolsDisabledMessage: string | undefined;
+            Log.info(
+                `Tools always enabled, ${parsedDiff.length} files via diff tools`
+            );
 
-            if (isRlmApproach) {
-                toolsAvailable = true;
-                processedDiff = diff;
-                Log.info(
-                    `Using RLM approach: tools always enabled, ${parsedDiff.length} files via diff tools`
-                );
-            } else {
-                const diffResult = await this.processDiffSize(diff);
-                toolsAvailable = diffResult.toolsAvailable;
-                processedDiff = diffResult.processedDiff;
-                toolsDisabledMessage = diffResult.toolsDisabledMessage;
-            }
-
-            // Get available tools and generate system prompt based on tool availability.
-            // In legacy mode, exclude diff tools — they require parsedDiff which is only
-            // set for RLM. Without filtering, the LLM could call them and get unhelpful errors.
-            let availableTools = toolsAvailable
-                ? toolExecutor.getAvailableTools()
-                : [];
-            if (!isRlmApproach) {
-                availableTools = availableTools.filter(
-                    (t) =>
-                        !DIFF_TOOLS.includes(
-                            t.name as (typeof DIFF_TOOLS)[number]
-                        )
-                );
-            }
+            // Get available tools and generate system prompt
+            const availableTools = toolExecutor.getAvailableTools();
             const systemPrompt = isRecursiveMode
                 ? this.promptGenerator.generateRecursiveSystemPrompt(
                       availableTools
@@ -194,31 +158,14 @@ export class ToolCallingAnalysisProvider {
                       availableTools
                   );
 
-            // Generate user prompt based on analysis approach
-            let userMessage: string;
-            if (isRlmApproach) {
-                executionContext.parsedDiff = parsedDiff;
-                userMessage = this.promptGenerator.generateRlmUserPrompt(
-                    parsedDiff,
-                    undefined,
-                    isRecursiveMode,
-                    this.workspaceSettings.getMaxSubagentsPerSession()
-                );
-            } else {
-                // Legacy approach: full diff embedded in prompt
-                const legacyParsedDiff = DiffUtils.parseDiff(processedDiff);
-                userMessage =
-                    this.promptGenerator.generateToolCallingUserPrompt(
-                        legacyParsedDiff,
-                        undefined,
-                        isRecursiveMode
-                    );
-            }
-
-            // Add tools disabled message if applicable (legacy only)
-            if (toolsDisabledMessage) {
-                userMessage = `${toolsDisabledMessage}\n\n${userMessage}`;
-            }
+            // Generate user prompt
+            executionContext.parsedDiff = parsedDiff;
+            const userMessage = this.promptGenerator.generateUserPrompt(
+                parsedDiff,
+                undefined,
+                isRecursiveMode,
+                this.workspaceSettings.getMaxSubagentsPerSession()
+            );
 
             conversationManager.addUserMessage(userMessage);
             progressCallback?.('Starting conversation with AI model...', 0.5);
@@ -378,93 +325,6 @@ export class ToolCallingAnalysisProvider {
             },
             wasCancelled,
         };
-    }
-
-    /**
-     * Process diff size and determine if tools should be available
-     * @param diff Original diff content
-     * @returns Object with processed diff, tool availability, and disabled message
-     */
-    private async processDiffSize(diff: string): Promise<{
-        processedDiff: string;
-        toolsAvailable: boolean;
-        toolsDisabledMessage?: string;
-    }> {
-        try {
-            const model = await this.copilotModelManager.getCurrentModel();
-            const maxTokens =
-                model.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
-
-            // Parse diff for structured analysis
-            const parsedDiff = DiffUtils.parseDiff(diff);
-
-            // Generate actual system prompt and user message to get real token counts
-            const availableTools = this.toolRegistry.getAllTools();
-            const systemPrompt =
-                this.promptGenerator.generateToolAwareSystemPrompt(
-                    availableTools
-                );
-            const userMessage =
-                this.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
-
-            // Count real tokens for actual content that will be sent
-            const systemPromptTokens = await model.countTokens(systemPrompt);
-            const userMessageTokens = await model.countTokens(userMessage);
-            const totalUsedTokens = systemPromptTokens + userMessageTokens;
-
-            // Leave significant room for tool conversations (30% of total context)
-            const minSpaceForTools = Math.floor(maxTokens * 0.3);
-            const availableForTools = maxTokens - totalUsedTokens;
-
-            // If there's enough space for meaningful tool interactions, enable tools
-            if (availableForTools >= minSpaceForTools) {
-                return {
-                    processedDiff: diff,
-                    toolsAvailable: true,
-                };
-            }
-
-            // If diff is too large, truncate it and disable tools
-            Log.warn(
-                `Diff uses too much context (${totalUsedTokens}/${maxTokens} tokens, only ${availableForTools} remaining). Truncating and disabling tools.`
-            );
-
-            // Calculate how much of the diff we can keep to leave room for basic analysis
-            const targetTotalTokens = Math.floor(maxTokens * 0.8); // Use 80% for truncated content
-            const targetDiffTokens = targetTotalTokens - systemPromptTokens;
-            const estimatedCharsPerToken =
-                TokenConstants.CHARS_PER_TOKEN_ESTIMATE;
-            const targetChars = Math.floor(
-                targetDiffTokens * estimatedCharsPerToken
-            );
-
-            // Truncate the diff
-            let truncatedDiff = diff.substring(0, targetChars);
-
-            // Try to truncate at a sensible boundary (line break)
-            const lastLineBreak = truncatedDiff.lastIndexOf('\n');
-            if (lastLineBreak > targetChars * 0.8) {
-                // If line break is reasonably close to target
-                truncatedDiff = truncatedDiff.substring(0, lastLineBreak);
-            }
-
-            // Add truncation indicator
-            truncatedDiff += '\n\n[... diff truncated due to size ...]';
-
-            return {
-                processedDiff: truncatedDiff,
-                toolsAvailable: false,
-                toolsDisabledMessage:
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED,
-            };
-        } catch (error) {
-            Log.error('Error processing diff size:', error);
-            // On error, return original diff with tools available
-            return {
-                processedDiff: diff,
-                toolsAvailable: true,
-            };
-        }
     }
 
     dispose(): void {

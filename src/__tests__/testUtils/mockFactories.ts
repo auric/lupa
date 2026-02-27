@@ -8,7 +8,6 @@ import {
     ANALYSIS_LIMITS,
     SUBAGENT_LIMITS,
     RECURSION_LIMITS,
-    type AnalysisApproach,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
 import type { ExecutionContext } from '../../types/executionContext';
@@ -555,7 +554,6 @@ export function createMockWorkspaceSettings(
         requestTimeoutSeconds: number;
         maxSubagentsPerSession: number;
         maxRecursionDepth: number;
-        analysisApproach: AnalysisApproach;
     }> = {}
 ): WorkspaceSettingsService {
     return {
@@ -569,7 +567,6 @@ export function createMockWorkspaceSettings(
             SUBAGENT_LIMITS.maxPerSession.default,
         getMaxRecursionDepth: () =>
             overrides.maxRecursionDepth ?? RECURSION_LIMITS.maxDepth.default,
-        getAnalysisApproach: () => overrides.analysisApproach ?? 'rlm',
     } as WorkspaceSettingsService;
 }
 

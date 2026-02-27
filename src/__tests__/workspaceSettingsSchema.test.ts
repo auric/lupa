@@ -41,7 +41,6 @@ describe('WorkspaceSettingsSchema', () => {
                 expect(result.data).toEqual({
                     ...validSettings,
                     maxRecursionDepth: RECURSION_LIMITS.maxDepth.default,
-                    analysisApproach: 'rlm',
                 });
             }
         });
@@ -179,36 +178,6 @@ describe('WorkspaceSettingsSchema', () => {
             expect(
                 WorkspaceSettingsSchema.safeParse({
                     maxRecursionDepth: RECURSION_LIMITS.maxDepth.max + 1,
-                }).success
-            ).toBe(false);
-        });
-    });
-
-    describe('analysisApproach setting', () => {
-        it('should accept valid analysis approaches', () => {
-            for (const approach of ['rlm', 'legacy'] as const) {
-                const result = WorkspaceSettingsSchema.safeParse({
-                    analysisApproach: approach,
-                });
-                expect(result.success).toBe(true);
-                if (result.success) {
-                    expect(result.data.analysisApproach).toBe(approach);
-                }
-            }
-        });
-
-        it('should default to rlm', () => {
-            const result = WorkspaceSettingsSchema.safeParse({});
-            expect(result.success).toBe(true);
-            if (result.success) {
-                expect(result.data.analysisApproach).toBe('rlm');
-            }
-        });
-
-        it('should reject invalid analysis approach', () => {
-            expect(
-                WorkspaceSettingsSchema.safeParse({
-                    analysisApproach: 'turbo',
                 }).success
             ).toBe(false);
         });

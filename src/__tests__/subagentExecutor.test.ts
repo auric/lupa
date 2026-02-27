@@ -561,31 +561,6 @@ describe('SubagentExecutor', () => {
             expect(filteredNames).not.toContain('run_subagent');
             expect(filteredNames).toContain('read_file');
         });
-
-        it('should set canRecurse=false when recursiveState is missing (legacy mode)', async () => {
-            const modelManager = createMockModelManager([{ content: 'Done' }]);
-
-            const readTool = createMockTool('read_file');
-            const subagentTool = createMockTool('run_subagent');
-            const allTools = [readTool, subagentTool];
-
-            const executor = createExecutor(modelManager, allTools);
-            // depth=0, maxDepth=2, subagentSessionManager present
-            // BUT no recursiveState → legacy mode → canRecurse=false
-            await executor.execute(defaultTask, tokenSource.token, 1, {
-                recursionDepth: 0,
-                subagentSessionManager: {} as any,
-                // recursiveState is intentionally omitted (legacy mode)
-            });
-
-            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
-                .mock.calls[0]!;
-            const toolsPassedToPrompt = promptCall[1] as ITool[];
-            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
-
-            expect(filteredNames).not.toContain('run_subagent');
-            expect(filteredNames).toContain('read_file');
-        });
     });
 
     describe('Recursive Child Context', () => {
@@ -663,29 +638,6 @@ describe('SubagentExecutor', () => {
     });
 
     describe('Diff Tool Filtering', () => {
-        it('should remove diff tools when parsedDiff is undefined (legacy mode)', async () => {
-            const modelManager = createMockModelManager([{ content: 'Done' }]);
-
-            const readTool = createMockTool('read_file');
-            const listChangedTool = createMockTool('list_changed_files');
-            const getFileDiffTool = createMockTool('get_file_diff');
-            const allTools = [readTool, listChangedTool, getFileDiffTool];
-
-            const executor = createExecutor(modelManager, allTools);
-
-            // No parsedDiff in options → legacy mode
-            await executor.execute(defaultTask, tokenSource.token, 1);
-
-            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
-                .mock.calls[0]!;
-            const toolsPassedToPrompt = promptCall[1] as ITool[];
-            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
-
-            expect(filteredNames).toContain('read_file');
-            expect(filteredNames).not.toContain('list_changed_files');
-            expect(filteredNames).not.toContain('get_file_diff');
-        });
-
         it('should keep diff tools when parsedDiff is provided', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
@@ -716,31 +668,6 @@ describe('SubagentExecutor', () => {
             expect(filteredNames).toContain('read_file');
             expect(filteredNames).toContain('list_changed_files');
             expect(filteredNames).toContain('get_file_diff');
-        });
-
-        it('should remove diff tools when parsedDiff is empty array', async () => {
-            const modelManager = createMockModelManager([{ content: 'Done' }]);
-
-            const readTool = createMockTool('read_file');
-            const listChangedTool = createMockTool('list_changed_files');
-            const getFileDiffTool = createMockTool('get_file_diff');
-            const allTools = [readTool, listChangedTool, getFileDiffTool];
-
-            const executor = createExecutor(modelManager, allTools);
-
-            // Empty parsedDiff should behave like undefined (no data)
-            await executor.execute(defaultTask, tokenSource.token, 1, {
-                parsedDiff: [] as any,
-            });
-
-            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
-                .mock.calls[0]!;
-            const toolsPassedToPrompt = promptCall[1] as ITool[];
-            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
-
-            expect(filteredNames).toContain('read_file');
-            expect(filteredNames).not.toContain('list_changed_files');
-            expect(filteredNames).not.toContain('get_file_diff');
         });
     });
 });

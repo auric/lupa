@@ -600,21 +600,13 @@ File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOvervi
     "requestTimeoutSeconds": 180,
     "maxSubagentsPerSession": 30,
     "preferredModelIdentifier": "copilot/gpt-4.1",
-    "analysisApproach": "rlm",
     "maxRecursionDepth": 2
 }
 ```
 
 ### Analysis Modes
 
-Lupa supports two analysis approaches, configured via `analysisApproach`:
-
-| Setting  | Behavior                                                                 |
-| -------- | ------------------------------------------------------------------------ |
-| `legacy` | Single-agent analysis with optional subagent delegation via tool calling |
-| `rlm`    | Recursive Language Model approach with agent tree decomposition          |
-
-**RLM mode** (`analysisApproach: 'rlm'`) enables recursive delegation where a root agent decomposes the PR into focused investigations. Key settings:
+Lupa uses a Recursive Language Model (RLM) approach where a root agent decomposes the PR into focused investigations delegated to child agents.
 
 | Setting             | Default | Description                                          |
 | ------------------- | ------- | ---------------------------------------------------- |
@@ -622,16 +614,11 @@ Lupa supports two analysis approaches, configured via `analysisApproach`:
 
 Total spawns per analysis are capped by `maxSubagentsPerSession` (default 30).
 
-**Recursive mode activates** when `analysisApproach === 'rlm'` AND `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
+**Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
 
-**Non-recursive RLM mode** (`maxRecursionDepth === 0`): Subagent guidance adapts to tool availability — when diff tools are present, the prompt tells the LLM that subagents _can_ read diffs via `get_file_diff`, instead of the legacy constraint "subagents cannot see the diff."
+**Non-recursive mode** (`maxRecursionDepth === 0`): A single agent reviews all files directly with subagent delegation for larger PRs. Subagents have access to diff tools (`get_file_diff`, `list_changed_files`) and can read diffs on demand.
 
-**Legacy mode isolation**: When `analysisApproach === 'legacy'`, recursive tooling is fully disabled:
-
-- `SubagentExecutor` sets `canRecurse=false` because there is no `recursiveState` (even if depth permits recursion)
-- Both analysis providers filter out diff tools (`list_changed_files`, `get_file_diff`) since they require `parsedDiff` which is only set in RLM mode
-
-**RecursiveStateManager** (`src/sessions/recursiveStateManager.ts`) tracks the agent tree during RLM analysis:
+**RecursiveStateManager** (`src/sessions/recursiveStateManager.ts`) tracks the agent tree during analysis:
 
 - Registers agents with parent-child relationships and depth tracking
 - Enforces `maxRecursionDepth` via `canSpawnChild()` (total spawn count is guarded by `SubagentSessionManager`)

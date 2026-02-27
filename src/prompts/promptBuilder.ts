@@ -18,7 +18,6 @@ import {
     generateRecursiveToolGuide,
     generateFindingQualityGuidance,
 } from './blocks/promptBlocks';
-import { DIFF_TOOLS } from '../models/toolConstants';
 
 /**
  * Builder for composing system prompts from modular blocks.
@@ -83,10 +82,9 @@ export class PromptBuilder {
 
     /**
      * Add subagent delegation guidance.
-     * @param subagentsHaveDiffTools Whether subagents will have access to diff tools (RLM mode).
      */
-    addSubagentGuidance(subagentsHaveDiffTools: boolean = false): this {
-        this.sections.push(generateSubagentGuidance(subagentsHaveDiffTools));
+    addSubagentGuidance(): this {
+        this.sections.push(generateSubagentGuidance());
         return this;
     }
 
@@ -206,14 +204,11 @@ export class PromptBuilder {
  * Create a pre-configured builder for PR review prompts.
  */
 export function createPRReviewPromptBuilder(tools: ITool[]): PromptBuilder {
-    const hasDiffTools = DIFF_TOOLS.every((name) =>
-        tools.some((t) => t.name === name)
-    );
     return new PromptBuilder()
         .addPRReviewerRole()
         .addToolInventory(tools)
         .addPRToolGuide()
-        .addSubagentGuidance(hasDiffTools)
+        .addSubagentGuidance()
         .addFindingQualityGuidance()
         .addSelfReflection()
         .addAnalysisMethodology()

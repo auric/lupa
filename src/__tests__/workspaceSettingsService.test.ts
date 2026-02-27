@@ -328,21 +328,5 @@ describe('WorkspaceSettingsService', () => {
 
             expect(service.getMaxRecursionDepth()).toBe(0);
         });
-
-        it('should return default analysisApproach when no custom config', () => {
-            vi.mocked(fs.readFileSync).mockReturnValue('{}');
-            service = new WorkspaceSettingsService(mockContext);
-
-            expect(service.getAnalysisApproach()).toBe('rlm');
-        });
-
-        it('should return custom analysisApproach from settings file', () => {
-            vi.mocked(fs.readFileSync).mockReturnValue(
-                JSON.stringify({ analysisApproach: 'legacy' })
-            );
-            service = new WorkspaceSettingsService(mockContext);
-
-            expect(service.getAnalysisApproach()).toBe('legacy');
-        });
     });
 });

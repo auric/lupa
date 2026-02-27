@@ -26,7 +26,6 @@ import type { SubagentSessionManager } from './subagentSessionManager';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
-import { DIFF_TOOLS } from '../models/toolConstants';
 import { WorkspaceSettingsService } from './workspaceSettingsService';
 
 /**
@@ -133,18 +132,6 @@ export class SubagentExecutor {
 
             const conversation = new ConversationManager();
             let filteredTools = this.filterTools(canRecurse);
-
-            // Remove diff tools when parsedDiff is unavailable (legacy mode).
-            // Without parsedDiff the tools would return errors, and the prompt
-            // would misleadingly instruct the subagent to call them.
-            if (!options?.parsedDiff?.length) {
-                filteredTools = filteredTools.filter(
-                    (t) =>
-                        !DIFF_TOOLS.includes(
-                            t.name as (typeof DIFF_TOOLS)[number]
-                        )
-                );
-            }
 
             const filteredRegistry = this.createFilteredRegistry(filteredTools);
 

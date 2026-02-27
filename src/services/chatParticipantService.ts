@@ -18,7 +18,7 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { MAIN_ANALYSIS_ONLY_TOOLS, DIFF_TOOLS } from '../models/toolConstants';
+import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -520,25 +520,7 @@ export class ChatParticipantService implements vscode.Disposable {
         // Determine if recursive review mode is available
         const maxRecursionDepth =
             this.deps!.workspaceSettings.getMaxRecursionDepth();
-        const isRlmApproach =
-            this.deps!.workspaceSettings.getAnalysisApproach() === 'rlm';
-        const isRecursiveMode = maxRecursionDepth >= 1 && isRlmApproach;
-
-        // Warn when using RLM/recursive mode with a small-context model.
-        // Tool-calling workflows consume context rapidly; models with <50K tokens
-        // often run out of context or struggle with multi-step instruction following.
-        const SMALL_CONTEXT_THRESHOLD = 50_000;
-        if (
-            isRlmApproach &&
-            request.model.maxInputTokens < SMALL_CONTEXT_THRESHOLD
-        ) {
-            const msg =
-                `Model "${request.model.name}" has ${request.model.maxInputTokens} tokens — ` +
-                `RLM mode works best with larger context models (50K+). ` +
-                `Analysis quality may be limited. Consider using a model with a larger context window.`;
-            Log.warn(msg);
-            stream.progress(`\u26A0\uFE0F ${msg}`);
-        }
+        const isRecursiveMode = maxRecursionDepth >= 1;
 
         // Create RecursiveStateManager when in recursive mode
         const recursiveState = isRecursiveMode
@@ -580,15 +562,7 @@ export class ChatParticipantService implements vscode.Disposable {
         const client = new ChatLLMClient(request.model, timeoutMs);
         const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
-        // In legacy mode, exclude diff tools — they require parsedDiff which is only
-        // set for RLM. Without filtering, the LLM could call them and get unhelpful errors.
-        let availableTools = toolExecutor.getAvailableTools();
-        if (!isRlmApproach) {
-            availableTools = availableTools.filter(
-                (t) =>
-                    !DIFF_TOOLS.includes(t.name as (typeof DIFF_TOOLS)[number])
-            );
-        }
+        const availableTools = toolExecutor.getAvailableTools();
         const systemPrompt = isRecursiveMode
             ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
                   availableTools
@@ -602,21 +576,13 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.filetree(fileTree, gitRootUri);
         }
 
-        const userPrompt = isRlmApproach
-            ? (() => {
-                  executionContext.parsedDiff = parsedDiff;
-                  return this.deps!.promptGenerator.generateRlmUserPrompt(
-                      parsedDiff,
-                      request.prompt || undefined,
-                      isRecursiveMode,
-                      this.deps!.workspaceSettings.getMaxSubagentsPerSession()
-                  );
-              })()
-            : this.deps!.promptGenerator.generateToolCallingUserPrompt(
-                  parsedDiff,
-                  request.prompt || undefined,
-                  isRecursiveMode
-              );
+        executionContext.parsedDiff = parsedDiff;
+        const userPrompt = this.deps!.promptGenerator.generateUserPrompt(
+            parsedDiff,
+            request.prompt || undefined,
+            isRecursiveMode,
+            this.deps!.workspaceSettings.getMaxSubagentsPerSession()
+        );
         conversation.addUserMessage(userPrompt);
 
         let analysisCompleted = false;

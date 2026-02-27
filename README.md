@@ -80,9 +80,7 @@ The selected model is saved in `.vscode/lupa.json` and persists across sessions.
 
 ### Default Model
 
-Lupa uses **GPT-4.1** as the default because it's free. GPT-4.1 works reasonably well for small to medium PRs, but **struggles with large code changes** — it may fail to use tools correctly or produce incomplete analysis when there's too much context.
-
-For larger PRs, consider using a more capable model.
+Lupa uses **GPT-4.1** as the default because it's free. With the recursive approach, GPT-4.1 now handles even large PRs well — the agent tree decomposes complex changes into focused investigations, preventing context overload.
 
 ### ⚠️ Premium Models Are Expensive
 
@@ -100,11 +98,12 @@ Monitor your usage in your GitHub account settings.
 
 Recommended for Lupa:
 
-| Model                 | Cost  | Notes                                             |
-| --------------------- | ----- | ------------------------------------------------- |
-| **GPT-4.1** (default) | Free  | Works for small PRs, struggles with large changes |
-| **Grok Code Fast 1**  | 0.25x | Good balance of speed and quality                 |
-| **Raptor Mini**       | Free  | Good for larger PRs                               |
+| Model                 | Cost | Notes                                                                     |
+| --------------------- | ---- | ------------------------------------------------------------------------- |
+| **GPT-4.1** (default) | Free | Recommended — works well with the recursive approach for PRs of all sizes |
+| **Raptor Mini**       | Free | Good alternative, but may not run subagents in parallel                   |
+
+> **Note:** Some smaller models (GPT5-mini, Raptor Mini) may not reliably spawn subagents in parallel, leading to sequential analysis that takes longer. GPT-4.1 handles parallel delegation well.
 
 ### 💰 Using Your Own API Key
 
@@ -135,28 +134,16 @@ Settings are stored in `.vscode/lupa.json`:
     "maxIterations": 100,
     "requestTimeoutSeconds": 300,
     "maxSubagentsPerSession": 30,
-    "analysisApproach": "rlm",
     "maxRecursionDepth": 2,
     "logLevel": "info"
 }
 ```
 
-### Analysis Approach
-
-Lupa supports two analysis strategies, controlled by the `analysisApproach` setting:
-
-| Approach     | Description                                                                                                                                                                                                                                                    |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`rlm`**    | **(Default)** Recursive Language Model approach. The diff is NOT embedded in the prompt. Instead, the LLM uses `list_changed_files` and `get_file_diff` tools to access changes on demand. More efficient for large diffs and enables recursive decomposition. |
-| **`legacy`** | Traditional approach. The full diff is embedded directly in the user prompt. Simpler but uses more context window for large diffs.                                                                                                                             |
-
-The RLM approach is inspired by the [Recursive Language Models paper](https://arxiv.org/abs/2512.24601) — the key insight is that LLMs work better when they actively explore context on demand rather than passively receiving it all at once. This prevents "context rot" on large PRs and allows the LLM to prioritize which files to examine.
-
-> **Note:** When using RLM mode with a model under 50K context tokens, Lupa logs a warning recommending a larger context model for best results.
-
 ### Recursive Review Mode
 
-When `maxRecursionDepth` is set to 1 or higher (and `analysisApproach` is `rlm`), Lupa uses recursive review mode:
+Lupa uses a **Recursive Language Model (RLM)** approach inspired by the [Recursive Language Models paper](https://arxiv.org/abs/2512.24601) — the LLM actively explores context on demand rather than receiving the full diff at once, preventing "context rot" on large PRs.
+
+When `maxRecursionDepth` is 1 or higher (the default is 2), Lupa uses recursive review mode:
 
 1. The **root agent** scans the PR scope and decomposes it into concern groups
 2. **Sub-agents** are spawned to analyze each concern group independently
@@ -167,21 +154,11 @@ This is particularly effective for large PRs with many files across different do
 
 > **Fallback behavior**: Recursive mode gives the LLM the _capability_ to decompose work, but decomposition is not guaranteed. If the LLM does not spawn sub-agents (e.g., for trivial PRs), the analysis proceeds as a single root-agent investigation.
 
-### Disabling Recursive Mode
-
 To revert to flat, single-agent analysis, set `maxRecursionDepth` to `0` in your `.vscode/lupa.json`:
 
 ```json
 {
     "maxRecursionDepth": 0
-}
-```
-
-To switch back to the legacy approach (full diff embedded in prompt), set:
-
-```json
-{
-    "analysisApproach": "legacy"
 }
 ```
 

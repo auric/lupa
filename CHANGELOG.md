@@ -7,246 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-02-21
 
+### Added
+
+#### Recursive Language Model (RLM) Analysis
+
+- **New diff-on-demand architecture**: The LLM now loads file diffs via `list_changed_files` and `get_file_diff` tools instead of receiving the full diff in the prompt. This prevents context window overflow on large PRs and lets the LLM prioritize which files to examine.
+- **Recursive review mode**: Large PRs are automatically decomposed into concern groups, with sub-agents analyzing each group independently. The root agent aggregates all findings into a unified review. Controlled by `maxRecursionDepth` setting (default: 2).
+- **Sub-agents can read PR diffs**: Sub-agents use the same diff tools as the root agent, enabling deep investigation of specific files without context limitations.
+
 ### Fixed
 
-#### RLM Analysis
+#### Analysis Reliability
 
-- **RLM mode no longer disables tools for large diffs**: `processDiffSize()` was calculating token usage using the legacy full-diff prompt even in RLM mode, causing tools to be disabled for large PRs. RLM mode now always keeps tools enabled since diff is accessed on-demand.
-- **Tool response limit tripled** (`MAX_TOOL_RESPONSE_CHARS`: 20K → 60K): Large file diffs (e.g., docs, generated code) no longer rejected by the response size validator.
-- **File read limit doubled** (`MAX_FILE_READ_LINES`: 200 → 400): LLM can read larger file sections in a single call.
-- **Budget increased** (`DEFAULT_CHILD_BUDGET`: 15 → 30, `MIN_VIABLE_BUDGET`: 5 → 3): Subagents get 30 iterations each (up from 15) for meaningful investigation.
-- **Removed dead `iterationsUsed` field**: Never-incremented field removed from `RecursiveStateNode`.
-- **Workflow: examine diffs before planning**: Both recursive and non-recursive RLM prompts now instruct the LLM to read key file diffs before creating the review plan, preventing blind decomposition.
-- **Rate limit backoff**: `ConversationRunner` now detects `ChatRateLimited` errors and retries with exponential backoff (2s → 30s, up to 5 retries) without burning iterations. Previously, rate limit errors consumed an iteration each and retried immediately.
-- **Max iterations error shows actual budget**: `RunSubagentTool` error message now reports the child's allocated budget (e.g., 20) instead of the global `maxIterations` setting (e.g., 100).
-- **Root agent reads 1 key diff, then delegates**: Recursive root reads at most 1 diff (the most impactful file) for orientation, then immediately plans and delegates. Replaced the previous "read 2-3 key diffs" instructions that appeared across 4 prompt locations and caused LLMs to continue analyzing instead of spawning subagents. Subagents read all other diffs via `get_file_diff`.
-- **Parallel subagent spawning mandate**: All recursive prompt locations (`recursiveRootRole`, `recursiveMethodology`, `recursiveToolGuide`, `promptGenerator`, `selfReflection`) now instruct the LLM to spawn ALL subagents in the same turn for parallel execution. Previously, no parallel guidance existed despite the infrastructure (`ToolExecutor.executeTools` using `Promise.all`) supporting it.
-- **Mandatory recursive delegation for 4+ files**: Child agents with `canRecurse=true` now see "You MUST Spawn Sub-Agents for 4+ Files" instead of the previous "You CAN Spawn" suggestion. Investigation steps explicitly state "DO NOT investigate 4+ files directly" with a warning about iteration budget exhaustion.
-- **Tighter escape hatches for delegation**: Reduced the "trivial PR" threshold from 1-3 files/<50 lines to 1-2 files/<30 lines, and removed the broad "config-only changes" exception that LLMs used to rationalize skipping delegation for 3-5 file PRs.
-- **Prompt section reordering**: Moved `RecursiveMethodology` before `RecursiveSelfReflection` in the prompt builder so the action steps (decompose → delegate → aggregate) appear earlier where LLMs weight instructions more heavily.
-- **RLM-aware subagent guidance**: `subagentGuidance` now detects whether diff tools are available. In RLM mode, shows "Subagents have `get_file_diff`" instead of the false "Subagents CANNOT see the diff" constraint that was blocking diff-related subagent tasks.
-- **Subagents skip `list_changed_files`**: Subagent diff prompt now starts with `get_file_diff` for assigned files instead of wasting an iteration listing all changed files.
-- **Small model warning**: When using RLM mode with a model under 50K context tokens, logs a warning recommending a larger context model.
+- **Large diffs no longer break analysis**: Tools remain enabled regardless of diff size — the LLM fetches diffs on demand instead of embedding them in the prompt.
+- **Rate limit handling**: Automatic retry with exponential backoff (2s → 30s, up to 5 retries) when hitting API rate limits, without consuming analysis iterations.
+- **Better subagent budgets**: Each sub-agent gets an independent 30-iteration budget instead of a shrinking fraction of the parent's remaining budget.
+- **Recursive review works at all depths**: Fixed a bug where sub-agents beyond depth 1 couldn't spawn their own sub-agents.
 
-#### Recursive Review
+#### Finding Quality
 
-- **Budget model: flat allocation replaces exponential decay**: Replaced the `CHILD_BUDGET_RATIO` model (each child got 60% of remaining, causing rapid depletion after 3 spawns) with flat per-child allocation (`DEFAULT_CHILD_BUDGET=30`). Each child gets its own independent 30-iteration budget.
-- **Budget now controls child iteration limits**: Allocated budget is passed to `SubagentExecutor` as `maxIterations`, so children actually respect their budget instead of all getting the full global limit.
-- **Subagent budget rollback on startup failure**: `RunSubagentTool` now rolls back the spawn slot when `SubagentExecutor` returns a generic failure (e.g., LLM connection error). Timeout and max-iteration outcomes still consume a slot since the agent ran and used resources.
-- **Diff tools constant in SubagentExecutor**: Replaced hardcoded tool name strings with the shared `DIFF_TOOLS` constant for maintainability.
-- **find_usages handles LocationLink responses**: `vscode.executeDefinitionProvider` can return `LocationLink` (with `targetUri`/`targetRange`) not just `Location` (with `uri`/`range`). Added proper type discrimination instead of optional chaining that silently lost valid definitions.
-- **Recursive agent prefix uses hierarchical IDs**: Subagent progress in chat now shows `🔹 child-1:` or `🔹 child-1.1:` instead of cryptic `L1#1` format.
-- **Recursion now works beyond depth 1**: Fixed critical bug where subagent child contexts had `subagentSessionManager: undefined`, causing `RunSubagentTool`'s guard clause to reject all spawns at depth > 0. Session manager is now propagated through `SubagentExecuteOptions`.
-- **Session limit enforced in recursive mode**: Fixed `RunSubagentTool` where `sessionManager.canSpawn()` was never checked when `RecursiveStateManager` was present (due to `if/else-if` structure). The session limit is now always checked first as a hard global cap.
-- **Subagents can now read PR diffs**: Subagent prompt generator detects when diff tools (`list_changed_files`, `get_file_diff`) are available and replaces the "You CANNOT see the PR diff" constraint with instructions to use those tools.
-
-#### Prompt Quality
-
-- **Fixed conflicting first-action instructions in recursive mode**: Root role and methodology both mandated `update_plan` as the first tool call, contradicting the tool guide which correctly starts with `list_changed_files`. All three now agree on the metadata-first workflow.
-- **Subagent recursion prompt no longer discourages delegation**: Replaced conservative "delegate sparingly" with actionable guidance on when to spawn sub-agents. Removed misleading "shared budget" framing—children get their own allocated budget.
-- **Fixed overlapping file count ranges in recursive tool guide**: Delegation strategy table had overlapping ranges (4-10 and 10-20). Corrected to non-overlapping ranges (4-9, 10-19, 20+).
+- **Fewer false positives**: Multi-layered verification gates prevent reporting pre-existing issues, feature requests as bugs, missing validation when callers already validate, and unquantified performance concerns.
+- **Scope boundary enforcement**: Findings must pass the "Revert Test" — only issues introduced or worsened by the PR are reported.
+- **Design intent awareness**: The LLM searches for comments, docs, tests, and commit history before reporting design choices as flaws.
 
 #### Tool Reliability
 
-- **Path normalization in `get_file_diff`**: Backslash paths from LLM are normalized to forward slashes before matching against diff entries.
-- **Diff tools filtered in legacy mode**: `SubagentExecutor` removes `list_changed_files` and `get_file_diff` from subagent tools when `parsedDiff` is unavailable (legacy approach), preventing misleading prompt instructions and tool call errors.
-- **`get_file_diff` exact-match priority**: Exact path matches are now preferred over suffix matches. Previously, requesting `Button.tsx` when both `Button.tsx` and `src/components/Button.tsx` existed would return an ambiguous error instead of the exact match.
-- **Diff tool detection checks both tools**: `SubagentPromptGenerator.hasDiffTools` now verifies both `list_changed_files` and `get_file_diff` are present (via `DIFF_TOOLS.every()`), instead of only checking for `list_changed_files`. Prevents stale prompt instructions if tools are ever registered independently.
-
-#### Finding Quality (False Positive Reduction)
-
-- **New `findingQualityGuidance` prompt block**: Added verification gates per claim type (missing error handling, arithmetic overflow, missing tests, etc.), counterexample requirements for "X can fail" findings, false positive pattern examples, and confidence-severity matrix binding (SPECULATIVE ≤ LOW, CRITICAL requires VERIFIED).
-- **Subagent finding quality guidance**: Compact 5-rule verification checklist added to subagent investigation prompts — verify scope, prove it, search first, check callers, consider intent.
-- **Self-reflection enhanced with finding validation**: `think_about_task` articulation in both PR review and recursive modes now includes `findings_validated` checkpoint, prompting the LLM to audit finding quality before concluding.
-- **Finding audit in analysis methodology**: Added `finding_audit` step to "Before conclusions" checkpoint — 5 verification questions (tool-verified? concrete scenario? checked callers? searched for existing handling? intentional design?) with instruction to drop failing findings.
-- **`hasDiffTools` in `PromptBuilder` uses `DIFF_TOOLS.every()`**: Consistent with `SubagentPromptGenerator` — requires both diff tools, not just `list_changed_files`.
-
-#### Finding Quality — False Positive Reduction (Phase 2)
-
-- **Scope boundary rule**: New "Changed Code Only" section at the top of finding quality guidance — establishes that only issues introduced or worsened by the PR are valid findings. Catches the most common FP category: reporting pre-existing issues in unchanged code.
-- **Revert Test**: Universal validation filter — "Would reverting this PR fix this issue? If no, drop it." Applied in main prompt, subagent prompt, and recursive aggregation.
-- **Design intent verification gate**: New row in verification gates table requiring search for comments, docs, tests, or commit history explaining design choices before reporting "design flaw / should refactor." If any plausible rationale exists, the finding is dropped.
-- **Feature request ≠ bug distinction**: New verification gate and false positive pattern explicitly capping "should add X" suggestions at LOW severity. Prevents feature requests from being inflated to MEDIUM/HIGH.
-- **False positive cost statement**: Anchoring statement — "Three verified, actionable findings are worth more than twelve mixed-quality observations. When uncertain, omit."
-- **Expanded false positive patterns**: Added 4 new anti-patterns: suggestions as MEDIUM+, issues in unchanged code, architecture preferences without evidence, pre-existing tech debt.
-- **Stronger subagent finding quality**: Expanded compact guidance from 4 to 7 points, adding scope boundary, revert test, suggestion severity cap, and uncertainty omission rule.
-- **Recursive aggregation quality filter**: Root agent's Step 4 (Aggregate Findings) now instructs challenging MEDIUM+ findings against the Revert Test and dropping speculative claims without evidence.
-- **Recursive self-reflection validation**: Aggregation checkpoint now explicitly requires verifying each MEDIUM+ finding is about changed code with cited evidence.
-
-#### Recursive State Manager Hardening
-
-- **Lifecycle transition guards**: `completeAgent()`, `failAgent()`, and `cancelAgent()` now ignore calls on agents already in a terminal state (`completed`, `failed`, `cancelled`), logging a warning instead of silently overwriting state.
-- **Root agent lifecycle completion**: Both `ToolCallingAnalysisProvider` and `ChatParticipantService` now complete/fail/cancel the root agent in their `finally` blocks, so the recursive state tree accurately reflects the analysis outcome.
-- **File coverage only counts completed agents**: `isFileAlreadyCovered()` and `getCoveredFiles()` now check `status === 'completed'` instead of `status !== 'pending'`, ensuring failed/cancelled agents don't incorrectly mark files as analyzed.
-- **Subagent filesExamined propagated to recursive state**: `RunSubagentTool` now extracts file paths from subagent tool call records and passes them to `completeAgent()`, so `getCoveredFiles()` returns accurate coverage data instead of always being empty.
-- **Max iterations marks agent completed, not failed**: Subagents that hit their iteration cap performed real work — `RunSubagentTool` now calls `completeAgent()` instead of `failAgent()`, so their files count toward coverage and findings are preserved.
-- **Tree summary deterministic ordering**: `getTreeSummary()` now sorts nodes by depth then agentId for consistent log output regardless of registration order.
-
-#### Prompt Hygiene
-
-- **File path sanitization in prompts**: Angle brackets (`<>`) in file paths are now stripped before injecting into prompt metadata and file content XML, preventing paths like `src/</path>` from breaking prompt tag structure.
-- **Diff content sanitization in prompts**: Angle brackets (`<>`) in diff hunk headers and content lines are now stripped before embedding in prompt XML, preventing crafted diff content from breaking `<changes>` tag structure.
-
-#### Legacy Mode Hardening
-
-- **Legacy mode no longer leaks recursive tools**: `canRecurse` in `SubagentExecutor` now requires `recursiveState` to be present (in addition to depth check and session manager). Previously, legacy-mode subagents at `depth < maxDepth` could receive `run_subagent` without any budget tracking, getting the full global iteration limit instead of the child budget.
-- **Diff tools filtered in `ChatParticipantService` legacy mode**: Added the same `DIFF_TOOLS` filter that `ToolCallingAnalysisProvider` already applied. Without parsedDiff, these tools return unhelpful errors.
-- **Stale `maxTotalAgents` removed from README**: Configuration example referenced the removed setting.
-
-#### Test Coverage
-
-- Added schema validation tests for `maxRecursionDepth` and `analysisApproach` settings (bounds and invalid values).
-- Added test for `canRecurse=false` when `recursiveState` is missing (legacy-mode gating).
-- Added test for `ChatParticipantService` diff tools filtering in legacy mode.
-- Added test for rate-limit counter reset after successful API response.
-- Added test for `getFileDiffTool` mixed valid + ambiguous paths in same request.
-- Added test for `RunSubagentTool` defaulting `currentDepth` to 0 when undefined with `recursiveState`.
-- Added tests for recursive prompt delegation enforcement: 1-key-diff orientation, parallel spawning mandate, methodology-before-self-reflection ordering, tighter escape hatch thresholds, `get_file_diff` limited to 1 file in workflow, and correct 7-step workflow in RLM reminder.
-- Added tests for mandatory recursive delegation: "MUST Spawn" language, parallel sub-agent spawning in canRecurse prompt, and 4+ file mandatory delegation in investigation steps.
-- Added tests for RLM-aware subagent guidance: diff constraint shown when no diff tools, diff access guidance shown when diff tools present.
-- Fixed in-mock assertion in `ConversationRunner` rate-limit test — moved `expect()` from inside mock callback to post-execution verification.
-- Added tests for `RunSubagentTool` budget rollback: generic failure rolls back, timeout does not, max-iterations does not.
-- Added tests for diff content sanitization: angle brackets stripped from hunk headers and content lines.
-- Added tests for `ReadFileTool` EOF clamping: `end_line` and `line_count` past file length are silently clamped.
-- Added test for `RunSubagentTool` parsedDiff propagation to executor.
-- Added tests for finding quality guidance: verification gates in PR review prompt, counterexample requirement, false positive examples, finding audit in self-reflection, subagent finding quality guidance with scope/scenario/search checks.
-- Fixed `hasDiffTools` test to provide both diff tools (was only providing `list_changed_files`).
-- Added tests for lifecycle transition guards: ignore complete on already-completed/cancelled, ignore fail on already-completed, ignore cancel on already-failed.
-- Added test for budget == `MIN_VIABLE_BUDGET` boundary (allowed, not rejected).
-- Added tests for file coverage: failed and cancelled agents do not mark files as covered.
-- Added tests for `RunSubagentTool.extractFilesExamined()`: deduplication, skips non-file tools, empty input.
-- Added tests for max_iterations → completed agent status and filesExamined propagation on success.
-- Added test for tree summary depth-then-agentId ordering.
-- Added `createTestRecursiveState()` mock factory helper, eliminating 11 occurrences of 3-line setup boilerplate in `runSubagentTool.test.ts`.
-
-#### Recursive State Manager Hardening (Round 19)
-
-- **`startAgent` lifecycle guards**: Added unknown-agent warning and terminal-state guard to `startAgent()`, matching the pattern already used by `completeAgent()`, `failAgent()`, and `cancelAgent()`. Previously, calling `startAgent()` on a completed/failed/cancelled agent silently overwrote the terminal state back to `running`.
-- **`ChatParticipantService` root completion triage**: Fixed the `finally` block to properly triage between `completeAgent`/`failAgent`/`cancelAgent` based on outcome, matching `ToolCallingAnalysisProvider`. Previously, it unconditionally called `completeAgent('root')` regardless of errors or cancellation.
-
-#### Prompt & Documentation Fixes (Round 19)
-
-- **Recursive methodology threshold consistency**: Fixed `recursiveMethodology.ts` to use "4+ files" consistently for the sub-agent decomposition threshold. Previously stated "4+ files" in Step 3 but "6+ files" in the Sub-Agent Capabilities section.
-- **Architecture docs config example**: Added `analysisApproach` and `maxRecursionDepth` to the `.vscode/lupa.json` example in `architecture.md` — key RLM settings that were documented in prose but missing from the config example.
-- **Session slot documentation**: Added class-level doc explaining why subagent slots are intentionally not freed on cancellation/timeout (they consumed model resources, so budget should reflect actual usage).
-
-#### Test Coverage (Round 19)
-
-- Added tests for `startAgent` guards: warns on unknown agentId, ignores call on already-completed/failed/cancelled agents.
-
-#### Prompt Sanitization (Round 20)
-
-- **Subagent context sanitization**: `SubagentPromptGenerator` now strips angle brackets from `task.context` before embedding in `<context_from_parent>` XML tags, matching the existing sanitization pattern in `PromptGenerator` for diff content and file paths. Prevents second-order prompt tag injection where LLM-generated context (containing file content with `<>`) could break the XML structure.
-
-#### Test Coverage (Round 20)
-
-- Added test for `task.context` angle bracket sanitization in subagent prompts.
-- Added tests for FP reduction phase 2: scope boundary/revert test in PR and recursive prompts, false positive cost statement, design flaw and feature request verification gates, subagent scope boundary and revert test, recursive aggregation quality filter.
-
-#### Finding Quality — False Positive Reduction (Phase 3)
-
-- **Layered Validation Awareness**: New section in finding quality guidance teaching the LLM that middleware/executor catch blocks, caller validation, framework lifecycle management, and type systems already provide guarantees — redundant defensive code is not a finding.
-- **Try-catch verification gate**: New row in verification gates requiring check for outer scope error handling before suggesting try-catch. Explicitly flags redundant error handling as not a finding.
-- **Missing-test verification strengthened**: Verification gate now requires confirming the proposed test would catch a **concrete regression**, not just exercise a trivial code path (spread operators, mock factory defaults, parameter pass-through).
-- **Caller trace requirement**: Counterexample requirement now demands tracing ALL callers to prove a bad input can actually reach the code. If no caller can produce the problematic input, the path is unreachable — finding dropped.
-- **Expanded false positive patterns**: Added 5 new anti-patterns: try-catch when middleware catches, missing test for trivial pass-through, missing integration test when unit tests cover the paths, document rationale when it's in CHANGELOG/design docs, untested unreachable code path.
-- **Missing-docs verification expanded**: Now checks README, `docs/`, AND CHANGELOG for concept presence before reporting missing documentation.
-- **Subagent quality guidance expanded**: Grew from 8 to 8 points with restructured content — added layered architecture awareness (check surrounding layers), caller trace requirement (trace ALL callers), and concrete regression requirement for test suggestions.
-- **Recursive aggregation filters**: Added Architecture-aware filter (drop findings for validation a higher layer provides) and Test suggestion filter (drop missing-test findings unless agent searched test directory AND identified concrete regression).
-- **Recursive self-reflection validation**: Aggregation checkpoint now verifies whether a surrounding layer handles the issue and whether agents searched before claiming absence.
-
-#### Test Coverage (Round 20 — Phase 3)
-
-- Added tests for layered validation awareness section in PR review prompt.
-- Added tests for try-catch verification gate.
-- Added tests for caller trace in counterexample requirement.
-- Added tests for expanded false positive patterns (trivial tests, integration tests, doc rationale, unreachable paths).
-- Added tests for architecture-aware and test suggestion aggregation filters in recursive mode.
-- Added tests for layered architecture awareness in subagent prompt.
-
-#### Prompt Consistency (Round 21)
-
-- **Decomposition strategy respects diff tool availability**: `recursionSection` in `SubagentPromptGenerator` now checks `hasDiffTools` before referencing `get_file_diff`. Previously, when `canRecurse=true` but diff tools were unavailable, the decomposition strategy told agents to "Call `get_file_diff` for 1 key file" — referencing a tool they didn't have. Now falls back to "Review the parent context" guidance.
-
-#### Documentation Fixes (Round 21)
-
-- **RLM transition plan: fixed stale budget model reference**: Risk table still referenced the old "40% root, 60% children" budget allocation ratio. Updated to describe the flat `DEFAULT_CHILD_BUDGET=30` model.
-- **RLM transition plan: fixed stale MIN_VIABLE_BUDGET reference**: Testing section referenced `< 5 iterations` but the actual constant is `MIN_VIABLE_BUDGET = 3`.
-- **RLM transition plan: clarified migration schema claim**: Migration section claimed "No schema changes" but new settings (`maxRecursionDepth`, `maxSubagentsPerSession`) were added. Clarified that there are no breaking changes and defaults preserve backward compatibility.
-
-#### Test Coverage (Round 21)
-
-- Added tests for `canRecurse=true` without diff tools: decomposition strategy omits `get_file_diff`, uses context-based investigation steps.
-- Added integration tests for recursive mode prompt selection: RLM approach with depth >= 1 uses recursive prompt, legacy approach uses standard prompt, RLM with depth 0 uses standard prompt.
-
-#### Finding Quality — False Positive Reduction (Phase 4)
-
-- **Integration test complexity gate**: New verification gate requiring complexity estimation for proposed integration tests spanning 3+ mocked layers. If the test primarily exercises mock wiring rather than real logic, it's not a valid finding.
-- **Production caller verification gate**: New verification gate requiring check for production callers before reporting public method behavior as a bug. Methods with only test consumers may be future API surface.
-- **Role-aware asymmetry in FP patterns**: Expanded "inconsistent thresholds" anti-pattern with explicit guidance to verify the ROLE before claiming inconsistency (e.g., coordinator vs worker thresholds are intentionally different).
-- **Performance quantification required**: New FP pattern blocking "O(n\*m) is slow" claims without quantifying actual n and m values. For bounded inputs (schema-capped arrays), linear scans are often optimal. Premature optimization is not a finding.
-- **Defense-in-depth boundary clarification**: Layered Validation Awareness section now explicitly states defense-in-depth is for trust boundaries (user input, external APIs), not internal method calls within the same module.
-- **Recursive aggregation filters expanded**: Added Production caller filter (drop findings about methods with zero production callers) and Performance claim filter (drop unquantified performance concerns) to Step 4 aggregation.
-- **Self-reflection aggregation checkpoint expanded**: Root controller aggregation now also checks whether flagged methods have production callers and whether agent verified role intent before claiming threshold inconsistency.
-- **Subagent quality guidance expanded**: Grew from 8 to 10 points — added production caller check and performance quantification requirement.
-
-#### Test Coverage (Round 22 — Phase 4)
-
-- Added tests for integration test complexity gate in PR review prompt.
-- Added tests for production caller verification gate.
-- Added tests for role-aware asymmetry FP pattern.
-- Added tests for performance quantification FP pattern.
-- Added tests for defense-in-depth boundary clarification.
-- Added tests for production caller and performance aggregation filters in recursive mode.
-- Added tests for production caller and performance gates in subagent prompt.
-
-#### Test Coverage (Round 23)
-
-- Added test for agentId propagation: verifies non-undefined `childAgentId` from `registerAgent()` is forwarded to `executor.execute()` options when recursiveState is present.
-
-#### Finding Quality — False Positive Reduction (Phase 5)
-
-- **Call-site contract verification gate**: New verification gate requiring the agent to find ALL callers of a flagged method before reporting missing validation. If every call-site already performs the validation (pre-flight guard pattern), the method is safe by contract. Addresses the most persistent FP category: `registerAgent` depth guard (5x), orphan registration (4x), budget validation (3x).
-- **Call-site contract FP pattern**: New anti-pattern blocking "method X doesn't validate Y" findings when all callers already validate Y before calling X. Covers pre-flight guards, schema validation, and permission checks.
-- **Centralized error handler FP pattern**: New anti-pattern blocking "missing try-catch" suggestions when a centralized handler (ToolExecutor, Express middleware, Redux middleware) wraps all callees. Addresses 3+ rounds of false try-catch suggestions.
-- **Construction-guaranteed invariant FP pattern**: New anti-pattern blocking "missing filtering/dedup" in data aggregation when the data model guarantees the property by construction (e.g., only one method populates a field for completed items).
-- **Recursive aggregation filters expanded**: Added Call-site contract filter and Centralized handler filter to Step 4 aggregation.
-- **Self-reflection aggregation checkpoint expanded**: Root controller aggregation now checks for call-site contract verification and centralized error handler presence before accepting findings.
-- **Subagent quality guidance expanded**: Grew from 10 to 12 points — added call-site contract check and centralized handler awareness.
-
-#### Test Coverage (Phase 5)
-
-- Added tests for call-site contract verification gate in PR review prompt.
-- Added tests for centralized error handler FP pattern.
-- Added tests for construction-guaranteed invariant FP pattern.
-- Added tests for call-site contract and centralized handler aggregation filters in recursive mode.
-- Added tests for call-site contract in self-reflection checkpoint.
-- Added tests for call-site contract and centralized handler in subagent prompt.
-
-#### Code Quality (Round 24)
-
-- **Fixed diff content sanitization**: Legacy mode stripped `<`/`>` from actual code content in diffs, destroying TypeScript generics (`Array<string>` → `Arraystring`), comparison operators (`a > b` → `a  b`), and JSX/HTML tags. Now escapes to `&lt;`/`&gt;` to preserve code semantics while preventing XML tag injection. Also fixed the same issue in subagent context passing.
-- **Rollback semantics documentation**: Added inline comments in `RunSubagentTool` explaining the session slot rollback policy — slots are reclaimed when subagents fail before doing work (registration failure, unknown errors), but consumed when subagents did real work (cancellation, timeout, max iterations).
-
-#### Test Coverage (Round 24)
-
-- Added tests for unknown agentId handling in `completeAgent`, `failAgent`, and `cancelAgent` lifecycle methods (previously only `startAgent` was tested).
-- Added test verifying diff content escaping preserves TypeScript generics and comparison operators.
-- Updated existing sanitization test assertions for escape-based approach (subagentPromptGenerator, promptGenerator).
+- **Path normalization**: Backslash paths from the LLM are normalized to forward slashes, and exact path matches take priority over suffix matches.
+- **`find_usages` handles `LocationLink` responses**: Definition lookups no longer silently lose valid definitions that use `LocationLink` format.
+- **Prompt sanitization**: File paths and diff content containing `<>` characters no longer break prompt XML structure.
 
 ### Changed
 
-- **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2 (was 0). Existing users upgrading from 0.1.x will get recursive review automatically. Set `"maxRecursionDepth": 0` in `lupa.json` to disable.
-- **Parallel tool-calling prompt**: Subagent prompts include guidance for batching independent tool calls. Root agent and standard review prompts retain concise parallel hints to avoid over-preparation with models that cannot execute parallel tool calls.
-- **Removed `maxTotalAgents` setting**: Consolidated redundant agent limits. `maxSubagentsPerSession` (default 30) is the single spawn cap — it already works in both flat and recursive modes. `maxRecursionDepth` controls nesting depth separately. The separate tree-size limit added confusion without providing distinct value.
-- **README version badge**: Updated from 0.1.11 to 0.2.0.
-- **Documentation**: Updated `docs/project-overview.md` and `docs/architecture.md` with RLM architecture details.
-- **Documentation**: Fixed `maxSubagentsPerSession` in `docs/architecture.md` — sample config showed 3 and prose said "default 20", both corrected to 30 (actual default). Strengthened delegation rules language to match prompt strength (MUST, MANDATORY).
-- **Documentation**: Added small-context-model warning note to README Analysis Approach section.
-- **Documentation**: Updated `docs/rlm-transition-plan.md` Section 13 to reflect actual flat-allocation constants (`RecursionConstants`) replacing the planned ratio-based model.
-- **Documentation**: Added `RecursiveStateManager` to component inventory; linked `rlm-transition-plan.md` in docs index.
-- **Documentation**: Fixed stale `maxSubagentsPerSession` defaults in `docs/rlm-transition-plan.md` — 5 occurrences of "default 20" corrected to 30 (matching actual code). Updated worst-case iteration example to reflect 30 agents.
-- **Documentation**: Replaced unimplemented "5-iteration fallback" mechanism in `docs/rlm-transition-plan.md` with accurate description of natural fallback behavior.
+- **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2. Set to 0 in `.vscode/lupa.json` to use flat single-agent analysis.
+- **Tool response limit tripled** (20K → 60K chars) and **file read limit doubled** (200 → 400 lines) for better context gathering.
+- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (default 30) is the single spawn cap for both flat and recursive modes.
+- **Updated documentation**: Architecture docs, component inventory, and project overview updated for RLM architecture.
 
 ## [0.1.12] - 2026-02-21
 
