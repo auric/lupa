@@ -142,6 +142,7 @@ describe('RecursiveStateManager', () => {
 
             expect(manager.getNode('root')!.status).toBe('failed');
             expect(manager.getNode('root')!.endTime).toBeDefined();
+            expect(manager.getNode('root')!.error).toBe('LLM error');
         });
 
         it('should handle cancellation state', () => {
@@ -578,6 +579,17 @@ describe('RecursiveStateManager', () => {
             expect(lines[1]).toContain('child-1');
             expect(lines[2]).toContain('child-2');
             expect(lines[3]).toContain('child-2.1');
+        });
+
+        it('should include error reason for failed agents', () => {
+            manager.startAgent('root');
+            manager.registerAgent('root', 'Child task', 10);
+            manager.startAgent('child-1');
+            manager.failAgent('child-1', 'Rate limit exceeded');
+
+            const summary = manager.getTreeSummary();
+            expect(summary).toContain('[failed]');
+            expect(summary).toContain('error: Rate limit exceeded');
         });
     });
 

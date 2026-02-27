@@ -55,6 +55,7 @@ export interface RecursiveStateNode {
     childIds: string[];
     startTime: number;
     endTime: number | undefined;
+    error: string | undefined;
 }
 
 /**
@@ -132,6 +133,7 @@ export class RecursiveStateManager {
             childIds: [],
             startTime: Date.now(),
             endTime: undefined,
+            error: undefined,
         };
 
         this.tree.set(agentId, node);
@@ -186,7 +188,7 @@ export class RecursiveStateManager {
         node.endTime = Date.now();
     }
 
-    failAgent(agentId: string, _error: string): void {
+    failAgent(agentId: string, error: string): void {
         const node = this.getNode(agentId);
         if (!node) {
             Log.warn(`failAgent called with unknown agentId: "${agentId}"`);
@@ -199,6 +201,7 @@ export class RecursiveStateManager {
             return;
         }
         node.status = 'failed';
+        node.error = error;
         node.endTime = Date.now();
     }
 
@@ -328,8 +331,12 @@ export class RecursiveStateManager {
             const duration = node.endTime
                 ? `${node.endTime - node.startTime}ms`
                 : 'running';
+            const errorSuffix =
+                node.status === 'failed' && node.error
+                    ? ` — error: ${node.error}`
+                    : '';
             lines.push(
-                `${indent}${node.agentId} [${node.status}] (${duration}) — ${node.findings.length} findings`
+                `${indent}${node.agentId} [${node.status}] (${duration}) — ${node.findings.length} findings${errorSuffix}`
             );
         }
         return lines.join('\n');
