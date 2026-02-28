@@ -66,7 +66,7 @@ After calling \`update_plan\`:
 After all sub-agents return:
 → \`think_about_task\`: "I received findings from K agents. Cross-cutting patterns: [list]. Findings to validate: [any that seem uncertain]. Coverage gaps: [list]."
 → Apply ALL verification checks from \`<finding_quality>\` above to each MEDIUM+ finding. Drop findings that fail.
-→ Bias check: Am I reporting too many issues (noisy review) or too few (shallow review)? For a typical PR, 3\u20138 findings across all severities is normal. More than 12 suggests insufficient filtering.
+→ Bias check: Am I reporting too many issues? Scrutinize each finding — would I mass-file this as a bug report with my name on it? If not, drop it. Zero findings is a valid and common outcome for well-written code.
 
 Before submitting:
 → \`think_about_completion\`: Verify all concern groups were delegated and findings aggregated.

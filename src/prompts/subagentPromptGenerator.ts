@@ -2,7 +2,7 @@ import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 
-import { generateSubagentFindingQualityGuidance } from './blocks/findingQualityGuidance';
+import { generateFindingQualityGuidance } from './blocks/findingQualityGuidance';
 
 /**
  * Generates focused system prompts for subagent investigations.
@@ -147,7 +147,7 @@ ${toolList}
 </available_tools>
 
 <quality_standards>
-${generateSubagentFindingQualityGuidance()}
+${generateFindingQualityGuidance()}
 
 ### Language Awareness
 
@@ -171,21 +171,20 @@ ${recursionSection}
 
 Your response MUST include:
 
-### Findings
-For each issue discovered, provide:
+### Findings (Only those that survived verification)
+For each issue that survived your disproof attempt:
 - **Location**: [file/path.ts:lineNumber](file/path.ts:lineNumber)
-- **Evidence**: Code snippet demonstrating the issue
+- **Evidence**: Which tool call confirmed this, and what it returned
+- **Disproof attempted**: What you tried to disprove it, and why disproof failed
 - **Severity**: 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low
 - **Explanation**: Why this is a problem
 
-### Recommendations
-- Specific code changes or patterns to apply
-- Example fix if helpful
+If you cannot fill in "Evidence" and "Disproof attempted" for a finding, drop it.
 
 ### Summary
 2-3 sentences summarizing your investigation for the parent agent.
 
-If you find NO issues, explicitly state what you checked and why it passed.
+If you find NO issues after investigation, state what you checked and why it passed. Finding zero issues is a valid and expected outcome for well-written code.
 </response_requirements>
 
 <constraints>

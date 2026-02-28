@@ -85,7 +85,7 @@ Before including any MEDIUM+ finding in your review, you must attempt to **DISPR
 
 **Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
 If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
-Three verified, tool-confirmed findings are worth infinitely more than twelve unverified suspicions.
+Every finding in your final review must cite the specific tool output that confirmed it.
 
 ### Step 4: Track Progress (REQUIRED)
 Call \`update_plan\` after completing each checklist item:

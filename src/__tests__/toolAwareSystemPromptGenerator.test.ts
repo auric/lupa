@@ -116,8 +116,8 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should include key review sections', () => {
             const prompt = generator.generateSystemPrompt([]);
             expect(prompt).toContain('Summary');
-            expect(prompt).toContain('Critical Issues');
-            expect(prompt).toContain('Suggestions');
+            expect(prompt).toContain('Findings');
+            expect(prompt).toContain('Severity Guide');
             expect(prompt).toContain('Test');
             expect(prompt).toContain("What's Good");
         });
@@ -188,7 +188,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should include false positive cost statement', () => {
             const prompt = generator.generateSystemPrompt([]);
             expect(prompt).toContain('False Positive Cost');
-            expect(prompt).toContain('Three verified');
+            expect(prompt).toContain('zero reportable findings');
         });
 
         it('should include design flaw and feature request verification gates', () => {

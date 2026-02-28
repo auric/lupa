@@ -98,7 +98,7 @@ describe('SubagentPromptGenerator', () => {
 
             expect(prompt).toContain('## Response Requirements');
             expect(prompt).toContain('### Findings');
-            expect(prompt).toContain('### Recommendations');
+            expect(prompt).toContain('Disproof attempted');
             expect(prompt).toContain('### Summary');
         });
 
@@ -357,10 +357,10 @@ describe('SubagentPromptGenerator', () => {
                 const prompt = generator.generateSystemPrompt(task, tools, 30);
 
                 expect(prompt).toContain('Finding Quality');
-                expect(prompt).toContain('Verify scope');
-                expect(prompt).toContain('Prove it');
-                expect(prompt).toContain('Search first');
-                expect(prompt).toContain('Consider intent');
+                expect(prompt).toContain('Required Verification');
+                expect(prompt).toContain('Revert Test');
+                expect(prompt).toContain('Counterexample Requirement');
+                expect(prompt).toContain('SPECULATIVE');
             });
 
             it('should include scope boundary and revert test in subagent prompt', () => {
@@ -370,9 +370,9 @@ describe('SubagentPromptGenerator', () => {
                 ];
                 const prompt = generator.generateSystemPrompt(task, tools, 30);
 
-                expect(prompt).toContain('Changed code only');
+                expect(prompt).toContain('Changed Code Only');
                 expect(prompt).toContain('Revert Test');
-                expect(prompt).toContain('Suggestions');
+                expect(prompt).toContain('suggestion, not a bug');
                 expect(prompt).toContain('When uncertain, omit');
             });
 
@@ -383,10 +383,10 @@ describe('SubagentPromptGenerator', () => {
                 ];
                 const prompt = generator.generateSystemPrompt(task, tools, 30);
 
-                expect(prompt).toContain('Layered architecture');
+                expect(prompt).toContain('layered architecture');
                 expect(prompt).toContain('surrounding layer');
                 expect(prompt).toContain('trace ALL callers');
-                expect(prompt).toContain('real regression');
+                expect(prompt).toContain('concrete regression');
             });
 
             it('should include production caller and performance gates in subagent prompt', () => {
@@ -397,7 +397,7 @@ describe('SubagentPromptGenerator', () => {
                 const prompt = generator.generateSystemPrompt(task, tools, 30);
 
                 expect(prompt).toContain('production callers');
-                expect(prompt).toContain('Quantify performance');
+                expect(prompt).toContain('Confidence Levels');
             });
 
             it('should include call-site contract and centralized handler guidance in subagent prompt', () => {
@@ -407,8 +407,8 @@ describe('SubagentPromptGenerator', () => {
                 ];
                 const prompt = generator.generateSystemPrompt(task, tools, 30);
 
-                expect(prompt).toContain('Call-site contract');
-                expect(prompt).toContain('Centralized handlers');
+                expect(prompt).toContain('call-site contract');
+                expect(prompt).toContain('centralized error handlers');
             });
         });
     });

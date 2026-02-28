@@ -129,8 +129,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('<output_format>');
             expect(prompt).toContain('Review Format');
             expect(prompt).toContain('Summary');
-            expect(prompt).toContain('Critical Issues');
-            expect(prompt).toContain('Suggestions');
+            expect(prompt).toContain('Findings');
             expect(prompt).toContain('Severity');
             expect(prompt).toContain('🔴');
             expect(prompt).toContain('🟠');

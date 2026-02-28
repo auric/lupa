@@ -125,8 +125,9 @@ The key principle: **verify, don't assume.** The same code pattern can be a bug 
 ### False Positive Cost
 
 False positives erode developer trust faster than true positives build it.
-**Three verified, actionable findings are worth more than twelve mixed-quality observations.**
+**Every false positive costs more credibility than a true positive earns.**
 When uncertain, omit the finding — silence on a non-issue is better than noise.
+Many well-written PRs have zero reportable findings. That is a normal, expected outcome — not a review failure.
 </finding_quality>`;
 }
 
