@@ -25,7 +25,8 @@ export class ThinkAboutCompletionTool extends BaseTool {
     name = 'think_about_completion';
     description =
         'Articulate your review completeness before submitting. ' +
-        'Forces you to draft a summary, count issues, and confirm all files were analyzed.';
+        'Forces you to draft a summary, count issues, and confirm all files were analyzed. ' +
+        'For each finding, ask: would I bet my reputation that this is a real bug? If not, drop it.';
 
     schema = z
         .object({

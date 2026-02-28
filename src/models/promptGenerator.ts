@@ -154,7 +154,9 @@ export class PromptGenerator {
         reminder += `4. Continue examining remaining files with \`get_file_diff\`\n`;
         reminder += `5. Use other tools to investigate context as needed\n`;
         reminder += `6. Call reflection tools before concluding\n`;
-        reminder += `7. Deliver structured Markdown review\n`;
+        reminder += `7. Deliver structured Markdown review via \`submit_review\`\n\n`;
+        reminder +=
+            'Quality matters more than quantity — a thorough review that finds zero issues is better than a review padded with speculative concerns.\n';
         reminder += '</analysis_task>';
 
         return reminder;
@@ -203,7 +205,9 @@ export class PromptGenerator {
         reminder +=
             '⚠️ **Delegation is mandatory** — Read at most 1 diff for orientation, then delegate everything via `run_subagent`. ' +
             'Do NOT read additional diffs or investigate files yourself. ' +
-            'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n';
+            'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n\n';
+        reminder +=
+            'Quality matters more than quantity — a thorough review that finds zero issues is better than a review padded with speculative concerns.\n';
         reminder += '</analysis_task>';
 
         return reminder;
