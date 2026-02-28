@@ -36,6 +36,8 @@ For each checklist item:
 - Use \`find_usages\` for changed signatures
 - Spawn subagents for complex areas (4+ files or security-sensitive)
 
+**Documentation files** (.md, README, CHANGELOG, docs/): When the PR changes documentation alongside code, verify that technical claims in the docs match the implementation. Check tool availability claims, API descriptions, configuration defaults, and behavioral descriptions against the actual code. A doc that contradicts the code is a valid finding.
+
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
 ### Step 3: Self-Reflection Checkpoints (Articulation Required)

@@ -12,9 +12,10 @@ The \`<diff_metadata>\` in this conversation already shows which files changed a
 Call \`list_changed_files\` for a structured view. Then call \`get_file_diff\` on **1 key file** (the largest change or most architecturally significant) to understand what the PR does.
 
 From the metadata and this one diff:
-- Group files by module/layer (auth, API, data layer, tests, config)
+- Group files by module/layer (auth, API, data layer, tests, config, documentation)
 - Assess risk from file names, change sizes, and the key diff
 - Identify new files, deleted files, and large modifications
+- If documentation files (.md) changed alongside code, include them in a concern group — docs that make technical claims about tools, settings, or behavior must be verified against the implementation
 
 **Stop after 1 diff.** You now have enough to decompose. Sub-agents will read all remaining diffs.
 

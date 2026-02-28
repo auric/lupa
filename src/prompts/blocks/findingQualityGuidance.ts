@@ -46,6 +46,7 @@ Before reporting a finding, complete the verification for its claim type:
 | "Unused / incorrect public method" | Before reporting an issue about a public method's behavior, verify it has **production callers** (not just test consumers). Methods with zero production callers are NOT findings — they are future API surface or test infrastructure |
 | "Missing cleanup/disposal" | Check framework config (vitest.config, jest.config) for global settings |
 | "Design flaw / should refactor" | Search for comments, docs, tests, or commit history explaining the design. If ANY plausible rationale exists, drop the finding |
+| "Documentation claims X" | Verify the claim against the actual code — search for the referenced constants, tool lists, settings, API behavior. If the documentation contradicts the implementation, this IS a valid finding |
 | "Should add X feature" | This is a suggestion, not a bug. Only report as 🟢 LOW if directly relevant to changed code |
 | "Race condition" | Verify (1) shared mutable state exists, (2) a yield point (e.g., \`await\`, thread switch, \`yield\`) separates the read and write of that state, and (3) the runtime's concurrency model allows interleaving at that point. In single-threaded runtimes, two synchronous operations without a yield point between them CANNOT race — drop it |
 | "Pre-existing issue" | Apply the Revert Test above. If reverting wouldn't fix it, drop it |
@@ -103,6 +104,7 @@ SPECULATIVE findings are **EXCLUDED** from the review entirely. If you cannot ci
 - ❌ Reporting a public method's behavior as incorrect when the method has zero production callers — it may be future API surface. Check for actual usage before reporting
 - ❌ "Should document rationale" when the rationale is in CHANGELOG, commit messages, or design docs — not every constant needs inline comments
 - ❌ Issues in unchanged code that the PR doesn't make worse
+- ✅ Documentation that contradicts the implementation IS a valid finding — if a doc claims a tool/setting/behavior works one way but the code does the opposite, report it. Docs ship with the product
 - ❌ "Architecture should use X pattern" without evidence the current approach causes concrete problems
 - ❌ Reporting pre-existing tech debt as a PR finding
 - ❌ Flagging an untested code path that is unreachable — if no caller can produce the input, there's nothing to test
@@ -155,5 +157,6 @@ Before reporting any issue:
 13. **Confidence caps**: CRITICAL/HIGH findings MUST be tool-verified with cited evidence. SPECULATIVE findings (pattern-match without tool verification) are EXCLUDED — use tools to verify before including
 14. **When genuinely suspicious, flag**: If you suspect a real issue AND you made a genuine attempt to verify with tool calls but couldn't fully confirm, report it as 🔍 **Verify** with your reasoning. This is NOT an escape hatch for skipping verification — you must have actually called tools first
 15. **Verify concurrency model**: Before reporting race conditions, confirm the runtime actually allows concurrent access. Single-threaded runtimes (Node.js, Python with GIL) serialize synchronous operations — they cannot race without an explicit yield point. Multi-threaded runtimes (Java, C++, Go) CAN race on shared mutable state. Check the runtime first
-16. **Use definitive language**: Back every claim with tool evidence. Avoid 'could potentially,' 'might lead to,' 'consider adding' — these signal speculation. If you can't state the issue definitively with evidence, it's not a finding`;
+16. **Use definitive language**: Back every claim with tool evidence. Avoid 'could potentially,' 'might lead to,' 'consider adding' — these signal speculation. If you can't state the issue definitively with evidence, it's not a finding
+17. **Documentation accuracy**: If assigned documentation files (.md), verify technical claims (tool availability, API behavior, configuration defaults) against the actual code. Docs that contradict the implementation ARE valid findings`;
 }
