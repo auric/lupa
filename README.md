@@ -53,7 +53,7 @@ Use the `@lupa` chat participant directly in VS Code's chat for quick inline ana
 Type `@lupa` in the chat and use one of the available slash commands. The chat interface provides a clean, conversational experience with:
 
 - **Clickable file references** - File paths appear as links you can click to open
-- **Visible subagent work** - When subagents investigate, their tool calls show with a "🔹 child-N:" prefix (e.g., "🔹 child-1: 📂 Read src/auth.ts"). Deep subagents show hierarchical IDs like "🔹 child-1.1:"
+- **Visible subagent work** - When subagents investigate, their tool calls appear with a "🔹 child-N:" prefix in recursive mode (e.g., "🔹 child-1: 📂 Read src/auth.ts") or "🔹 #N:" in flat mode. Deep subagents show hierarchical IDs like "🔹 child-1.1:" when recursion is enabled.
 
 ### Exploration Mode
 

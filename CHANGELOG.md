@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **New diff-on-demand architecture**: The LLM now loads file diffs via `list_changed_files` and `get_file_diff` tools instead of receiving the full diff in the prompt. This prevents context window overflow on large PRs and lets the LLM prioritize which files to examine.
 - **Recursive review mode**: Large PRs are automatically decomposed into concern groups, with sub-agents analyzing each group independently. The root agent aggregates all findings into a unified review. Controlled by `maxRecursionDepth` setting (default: 2).
-- **Sub-agents can read PR diffs**: Sub-agents use the same diff tools as the root agent, enabling deep investigation of specific files without context limitations.
+- **Sub-agents can read PR diffs**: Sub-agents request diffs via the `get_file_diff` tool for files assigned by the root agent, enabling deep investigation of specific files without context limitations.
 
 ### Fixed
 
