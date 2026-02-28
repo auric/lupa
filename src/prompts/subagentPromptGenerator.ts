@@ -1,14 +1,14 @@
 import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
-import { DIFF_TOOLS } from '../models/toolConstants';
+
 import { generateSubagentFindingQualityGuidance } from './blocks/findingQualityGuidance';
 
 /**
  * Generates focused system prompts for subagent investigations.
  *
  * Subagents are lightweight investigation agents that:
- * - Access PR diff on demand via list_changed_files/get_file_diff tools (RLM mode)
+ * - Access PR diff on demand via get_file_diff tool (RLM mode)
  * - Have limited tool iterations
  * - Focus on a single, specific investigation task
  * - Return structured findings for the parent agent to synthesize
@@ -30,9 +30,7 @@ export class SubagentPromptGenerator {
         canRecurse: boolean = false
     ): string {
         const toolList = this.formatToolList(tools);
-        const hasDiffTools = DIFF_TOOLS.every((name) =>
-            tools.some((t) => t.name === name)
-        );
+        const hasDiffTools = tools.some((t) => t.name === 'get_file_diff');
         const contextSection = task.context
             ? `<context_from_parent>
 ## Context from Parent Agent
@@ -47,9 +45,8 @@ ${task.context.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'
             ? `
 ### Diff Access
 
-You have direct access to the PR diff via tools:
-- \`get_file_diff\` — Read the actual diff for specific file(s)
-- \`list_changed_files\` — See all changed files (only if you need broader context)`
+You have \`get_file_diff\` to read the actual diff for your assigned files.
+Your parent agent already identified which files belong to your investigation — call \`get_file_diff\` with those paths directly.`
             : '';
 
         // When canRecurse, the investigation approach defers to decomposition for large scopes
@@ -66,7 +63,7 @@ You have direct access to the PR diff via tools:
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`
+**Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
                   ? `
 1. **Read the Diff FIRST**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This is your primary input — do this before anything else.
@@ -79,7 +76,7 @@ You have direct access to the PR diff via tools:
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
 
-**Do NOT call \`list_directory\` or \`list_changed_files\` first** — your task already tells you which files to examine.`
+**Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
 1. **Review Parent Context**: Study the code and information the parent agent provided in context above — this is your primary input.
 
@@ -202,7 +199,7 @@ If you find NO issues, explicitly state what you checked and why it passed.
 **Technical Limits:**
 - You have **${maxIterations} tool iterations** - use them wisely
 - **Parallelize tool calls**: Make ALL independent tool calls in the same response (e.g. multiple \`find_symbol\`${hasDiffTools ? ', `get_file_diff`' : ''}${canRecurse ? ', or `run_subagent`' : ''} calls at once). Do NOT call tools one at a time when they are independent
-${hasDiffTools ? '- Use `list_changed_files` and `get_file_diff` to access the PR diff on demand' : '- You CANNOT see the PR diff - only what the parent provided in context'}
+${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in your task' : '- You CANNOT see the PR diff - only what the parent provided in context'}
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**

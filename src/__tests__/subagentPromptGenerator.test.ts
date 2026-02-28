@@ -129,7 +129,6 @@ describe('SubagentPromptGenerator', () => {
 
         it('should include diff access guidance when diff tools are available', () => {
             const tools = [
-                createMockTool('list_changed_files', 'List all changed files'),
                 createMockTool('get_file_diff', 'Get diff for specific files'),
                 createMockTool('find_symbol', 'Finds symbols in code'),
             ];
@@ -137,7 +136,6 @@ describe('SubagentPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(task, tools, 10);
 
             expect(prompt).toContain('### Diff Access');
-            expect(prompt).toContain('list_changed_files');
             expect(prompt).toContain('get_file_diff');
             expect(prompt).not.toContain('CANNOT see the PR diff');
         });
@@ -175,10 +173,6 @@ describe('SubagentPromptGenerator', () => {
             it('should instruct to read diffs when diff tools are present', () => {
                 const tools = [
                     createMockTool(
-                        'list_changed_files',
-                        'List all changed files'
-                    ),
-                    createMockTool(
                         'get_file_diff',
                         'Get diff for specific files'
                     ),
@@ -194,7 +188,6 @@ describe('SubagentPromptGenerator', () => {
 
         describe('canRecurse=true', () => {
             const diffTools = [
-                createMockTool('list_changed_files', 'List all changed files'),
                 createMockTool('get_file_diff', 'Get diff for specific files'),
                 createMockTool('find_symbol', 'Finds symbols in code'),
                 createMockTool('run_subagent', 'Spawn a sub-agent'),
@@ -352,8 +345,8 @@ describe('SubagentPromptGenerator', () => {
                 const task: SubagentTask = { task: 'Test task' };
                 const tools = [
                     createMockTool(
-                        'list_changed_files',
-                        'List all changed files'
+                        'get_file_diff',
+                        'Get diff for specific files'
                     ),
                     createMockTool(
                         'get_file_diff',

@@ -666,7 +666,7 @@ describe('SubagentExecutor', () => {
             const filteredNames = toolsPassedToPrompt.map((t) => t.name);
 
             expect(filteredNames).toContain('read_file');
-            expect(filteredNames).toContain('list_changed_files');
+            expect(filteredNames).not.toContain('list_changed_files');
             expect(filteredNames).toContain('get_file_diff');
         });
     });

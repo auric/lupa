@@ -60,7 +60,7 @@ context: "## Files to Examine
 [why this needs investigation — what could go wrong]"
 \`\`\`
 
-Sub-agents have \`list_changed_files\` and \`get_file_diff\` — they read diffs on demand.
+Sub-agents have \`get_file_diff\` — they read diffs for the files you assign them.
 Sub-agents with 4+ files will decompose further by spawning their own sub-agents.
 
 ### Step 4: Aggregate Findings

@@ -22,9 +22,9 @@ export function generateSubagentGuidance(): string {
 
 ### Subagent Diff Access
 
-✅ **Subagents have \`get_file_diff\` and \`list_changed_files\`.** They can read diffs on demand.
+✅ **Subagents have \`get_file_diff\`** — they read diffs for the files you assign.
 
-When spawning, tell subagents **which files to examine** and **what concerns to investigate**. They will read the diffs themselves.
+⚠️ **Subagents do NOT have \`list_changed_files\`** — you must tell them which files to examine. Include specific file paths in every subagent task.
 
 ### Task Format
 
