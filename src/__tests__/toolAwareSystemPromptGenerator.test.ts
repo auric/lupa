@@ -172,7 +172,9 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should include false positive anti-pattern examples', () => {
             const prompt = generator.generateSystemPrompt([]);
             expect(prompt).toContain('False Positive Patterns');
-            expect(prompt).toContain('outer scope already handles');
+            expect(prompt).toContain(
+                'outer scope, middleware, or executor already catches'
+            );
             expect(prompt).toContain('without searching the test directory');
         });
 

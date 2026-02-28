@@ -80,7 +80,7 @@ Before including any MEDIUM+ finding in your review, you must attempt to **DISPR
 | "Missing validation" | \`find_usages\` on the function → check if callers validate first |
 | "Race condition" | Examine the code path → verify an \`await\` exists between read and write |
 | "Missing test" | \`search_for_pattern\` in \`__tests__/\` for the function name |
-| "Value can be null" | \`find_symbol\` → check TypeScript types at that point |
+| "Value can be null" | \`find_symbol\` → check the declared types and type narrowing at that point |
 | "Method lacks guard" | \`find_usages\` → check if ALL callers perform the guard first |
 
 **Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.

@@ -47,7 +47,7 @@ Before reporting a finding, complete the verification for its claim type:
 | "Missing cleanup/disposal" | Check framework config (vitest.config, jest.config) for global settings |
 | "Design flaw / should refactor" | Search for comments, docs, tests, or commit history explaining the design. If ANY plausible rationale exists, drop the finding |
 | "Should add X feature" | This is a suggestion, not a bug. Only report as 🟢 LOW if directly relevant to changed code |
-| "Race condition" | Verify (1) shared mutable state exists, (2) an \`await\`/\`yield\` separates the read and write of that state, and (3) the runtime allows interleaving. In single-threaded runtimes (JS/Node.js), two synchronous operations without an \`await\` between them CANNOT race — drop it |
+| "Race condition" | Verify (1) shared mutable state exists, (2) a yield point (e.g., \`await\`, thread switch, \`yield\`) separates the read and write of that state, and (3) the runtime's concurrency model allows interleaving at that point. In single-threaded runtimes, two synchronous operations without a yield point between them CANNOT race — drop it |
 | "Pre-existing issue" | Apply the Revert Test above. If reverting wouldn't fix it, drop it |
 
 If you cannot complete verification: flag as 🔍 **Verify** or drop the finding.
@@ -106,19 +106,21 @@ SPECULATIVE findings are **EXCLUDED** from the review entirely. If you cannot ci
 - ❌ "Architecture should use X pattern" without evidence the current approach causes concrete problems
 - ❌ Reporting pre-existing tech debt as a PR finding
 - ❌ Flagging an untested code path that is unreachable — if no caller can produce the input, there's nothing to test
-- ❌ "Race condition" in single-threaded JavaScript/Node.js when operations are serialized by async/await — verify the runtime is multi-threaded AND shared state is accessed without synchronization before reporting
-- ❌ "Value could be undefined/null" when TypeScript's type narrowing already guarantees the type at that point in control flow — check the actual types, not just the parameter signature
+- ❌ "Race condition" without verifying the runtime's concurrency model — in single-threaded runtimes (Node.js, Python GIL), synchronous operations cannot race. Verify the runtime allows concurrent access AND shared state is accessed without synchronization before reporting
+- ❌ "Value could be undefined/null" when the language's type system already guarantees the type at that point — check what the compiler enforces (e.g., TypeScript narrowing, Rust ownership, Kotlin null safety) before suggesting redundant runtime checks
 - ❌ "Math.max(x, 0) can return 0" or similar bounded arithmetic — the bounded value IS the designed behavior. \`Math.max\`, \`Math.min\`, and clamping produce edge values by design. Unless the edge value causes a concrete downstream failure (prove it with a code path), this is not a finding
 - ❌ "Property X is set but not immediately used" when the property follows a set-at-start, read-at-end lifecycle (timers, session state, accumulators). The gap between set and use is by design
 - ❌ "Method should be called X instead of Y" or similar naming/style preferences — unless the name causes demonstrable confusion or bugs, naming is a style preference, not a defect
 
 ### Language-Aware Review
 
-Different runtimes have different semantics. Do not apply patterns from one language to another:
+Different languages and runtimes have different semantics. Before reporting concurrency, type safety, or architectural issues, **verify the runtime model from the codebase context**:
 
-- **JavaScript/TypeScript (Node.js)**: Single-threaded event loop. Synchronous operations within one function body are serialized — they cannot race. A race condition requires shared mutable state accessed across an \`await\` boundary. \`Promise.all\` with independent operations is not a race condition
-- **TypeScript type system**: Trust the compiler. If a value is typed as \`string\` at a given point, it IS a string — runtime checks for the same thing are redundant unless the value crosses a trust boundary (user input, external API)
+- **Concurrency model**: Is the runtime single-threaded (Node.js, Python GIL), multi-threaded (Java, C++, Go), or actor-based (Erlang, Swift actors)? A race condition claim requires confirming that concurrent access is actually possible in the target runtime. Don't apply multi-threaded reasoning to single-threaded runtimes, or vice versa
+- **Type system guarantees**: Strong static type systems (TypeScript, Rust, Haskell) provide compile-time guarantees that make some runtime checks redundant. Weaker or dynamic type systems (Python, JavaScript) may genuinely need runtime validation. Check what the compiler enforces before suggesting redundant checks
 - **Framework conventions**: Many frameworks handle cross-cutting concerns (error handling, cleanup, validation) at specific layers. Check the framework's conventions before suggesting defensive code at the wrong layer
+
+The key principle: **verify, don't assume.** The same code pattern can be a bug in one language and perfectly safe in another.
 
 ### False Positive Cost
 
@@ -151,6 +153,6 @@ Before reporting any issue:
 12. **Centralized handlers**: If a middleware/executor catches errors at the call boundary, don't suggest try-catch in individual callees. The handler exists for a reason
 13. **Confidence caps**: CRITICAL/HIGH findings MUST be tool-verified with cited evidence. SPECULATIVE findings (pattern-match without tool verification) are EXCLUDED — use tools to verify before including
 14. **When genuinely suspicious, flag**: If you suspect a real issue AND you made a genuine attempt to verify with tool calls but couldn't fully confirm, report it as 🔍 **Verify** with your reasoning. This is NOT an escape hatch for skipping verification — you must have actually called tools first
-15. **Single-threaded concurrency**: In JavaScript/TypeScript, synchronous operations in the same function body cannot race. A race condition requires shared mutable state accessed across an \`await\` boundary. Do not report race conditions between synchronous calls
+15. **Verify concurrency model**: Before reporting race conditions, confirm the runtime actually allows concurrent access. Single-threaded runtimes (Node.js, Python with GIL) serialize synchronous operations — they cannot race without an explicit yield point. Multi-threaded runtimes (Java, C++, Go) CAN race on shared mutable state. Check the runtime first
 16. **Use definitive language**: Back every claim with tool evidence. Avoid 'could potentially,' 'might lead to,' 'consider adding' — these signal speculation. If you can't state the issue definitively with evidence, it's not a finding`;
 }

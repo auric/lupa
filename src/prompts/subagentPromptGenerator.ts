@@ -154,10 +154,10 @@ ${generateSubagentFindingQualityGuidance()}
 
 ### Language Awareness
 
-Apply language-specific reasoning to your findings:
-- **JavaScript/TypeScript (Node.js)**: Single-threaded event loop. Synchronous operations within a function body cannot race — a race condition requires shared mutable state accessed across an \`await\` boundary
-- **TypeScript type system**: Trust the compiler. If a value is typed as \`string\` at a point, runtime null checks are redundant unless the value crosses a trust boundary (user input, external API)
-- **Framework conventions**: Check whether the framework already handles cross-cutting concerns (error handling, disposal, validation) at a specific layer before suggesting defensive code
+Before reporting concurrency, type safety, or architectural issues, verify the runtime model from the codebase:
+- **Concurrency**: Check whether the runtime is single-threaded (Node.js, Python GIL), multi-threaded (Java, C++, Go), or actor-based. Race condition claims require confirming concurrent access is actually possible
+- **Type system**: Check what the compiler enforces (TypeScript narrowing, Rust ownership, Kotlin null safety). Don't suggest runtime checks for guarantees the type system already provides
+- **Framework conventions**: Check whether the framework handles cross-cutting concerns (error handling, disposal, validation) at a specific layer before suggesting defensive code
 </quality_standards>
 
 <investigation_approach>
