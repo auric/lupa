@@ -151,6 +151,13 @@ ${toolList}
 
 <quality_standards>
 ${generateSubagentFindingQualityGuidance()}
+
+### Language Awareness
+
+Apply language-specific reasoning to your findings:
+- **JavaScript/TypeScript (Node.js)**: Single-threaded event loop. Synchronous operations within a function body cannot race — a race condition requires shared mutable state accessed across an \`await\` boundary
+- **TypeScript type system**: Trust the compiler. If a value is typed as \`string\` at a point, runtime null checks are redundant unless the value crosses a trust boundary (user input, external API)
+- **Framework conventions**: Check whether the framework already handles cross-cutting concerns (error handling, disposal, validation) at a specific layer before suggesting defensive code
 </quality_standards>
 
 <investigation_approach>

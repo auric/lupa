@@ -240,7 +240,7 @@ describe('SubagentPromptGenerator', () => {
                 );
 
                 expect(prompt).not.toContain('maximum recursion depth');
-                expect(prompt).not.toContain('cannot');
+                expect(prompt).not.toContain('cannot spawn');
             });
 
             it('should show recursion limit when canRecurse=false', () => {

@@ -68,10 +68,23 @@ Sub-agents with 4+ files will decompose further by spawning their own sub-agents
 After all sub-agents return:
 - Merge findings by severity (critical first)
 - Remove duplicates across agents
-- **Quality filter**: Apply ALL checks from \`<finding_quality>\` above to each MEDIUM+ finding. Specifically verify: (a) cites evidence from changed code, (b) passes the Revert Test, (c) has a concrete failing scenario for bug claims
-- **Challenge speculative claims**: Drop any finding where the sub-agent used speculative language ("could potentially," "might," "consider adding") without concrete evidence
-- **Conflicting findings**: If two agents disagree about the same code, investigate the specific disagreement with one targeted tool call before choosing a side
-- **Coverage gaps**: If any sub-agent returned incomplete results (timeout, remaining areas noted), cover those gaps yourself with targeted \`get_file_diff\` calls
+
+**Quality filter — apply ALL of these to each MEDIUM+ finding:**
+  - (a) Cites evidence from changed code (not just pre-existing patterns)
+  - (b) Passes the Revert Test: would reverting this PR fix the issue?
+  - (c) Has a concrete failing scenario for bug claims — with actual values, not "could potentially"
+  - (d) Call-site contract check: if "method X lacks guard Y", verify callers DON'T already perform Y
+  - (e) Centralized handler check: if "missing error handling", verify no middleware/executor already catches
+  - (f) Severity calibration: re-assess severity with your own judgment — sub-agents may inflate severity. If a sub-agent reports CRITICAL with weak evidence, downgrade or drop
+
+**Per-file density check**: If a sub-agent reported >3 findings for a single file, review each critically. High density usually indicates the agent found surface-level patterns rather than real issues
+
+**Challenge speculative claims**: Drop any finding where the sub-agent used speculative language ("could potentially," "might," "consider adding") without concrete evidence
+
+**Conflicting findings**: If two agents disagree about the same code, investigate the specific disagreement with one targeted tool call before choosing a side
+
+**Coverage gaps**: If any sub-agent returned incomplete results (timeout, remaining areas noted), cover those gaps yourself with targeted \`get_file_diff\` calls
+
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
 - Assess overall PR risk
 - Call \`update_plan\` to mark all concern groups as complete

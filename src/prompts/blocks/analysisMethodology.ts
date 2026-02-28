@@ -50,8 +50,8 @@ At each checkpoint, **explicitly articulate** your current state—don't just ac
 
 **Before conclusions** → \`think_about_task\`:
 - analysis_focus: What are you analyzing?
-- issues_found: List with file, description, severity
-- finding_audit: For each issue — did I verify with tools? Can I provide a concrete failing scenario? Should I downgrade or drop any?
+- issues_found: List with file, description, severity — these are HYPOTHESES at this stage
+- finding_audit: For each issue — (1) what tool call CONFIRMED it? (2) what tool call tried to DISPROVE it? (3) can I provide a concrete failing scenario with actual values? If any answer is missing for a MEDIUM+ finding, drop or downgrade it
 - areas_needing_investigation: What's not covered?
 - decision: Are you ready or need more work?
 
@@ -59,7 +59,33 @@ At each checkpoint, **explicitly articulate** your current state—don't just ac
 - summary_draft: Write your 2-3 sentence summary
 - critical_issues_count: How many blockers?
 - files_analyzed vs files_in_diff: Coverage check
+- hypothesis_kill_ratio: "Started with N hypotheses, M survived verification" — if >80% survived, re-examine your disproof rigor
 - recommendation: approve/request_changes/block
+
+### Step 3b: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
+
+The issues you identified are **HYPOTHESES**, not confirmed findings.
+Before including any MEDIUM+ finding in your review, you must attempt to **DISPROVE** it.
+
+**For each MEDIUM+ hypothesis:**
+1. Ask: "What would make this NOT a problem?"
+2. Call the tool that checks — \`find_usages\`, \`find_symbol\`, or \`search_for_pattern\`
+3. If disproved → **DROP** the finding silently. Do not mention it in your review
+4. If not disproved → It survives. Now assign severity based on evidence
+
+**Common disproof patterns:**
+| Hypothesis | Disproof Tool Call |
+|---|---|
+| "Missing error handling" | \`find_usages\` on the function → check if callers/middleware catch |
+| "Missing validation" | \`find_usages\` on the function → check if callers validate first |
+| "Race condition" | Examine the code path → verify an \`await\` exists between read and write |
+| "Missing test" | \`search_for_pattern\` in \`__tests__/\` for the function name |
+| "Value can be null" | \`find_symbol\` → check TypeScript types at that point |
+| "Method lacks guard" | \`find_usages\` → check if ALL callers perform the guard first |
+
+**Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
+If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
+Three verified, tool-confirmed findings are worth infinitely more than twelve unverified suspicions.
 
 ### Step 4: Track Progress (REQUIRED)
 Call \`update_plan\` after completing each checklist item:

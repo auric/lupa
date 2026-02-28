@@ -43,10 +43,11 @@ Before reporting a finding, complete the verification for its claim type:
 | "Should add try-catch" | Check if an outer scope (middleware, executor, framework) already catches and handles the error — redundant error handling is not a finding |
 | "Method X lacks guard Y" | Before reporting, find ALL callers of X. If every call-site already performs Y before calling X, the method is safe by **call-site contract**. Single-entry-point methods protected by their caller do not need redundant internal guards |
 | "Missing integration test" | Check if each layer already has unit tests covering the code paths. Estimate test complexity: if the test spans 3+ mocked layers and primarily exercises mock wiring rather than real logic, it is likely not worth adding |
-| "Unused / incorrect public method" | Before reporting an issue about a public method's behavior, verify it has **production callers** (not just test consumers). Methods with only test callers may be future API surface — not a bug |
+| "Unused / incorrect public method" | Before reporting an issue about a public method's behavior, verify it has **production callers** (not just test consumers). Methods with zero production callers are NOT findings — they are future API surface or test infrastructure |
 | "Missing cleanup/disposal" | Check framework config (vitest.config, jest.config) for global settings |
 | "Design flaw / should refactor" | Search for comments, docs, tests, or commit history explaining the design. If ANY plausible rationale exists, drop the finding |
 | "Should add X feature" | This is a suggestion, not a bug. Only report as 🟢 LOW if directly relevant to changed code |
+| "Race condition" | Verify (1) shared mutable state exists, (2) an \`await\`/\`yield\` separates the read and write of that state, and (3) the runtime allows interleaving. In single-threaded runtimes (JS/Node.js), two synchronous operations without an \`await\` between them CANNOT race — drop it |
 | "Pre-existing issue" | Apply the Revert Test above. If reverting wouldn't fix it, drop it |
 
 If you cannot complete verification: flag as 🔍 **Verify** or drop the finding.
@@ -79,20 +80,20 @@ If no caller can produce the problematic input, the path is unreachable — drop
 |---|---|---|
 | 🟢 VERIFIED | Tool-confirmed with cited evidence | CRITICAL |
 | 🟡 LIKELY | Strong reasoning, partial tool confirmation | HIGH |
-| 🔴 SPECULATIVE | Pattern-match without tool verification | LOW only |
+| 🔴 SPECULATIVE | Pattern-match without tool verification | ❌ EXCLUDED |
 
-CRITICAL/HIGH findings MUST be 🟢 VERIFIED. Speculative findings may only be 🟢 LOW.
+CRITICAL/HIGH findings MUST be 🟢 VERIFIED with cited tool output.
+SPECULATIVE findings are **EXCLUDED** from the review entirely. If you cannot cite a specific tool output that supports a finding, it is speculative and must be omitted. Use tools to upgrade to LIKELY or VERIFIED before including any finding.
 
 ### False Positive Patterns — Avoid These
 
-- ❌ "Missing try-catch" when an outer scope already handles the error
 - ❌ "Can go negative" without proving a concrete input exists that causes it
 - ❌ "No tests for X" without searching the test directory first
 - ❌ "Inconsistent thresholds" for intentionally asymmetric designs — different roles may have different thresholds by design (e.g., coordinator delegates at 3+ files, workers decompose at 4+). Verify the ROLE before claiming inconsistency
 - ❌ "Missing cleanup" when the test framework config handles it globally
 - ❌ "Unused callback/dead code" when the interface is an extension point
 - ❌ "Should validate X" when X is internal state already constrained by producers
-- ❌ "Should add try-catch" when a middleware/executor already catches and converts errors — this includes centralized error handlers (e.g., ToolExecutor, Express middleware, Redux middleware) that wrap all callees
+- ❌ "Missing try-catch" / "Should add try-catch" when an outer scope, middleware, or executor already catches and converts errors — this includes centralized error handlers (e.g., ToolExecutor, Express middleware, Redux middleware) that wrap all callees. Check the full call chain before suggesting error handling
 - ❌ "Method X doesn't validate Y" when ALL callers of X already validate Y before calling — the method is safe by call-site contract. This applies to pre-flight guards (e.g., \`canSpawn\` before \`register\`), schema validation before processing, and permission checks before action
 - ❌ "Missing filtering/dedup" in data aggregation when the data model guarantees the property by construction — e.g., if only one method populates a field and it runs only for completed items, aggregating all items is already correct without runtime filtering
 - ❌ "Should add X" (logging, metrics, retry logic) as MEDIUM or higher — suggestions are 🟢 LOW at most
@@ -107,6 +108,17 @@ CRITICAL/HIGH findings MUST be 🟢 VERIFIED. Speculative findings may only be �
 - ❌ Flagging an untested code path that is unreachable — if no caller can produce the input, there's nothing to test
 - ❌ "Race condition" in single-threaded JavaScript/Node.js when operations are serialized by async/await — verify the runtime is multi-threaded AND shared state is accessed without synchronization before reporting
 - ❌ "Value could be undefined/null" when TypeScript's type narrowing already guarantees the type at that point in control flow — check the actual types, not just the parameter signature
+- ❌ "Math.max(x, 0) can return 0" or similar bounded arithmetic — the bounded value IS the designed behavior. \`Math.max\`, \`Math.min\`, and clamping produce edge values by design. Unless the edge value causes a concrete downstream failure (prove it with a code path), this is not a finding
+- ❌ "Property X is set but not immediately used" when the property follows a set-at-start, read-at-end lifecycle (timers, session state, accumulators). The gap between set and use is by design
+- ❌ "Method should be called X instead of Y" or similar naming/style preferences — unless the name causes demonstrable confusion or bugs, naming is a style preference, not a defect
+
+### Language-Aware Review
+
+Different runtimes have different semantics. Do not apply patterns from one language to another:
+
+- **JavaScript/TypeScript (Node.js)**: Single-threaded event loop. Synchronous operations within one function body are serialized — they cannot race. A race condition requires shared mutable state accessed across an \`await\` boundary. \`Promise.all\` with independent operations is not a race condition
+- **TypeScript type system**: Trust the compiler. If a value is typed as \`string\` at a given point, it IS a string — runtime checks for the same thing are redundant unless the value crosses a trust boundary (user input, external API)
+- **Framework conventions**: Many frameworks handle cross-cutting concerns (error handling, cleanup, validation) at specific layers. Check the framework's conventions before suggesting defensive code at the wrong layer
 
 ### False Positive Cost
 
@@ -132,11 +144,13 @@ Before reporting any issue:
 5. **Consider intent**: For "design flaw" — check if the design is intentional (comments, docs, tests, changelogs). If plausible rationale exists, drop it
 6. **Layered architecture**: Before suggesting validation/error handling, check if a surrounding layer already provides it. Don't suggest try-catch when a middleware catches, or input validation when the caller already validates
 7. **Suggestions ≠ bugs**: "Should add X" is a suggestion, not a bug. Report as LOW only, never higher
-8. **When uncertain, omit**: Three verified findings beat twelve speculative ones
+8. **When uncertain, omit**: If you're not sure whether something is an issue after investigation, leave it out entirely. Silence on a non-issue is better than noise
 9. **Check callers exist**: Before reporting a public method's behavior as a bug, verify it has production callers — methods with only test consumers may be future API surface
 10. **Quantify performance**: Don't flag "O(n*m) is slow" without knowing actual n and m. For bounded inputs (schema-capped, small collections), linear scans are fine
 11. **Call-site contract**: Before reporting "method X lacks guard Y", find ALL callers of X. If every caller performs Y before calling X (pre-flight pattern), the method is safe — don't suggest redundant internal guards
 12. **Centralized handlers**: If a middleware/executor catches errors at the call boundary, don't suggest try-catch in individual callees. The handler exists for a reason
-13. **Confidence caps**: CRITICAL/HIGH findings MUST be tool-verified with cited evidence. Speculative findings (pattern-match without tool verification) may only be 🟢 LOW severity
-14. **When uncertain, flag**: If you suspect a real issue but can't fully verify, report it as 🔍 **Verify** with your reasoning — let the reviewer decide. Flagged uncertainty is better than silence on real bugs`;
+13. **Confidence caps**: CRITICAL/HIGH findings MUST be tool-verified with cited evidence. SPECULATIVE findings (pattern-match without tool verification) are EXCLUDED — use tools to verify before including
+14. **When genuinely suspicious, flag**: If you suspect a real issue AND you made a genuine attempt to verify with tool calls but couldn't fully confirm, report it as 🔍 **Verify** with your reasoning. This is NOT an escape hatch for skipping verification — you must have actually called tools first
+15. **Single-threaded concurrency**: In JavaScript/TypeScript, synchronous operations in the same function body cannot race. A race condition requires shared mutable state accessed across an \`await\` boundary. Do not report race conditions between synchronous calls
+16. **Use definitive language**: Back every claim with tool evidence. Avoid 'could potentially,' 'might lead to,' 'consider adding' — these signal speculation. If you can't state the issue definitively with evidence, it's not a finding`;
 }
