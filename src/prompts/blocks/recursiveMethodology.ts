@@ -76,9 +76,7 @@ Sub-agents with 4+ files will decompose further by spawning their own sub-agents
 After sub-agents return, the system automatically reports which files have been reviewed via \`get_file_diff\`.
 
 4a. Call \`update_plan\` to record: which concern groups completed, key findings summary, and coverage status.
-4b. If a coverage gap is reported, triage uncovered files by complexity (check line counts in \`<diff_metadata>\`):
-   - **Trivial changes** (<30 lines): call \`get_file_diff\` yourself — no sub-agent needed for version bumps, config tweaks, or formatting
-   - **Substantive changes** (30+ lines): group related files and delegate via \`run_subagent\` with **specific investigation questions** informed by Phase 1 findings
+4b. If a coverage gap is reported, delegate ALL uncovered files to sub-agents — group trivial files (version bumps, config tweaks, formatting) together into a single sub-agent if needed, and group substantive changes by concern with **specific investigation questions** informed by Phase 1 findings.
 4c. If any sub-agent reported truncated diffs (file too large for one call): spawn a focused sub-agent for the truncated file with instructions to call \`get_file_diff\` with \`context_lines: false\` or request specific file sections.
 4d. Repeat 4a–4c until all files have been reviewed.
 
@@ -102,7 +100,7 @@ Once all files are covered:
 
 **Conflicting findings**: If two agents disagree about the same code, investigate the specific disagreement with one targeted tool call before choosing a side
 
-**Coverage gaps**: If any sub-agent returned incomplete results (timeout, remaining areas noted), cover those gaps yourself with targeted \`get_file_diff\` calls
+**Coverage gaps**: If any sub-agent returned incomplete results (timeout, remaining areas noted), spawn additional sub-agents to cover those gaps
 
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
 - Assess overall PR risk

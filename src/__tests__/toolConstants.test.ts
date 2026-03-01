@@ -138,6 +138,9 @@ describe('toolConstants', () => {
                 'find_symbol',
                 'find_usages',
                 'search_for_pattern',
+                'list_directory',
+                'get_symbols_overview',
+                'find_files_by_pattern',
             ];
             for (const tool of expected) {
                 expect(

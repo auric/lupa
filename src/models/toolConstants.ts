@@ -68,7 +68,7 @@ export const INVESTIGATION_TOOLS = [
     'find_usages',
     'search_for_pattern',
     'find_files_by_pattern',
-    'list_dir',
+    'list_directory',
     'get_symbols_overview',
 ] as const;
 
