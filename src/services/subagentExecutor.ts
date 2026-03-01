@@ -208,6 +208,10 @@ export class SubagentExecutor {
             // Track tool calls made by the subagent with full details
             const toolCalls: ToolCallRecord[] = [];
 
+            // Track which tool names have been used (populated via onToolCallStart
+            // so it's available before getContextStatusSuffix fires)
+            const toolNamesUsed = new Set<string>();
+
             // Track iteration state in closure for iteration countdown
             let currentIteration = 0;
 
@@ -253,6 +257,27 @@ export class SubagentExecutor {
                             );
                         }
 
+                        // Nudge child to continue investigating if it has only read diffs so far.
+                        // onToolCallStart populates toolNamesUsed before this callback fires,
+                        // so we reliably know which tools were called in the current batch.
+                        const hasInvestigated = [...toolNamesUsed].some(
+                            (n) => n !== 'get_file_diff'
+                        );
+                        if (toolNamesUsed.size > 0 && !hasInvestigated) {
+                            if (canRecurse) {
+                                return (
+                                    '\n\nDiff reading is orientation. If your task spans 4+ files, spawn sub-agents now. ' +
+                                    'For 1-3 files, call `find_symbol` (include_body: true) and `find_usages` to investigate changed code before writing findings.'
+                                );
+                            }
+                            return (
+                                '\n\nDiff reading is step 1. Now call `find_symbol` (include_body: true) ' +
+                                'for changed function implementations, `find_usages` for caller analysis, or ' +
+                                '`search_for_pattern` for codebase-wide patterns. ' +
+                                'Findings based only on diff content lack the surrounding context needed for accurate review.'
+                            );
+                        }
+
                         if (currentIteration >= 3) {
                             return `\n\n[Iteration ${currentIteration}/${maxIterations}]`;
                         }
@@ -265,6 +290,7 @@ export class SubagentExecutor {
                         toolIndex,
                         totalTools
                     ) => {
+                        toolNamesUsed.add(toolName);
                         // Forward to subagent adapter for prefixed chat UI display
                         subagentAdapter?.onToolCallStart(
                             toolName,

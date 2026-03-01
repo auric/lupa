@@ -56,27 +56,31 @@ Your parent agent already identified which files belong to your investigation �
             canRecurse && hasDiffTools
                 ? `
 1. **Check your scope**: Count the files in your task.
-   - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate.
+   - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-4 below.
    - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
-2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both to identify real issues.
 
-3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
+3. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+
+Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
                   ? `
-1. **Read the Diff FIRST**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This is your primary input — do this before anything else.
+1. **Read the Diff**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This gives you orientation — what changed and where.
 
-2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
+2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both.
 
-3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
+3. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+
+Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
@@ -183,7 +187,7 @@ Your response MUST include:
 ### Findings (Only those that survived verification)
 For each issue that survived your disproof attempt:
 - **Location**: [file/path.ts:lineNumber](file/path.ts:lineNumber)
-- **Evidence**: Which tool call confirmed this, and what it returned
+- **Evidence**: Which investigation tool call (find_symbol, find_usages, read_file, search_for_pattern) confirmed this, and what it returned. Diff content alone is not evidence — cite what you found in the actual codebase
 - **Disproof attempted**: What you tried to disprove it, and why disproof failed
 - **Severity**: 🔴 Critical / 🟠 High / 🟡 Medium / 🟢 Low
 - **Explanation**: Why this is a problem

@@ -165,7 +165,7 @@ describe('SubagentPromptGenerator', () => {
                     10
                 );
 
-                expect(prompt).not.toContain('Read the Diff FIRST');
+                expect(prompt).not.toContain('Read the Diff');
                 expect(prompt).not.toContain('get_file_diff');
                 expect(prompt).toContain('Review Parent Context');
             });
@@ -181,7 +181,8 @@ describe('SubagentPromptGenerator', () => {
                 const task: SubagentTask = { task: 'Test task' };
                 const prompt = generator.generateSystemPrompt(task, tools, 10);
 
-                expect(prompt).toContain('Read the Diff FIRST');
+                expect(prompt).toContain('Read the Diff');
+                expect(prompt).toContain('orientation');
                 expect(prompt).not.toContain('Review Parent Context');
             });
         });
@@ -220,7 +221,21 @@ describe('SubagentPromptGenerator', () => {
 
                 expect(prompt).toContain('1-3 files');
                 expect(prompt).toContain('4+ files');
-                expect(prompt).not.toContain('Read the Diff FIRST');
+                expect(prompt).not.toContain('Read the Diff');
+            });
+
+            it('should include investigation mandate after diff reading', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const prompt = generator.generateSystemPrompt(
+                    task,
+                    diffTools,
+                    30,
+                    true
+                );
+
+                expect(prompt).toContain(
+                    'Diff reading is orientation, not investigation'
+                );
             });
 
             it('should not include recursion limit message', () => {
@@ -336,7 +351,43 @@ describe('SubagentPromptGenerator', () => {
                 );
 
                 expect(prompt).toContain('Review Parent Context');
-                expect(prompt).not.toContain('Read the Diff FIRST');
+                expect(prompt).not.toContain('Read the Diff');
+            });
+        });
+
+        describe('evidence requirements', () => {
+            it('should require non-diff tool evidence in findings', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool(
+                        'get_file_diff',
+                        'Get diff for specific files'
+                    ),
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+                expect(prompt).toContain('Diff content alone is not evidence');
+                expect(prompt).toContain('find_symbol, find_usages');
+            });
+
+            it('should include investigation mandate for non-recursive agents', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool(
+                        'get_file_diff',
+                        'Get diff for specific files'
+                    ),
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+                expect(prompt).toContain(
+                    'Diff reading is orientation, not investigation'
+                );
+                expect(prompt).toContain(
+                    'must call tools from steps 2-4 before writing findings'
+                );
             });
         });
 
