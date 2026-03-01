@@ -4,10 +4,7 @@ import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
-import {
-    createMockWorkspaceSettings,
-    createMockExecutionContext,
-} from './testUtils/mockFactories';
+import { createMockExecutionContext } from './testUtils/mockFactories';
 
 // Mock vscode with more realistic behavior
 vi.mock('vscode', async (importOriginal) => {
@@ -97,7 +94,6 @@ describe('GetSymbolsOverviewTool (Integration Tests)', () => {
         toolRegistry.registerTool(getSymbolsOverviewTool);
         toolExecutor = new ToolExecutor(
             toolRegistry,
-            createMockWorkspaceSettings(),
             createMockExecutionContext()
         );
 

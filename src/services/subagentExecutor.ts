@@ -160,7 +160,6 @@ export class SubagentExecutor {
 
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
-                this.workspaceSettings,
                 childContext
             );
             const conversationRunner = new ConversationRunner(

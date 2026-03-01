@@ -9,7 +9,7 @@ function createMockSettings(timeoutSeconds: number): WorkspaceSettingsService {
         getPreferredModelIdentifier: vi.fn().mockReturnValue(undefined),
         setPreferredModelIdentifier: vi.fn(),
         getRequestTimeoutSeconds: vi.fn().mockReturnValue(timeoutSeconds),
-        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations,
     } as unknown as WorkspaceSettingsService;
 }
 

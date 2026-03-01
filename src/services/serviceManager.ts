@@ -194,7 +194,6 @@ export class ServiceManager implements vscode.Disposable {
         };
         this.services.toolExecutor = new ToolExecutor(
             this.services.toolRegistry,
-            this.services.workspaceSettings!,
             utilityContext
         );
         this.services.conversationManager = new ConversationManager();

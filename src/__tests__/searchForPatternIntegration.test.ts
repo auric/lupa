@@ -7,18 +7,13 @@ import {
     RipgrepSearchService,
     RipgrepFileResult,
 } from '../services/ripgrepSearchService';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import {
-    createMockWorkspaceSettings,
-    createMockExecutionContext,
-} from './testUtils/mockFactories';
+import { createMockExecutionContext } from './testUtils/mockFactories';
 
 vi.mock('../services/ripgrepSearchService');
 
 describe('SearchForPatternTool Integration Tests', () => {
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
-    let mockWorkspaceSettings: WorkspaceSettingsService;
     let searchForPatternTool: SearchForPatternTool;
     let mockGetRepository: ReturnType<typeof vi.fn>;
     let mockGitOperationsManager: GitOperationsManager;
@@ -32,10 +27,8 @@ describe('SearchForPatternTool Integration Tests', () => {
 
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
-        mockWorkspaceSettings = createMockWorkspaceSettings();
         toolExecutor = new ToolExecutor(
             toolRegistry,
-            mockWorkspaceSettings,
             createMockExecutionContext()
         );
 

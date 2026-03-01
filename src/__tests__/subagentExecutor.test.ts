@@ -154,10 +154,11 @@ describe('SubagentExecutor', () => {
                 })
             );
 
-            // Use low maxIterations via settings override
-            const lowIterSettings = createMockWorkspaceSettings({
-                maxIterations: 2,
-            });
+            // Use low maxIterations via inline mock
+            const lowIterSettings = {
+                ...createMockWorkspaceSettings(),
+                getMaxIterations: () => 2,
+            } as WorkspaceSettingsService;
             const registry = new ToolRegistry();
             registry.registerTool(createMockTool('read_file'));
             const executor = new SubagentExecutor(
@@ -192,9 +193,10 @@ describe('SubagentExecutor', () => {
                     ],
                 })
             );
-            const lowIterSettings = createMockWorkspaceSettings({
-                maxIterations: 2,
-            });
+            const lowIterSettings = {
+                ...createMockWorkspaceSettings(),
+                getMaxIterations: () => 2,
+            } as WorkspaceSettingsService;
             const registry = new ToolRegistry();
             registry.registerTool(createMockTool('read_file'));
             const executor = new SubagentExecutor(

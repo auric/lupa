@@ -3,7 +3,7 @@ import { ToolRegistry } from './toolRegistry';
 import type { ITool } from '../tools/ITool';
 import { TokenConstants } from './tokenConstants';
 import { ToolConstants } from './toolConstants';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { ANALYSIS_LIMITS } from './workspaceSettingsSchema';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
@@ -45,16 +45,16 @@ export class ToolExecutor {
 
     /**
      * @param toolRegistry Registry containing available tools
-     * @param workspaceSettings Settings for rate limits etc.
      * @param executionContext Context for tools containing per-analysis dependencies.
      *   - Main analysis: Full context with planManager, subagentExecutor, etc.
      *   - Subagents: Minimal context with just cancellationToken
      *   - Tests: Use createMockExecutionContext() from mockFactories.ts
+     * @param maxToolCalls Maximum number of tool calls before rate limiting (defaults to ANALYSIS_LIMITS.maxToolCalls)
      */
     constructor(
         private toolRegistry: ToolRegistry,
-        private workspaceSettings: WorkspaceSettingsService,
-        private executionContext: ExecutionContext
+        private executionContext: ExecutionContext,
+        private readonly maxToolCalls: number = ANALYSIS_LIMITS.maxToolCalls
     ) {
         // Fail fast if ExecutionContext lacks cancellationToken - catches misconfigured callers early
         if (!executionContext?.cancellationToken) {
@@ -62,10 +62,6 @@ export class ToolExecutor {
                 'ToolExecutor requires ExecutionContext with a valid cancellationToken'
             );
         }
-    }
-
-    private get maxToolCalls(): number {
-        return this.workspaceSettings.getMaxIterations();
     }
 
     /**

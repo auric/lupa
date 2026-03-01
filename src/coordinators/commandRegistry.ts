@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { AnalysisOrchestrator } from './analysisOrchestrator';
 import { CopilotModelCoordinator } from './copilotModelCoordinator';
 import { IServiceRegistry } from '../services/serviceManager';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * CommandRegistry handles all VS Code command registration.
@@ -58,9 +57,7 @@ export class CommandRegistry implements vscode.Disposable {
     private resetAnalysisLimitsToDefaults(): void {
         this.services.workspaceSettings.resetAnalysisLimitsToDefaults();
         vscode.window.showInformationMessage(
-            'Analysis limits reset to defaults: ' +
-                `Max Iterations: ${ANALYSIS_LIMITS.maxIterations.default}, ` +
-                `Request Timeout: ${ANALYSIS_LIMITS.requestTimeoutSeconds.default}s`
+            'Analysis settings reset to defaults.'
         );
     }
 

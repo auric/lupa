@@ -6,7 +6,6 @@ import { vi } from 'vitest';
 import * as vscode from 'vscode';
 import {
     ANALYSIS_LIMITS,
-    SUBAGENT_LIMITS,
     RECURSION_LIMITS,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
@@ -550,21 +549,13 @@ export function createFileExistsError(
  */
 export function createMockWorkspaceSettings(
     overrides: Partial<{
-        maxIterations: number;
-        requestTimeoutSeconds: number;
-        maxSubagentsPerSession: number;
         maxRecursionDepth: number;
     }> = {}
 ): WorkspaceSettingsService {
     return {
-        getMaxIterations: () =>
-            overrides.maxIterations ?? ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () =>
-            overrides.requestTimeoutSeconds ??
-            ANALYSIS_LIMITS.requestTimeoutSeconds.default,
-        getMaxSubagentsPerSession: () =>
-            overrides.maxSubagentsPerSession ??
-            SUBAGENT_LIMITS.maxPerSession.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations,
+        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds,
+        getMaxSubagentsPerSession: () => ANALYSIS_LIMITS.maxSubagentsPerSession,
         getMaxRecursionDepth: () =>
             overrides.maxRecursionDepth ?? RECURSION_LIMITS.maxDepth.default,
     } as WorkspaceSettingsService;

@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 const createMockSettings = (
-    maxPerSession: number = SUBAGENT_LIMITS.maxPerSession.default
+    maxPerSession: number = ANALYSIS_LIMITS.maxSubagentsPerSession
 ): WorkspaceSettingsService =>
     ({
         getMaxSubagentsPerSession: vi.fn().mockReturnValue(maxPerSession),
@@ -13,7 +13,7 @@ const createMockSettings = (
 describe('SubagentSessionManager', () => {
     let sessionManager: SubagentSessionManager;
     let mockSettings: WorkspaceSettingsService;
-    const defaultMax = SUBAGENT_LIMITS.maxPerSession.default;
+    const defaultMax = ANALYSIS_LIMITS.maxSubagentsPerSession;
 
     beforeEach(() => {
         mockSettings = createMockSettings();

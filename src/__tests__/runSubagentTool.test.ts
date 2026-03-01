@@ -5,7 +5,7 @@ import { SubagentExecutor } from '../services/subagentExecutor';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentLimits } from '../models/toolConstants';
-import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import type { SubagentResult } from '../types/modelTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import {
@@ -170,7 +170,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should reject when session limit reached', async () => {
-            const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
+            const maxSubagents = ANALYSIS_LIMITS.maxSubagentsPerSession;
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
             const context = createSubagentExecutionContext(
@@ -617,9 +617,10 @@ describe('RunSubagentTool', () => {
             // Use fake timers to avoid CI flakiness from real wall-clock delays.
             vi.useFakeTimers();
             try {
-                const shortTimeoutSettings = createMockWorkspaceSettings({
-                    requestTimeoutSeconds: 0.01, // 10ms timeout
-                });
+                const shortTimeoutSettings = {
+                    ...createMockWorkspaceSettings(),
+                    getRequestTimeoutSeconds: () => 0.01, // 10ms timeout
+                } as WorkspaceSettingsService;
 
                 const parentTokenSource = new vscode.CancellationTokenSource();
                 sessionManager.setParentCancellationToken(
@@ -1198,7 +1199,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should fall back to flat SessionManager when no recursiveState', async () => {
-            const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
+            const maxSubagents = ANALYSIS_LIMITS.maxSubagentsPerSession;
             for (let i = 0; i < maxSubagents; i++) {
                 sessionManager.recordSpawn();
             }
@@ -1221,7 +1222,7 @@ describe('RunSubagentTool', () => {
         });
 
         it('should enforce session limit even when recursiveState is present', async () => {
-            const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
+            const maxSubagents = ANALYSIS_LIMITS.maxSubagentsPerSession;
             for (let i = 0; i < maxSubagents; i++) {
                 sessionManager.recordSpawn();
             }

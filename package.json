@@ -46,7 +46,7 @@
             },
             {
                 "command": "lupa.resetAnalysisLimits",
-                "title": "Lupa: Reset Analysis Limits to Defaults"
+                "title": "Lupa: Reset Settings to Defaults"
             },
             {
                 "command": "lupa.openToolTesting",

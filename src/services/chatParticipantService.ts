@@ -263,15 +263,11 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.createSubagentContext(token, debouncedHandler);
 
             // Create per-request ToolExecutor with subagent context
-            const toolExecutor = new ToolExecutor(
-                this.deps.toolRegistry,
-                this.deps.workspaceSettings,
-                {
-                    subagentSessionManager,
-                    subagentExecutor,
-                    cancellationToken: token,
-                }
-            );
+            const toolExecutor = new ToolExecutor(this.deps.toolRegistry, {
+                subagentSessionManager,
+                subagentExecutor,
+                cancellationToken: token,
+            });
 
             const timeoutMs =
                 this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
@@ -550,7 +546,6 @@ export class ChatParticipantService implements vscode.Disposable {
 
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
-            this.deps!.workspaceSettings,
             executionContext
         );
 

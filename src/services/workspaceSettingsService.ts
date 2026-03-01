@@ -8,7 +8,6 @@ import {
     WorkspaceSettingsSchema,
     WorkspaceSettings,
     ANALYSIS_LIMITS,
-    SUBAGENT_LIMITS,
     RECURSION_LIMITS,
 } from '../models/workspaceSettingsSchema';
 
@@ -286,24 +285,24 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Get the maximum conversation iterations
+     * Get the maximum conversation iterations (hardcoded constant)
      */
     public getMaxIterations(): number {
-        return this.settings.maxIterations;
+        return ANALYSIS_LIMITS.maxIterations;
     }
 
     /**
-     * Get the request timeout in seconds
+     * Get the request timeout in seconds (hardcoded constant)
      */
     public getRequestTimeoutSeconds(): number {
-        return this.settings.requestTimeoutSeconds;
+        return ANALYSIS_LIMITS.requestTimeoutSeconds;
     }
 
     /**
-     * Get the maximum subagents per analysis session
+     * Get the maximum subagents per analysis session (hardcoded constant)
      */
     public getMaxSubagentsPerSession(): number {
-        return this.settings.maxSubagentsPerSession;
+        return ANALYSIS_LIMITS.maxSubagentsPerSession;
     }
 
     /**
@@ -315,14 +314,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Reset all analysis limit settings to their defaults
+     * Reset analysis settings to their defaults
      */
     public resetAnalysisLimitsToDefaults(): void {
-        this.settings.maxIterations = ANALYSIS_LIMITS.maxIterations.default;
-        this.settings.requestTimeoutSeconds =
-            ANALYSIS_LIMITS.requestTimeoutSeconds.default;
-        this.settings.maxSubagentsPerSession =
-            SUBAGENT_LIMITS.maxPerSession.default;
         this.settings.maxRecursionDepth = RECURSION_LIMITS.maxDepth.default;
         this.debouncedSaveSettings();
     }

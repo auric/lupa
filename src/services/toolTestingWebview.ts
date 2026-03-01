@@ -299,7 +299,6 @@ export class ToolTestingWebviewService {
             };
             const executor = new ToolExecutor(
                 this.toolRegistry,
-                this.workspaceSettings,
                 executionContext
             );
 

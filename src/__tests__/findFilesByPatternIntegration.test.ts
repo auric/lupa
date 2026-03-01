@@ -5,9 +5,7 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { GitOperationsManager } from '../services/gitOperationsManager';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import {
-    createMockWorkspaceSettings,
     createMockFdirInstance,
     createMockExecutionContext,
 } from './testUtils/mockFactories';
@@ -87,7 +85,6 @@ vi.mock('ignore', () => ({
 describe('FindFileTool Integration Tests', () => {
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
-    let mockWorkspaceSettings: WorkspaceSettingsService;
     let findFileTool: FindFilesByPatternTool;
     let mockReadFile: ReturnType<typeof vi.fn>;
     let mockGetRepository: ReturnType<typeof vi.fn>;
@@ -96,10 +93,8 @@ describe('FindFileTool Integration Tests', () => {
     beforeEach(() => {
         // Initialize the tool-calling system
         toolRegistry = new ToolRegistry();
-        mockWorkspaceSettings = createMockWorkspaceSettings();
         toolExecutor = new ToolExecutor(
             toolRegistry,
-            mockWorkspaceSettings,
             createMockExecutionContext()
         );
 

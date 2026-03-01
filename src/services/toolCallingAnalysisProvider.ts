@@ -122,7 +122,6 @@ export class ToolCallingAnalysisProvider {
 
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
-            this.workspaceSettings,
             executionContext
         );
         const conversationRunner = new ConversationRunner(

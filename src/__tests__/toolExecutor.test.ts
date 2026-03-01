@@ -4,11 +4,6 @@ import * as z from 'zod';
 import { ToolExecutor, ToolExecutionRequest } from '../models/toolExecutor';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ITool } from '../tools/ITool';
-import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import {
-    ANALYSIS_LIMITS,
-    SUBAGENT_LIMITS,
-} from '../models/workspaceSettingsSchema';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { TokenConstants } from '../models/tokenConstants';
 import { TimeoutError } from '../types/errorTypes';
@@ -17,18 +12,6 @@ import {
     createCancelledExecutionContext,
 } from './testUtils/mockFactories';
 import type { ExecutionContext } from '../types/executionContext';
-
-/**
- * Create a mock WorkspaceSettingsService for testing with a specific max iterations limit
- */
-function createMockSettings(maxIterations: number): WorkspaceSettingsService {
-    return {
-        getMaxIterations: () => maxIterations,
-        getRequestTimeoutSeconds: () =>
-            ANALYSIS_LIMITS.requestTimeoutSeconds.default,
-        getMaxSubagentsPerSession: () => SUBAGENT_LIMITS.maxPerSession.default,
-    } as WorkspaceSettingsService;
-}
 
 // Mock tools for testing
 class MockSuccessTool implements ITool {
@@ -89,19 +72,14 @@ class MockDelayTool implements ITool {
 describe('ToolExecutor', () => {
     let toolExecutor: ToolExecutor;
     let toolRegistry: ToolRegistry;
-    let mockSettings: WorkspaceSettingsService;
     let successTool: MockSuccessTool;
     let errorTool: MockErrorTool;
     let delayTool: MockDelayTool;
 
     beforeEach(() => {
         toolRegistry = new ToolRegistry();
-        mockSettings = createMockSettings(
-            ANALYSIS_LIMITS.maxIterations.default
-        );
         toolExecutor = new ToolExecutor(
             toolRegistry,
-            mockSettings,
             createMockExecutionContext()
         );
         successTool = new MockSuccessTool();
@@ -284,8 +262,8 @@ describe('ToolExecutor', () => {
         it('should allow tool calls under the limit', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(3),
-                createMockExecutionContext()
+                createMockExecutionContext(),
+                3
             );
 
             const result1 = await limitedExecutor.executeTool('success_tool', {
@@ -307,8 +285,8 @@ describe('ToolExecutor', () => {
         it('should reject tool calls exceeding the limit', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(3),
-                createMockExecutionContext()
+                createMockExecutionContext(),
+                3
             );
 
             // Make 3 successful calls
@@ -337,8 +315,8 @@ describe('ToolExecutor', () => {
         it('should track call count correctly', async () => {
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(10),
-                createMockExecutionContext()
+                createMockExecutionContext(),
+                10
             );
 
             await limitedExecutor.executeTool('success_tool', {
@@ -357,10 +335,9 @@ describe('ToolExecutor', () => {
             expect(limitedExecutor.getToolCallCount()).toBe(3);
         });
 
-        it('should use settings with default limit', async () => {
+        it('should use default limit from constants', async () => {
             const defaultExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(ANALYSIS_LIMITS.maxIterations.default),
                 createMockExecutionContext()
             );
 
@@ -546,7 +523,6 @@ describe('ToolExecutor', () => {
 
             const toolExecutorWithContext = new ToolExecutor(
                 toolRegistry,
-                mockSettings,
                 mockExecutionContext
             );
 
@@ -580,7 +556,6 @@ describe('ToolExecutor', () => {
 
             const toolExecutorWithContext = new ToolExecutor(
                 toolRegistry,
-                mockSettings,
                 createMockExecutionContext()
             );
 
@@ -616,7 +591,6 @@ describe('ToolExecutor', () => {
 
             const toolExecutorWithCancelledToken = new ToolExecutor(
                 toolRegistry,
-                mockSettings,
                 cancelledContext
             );
 
@@ -679,8 +653,8 @@ describe('ToolExecutor', () => {
 
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(1), // Very low limit
-                cancelledContext
+                cancelledContext,
+                1 // Very low limit
             );
 
             // Make calls that would exceed the rate limit
@@ -701,8 +675,8 @@ describe('ToolExecutor', () => {
 
             const limitedExecutor = new ToolExecutor(
                 toolRegistry,
-                createMockSettings(0), // Zero limit - any call would hit rate limit
-                cancelledContext
+                cancelledContext,
+                0 // Zero limit - any call would hit rate limit
             );
 
             // This would hit rate limit immediately if cancellation wasn't checked first
@@ -719,7 +693,7 @@ describe('ToolExecutor', () => {
             const invalidContext = {} as any;
 
             expect(() => {
-                new ToolExecutor(toolRegistry, mockSettings, invalidContext);
+                new ToolExecutor(toolRegistry, invalidContext);
             }).toThrow(
                 'ToolExecutor requires ExecutionContext with a valid cancellationToken'
             );
@@ -727,7 +701,7 @@ describe('ToolExecutor', () => {
 
         it('should throw error when ExecutionContext is undefined', () => {
             expect(() => {
-                new ToolExecutor(toolRegistry, mockSettings, undefined as any);
+                new ToolExecutor(toolRegistry, undefined as any);
             }).toThrow(
                 'ToolExecutor requires ExecutionContext with a valid cancellationToken'
             );
@@ -737,7 +711,7 @@ describe('ToolExecutor', () => {
             const validContext = createMockExecutionContext();
 
             expect(() => {
-                new ToolExecutor(toolRegistry, mockSettings, validContext);
+                new ToolExecutor(toolRegistry, validContext);
             }).not.toThrow();
         });
     });
