@@ -242,14 +242,14 @@ These components are created fresh for each analysis session, not managed by Ser
 
 ## Commands (from `package.json`)
 
-| Command ID                 | Title                 | Description          |
-| -------------------------- | --------------------- | -------------------- |
-| `lupa.analyzePR`           | Analyze Pull Request  | Start PR analysis    |
-| `lupa.selectLanguageModel` | Select Language Model | Choose Copilot model |
-| `lupa.selectRepository`    | Select Git Repository | Choose repository    |
-| `lupa.resetAnalysisLimits` | Reset Analysis Limits | Reset to defaults    |
-| `lupa.openToolTesting`     | Open Tool Testing     | Dev tool testing UI  |
-| `lupa.testWebview`         | Test Webview          | Dev webview testing  |
+| Command ID                 | Title                      | Description          |
+| -------------------------- | -------------------------- | -------------------- |
+| `lupa.analyzePR`           | Analyze Pull Request       | Start PR analysis    |
+| `lupa.selectLanguageModel` | Select Language Model      | Choose Copilot model |
+| `lupa.selectRepository`    | Select Git Repository      | Choose repository    |
+| `lupa.resetAnalysisLimits` | Reset Settings to Defaults | Reset to defaults    |
+| `lupa.openToolTesting`     | Open Tool Testing          | Dev tool testing UI  |
+| `lupa.testWebview`         | Test Webview               | Dev webview testing  |
 
 ---
 

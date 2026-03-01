@@ -10,6 +10,16 @@ export const ANALYSIS_LIMITS = {
     requestTimeoutSeconds: 300,
     maxSubagentsPerSession: 75,
     /**
+     * Maximum concurrent LLM requests across all agents.
+     * Prevents API rate limiting when many subagents run in parallel.
+     * Each agent's ConversationRunner queues through CopilotModelManager's semaphore.
+     *
+     * GPT-4.1 simulation limit is ~3 RPS in vscode-copilot-chat. With requests
+     * taking 5-30s each, 8 concurrent slots produce well under 3 actual RPS
+     * while keeping agent throughput high.
+     */
+    maxConcurrentLLMRequests: 8,
+    /**
      * Multiplier for computing per-session tool call limit from maxIterations.
      * Each iteration may produce 1-3 tool calls; multiplier of 3 gives headroom
      * without letting a pathological LLM run indefinitely.

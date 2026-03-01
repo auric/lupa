@@ -115,12 +115,12 @@ Coordinators → Services → Models → Tools
 
 ## Key Commands
 
-| Command                       | Description                  |
-| ----------------------------- | ---------------------------- |
-| `Lupa: Analyze Pull Request`  | Start PR analysis workflow   |
-| `Lupa: Select Language Model` | Choose Copilot model         |
-| `Lupa: Select Git Repository` | Choose repository to analyze |
-| `Lupa: Reset Analysis Limits` | Reset settings to defaults   |
+| Command                            | Description                  |
+| ---------------------------------- | ---------------------------- |
+| `Lupa: Analyze Pull Request`       | Start PR analysis workflow   |
+| `Lupa: Select Language Model`      | Choose Copilot model         |
+| `Lupa: Select Git Repository`      | Choose repository to analyze |
+| `Lupa: Reset Settings to Defaults` | Reset settings to defaults   |
 
 ## Entry Points
 
