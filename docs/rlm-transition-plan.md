@@ -375,6 +375,7 @@ class RecursiveStateManager {
     // Deduplication
     isFileAlreadyCovered(file: string): boolean;
     getCoveredFiles(): Set<string>;
+    getCoverageGapMessage(allFiles: string[]): string | undefined;
 
     // Aggregation
     getAllFindings(): RecursiveReviewFinding[];
@@ -494,6 +495,7 @@ After all sub-agents return:
 - Remove duplicates across agents
 - Identify cross-concern patterns (e.g., same anti-pattern in multiple files)
 - Assess overall PR risk
+- **Address coverage gaps**: The system programmatically checks which files were reviewed via `get_file_diff` and injects a gap report. Spawn additional sub-agents for any uncovered files.
 
 ### Step 5: Self-Reflect and Submit
 
@@ -651,7 +653,8 @@ Create the state tracking service:
 - Depth tracking and limit enforcement
 - Budget allocation logic
 - Agent lifecycle management (register, start, complete, fail)
-- File coverage tracking for deduplication
+- File coverage tracking via `get_file_diff` calls only (contextual reads via `read_file` do not count)
+- Coverage gap detection: `getCoverageGapMessage()` compares covered files against full diff list
 - Findings aggregation
 
 **Test file**: `src/__tests__/recursiveStateManager.test.ts`
@@ -888,6 +891,16 @@ Key principles applied in all prompts:
 
 The root agent naturally falls back to direct investigation if decomposition isn't appropriate — no explicit iteration-counting mechanism is needed. The prompt instructs the root agent to decompose when beneficial, and for simple PRs it simply proceeds with direct analysis. Budget limits and session caps ensure resources are bounded regardless of approach.
 
+### Coverage Gap Enforcement
+
+The system programmatically verifies that every changed file has been reviewed via `get_file_diff` — the tool that shows actual PR changes. Other tools (`read_file`, `find_symbol`, etc.) read current file state for context but do not constitute reviewing a file's diff.
+
+**Mechanism**: An `afterToolCalls` callback on `ConversationRunnerConfig` fires after each tool execution iteration. When `run_subagent` calls complete, `RecursiveStateManager.getCoverageGapMessage()` compares covered files (aggregated from ALL completed agents across all depths) against the full changed-file list. If gaps exist, a message listing uncovered files is injected into the conversation, instructing the root to spawn additional subagents.
+
+**Why root-level tracking is sufficient**: The root's coverage view is global — it aggregates `get_file_diff` calls from every agent in the tree (depth 0, 1, 2...). If a depth-2 sub-sub-agent skips a file, the root catches the gap after the batch completes. The root can then re-assign uncovered files to new subagents, regardless of which branch originally "owned" them.
+
+**What "covered" means**: Only files accessed via `get_file_diff` count as covered. If a sub-sub-agent calls `read_file('docs/architecture.md')` to understand context for its own subtask, that documentation file is NOT marked as covered — nobody reviewed its changed lines. This prevents false coverage signals from contextual reads.
+
 ---
 
 ## 12. Testing Strategy
@@ -902,7 +915,8 @@ The root agent naturally falls back to direct investigation if decomposition isn
 - Budget allocation: correct splitting at each depth
 - Minimum budget enforcement: reject spawns with < MIN_VIABLE_BUDGET (3) iterations
 - Findings aggregation: collect findings across all agents
-- File coverage tracking: deduplication detection
+- File coverage tracking: only `get_file_diff` calls count as reviewed
+- Coverage gap detection: `getCoverageGapMessage` reports uncovered files
 - Agent lifecycle: pending → running → completed/failed transitions
 
 **SubagentExecutor depth awareness** (`recursiveSubagentExecutor.test.ts`):

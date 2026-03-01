@@ -1137,7 +1137,7 @@ describe('RunSubagentTool', () => {
             expect(childNode.status).toBe('completed');
         });
 
-        it('should propagate filesExamined from tool calls on success', async () => {
+        it('should only count get_file_diff calls for filesExamined', async () => {
             const { recursiveState, rootId } = createTestRecursiveState();
 
             const mockExecutor = createMockExecutor({
@@ -1156,7 +1156,7 @@ describe('RunSubagentTool', () => {
                     {
                         id: '2',
                         toolName: 'get_file_diff',
-                        arguments: { filePath: 'src/bar.ts' },
+                        arguments: { file_paths: ['src/bar.ts', 'src/baz.ts'] },
                         result: 'diff',
                         success: true,
                         error: undefined,
@@ -1191,10 +1191,10 @@ describe('RunSubagentTool', () => {
 
             const rootNode = recursiveState.getNode(rootId)!;
             const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            // Only get_file_diff files count — read_file and search_for_pattern are ignored
             expect(childNode.filesExamined).toEqual(
-                expect.arrayContaining(['src/foo.ts', 'src/bar.ts'])
+                expect.arrayContaining(['src/bar.ts', 'src/baz.ts'])
             );
-            // search_for_pattern has no filePath arg, so only 2 files
             expect(childNode.filesExamined).toHaveLength(2);
         });
 
@@ -1343,7 +1343,7 @@ describe('RunSubagentTool', () => {
     });
 
     describe('extractFilesExamined', () => {
-        it('should extract filePath arguments from tool calls', () => {
+        it('should only extract files from get_file_diff calls', () => {
             const toolCalls = [
                 {
                     id: '1',
@@ -1358,7 +1358,36 @@ describe('RunSubagentTool', () => {
                 {
                     id: '2',
                     toolName: 'get_file_diff',
-                    arguments: { filePath: 'src/b.ts' },
+                    arguments: { file_paths: ['src/b.ts', 'src/c.ts'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            // read_file should NOT count — only get_file_diff
+            expect(result).toEqual(['src/b.ts', 'src/c.ts']);
+        });
+
+        it('should deduplicate file paths across multiple get_file_diff calls', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/a.ts', 'src/b.ts'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: '2',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/a.ts'] },
                     result: '',
                     success: true,
                     error: undefined,
@@ -1371,7 +1400,7 @@ describe('RunSubagentTool', () => {
             expect(result).toEqual(['src/a.ts', 'src/b.ts']);
         });
 
-        it('should deduplicate file paths', () => {
+        it('should ignore non-get_file_diff tools even with file path arguments', () => {
             const toolCalls = [
                 {
                     id: '1',
@@ -1385,26 +1414,18 @@ describe('RunSubagentTool', () => {
                 },
                 {
                     id: '2',
-                    toolName: 'read_file',
-                    arguments: { filePath: 'src/a.ts' },
+                    toolName: 'find_symbol',
+                    arguments: { name: 'MyClass', file_path: 'src/b.ts' },
                     result: '',
                     success: true,
                     error: undefined,
                     durationMs: 10,
                     timestamp: Date.now(),
                 },
-            ];
-
-            const result = RunSubagentTool.extractFilesExamined(toolCalls);
-            expect(result).toEqual(['src/a.ts']);
-        });
-
-        it('should skip tool calls without file path arguments', () => {
-            const toolCalls = [
                 {
-                    id: '1',
+                    id: '3',
                     toolName: 'search_for_pattern',
-                    arguments: { pattern: 'foo' },
+                    arguments: { pattern: 'foo', path: 'src/c.ts' },
                     result: '',
                     success: true,
                     error: undefined,

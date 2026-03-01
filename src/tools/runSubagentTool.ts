@@ -345,23 +345,18 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
 
     /**
      * Extract unique file paths from subagent tool call records.
-     * Looks for common file path argument names across tool types.
+     * Only counts `get_file_diff` calls — the tool that shows actual PR changes.
+     * Other tools (read_file, find_symbol, etc.) read current file state for context
+     * but don't constitute reviewing a file's diff.
      */
     static extractFilesExamined(toolCalls: ToolCallRecord[]): string[] {
         const files = new Set<string>();
         for (const call of toolCalls) {
-            const args = call.arguments;
-            // Check all known file path argument names across tools
-            const filePath =
-                args['file_path'] ??
-                args['filePath'] ??
-                args['path'] ??
-                args['relative_path'] ??
-                args['file'];
-            if (typeof filePath === 'string') {
-                files.add(filePath);
+            if (call.toolName !== 'get_file_diff') {
+                continue;
             }
-            // Handle array-based file paths (e.g., get_file_diff's file_paths)
+            const args = call.arguments;
+            // get_file_diff uses file_paths array
             const filePaths = args['file_paths'];
             if (Array.isArray(filePaths)) {
                 for (const fp of filePaths) {

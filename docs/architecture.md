@@ -621,8 +621,18 @@ Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 5
 - Registers agents with parent-child relationships and depth tracking
 - Enforces `maxRecursionDepth` via `canSpawnChild()` (total spawn count is guarded by `SubagentSessionManager`)
 - Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (30 iterations) regardless of other agents' usage. For example, at depth 2 with 3 sub-agents each spawning 2 sub-sub-agents, the system runs up to 9 agents × 30 iterations = 270 total iterations, bounded by `maxSubagentsPerSession` (50)
-- Tracks file coverage across completed agents to avoid redundant analysis
+- Tracks file coverage across completed agents to avoid redundant analysis (only `get_file_diff` calls count — `read_file` for context does not constitute reviewing a file's diff)
 - Manages agent lifecycle (registered → running → completed/failed/cancelled)
+
+#### Coverage Gap Enforcement
+
+After each `run_subagent` tool call batch completes, the root agent's `afterToolCalls` callback compares files reviewed via `get_file_diff` (aggregated across all agents in the tree) against the full list of changed files. If gaps exist, a programmatic message is injected listing uncovered files and instructing the root to spawn additional subagents. This is system-level enforcement — it does not rely on the LLM's self-assessment.
+
+Key design decisions:
+
+- **Only `get_file_diff` counts as "reviewed"**: Reading a file via `read_file` or `find_symbol` for investigation context does not mark it as covered. An agent must actually view the changed lines.
+- **Root-level tracking is sufficient**: The root aggregates coverage from ALL agents in the tree (all depths). If a depth-2 sub-sub-agent skips a file, the root catches the gap after the batch completes and spawns more agents.
+- **`think_about_completion`** provides complementary LLM-side reflection with `files_analyzed` and `files_in_diff` fields. The afterToolCalls hook is the programmatic safety net.
 
 ### Reset Limits Command
 
