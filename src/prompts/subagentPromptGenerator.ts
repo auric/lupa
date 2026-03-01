@@ -120,7 +120,7 @@ context: "[What you found so far and why this needs deeper investigation]"
             : `
 ### Recursion Limit
 
-You are at maximum recursion depth—you **cannot** spawn sub-agents.
+You **cannot** spawn sub-agents.
 Complete your investigation within your iteration budget.
 Note any uninvestigated areas in your response so the parent agent can follow up.`;
 

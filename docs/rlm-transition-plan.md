@@ -558,7 +558,7 @@ If you discover a dependency chain that requires examining 3+ additional files:
 - Example: "Does validateToken() properly handle expired tokens?"
 - Provide relevant context from your investigation
 ` : `
-You are at maximum recursion depth. Complete your investigation within your iteration
+You cannot spawn sub-agents. Complete your investigation within your iteration
 budget and return your findings. Note any uninvestigated areas in your response.
 `}
 
