@@ -53,7 +53,7 @@ export class GetFileDiffTool extends BaseTool {
         const { file_paths, context_lines } = args;
         const includeContext = context_lines !== false;
 
-        const results: string[] = [];
+        const results: Array<{ path: string; text: string }> = [];
         const notFound: string[] = [];
 
         for (const rawPath of file_paths) {
@@ -97,7 +97,10 @@ export class GetFileDiffTool extends BaseTool {
                 continue;
             }
 
-            results.push(this.formatFileDiff(fileDiff, includeContext));
+            results.push({
+                path: rawPath.trim(),
+                text: this.formatFileDiff(fileDiff, includeContext),
+            });
         }
 
         if (results.length === 0 && notFound.length > 0) {
@@ -113,15 +116,23 @@ export class GetFileDiffTool extends BaseTool {
         const omitted: string[] = [];
 
         for (let i = 0; i < results.length; i++) {
-            const candidate = results[i]!;
+            const { path: filePath, text: candidate } = results[i]!;
+            if (candidate.length > maxChars && output.length === 0) {
+                // Single diff exceeds limit — return truncated with guidance
+                const truncated = candidate.slice(0, maxChars - 200);
+                return toolSuccess(
+                    truncated +
+                        `\n\n[TRUNCATED — diff for ${filePath} exceeds size limit. ` +
+                        'Try with context_lines: false or request fewer files.]'
+                );
+            }
             if (
                 output.length + candidate.length + 1 > maxChars &&
                 output.length > 0
             ) {
                 // Remaining files won't fit — collect their paths for the note
                 for (let j = i; j < results.length; j++) {
-                    const filePath = file_paths[j] ?? `file ${j + 1}`;
-                    omitted.push(filePath);
+                    omitted.push(results[j]!.path);
                 }
                 break;
             }

@@ -592,6 +592,7 @@ export class ConversationRunner {
         }
         return new Promise((resolve) => {
             const timer = setTimeout(resolve, ms);
+            let cleanupTimer: NodeJS.Timeout | undefined;
             const disposable = token.onCancellationRequested(() => {
                 clearTimeout(timer);
                 clearTimeout(cleanupTimer);
@@ -599,7 +600,7 @@ export class ConversationRunner {
                 resolve();
             });
             // Clean up listener when timer fires normally
-            const cleanupTimer = setTimeout(() => disposable.dispose(), ms + 1);
+            cleanupTimer = setTimeout(() => disposable.dispose(), ms + 1);
         });
     }
 

@@ -588,4 +588,103 @@ describe('GetFileDiffTool', () => {
         expect(result.data).toContain('helpers.ts');
         expect(result.data).not.toContain('omitted');
     });
+
+    it('should report correct file paths when some files are not found', async () => {
+        const largeDiffs: DiffHunk[] = Array.from({ length: 3 }, (_, i) => ({
+            filePath: `src/file${i}.ts`,
+            isNewFile: false,
+            isDeletedFile: false,
+            originalHeader: `diff --git a/src/file${i}.ts b/src/file${i}.ts`,
+            hunks: [
+                {
+                    oldStart: 1,
+                    oldLines: 1,
+                    newStart: 1,
+                    newLines: 1,
+                    hunkId: `src/file${i}.ts:1`,
+                    hunkHeader: '@@ -1,1 +1,1 @@',
+                    parsedLines: [
+                        {
+                            type: 'added' as const,
+                            content: 'x'.repeat(25000),
+                            lineNumber: 1,
+                        },
+                    ],
+                },
+            ],
+        }));
+
+        const context = createMockExecutionContext({
+            parsedDiff: largeDiffs,
+        });
+
+        // Request 4 files but "nonexistent.ts" won't match any diff
+        const result = await tool.execute(
+            {
+                file_paths: [
+                    'src/file0.ts',
+                    'nonexistent.ts',
+                    'src/file1.ts',
+                    'src/file2.ts',
+                ],
+            },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        // The omitted list should reference the actual requested paths, not misaligned indices
+        if (result.data?.includes('omitted due to response size limit')) {
+            const omittedLine = result.data
+                .split('\n')
+                .find((l) => l.includes('omitted due to response size limit'));
+            // nonexistent.ts should NOT appear in the omitted line (it was never a result)
+            expect(omittedLine).not.toContain('nonexistent.ts');
+            // If file2 was omitted, it should appear by its requested path
+            expect(omittedLine).toContain('src/file2.ts');
+        }
+    });
+
+    it('should truncate a single oversized diff with guidance', async () => {
+        const hugeDiff: DiffHunk[] = [
+            {
+                filePath: 'src/huge.ts',
+                isNewFile: false,
+                isDeletedFile: false,
+                originalHeader: 'diff --git a/src/huge.ts b/src/huge.ts',
+                hunks: [
+                    {
+                        oldStart: 1,
+                        oldLines: 1,
+                        newStart: 1,
+                        newLines: 1,
+                        hunkId: 'src/huge.ts:1',
+                        hunkHeader: '@@ -1,1 +1,1 @@',
+                        parsedLines: [
+                            {
+                                type: 'added' as const,
+                                content: 'x'.repeat(
+                                    TokenConstants.MAX_TOOL_RESPONSE_CHARS +
+                                        1000
+                                ),
+                                lineNumber: 1,
+                            },
+                        ],
+                    },
+                ],
+            },
+        ];
+
+        const context = createMockExecutionContext({
+            parsedDiff: hugeDiff,
+        });
+
+        const result = await tool.execute(
+            { file_paths: ['src/huge.ts'] },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('TRUNCATED');
+        expect(result.data).toContain('context_lines: false');
+    });
 });
