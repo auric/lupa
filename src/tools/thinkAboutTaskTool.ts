@@ -115,8 +115,9 @@ export class ThinkAboutTaskTool extends BaseTool {
                 break;
             case 'gaps_in_coverage':
                 guidance += `**Action**: Continue analysis for the ${areas_needing_investigation.length} uncovered area(s).\n`;
+                guidance +=
+                    '- Use `run_subagent` to delegate investigation of uncovered areas\n';
                 guidance += '- Update your plan with new items if needed\n';
-                guidance += '- Consider spawning subagents for complex areas\n';
                 break;
             case 'ready_to_synthesize':
                 guidance += '**Action**: Proceed to final synthesis.\n';

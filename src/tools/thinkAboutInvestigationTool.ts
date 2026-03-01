@@ -107,6 +107,8 @@ export class ThinkAboutInvestigationTool extends BaseTool {
                 guidance +=
                     '**Action**: Focus on highest-priority remaining question(s).\n';
                 guidance +=
+                    "- Use `get_file_diff` if you haven't read the diff for all assigned files\n";
+                guidance +=
                     '- Prioritize questions most relevant to the parent task\n';
                 guidance += '- Be efficient with remaining iterations\n';
                 break;
@@ -115,6 +117,8 @@ export class ThinkAboutInvestigationTool extends BaseTool {
                     '**Action**: Start formulating response with partial findings.\n';
                 guidance += '- Summarize what you found with evidence\n';
                 guidance += '- Note which questions remain unanswered\n';
+                guidance +=
+                    '- Report any truncated diffs that need re-review by the parent\n';
                 guidance +=
                     '- Provide clear recommendations based on available evidence\n';
                 break;

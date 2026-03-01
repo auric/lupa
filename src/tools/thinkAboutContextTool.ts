@@ -90,11 +90,11 @@ export class ThinkAboutContextTool extends BaseTool {
                 break;
             case 'need_subagent':
                 guidance += `**Next Steps**: Spawn a subagent for deep investigation.\n`;
-                guidance += '- Provide specific code context from the diff\n';
                 guidance +=
-                    '- Ask CURRENT-STATE questions (subagent cannot see diff)\n';
+                    '- Specify which files the subagent should examine\n';
                 guidance +=
-                    '- Consider: security analysis, dependency tracing, or pattern analysis\n';
+                    '- Sub-agents have `get_file_diff` and code exploration tools\n';
+                guidance += '- Ask focused questions about specific concerns\n';
                 break;
             case 'context_sufficient':
                 guidance += `**Next Steps**: Proceed to analysis and synthesis.\n`;

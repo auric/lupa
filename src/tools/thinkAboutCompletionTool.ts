@@ -49,7 +49,9 @@ export class ThinkAboutCompletionTool extends BaseTool {
             files_analyzed: z
                 .array(z.string())
                 .min(1)
-                .describe('List of files you analyzed from the diff'),
+                .describe(
+                    'List of files reviewed (directly via get_file_diff or via sub-agent delegation)'
+                ),
             files_in_diff: z
                 .number()
                 .int()
@@ -117,7 +119,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
         if (decision === 'needs_work') {
             guidance += '**Action**: Address gaps before submitting.\n';
             if (coveragePercent < 100) {
-                guidance += `- Analyze remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
+                guidance += `- Spawn additional sub-agents or use \`get_file_diff\` to cover remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
             }
             guidance += '- Ensure all plan items are complete\n';
             guidance += '- Verify all findings have evidence\n';
