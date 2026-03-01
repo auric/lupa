@@ -314,16 +314,17 @@ export class RecursiveStateManager {
 
         const coveredCount = allFiles.length - uncovered.length;
         return (
-            `⚠️ COVERAGE GAP: ${coveredCount}/${allFiles.length} files have been examined. ` +
+            `Coverage gap: ${coveredCount}/${allFiles.length} files have been examined. ` +
             `${uncovered.length} files have NOT been reviewed by any sub-agent:\n` +
             uncovered.map((f) => `- ${f}`).join('\n') +
             '\n\n' +
-            'Action required:\n' +
-            '1. Call `update_plan` to record current coverage status and findings so far\n' +
-            '2. Triage uncovered files using the diff metadata (line counts in `<diff_metadata>`):\n' +
-            '   - **Trivial changes** (<30 lines added+removed): review directly via `get_file_diff` — no sub-agent needed for version bumps, config tweaks, or formatting\n' +
-            '   - **Substantive changes** (30+ lines): group related files and delegate via `run_subagent` with SPECIFIC investigation questions informed by Phase 1 findings\n' +
-            '3. For delegated files, include context from completed sub-agent findings so new sub-agents know what concerns to look for'
+            'Action required: Delegate ALL uncovered files to sub-agents.\n' +
+            '1. Call `update_plan` to record current coverage status\n' +
+            '2. Group remaining files by concern and spawn `run_subagent` for each group\n' +
+            '3. Include context from completed sub-agent findings so new sub-agents know what concerns to look for\n' +
+            '\n' +
+            'Do NOT read diffs yourself — even small files deserve proper investigation via sub-agents. ' +
+            'Group trivial files together into a single sub-agent if needed.'
         );
     }
 

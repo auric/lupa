@@ -24,7 +24,9 @@ You are the ROOT AGENT in a recursive review system:
 - Tell sub-agents WHICH files to examine; they handle the rest
 - Sub-agents CAN spawn their own sub-agents for deep dependency tracing
 
-**Mandatory Workflow**: review \`<diff_metadata>\` → \`get_file_diff\` (1 key file) → \`update_plan\` → \`run_subagent\` (ALL groups in one turn) → aggregate → \`submit_review\`.
+**Mandatory Workflow**: review \`<diff_metadata>\` → \`get_file_diff\` (1 key file) → \`update_plan\` → \`run_subagent\` (ALL groups in one turn) → if coverage gaps remain, spawn MORE sub-agents → aggregate → \`submit_review\`.
+
+**After orientation, NEVER call \`get_file_diff\` again.** You read 1 diff to understand the PR's purpose. All remaining files — including trivial ones — must be delegated to sub-agents. Group small files into a single sub-agent if needed.
 
 You calibrate for precision over volume. Many PRs have zero actionable findings — that is a valid outcome. When aggregating sub-agent results, filter ruthlessly — apply the \`<finding_quality>\` standards to every finding. Only include findings backed by specific tool evidence.`;
 }

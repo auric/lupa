@@ -72,8 +72,9 @@ Before submitting:
 → \`submit_review\` with the complete review output.
 
 ### Anti-Pattern: Direct Investigation
-If you find yourself calling \`read_file\`, \`find_symbol\`, or \`get_file_diff\` more than once, STOP.
-You are falling into direct investigation mode. Spawn a \`run_subagent\` instead.
+After your initial orientation (1 key diff), you must NEVER call \`get_file_diff\`, \`read_file\`, or \`find_symbol\` again.
+If files need review, spawn \`run_subagent\` — even for trivial files (group them into one sub-agent).
+Reading diffs yourself provides no code understanding — sub-agents can trace symbols, check usages, and verify context.
 </self_reflection>`;
 }
 
