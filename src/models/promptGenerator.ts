@@ -214,50 +214,6 @@ export class PromptGenerator {
     }
 
     /**
-     * Generate file content section with proper structure
-     */
-    private generateFileContentSection(parsedDiff: DiffHunk[]): string {
-        let fileContentXml = '<files_to_review>\n';
-
-        for (const fileDiff of parsedDiff) {
-            const sanitizedPath = fileDiff.filePath.replace(/[<>]/g, '');
-            fileContentXml += `<file>\n<path>${sanitizedPath}</path>\n<changes>\n`;
-
-            for (const hunk of fileDiff.hunks) {
-                // Sanitize hunk header to prevent prompt-structural interference
-                const sanitizedHeader = hunk.hunkHeader.replace(/[<>]/g, '');
-                fileContentXml += `${sanitizedHeader}\n`;
-
-                // Reconstruct diff lines from parsed data
-                const diffLines = hunk.parsedLines.map((parsedLine) => {
-                    const prefix =
-                        parsedLine.type === 'added'
-                            ? '+'
-                            : parsedLine.type === 'removed'
-                              ? '-'
-                              : ' ';
-                    // Escape angle brackets in diff content to prevent
-                    // interference with the XML-like prompt structure
-                    return (
-                        prefix +
-                        parsedLine.content
-                            .replace(/&/g, '&amp;')
-                            .replace(/</g, '&lt;')
-                            .replace(/>/g, '&gt;')
-                    );
-                });
-
-                fileContentXml += diffLines.join('\n') + '\n\n';
-            }
-
-            fileContentXml += '</changes>\n</file>\n\n';
-        }
-
-        fileContentXml += '</files_to_review>\n\n';
-        return fileContentXml;
-    }
-
-    /**
      * Generate a concise analysis reminder based on PR size and mode.
      * Full methodology is in system prompt - this just provides context-specific nudges.
      */
