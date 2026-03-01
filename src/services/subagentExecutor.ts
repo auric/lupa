@@ -60,6 +60,8 @@ export interface SubagentExecuteOptions {
  * - Return raw response for parent LLM to interpret
  */
 export class SubagentExecutor {
+    private recursiveState: RecursiveStateManager | undefined;
+
     constructor(
         private readonly modelManager: CopilotModelManager,
         private readonly toolRegistry: ToolRegistry,
@@ -71,11 +73,36 @@ export class SubagentExecutor {
     ) {}
 
     /**
+     * Set the recursive state manager for aggregate progress reporting.
+     * Called after construction since RecursiveStateManager may be created later.
+     */
+    setRecursiveState(state: RecursiveStateManager): void {
+        this.recursiveState = state;
+    }
+
+    /**
      * Report progress with main analysis context prefix.
      */
     private reportProgress(message: string, increment?: number): void {
         if (!this.progressCallback) {
             return;
+        }
+
+        // When recursive state is available, show aggregate agent progress
+        if (this.recursiveState) {
+            const { running, completed, total } =
+                this.recursiveState.getAgentProgress();
+            if (total > 0) {
+                const mainIter = this.progressContext?.getCurrentIteration();
+                const mainMax = this.progressContext?.getMaxIterations();
+                const turnPrefix =
+                    mainIter && mainMax ? `Turn ${mainIter}/${mainMax} · ` : '';
+                this.progressCallback(
+                    `${turnPrefix}Agents: ${completed}/${total} done${running > 0 ? `, ${running} analyzing` : ''}`,
+                    increment
+                );
+                return;
+            }
         }
 
         if (this.progressContext) {
@@ -224,10 +251,6 @@ export class SubagentExecutor {
                                 'A partial answer is far more valuable than no answer. ' +
                                 'Stop investigating and write up what you have found.'
                             );
-                        }
-
-                        if (remaining <= Math.ceil(maxIterations * 0.3)) {
-                            return `\n\n[⏱️ Iterations: ${currentIteration}/${maxIterations} — ${remaining} remaining. Start wrapping up your investigation.]`;
                         }
 
                         if (currentIteration >= 3) {

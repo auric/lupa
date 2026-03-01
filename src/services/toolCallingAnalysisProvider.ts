@@ -99,6 +99,11 @@ export class ToolCallingAnalysisProvider {
             ? new RecursiveStateManager(maxRecursionDepth)
             : undefined;
 
+        // Wire recursive state to SubagentExecutor for aggregate progress reporting
+        if (recursiveState) {
+            subagentExecutor.setRecursiveState(recursiveState);
+        }
+
         // Register root agent in recursive state tree
         if (recursiveState) {
             recursiveState.registerAgent(

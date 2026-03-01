@@ -134,8 +134,14 @@ export class AnalysisOrchestrator implements vscode.Disposable {
                     });
 
                 try {
-                    const updateProgress = (message: string) => {
-                        progress.report({ message });
+                    const updateProgress = (
+                        message: string,
+                        incrementPercent?: number
+                    ) => {
+                        progress.report({
+                            message,
+                            increment: incrementPercent,
+                        });
                     };
 
                     updateProgress('Starting analysis...');

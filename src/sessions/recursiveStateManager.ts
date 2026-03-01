@@ -411,6 +411,28 @@ export class RecursiveStateManager {
     }
 
     /**
+     * Get aggregate progress counts for sub-agents (excluding root).
+     * Used by progress UI to show "3/5 agents done" instead of per-agent noise.
+     */
+    getAgentProgress(): { running: number; completed: number; total: number } {
+        let running = 0;
+        let completed = 0;
+        let total = 0;
+        for (const node of this.tree.values()) {
+            if (node.agentId === 'root') {
+                continue;
+            }
+            total++;
+            if (node.status === 'running') {
+                running++;
+            } else if (TERMINAL_STATUSES.has(node.status)) {
+                completed++;
+            }
+        }
+        return { running, completed, total };
+    }
+
+    /**
      * Generate a hierarchical agent ID.
      * root → child-1 → child-1.1 → child-1.1.1
      */

@@ -141,7 +141,7 @@ export class ConversationRunner {
         let lastSubstantiveResponse = '';
         let windDownInjected = false;
         let windDownNudged = false;
-        const WIND_DOWN_THRESHOLD = 0.8;
+        const WIND_DOWN_THRESHOLD = 0.85;
         const windDownIteration = Math.floor(
             config.maxIterations * WIND_DOWN_THRESHOLD
         );
@@ -184,9 +184,9 @@ export class ConversationRunner {
                     const remaining = config.maxIterations - iteration;
                     conversation.addUserMessage(
                         `\u23f3 Budget check: You have used ${iteration} of ${config.maxIterations} iterations. ` +
-                            `You have ${remaining} iterations remaining. ` +
-                            `Start wrapping up: summarize your findings and provide your analysis. ` +
-                            `If you have critical tool calls left, make them now — but prioritize delivering your findings.`
+                            `You have ${remaining} remaining. ` +
+                            `Continue investigating if you have important work remaining, ` +
+                            `but plan to summarize your findings within the next few iterations.`
                     );
                     Log.info(
                         `${logPrefix} Wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
