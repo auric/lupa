@@ -39,7 +39,7 @@ Lupa provides **AI-powered code review** directly within VS Code using GitHub Co
 
 ### 🔄 Recursive Language Model (RLM)
 
-- **Diff-on-demand**: PR diffs are not embedded in the prompt; the LLM requests file diffs via `list_changed_files` and `get_file_diff` tools
+- **Diff-on-demand**: PR diffs are not embedded in the prompt; the LLM receives `<diff_metadata>` and fetches specific file diffs via the `get_file_diff` tool
 - **Recursive agent tree**: root controller decomposes the PR into concern groups, delegates to depth-limited child agents
 - **Budget tracking**: `RecursiveStateManager` enforces depth limits, per-agent iteration budgets, and total agent caps
 

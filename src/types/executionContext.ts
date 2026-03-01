@@ -68,8 +68,7 @@ export interface ExecutionContext {
 
     /**
      * Parsed diff data for on-demand access via diff tools.
-     * Stored in context for on-demand access via diff tools.
-     * Tools like list_changed_files and get_file_diff read from this.
+     * The get_file_diff tool reads from this to return diffs on demand.
      * Present only during analysis mode (not exploration mode).
      */
     parsedDiff?: DiffHunk[];

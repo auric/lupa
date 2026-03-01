@@ -614,7 +614,7 @@ Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 5
 
 **Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
 
-**Non-recursive mode** (`maxRecursionDepth === 0`): A single agent reviews all files directly with subagent delegation for larger PRs. Subagents can call `get_file_diff` to read diffs on demand but do not have access to `list_changed_files`; the parent agent must provide explicit file paths when delegating work.
+**Non-recursive mode** (`maxRecursionDepth === 0`): A single agent reviews all files directly with subagent delegation for larger PRs. Subagents can call `get_file_diff` to read diffs on demand but do not see `<diff_metadata>`; the parent agent must provide explicit file paths when delegating work.
 
 **RecursiveStateManager** (`src/sessions/recursiveStateManager.ts`) tracks the agent tree during analysis:
 

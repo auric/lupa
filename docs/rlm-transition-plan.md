@@ -209,7 +209,7 @@ ToolCallingAnalysisProvider.analyze()
     ▼
 ConversationRunner.run() — Root Agent Loop
     ├── ROOT AGENT Phase 1: DECOMPOSE
-    │   ├── Call list_changed_files for full scope
+    │   ├── Review <diff_metadata> for full scope
     │   ├── Read 1 key diff (largest/riskiest file) for orientation
     │   │   └── ⚠️ Stop after 1 diff — sub-agents read all remaining diffs
     │   ├── Classify changes into concern groups

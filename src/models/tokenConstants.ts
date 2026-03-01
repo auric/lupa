@@ -35,7 +35,5 @@ export class TokenConstants {
             'Response too large. Please refine parameters for more specific results.',
         CONTEXT_FULL:
             'Previous tool results removed due to context limits. Provide final analysis with available information.',
-        TOOLS_DISABLED:
-            'Tools disabled due to large diff. Analysis based on truncated diff content.',
     } as const;
 }

@@ -99,10 +99,9 @@ These components are created fresh for each analysis session, not managed by Ser
 
 ### Diff Tools (RLM)
 
-| Tool                   | File                      | Name                 | Description                             |
-| ---------------------- | ------------------------- | -------------------- | --------------------------------------- |
-| `ListChangedFilesTool` | `listChangedFilesTool.ts` | `list_changed_files` | List changed files with diff statistics |
-| `GetFileDiffTool`      | `getFileDiffTool.ts`      | `get_file_diff`      | Retrieve diff for specific file(s)      |
+| Tool              | File                 | Name            | Description                        |
+| ----------------- | -------------------- | --------------- | ---------------------------------- |
+| `GetFileDiffTool` | `getFileDiffTool.ts` | `get_file_diff` | Retrieve diff for specific file(s) |
 
 ### Reasoning Tools
 

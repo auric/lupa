@@ -49,7 +49,7 @@ export class ToolExecutor {
      *   - Main analysis: Full context with planManager, subagentExecutor, etc.
      *   - Subagents: Minimal context with just cancellationToken
      *   - Tests: Use createMockExecutionContext() from mockFactories.ts
-     * @param maxToolCalls Maximum number of tool calls before rate limiting (defaults to ANALYSIS_LIMITS.maxToolCalls)
+     * @param maxToolCalls Maximum number of tool calls before rate limiting (defaults to maxIterations * toolCallMultiplier)
      */
     constructor(
         private toolRegistry: ToolRegistry,
