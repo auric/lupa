@@ -64,7 +64,7 @@ export class GetFileDiffTool extends BaseTool {
                 .replace(/^\.\//, '');
             const requestedPath = path.posix.normalize(normalized);
 
-            if (requestedPath.startsWith('..')) {
+            if (requestedPath === '..' || requestedPath.startsWith('../')) {
                 notFound.push(`${rawPath.trim()} (path traversal not allowed)`);
                 continue;
             }
