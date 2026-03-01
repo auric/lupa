@@ -24,7 +24,7 @@ export function generateSubagentGuidance(): string {
 
 ✅ **Subagents have \`get_file_diff\`** — they read diffs for the files you assign.
 
-⚠️ **Subagents do NOT have \`list_changed_files\`** — you must tell them which files to examine. Include specific file paths in every subagent task.
+⚠️ **Subagents do NOT see \`<diff_metadata>\`** — you must tell them which files to examine. Include specific file paths in every subagent task.
 
 ### Task Format
 

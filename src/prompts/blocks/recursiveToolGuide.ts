@@ -9,9 +9,9 @@ export function generateRecursiveToolGuide(): string {
 
 | Tool | When to Use |
 |------|-------------|
-| \`list_changed_files\` | **FIRST** — see all changed files and statistics |
-| \`get_file_diff\` | **ONCE** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
-| \`update_plan\` | **THIRD** — decompose PR into concern groups |
+| \`<diff_metadata>\` (in prompt) | **ALREADY PROVIDED** — all changed files and line counts are in your conversation |
+| \`get_file_diff\` | **FIRST TOOL CALL** — read 1 key diff (largest/riskiest) to understand the PR's purpose |
+| \`update_plan\` | **SECOND** — decompose PR into concern groups |
 | \`run_subagent\` | **PRIMARY TOOL** — make multiple calls in one response (parallel execution) |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
