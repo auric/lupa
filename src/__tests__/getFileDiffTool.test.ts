@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { GetFileDiffTool } from '../tools/getFileDiffTool';
 import { createMockExecutionContext } from './testUtils/mockFactories';
 import type { DiffHunk } from '../types/contextTypes';
+import { TokenConstants } from '../models/tokenConstants';
 
 function createTestDiff(): DiffHunk[] {
     return [
@@ -520,5 +521,71 @@ describe('GetFileDiffTool', () => {
 
         const result = tool.schema.safeParse({ file_paths: tenFiles });
         expect(result.success).toBe(true);
+    });
+
+    it('should omit files that would exceed response size limit', async () => {
+        // Create diffs where each file produces output close to the limit
+        const largeContent = 'x'.repeat(25000);
+        const largeDiffs: DiffHunk[] = Array.from({ length: 5 }, (_, i) => ({
+            filePath: `src/large${i}.ts`,
+            isNewFile: false,
+            isDeletedFile: false,
+            originalHeader: `diff --git a/src/large${i}.ts b/src/large${i}.ts`,
+            hunks: [
+                {
+                    oldStart: 1,
+                    oldLines: 1,
+                    newStart: 1,
+                    newLines: 1,
+                    hunkId: `src/large${i}.ts:1`,
+                    hunkHeader: '@@ -1,1 +1,1 @@',
+                    parsedLines: [
+                        {
+                            type: 'added' as const,
+                            content: largeContent,
+                            lineNumber: 1,
+                        },
+                    ],
+                },
+            ],
+        }));
+
+        const context = createMockExecutionContext({
+            parsedDiff: largeDiffs,
+        });
+
+        const result = await tool.execute(
+            {
+                file_paths: largeDiffs.map((d) => d.filePath),
+            },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        // Should include some files but omit others
+        expect(result.data).toContain('src/large0.ts');
+        expect(result.data).toContain('omitted due to response size limit');
+        // Total output must be under the limit
+        expect(result.data!.length).toBeLessThanOrEqual(
+            TokenConstants.MAX_TOOL_RESPONSE_CHARS
+        );
+    });
+
+    it('should include all files when combined output fits within limit', async () => {
+        const context = createMockExecutionContext({
+            parsedDiff: createTestDiff(),
+        });
+
+        const result = await tool.execute(
+            {
+                file_paths: ['src/services/auth.ts', 'src/utils/helpers.ts'],
+            },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('auth.ts');
+        expect(result.data).toContain('helpers.ts');
+        expect(result.data).not.toContain('omitted');
     });
 });

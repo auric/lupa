@@ -3,6 +3,7 @@ import * as path from 'path';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { TokenConstants } from '../models/tokenConstants';
 
 /**
  * Tool that returns the actual diff content for one or more specific files.
@@ -105,7 +106,31 @@ export class GetFileDiffTool extends BaseTool {
             );
         }
 
-        let output = results.join('\n');
+        // Build output incrementally with size guard to avoid ToolExecutor
+        // rejecting the entire response when combined diffs exceed the limit.
+        const maxChars = TokenConstants.MAX_TOOL_RESPONSE_CHARS;
+        let output = '';
+        const omitted: string[] = [];
+
+        for (let i = 0; i < results.length; i++) {
+            const candidate = results[i]!;
+            if (
+                output.length + candidate.length + 1 > maxChars &&
+                output.length > 0
+            ) {
+                // Remaining files won't fit — collect their paths for the note
+                for (let j = i; j < results.length; j++) {
+                    const filePath = file_paths[j] ?? `file ${j + 1}`;
+                    omitted.push(filePath);
+                }
+                break;
+            }
+            output += (output.length > 0 ? '\n' : '') + candidate;
+        }
+
+        if (omitted.length > 0) {
+            output += `\n\nNote: ${omitted.length} file(s) omitted due to response size limit — request them in a separate call: ${omitted.join(', ')}`;
+        }
 
         if (notFound.length > 0) {
             output += `\n\nNote: No diff found for: ${notFound.join(', ')}`;
