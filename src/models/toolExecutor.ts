@@ -54,7 +54,8 @@ export class ToolExecutor {
     constructor(
         private toolRegistry: ToolRegistry,
         private executionContext: ExecutionContext,
-        private readonly maxToolCalls: number = ANALYSIS_LIMITS.maxToolCalls
+        private readonly maxToolCalls: number = ANALYSIS_LIMITS.maxIterations *
+            ANALYSIS_LIMITS.toolCallMultiplier
     ) {
         // Fail fast if ExecutionContext lacks cancellationToken - catches misconfigured callers early
         if (!executionContext?.cancellationToken) {

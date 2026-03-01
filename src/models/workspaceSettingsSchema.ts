@@ -8,8 +8,13 @@ import { LOG_LEVELS } from './loggingTypes';
 export const ANALYSIS_LIMITS = {
     maxIterations: 600,
     requestTimeoutSeconds: 300,
-    maxSubagentsPerSession: 50,
-    maxToolCalls: 600,
+    maxSubagentsPerSession: 75,
+    /**
+     * Multiplier for computing per-session tool call limit from maxIterations.
+     * Each iteration may produce 1-3 tool calls; multiplier of 3 gives headroom
+     * without letting a pathological LLM run indefinitely.
+     */
+    toolCallMultiplier: 3,
 } as const;
 
 export const RECURSION_LIMITS = {

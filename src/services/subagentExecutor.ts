@@ -9,6 +9,7 @@ import {
     SubagentLimits,
     RECURSIVE_CHILD_DISALLOWED_TOOLS,
 } from '../models/toolConstants';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import { SubagentStreamAdapter } from '../models/subagentStreamAdapter';
 import type { SubagentTask, SubagentResult } from '../types/modelTypes';
 import type {
@@ -160,7 +161,8 @@ export class SubagentExecutor {
 
             const toolExecutor = new ToolExecutor(
                 filteredRegistry,
-                childContext
+                childContext,
+                maxIterations * ANALYSIS_LIMITS.toolCallMultiplier
             );
             const conversationRunner = new ConversationRunner(
                 this.modelManager,

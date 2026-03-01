@@ -140,6 +140,11 @@ export class ConversationRunner {
         let rateLimitRetries = 0;
         let lastSubstantiveResponse = '';
         let windDownInjected = false;
+        let windDownNudged = false;
+        const WIND_DOWN_THRESHOLD = 0.8;
+        const windDownIteration = Math.floor(
+            config.maxIterations * WIND_DOWN_THRESHOLD
+        );
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
@@ -166,6 +171,27 @@ export class ConversationRunner {
                 const vscodeTools = config.tools.map((tool) =>
                     tool.getVSCodeTool()
                 );
+
+                // Early wind-down nudge at ~80% of budget for subagents.
+                // Prompt-based budget management doesn't work — LLMs can't count
+                // iterations. This code-injected message gives a concrete signal.
+                if (
+                    !config.requiresExplicitCompletion &&
+                    iteration === windDownIteration &&
+                    !windDownNudged
+                ) {
+                    windDownNudged = true;
+                    const remaining = config.maxIterations - iteration;
+                    conversation.addUserMessage(
+                        `\u23f3 Budget check: You have used ${iteration} of ${config.maxIterations} iterations. ` +
+                            `You have ${remaining} iterations remaining. ` +
+                            `Start wrapping up: summarize your findings and provide your analysis. ` +
+                            `If you have critical tool calls left, make them now — but prioritize delivering your findings.`
+                    );
+                    Log.info(
+                        `${logPrefix} Wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                    );
+                }
 
                 // Wind-down: on the last iteration for non-explicit-completion
                 // conversations (subagents), force text response by removing tools
