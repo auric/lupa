@@ -594,11 +594,12 @@ export class ConversationRunner {
             const timer = setTimeout(resolve, ms);
             const disposable = token.onCancellationRequested(() => {
                 clearTimeout(timer);
+                clearTimeout(cleanupTimer);
                 disposable.dispose();
                 resolve();
             });
             // Clean up listener when timer fires normally
-            setTimeout(() => disposable.dispose(), ms + 1);
+            const cleanupTimer = setTimeout(() => disposable.dispose(), ms + 1);
         });
     }
 
