@@ -54,7 +54,7 @@ npm run package        # Production build
 - [Source Tree Analysis](source-tree-analysis.md) - Annotated directory structure
 - [Component Inventory](component-inventory.md) - All components, services, and tools
 - [Development Guide](development-guide.md) - Build, test, and contribute
-- [RLM Transition Plan](rlm-transition-plan.md) - Recursive Language Model implementation plan
+- [RLM Transition Plan](rlm-transition-plan.md) - Historical design document for the Recursive Language Model transition (configuration details may not match current implementation)
 
 ### Additional References
 

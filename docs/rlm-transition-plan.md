@@ -2,7 +2,7 @@
 
 > **Based on**: [Recursive Language Models](https://arxiv.org/abs/2512.24601) (Zhang, Kraska, Khattab — MIT CSAIL, Dec 2025)
 > **Target**: Lupa VS Code Extension — PR Analysis with GPT-4.1
-> **Status**: Implementation Plan (Ready for Development)
+> **Status**: Implemented — this document is retained as a historical design reference. Some settings described below (e.g., `maxIterations`, `maxSubagentsPerSession`) are now hardcoded constants in `ANALYSIS_LIMITS` rather than user-configurable settings. See `src/models/workspaceSettingsSchema.ts` for current values.
 
 ---
 

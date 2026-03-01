@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2. Set to 0 in `.vscode/lupa.json` to use flat single-agent analysis.
 - **Tool response limit tripled** (20K → 60K chars) and **file read limit doubled** (200 → 400 lines) for better context gathering.
-- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (default 30) is the single spawn cap for both flat and recursive modes.
+- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (hardcoded to 50) is the single spawn cap for both flat and recursive modes.
 - **`generateToolCallingUserPrompt` renamed to `generateUserPrompt`**: The method now accepts `recursiveMode` and `maxSubagents` parameters for recursive prompt generation.
 - **Updated documentation**: Architecture docs, component inventory, and project overview updated for RLM architecture.
 
