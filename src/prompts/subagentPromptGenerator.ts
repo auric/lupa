@@ -123,13 +123,20 @@ Examine: [function1], [function2]"
 context: "[What you found so far and why this needs deeper investigation]"
 \`\`\`
 
-**Budget:** Sub-agents each get **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iterations (not deducted from your budget). After they return, you still have your remaining iterations to aggregate results and write findings.`
+**Budget:** Sub-agents each get **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iterations (not deducted from your budget). After they return, you still have your remaining iterations to aggregate results and write findings.
+
+**Budget management:**
+- After using ~50% of your iterations, assess: is there significant work remaining?
+- If YES and you have remaining files/concerns: spawn sub-agents NOW rather than trying to finish everything yourself
+- Even for 2-3 files, delegate if investigation is proving complex (large diffs, many cross-references)
+- Always reserve at least 5 iterations to aggregate sub-agent results and write your final response
+- Running out of budget with incomplete findings is the worst outcome — delegate early rather than late`
             : `
 ### Recursion Limit
 
 You **cannot** spawn sub-agents.
 Complete your investigation within your iteration budget.
-Note any uninvestigated areas in your response so the parent agent can follow up.`;
+**Budget management:** Reserve 3-5 iterations for writing your findings. If you can't fully investigate all areas, focus on the highest-risk items and note uninvestigated areas in your response so the parent agent can follow up.`;
 
         // Sanitize task text to prevent prompt injection from PR descriptions/commit messages
         const sanitizedTask = task.task
