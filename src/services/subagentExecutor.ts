@@ -293,7 +293,7 @@ export class SubagentExecutor {
             // be cancelled (e.g., timeout fired while runner was on its last iteration).
             if (conversationRunner.hitMaxIterations) {
                 Log.warn(
-                    `${logLabel} Reached max iterations after ${duration}ms with ${toolCallsMade} tool calls`
+                    `${logLabel} Reached max iterations (${currentIteration}/${maxIterations}) after ${duration}ms with ${toolCallsMade} tool calls`
                 );
                 return {
                     success: false,
@@ -307,7 +307,7 @@ export class SubagentExecutor {
             // Rate-limit exhaustion: runner ran out of retries, not iteration budget.
             if (conversationRunner.hitRateLimit) {
                 Log.warn(
-                    `${logLabel} Rate limited after ${duration}ms with ${toolCallsMade} tool calls`
+                    `${logLabel} Rate limited at iteration ${currentIteration}/${maxIterations} after ${duration}ms with ${toolCallsMade} tool calls`
                 );
                 return {
                     success: false,
@@ -322,7 +322,7 @@ export class SubagentExecutor {
             // comparing the response string, avoiding any risk of false detection.
             if (conversationRunner.wasCancelled) {
                 Log.warn(
-                    `${logLabel} Cancelled after ${duration}ms with ${toolCallsMade} tool calls`
+                    `${logLabel} Cancelled at iteration ${currentIteration}/${maxIterations} after ${duration}ms with ${toolCallsMade} tool calls`
                 );
                 return {
                     success: false,
@@ -334,7 +334,7 @@ export class SubagentExecutor {
             }
 
             Log.info(
-                `${logLabel} Completed in ${duration}ms with ${toolCallsMade} tool calls`
+                `${logLabel} Completed in ${duration}ms (${currentIteration}/${maxIterations} iterations, ${toolCallsMade} tool calls)`
             );
 
             return {
