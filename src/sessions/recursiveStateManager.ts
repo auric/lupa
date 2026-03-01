@@ -247,7 +247,7 @@ export class RecursiveStateManager {
         }
 
         const budget = this.calculateChildBudget(parentId);
-        // Future-proofing: currently always returns DEFAULT_CHILD_BUDGET (30),
+        // Future-proofing: currently always returns DEFAULT_CHILD_BUDGET,
         // but this guard activates if the budget model evolves (e.g., dynamic allocation).
         if (budget < RecursionConstants.MIN_VIABLE_BUDGET) {
             return {

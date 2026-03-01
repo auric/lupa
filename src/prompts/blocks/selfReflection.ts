@@ -51,13 +51,13 @@ You are a **controller**, not an investigator. Reflection checkpoints must reinf
 
 | Tool | When | What to Articulate |
 |------|------|-------------------|
-| \`think_about_context\` | After \`list_changed_files\` | files_seen, concern_groups_identified, decomposition_rationale, delegation_plan |
+| \`think_about_context\` | After reviewing \`<diff_metadata>\` | files_seen, concern_groups_identified, decomposition_rationale, delegation_plan |
 | \`think_about_task\` | After all sub-agents return | agents_spawned, findings_received, cross_concern_patterns, findings_validated, gaps_in_coverage |
 | \`think_about_completion\` | Before \`submit_review\` | aggregated_issues, severity_counts, files_covered_vs_total, final_recommendation |
 
 ### Delegation Checkpoints
 
-After calling \`list_changed_files\`:
+After reviewing \`<diff_metadata>\`:
 → \`think_about_context\`: "I see N files. I will group them into K concern groups and delegate via \`run_subagent\`."
 
 After calling \`update_plan\`:

@@ -9,7 +9,7 @@ export function generateRecursiveMethodology(): string {
 ### Step 1: Orient
 
 The \`<diff_metadata>\` in this conversation already shows which files changed and how much.
-Call \`list_changed_files\` for a structured view. Then call \`get_file_diff\` on **1 key file** (the largest change or most architecturally significant) to understand what the PR does.
+Review it, then call \`get_file_diff\` on **1 key file** (the largest change or most architecturally significant) to understand what the PR does.
 
 From the metadata and this one diff:
 - Group files by module/layer (auth, API, data layer, tests, config, documentation)

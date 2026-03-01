@@ -116,8 +116,7 @@ export class PromptGenerator {
         section += `Files changed: ${parsedDiff.length}\n`;
         section += `Total lines: +${totalAdded} -${totalRemoved}\n`;
         section += `\nChanged files:\n${fileSummaries.join('\n')}\n`;
-        section +=
-            '\nUse `list_changed_files` for detailed statistics and `get_file_diff` to examine specific file changes.\n';
+        section += '\nUse `get_file_diff` to examine specific file changes.\n';
         section += '</diff_metadata>\n\n';
 
         return section;
@@ -148,7 +147,7 @@ export class PromptGenerator {
         }
 
         reminder += `**Workflow**:\n`;
-        reminder += `1. Call \`list_changed_files\` to understand the scope\n`;
+        reminder += `1. Review \`<diff_metadata>\` above \u2014 you already have all file names and line counts\n`;
         reminder += `2. Use \`get_file_diff\` to examine key files and understand the changes\n`;
         reminder += `3. Create a plan with \`update_plan\` based on what you've seen\n`;
         reminder += `4. Continue examining remaining files with \`get_file_diff\`\n`;
@@ -191,7 +190,7 @@ export class PromptGenerator {
 
         reminder += '**Workflow**:\n';
         reminder +=
-            '1. Call `list_changed_files` for a structured view of all changes\n';
+            '1. Review `<diff_metadata>` above \u2014 you already have all file names and line counts\n';
         reminder +=
             '2. Call `get_file_diff` on **1 key file** (largest change or riskiest) to understand the PR\n';
         reminder += '3. Call `update_plan` — decompose into concern groups\n';

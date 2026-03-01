@@ -556,7 +556,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
                 10
             );
 
-            expect(prompt).toContain('1. Call `list_changed_files`');
+            expect(prompt).toContain('1. Review `<diff_metadata>` above');
             expect(prompt).toContain(
                 '2. Call `get_file_diff` on **1 key file**'
             );
