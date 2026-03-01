@@ -224,6 +224,13 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                         [],
                         filesExamined
                     );
+                } else if (result.error === 'rate_limited') {
+                    // Agent did real work but ran out of rate-limit retries — mark completed with partial data
+                    recursiveState.completeAgent(
+                        childAgentId,
+                        [],
+                        filesExamined
+                    );
                 } else {
                     recursiveState.failAgent(
                         childAgentId,
@@ -260,6 +267,19 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     partialFindings
                         ? `${maxIterMsg}\n\nPartial findings:\n${partialFindings}`
                         : maxIterMsg
+                );
+            }
+
+            if (!result.success && result.error === 'rate_limited') {
+                // No rollback: subagent did real work before rate-limit exhaustion
+                const rateLimitMsg = SubagentErrors.rateLimited(
+                    result.toolCallsMade
+                );
+                const partialFindings = result.response?.trim();
+                return toolError(
+                    partialFindings
+                        ? `${rateLimitMsg}\n\nPartial findings:\n${partialFindings}`
+                        : rateLimitMsg
                 );
             }
 

@@ -88,6 +88,7 @@ interface HandleToolCallsResult {
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
     private _hitMaxIterations = false;
+    private _hitRateLimit = false;
     private _wasCancelled = false;
 
     /** Maximum number of consecutive rate-limit retries before giving up */
@@ -105,6 +106,11 @@ export class ConversationRunner {
     /** Whether the last run() exited due to reaching the max iteration limit. */
     get hitMaxIterations(): boolean {
         return this._hitMaxIterations;
+    }
+
+    /** Whether the last run() exited due to rate-limit retry exhaustion. */
+    get hitRateLimit(): boolean {
+        return this._hitRateLimit;
     }
 
     /** Whether the last run() exited due to cancellation. */
@@ -130,6 +136,7 @@ export class ConversationRunner {
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
+        this._hitRateLimit = false;
         this._wasCancelled = false;
 
         while (iteration < config.maxIterations) {
@@ -399,7 +406,7 @@ export class ConversationRunner {
                         Log.error(
                             `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
                         );
-                        this._hitMaxIterations = true;
+                        this._hitRateLimit = true;
                         return (
                             lastSubstantiveResponse ||
                             'Rate limited by the API after multiple retries. Please try again later.'
@@ -731,6 +738,7 @@ export class ConversationRunner {
     reset(): void {
         this.tokenValidator = null;
         this._hitMaxIterations = false;
+        this._hitRateLimit = false;
         this._wasCancelled = false;
     }
 }

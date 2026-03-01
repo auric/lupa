@@ -303,6 +303,20 @@ export class SubagentExecutor {
                 };
             }
 
+            // Rate-limit exhaustion: runner ran out of retries, not iteration budget.
+            if (conversationRunner.hitRateLimit) {
+                Log.warn(
+                    `${logLabel} Rate limited after ${duration}ms with ${toolCallsMade} tool calls`
+                );
+                return {
+                    success: false,
+                    response,
+                    toolCallsMade,
+                    toolCalls,
+                    error: 'rate_limited',
+                };
+            }
+
             // Check cancellation using the runner's boolean flag rather than
             // comparing the response string, avoiding any risk of false detection.
             if (conversationRunner.wasCancelled) {

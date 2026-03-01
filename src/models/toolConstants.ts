@@ -108,5 +108,9 @@ export const SubagentErrors = {
         `Subagent reached maximum iterations (${maxIter}) after ${toolCallsMade} tool calls. ` +
         `Investigation may be incomplete. Break the task into smaller, more focused subtasks.`,
 
+    rateLimited: (toolCallsMade: number) =>
+        `Subagent was rate limited after ${toolCallsMade} tool calls. ` +
+        `Wait before spawning more subagents, or use direct tools instead.`,
+
     failed: (error: string) => `Subagent failed: ${error}`,
 } as const;
