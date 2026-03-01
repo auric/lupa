@@ -285,6 +285,7 @@ Requires file_path where the symbol is defined as starting point.`;
 
         let definitionChecks = 0;
         let firstOccurrence: vscode.Position | null = null;
+        let firstResolvableOccurrence: vscode.Position | null = null;
 
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             if (token.isCancellationRequested) {
@@ -304,10 +305,12 @@ Requires file_path where the symbol is defined as starting point.`;
                 }
 
                 if (definitionChecks >= MAX_DEFINITION_CHECKS) {
+                    const fallback =
+                        firstResolvableOccurrence ?? firstOccurrence;
                     Log.debug(
-                        `Definition check cap (${MAX_DEFINITION_CHECKS}) reached for ${symbolName}, using first occurrence`
+                        `Definition check cap (${MAX_DEFINITION_CHECKS}) reached for ${symbolName}, using ${firstResolvableOccurrence ? 'first resolvable' : 'first'} occurrence`
                     );
-                    return firstOccurrence;
+                    return fallback;
                 }
                 definitionChecks++;
 
@@ -326,6 +329,12 @@ Requires file_path where the symbol is defined as starting point.`;
                         `Definition check for ${symbolName}`,
                         token
                     );
+
+                    if (definitions && definitions.length > 0) {
+                        if (!firstResolvableOccurrence) {
+                            firstResolvableOccurrence = position;
+                        }
+                    }
 
                     // If we get back the same location, this is likely the definition
                     if (

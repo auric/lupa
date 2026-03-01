@@ -813,6 +813,98 @@ describe('FindUsagesTool', () => {
             expect(result.success).toBe(true);
             expect(result.data).toContain('MyClass');
         });
+
+        it('should prefer first resolvable occurrence over first textual match when cap is hit', async () => {
+            // Simulate a file where the symbol appears 12+ times:
+            // - first occurrence is in a comment (definition provider returns empty)
+            // - second occurrence resolves to a definition in another file (resolvable but not local def)
+            // - remaining occurrences also don't match the local definition
+            // When the cap (10) is hit, should return the 2nd occurrence (first resolvable), not the 1st (comment)
+            const lines = [
+                '// MyClass is used here', // line 0: comment, first textual match
+                'import { MyClass } from "./x";', // line 1: resolvable (import)
+                'const a = new MyClass();', // line 2
+                'const b = new MyClass();', // line 3
+                'const c = new MyClass();', // line 4
+                'const d = new MyClass();', // line 5
+                'const e = new MyClass();', // line 6
+                'const f = new MyClass();', // line 7
+                'const g = new MyClass();', // line 8
+                'const h = new MyClass();', // line 9
+                'const i = new MyClass();', // line 10: 11th occurrence, cap already hit
+                'class MyClass {}', // line 11: actual definition (never reached)
+            ];
+
+            const mockDocument = {
+                getText: () => lines.join('\n'),
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            const mockReferences = [
+                {
+                    uri: {
+                        toString: () => 'file:///test/workspace/src/other.ts',
+                        fsPath: '/test/workspace/src/other.ts',
+                    },
+                    range: {
+                        start: { line: 5, character: 0 },
+                        end: { line: 5, character: 7 },
+                    },
+                },
+            ];
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            let definitionCallCount = 0;
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        definitionCallCount++;
+                        if (definitionCallCount === 1) {
+                            // First occurrence (comment) — not resolvable
+                            return Promise.resolve([]);
+                        }
+                        // Subsequent occurrences — resolvable but definition in another file
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/other.ts',
+                                },
+                                range: {
+                                    start: { line: 0, character: 0 },
+                                    end: { line: 0, character: 7 },
+                                    contains: () => false,
+                                },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve(mockReferences);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
+
+            // Should succeed: the cap is hit, but the first resolvable occurrence (line 1)
+            // is used instead of the first textual match (line 0, a comment)
+            expect(result.success).toBe(true);
+            // The definition provider was called exactly 10 times (the cap)
+            expect(definitionCallCount).toBe(10);
+        });
     });
 
     describe('LocationLink handling', () => {
