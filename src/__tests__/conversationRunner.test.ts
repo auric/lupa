@@ -1056,14 +1056,14 @@ describe('ConversationRunner', () => {
     });
 
     describe('Explicit Completion and Nudging', () => {
-        it('should nudge model when requiresExplicitCompletion is true and no tool calls', async () => {
+        it('should send soft continue on first no-tool-call, then nudge submit_review on second', async () => {
             const modelManager = createMockModelManager([
-                // First response: no tool calls, should trigger nudge
+                // First response: no tool calls, should trigger soft continue
                 {
                     content: 'Here is my initial analysis...',
                     toolCalls: undefined,
                 },
-                // Second response: model calls submit_review after nudge
+                // Second response: model calls submit_review after soft continue
                 {
                     content: null,
                     toolCalls: [
@@ -1106,12 +1106,14 @@ describe('ConversationRunner', () => {
             expect(result).toBe('Final review content');
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
 
-            // Verify nudge message was added to conversation
+            // Verify soft continue message was added (not the firm nudge)
             const history = conversation.getHistory();
-            const nudgeMessage = history.find(
-                (m) => m.role === 'user' && m.content?.includes('submit_review')
+            const softContinue = history.find(
+                (m) =>
+                    m.role === 'user' &&
+                    m.content?.includes('Continue investigating')
             );
-            expect(nudgeMessage).toBeDefined();
+            expect(softContinue).toBeDefined();
         });
 
         it('should accept response after MAX_COMPLETION_NUDGES when model never calls submit_review', async () => {

@@ -356,15 +356,31 @@ export class ConversationRunner {
                         response.content && response.content.length > 100
                             ? response.content.slice(-100)
                             : '';
-                    Log.info(
-                        `${logPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
-                            `Content preview: "${contentPreview}...". ` +
-                            `Ending: "...${contentEnding}". Nudging to use submit_review.`
-                    );
-                    conversation.addUserMessage(
-                        'To complete your review, call the `submit_review` tool with your full review content. ' +
-                            'If you still have analysis to do, continue using the available tools.'
-                    );
+
+                    if (completionNudgeCount === 1) {
+                        // First no-tool-call response: the LLM may be synthesizing
+                        // subagent results or reasoning before making more tool calls.
+                        // Use a soft message that encourages continuing investigation.
+                        Log.info(
+                            `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                                `Content preview: "${contentPreview}...". ` +
+                                `Ending: "...${contentEnding}". Soft continue (not nudging submit_review yet).`
+                        );
+                        conversation.addUserMessage(
+                            'Continue investigating. When you have completed a thorough analysis, ' +
+                                'call `submit_review` to deliver your findings.'
+                        );
+                    } else {
+                        Log.info(
+                            `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                                `Content preview: "${contentPreview}...". ` +
+                                `Ending: "...${contentEnding}". Nudging to use submit_review.`
+                        );
+                        conversation.addUserMessage(
+                            'To complete your review, call the `submit_review` tool with your full review content. ' +
+                                'If you still have analysis to do, continue using the available tools.'
+                        );
+                    }
                     continue;
                 }
 
