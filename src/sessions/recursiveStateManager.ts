@@ -88,7 +88,8 @@ export const RecursionConstants = {
 
 /**
  * Tracks the tree of recursive review agents, enforces depth/budget limits,
- * aggregates findings, and prevents duplicate file analysis.
+ * aggregates findings, and tracks covered files to help callers avoid
+ * duplicate file analysis.
  *
  * Created per-analysis for concurrency safety.
  */
