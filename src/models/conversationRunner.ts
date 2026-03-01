@@ -33,6 +33,13 @@ export interface ConversationRunnerConfig {
      * Subagents and exploration modes can complete with direct responses.
      */
     requiresExplicitCompletion?: boolean;
+    /**
+     * Called after each iteration's tool calls complete.
+     * Receives the names of tools that were executed in the current iteration.
+     * Can return a message to inject into the conversation before the next LLM turn
+     * (e.g., coverage gap reports after subagent rounds).
+     */
+    afterToolCalls?: (toolNames: string[]) => string | undefined;
 }
 
 /**
@@ -316,6 +323,21 @@ export class ConversationRunner {
                             `${logPrefix} Completed via submit_review tool`
                         );
                         return result.finalReview;
+                    }
+
+                    // Post-tool-call hook: inject coverage gaps or other messages
+                    if (config.afterToolCalls) {
+                        const toolNames = response.toolCalls.map(
+                            (tc) => tc.function.name
+                        );
+                        const injectedMessage =
+                            config.afterToolCalls(toolNames);
+                        if (injectedMessage) {
+                            conversation.addUserMessage(injectedMessage);
+                            Log.info(
+                                `${logPrefix} Injected post-tool-call message (${injectedMessage.length} chars)`
+                            );
+                        }
                     }
 
                     continue;

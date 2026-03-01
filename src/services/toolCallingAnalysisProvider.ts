@@ -16,6 +16,7 @@ import type {
     SubagentProgressContext,
 } from '../types/toolCallTypes';
 import { DiffUtils } from '../utils/diffUtils';
+import type { DiffHunk } from '../types/contextTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -254,6 +255,10 @@ export class ToolCallingAnalysisProvider {
                     tools: availableTools,
                     label: 'Main Analysis',
                     requiresExplicitCompletion: true,
+                    afterToolCalls: this.createCoverageGapCallback(
+                        recursiveState,
+                        parsedDiff
+                    ),
                 },
                 conversationManager,
                 token,
@@ -300,6 +305,29 @@ export class ToolCallingAnalysisProvider {
             analysisError,
             conversationRunner.wasCancelled
         );
+    }
+
+    /**
+     * Creates a callback that injects coverage gap messages after subagent rounds.
+     * When subagents complete, reports which files haven't been examined yet,
+     * prompting the root agent to spawn additional subagents for uncovered files.
+     */
+    private createCoverageGapCallback(
+        recursiveState: RecursiveStateManager | undefined,
+        parsedDiff: DiffHunk[]
+    ): ((toolNames: string[]) => string | undefined) | undefined {
+        if (!recursiveState || parsedDiff.length === 0) {
+            return undefined;
+        }
+
+        const allFiles = parsedDiff.map((d) => d.filePath);
+
+        return (toolNames: string[]) => {
+            if (!toolNames.includes('run_subagent')) {
+                return undefined;
+            }
+            return recursiveState.getCoverageGapMessage(allFiles);
+        };
     }
 
     private buildAnalysisResult(

@@ -296,6 +296,146 @@ describe('ConversationRunner', () => {
         });
     });
 
+    describe('afterToolCalls Hook', () => {
+        it('should inject message when callback returns a string', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'run_subagent',
+                                arguments: '{"task":"review files"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'Final review after gap report',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'run_subagent',
+                    success: true,
+                    result: 'Subagent findings',
+                },
+            ]);
+
+            const afterToolCalls = vi
+                .fn()
+                .mockReturnValue('Coverage gap: 3 files uncovered');
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('run_subagent')],
+                afterToolCalls,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            expect(afterToolCalls).toHaveBeenCalledWith(['run_subagent']);
+            const history = conversation.getHistory();
+            const injected = history.find(
+                (m) => m.role === 'user' && m.content?.includes('Coverage gap')
+            );
+            expect(injected).toBeDefined();
+        });
+
+        it('should not inject message when callback returns undefined', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"test"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'Analysis complete',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'find_symbol',
+                    success: true,
+                    result: 'Found symbol',
+                },
+            ]);
+
+            const afterToolCalls = vi.fn().mockReturnValue(undefined);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+                afterToolCalls,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            expect(afterToolCalls).toHaveBeenCalledWith(['find_symbol']);
+            const history = conversation.getHistory();
+            const userMessages = history.filter((m) => m.role === 'user');
+            // Only the initial user message should exist, no injected message
+            expect(userMessages).toHaveLength(0);
+        });
+
+        it('should not call afterToolCalls when submit_review ends the loop', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'submit_review',
+                                arguments: '{"review":"Final review text"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'submit_review',
+                    success: true,
+                    result: 'Final review text',
+                    metadata: { isCompletion: true },
+                },
+            ]);
+
+            const afterToolCalls = vi.fn();
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                afterToolCalls,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // afterToolCalls should NOT be called because submit_review exits the loop before the hook
+            expect(afterToolCalls).not.toHaveBeenCalled();
+        });
+    });
+
     describe('Iteration Limits', () => {
         it('should stop at max iterations', async () => {
             // Always return tool calls to keep the loop going

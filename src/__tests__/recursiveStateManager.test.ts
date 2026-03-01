@@ -496,6 +496,55 @@ describe('RecursiveStateManager', () => {
         });
     });
 
+    describe('getCoverageGapMessage', () => {
+        it('should return undefined when all files are covered', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.completeAgent('root', [], ['a.ts', 'b.ts']);
+
+            const message = manager.getCoverageGapMessage(['a.ts', 'b.ts']);
+            expect(message).toBeUndefined();
+        });
+
+        it('should return message listing uncovered files', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.completeAgent('root', [], ['a.ts']);
+
+            const message = manager.getCoverageGapMessage([
+                'a.ts',
+                'b.ts',
+                'c.ts',
+            ]);
+            expect(message).toBeDefined();
+            expect(message).toContain('1/3 files have been examined');
+            expect(message).toContain('2 files have NOT been reviewed');
+            expect(message).toContain('- b.ts');
+            expect(message).toContain('- c.ts');
+            expect(message).not.toContain('- a.ts');
+        });
+
+        it('should return undefined for empty file list', () => {
+            const message = manager.getCoverageGapMessage([]);
+            expect(message).toBeUndefined();
+        });
+
+        it('should not count files from failed/cancelled agents', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.completeAgent('root', [], ['a.ts']);
+
+            const childId = manager.registerAgent('root', 'Child', 10);
+            manager.startAgent(childId);
+            manager.failAgent(childId, 'error');
+
+            const message = manager.getCoverageGapMessage(['a.ts', 'b.ts']);
+            expect(message).toBeDefined();
+            expect(message).toContain('1/2 files have been examined');
+            expect(message).toContain('- b.ts');
+        });
+    });
+
     describe('aggregation', () => {
         it('should collect findings from all agents', () => {
             manager.registerAgent(undefined, 'Root', 25);

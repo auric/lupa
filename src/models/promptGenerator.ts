@@ -207,6 +207,9 @@ export class PromptGenerator {
             'Do NOT read additional diffs or investigate files yourself. ' +
             'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n\n';
         reminder +=
+            '⚠️ **Total file coverage required** — Every changed file must be assigned to exactly one sub-agent. ' +
+            'If you receive a coverage gap report after sub-agents complete, spawn additional sub-agents for the uncovered files.\n\n';
+        reminder +=
             'Quality matters more than quantity — a thorough review that finds zero issues is better than a review padded with speculative concerns.\n';
         reminder += '</analysis_task>';
 

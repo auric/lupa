@@ -31,6 +31,7 @@ import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
+import type { DiffHunk } from '../types/contextTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { createFollowupProvider } from './chatFollowupProvider';
 
@@ -592,6 +593,10 @@ export class ChatParticipantService implements vscode.Disposable {
                     tools: availableTools,
                     label: `Chat /${scopeLabel}`,
                     requiresExplicitCompletion: true,
+                    afterToolCalls: this.createCoverageGapCallback(
+                        recursiveState,
+                        parsedDiff
+                    ),
                 },
                 conversation,
                 token,
@@ -640,6 +645,24 @@ export class ChatParticipantService implements vscode.Disposable {
                 }
             }
         }
+    }
+
+    private createCoverageGapCallback(
+        recursiveState: RecursiveStateManager | undefined,
+        parsedDiff: DiffHunk[]
+    ): ((toolNames: string[]) => string | undefined) | undefined {
+        if (!recursiveState || parsedDiff.length === 0) {
+            return undefined;
+        }
+
+        const allFiles = parsedDiff.map((d) => d.filePath);
+
+        return (toolNames: string[]) => {
+            if (!toolNames.includes('run_subagent')) {
+                return undefined;
+            }
+            return recursiveState.getCoverageGapMessage(allFiles);
+        };
     }
 
     /**

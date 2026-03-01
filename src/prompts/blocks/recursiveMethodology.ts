@@ -25,6 +25,7 @@ Call \`update_plan\` with your decomposition based on the metadata.
 **Check your agent limit** (shown in \`<analysis_task>\`) — plan within the allowed number of sub-agents.
 Spawning sub-agents does NOT reduce your own iteration budget — each runs independently.
 Target **2-4 files per concern group** for thorough review.
+**CRITICAL: Every changed file MUST appear in exactly one concern group.** Cross-check your plan against the full file list — any file not assigned to a group will be flagged as a coverage gap.
 \`\`\`markdown
 ## Recursive Review Plan
 
@@ -35,6 +36,9 @@ Target **2-4 files per concern group** for thorough review.
 1. [Group name] — Files: [list] — Risk: [level] — Agent: pending
 2. [Group name] — Files: [list] — Risk: [level] — Agent: pending
 3. [Group name] — Files: [list] — Risk: [level] — Agent: pending
+
+### Unassigned Files
+[MUST be empty — all files accounted for above]
 
 ### Cross-Concern Items
 - [Any cross-cutting concerns to check after agents complete]
@@ -63,6 +67,7 @@ context: "## Files to Examine
 
 Sub-agents have \`get_file_diff\` — they read diffs for the files you assign them.
 Sub-agents with 4+ files will decompose further by spawning their own sub-agents.
+**Each sub-agent MUST call \`get_file_diff\` for EVERY file in its assignment** — do not skip files based on names alone.
 
 ### Step 4: Aggregate Findings
 

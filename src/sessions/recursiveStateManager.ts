@@ -301,6 +301,29 @@ export class RecursiveStateManager {
     }
 
     /**
+     * Generate a coverage gap message listing files not yet examined by any completed agent.
+     * Returns undefined if all files are covered.
+     */
+    getCoverageGapMessage(allFiles: string[]): string | undefined {
+        const covered = this.getCoveredFiles();
+        const uncovered = allFiles.filter((f) => !covered.has(f));
+
+        if (uncovered.length === 0) {
+            return undefined;
+        }
+
+        const coveredCount = allFiles.length - uncovered.length;
+        return (
+            `⚠️ COVERAGE GAP: ${coveredCount}/${allFiles.length} files have been examined. ` +
+            `${uncovered.length} files have NOT been reviewed by any sub-agent:\n` +
+            uncovered.map((f) => `- ${f}`).join('\n') +
+            '\n\n' +
+            'You MUST spawn additional sub-agents to review the uncovered files before submitting. ' +
+            'Group related files together and delegate them via `run_subagent`.'
+        );
+    }
+
+    /**
      * Collect all findings from every agent in the tree.
      */
     getAllFindings(): RecursiveReviewFinding[] {
