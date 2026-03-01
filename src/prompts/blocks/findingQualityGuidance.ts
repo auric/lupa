@@ -132,31 +132,3 @@ When uncertain, omit the finding — silence on a non-issue is better than noise
 Many well-written PRs have zero reportable findings. That is a normal, expected outcome — not a review failure.
 </finding_quality>`;
 }
-
-/**
- * Generate compact finding quality guidance for subagent investigations.
- * Covers the highest-impact quality requirements for focused investigation agents.
- */
-export function generateSubagentFindingQualityGuidance(): string {
-    return `
-### Finding Quality
-
-Before reporting any issue:
-1. **Changed code only**: Only report issues in code changed by this PR, or where the change creates a new failure path. Apply the Revert Test: if reverting this PR wouldn't fix it, drop it
-2. **Verify scope**: For "missing error handling" — check if a caller, middleware, or executor already catches the error. Redundant try-catch is not a finding
-3. **Prove it**: For "X can fail" — trace ALL callers to prove a bad input can reach this code, then provide the concrete scenario. Unreachable paths are not findings
-4. **Search first**: For "missing test/docs" — search \`__tests__/\` and \`docs/\` before claiming absence. Then verify the proposed test would catch a real regression, not just exercise trivial logic
-5. **Consider intent**: For "design flaw" — check if the design is intentional (comments, docs, tests, changelogs). If plausible rationale exists, drop it
-6. **Layered architecture**: Before suggesting validation/error handling, check if a surrounding layer already provides it. Don't suggest try-catch when a middleware catches, or input validation when the caller already validates
-7. **Suggestions ≠ bugs**: "Should add X" is a suggestion, not a bug. Report as LOW only, never higher
-8. **When uncertain, omit**: If you're not sure whether something is an issue after investigation, leave it out entirely. Silence on a non-issue is better than noise
-9. **Check callers exist**: Before reporting a public method's behavior as a bug, verify it has production callers — methods with only test consumers may be future API surface
-10. **Quantify performance**: Don't flag "O(n*m) is slow" without knowing actual n and m. For bounded inputs (schema-capped, small collections), linear scans are fine
-11. **Call-site contract**: Before reporting "method X lacks guard Y", find ALL callers of X. If every caller performs Y before calling X (pre-flight pattern), the method is safe — don't suggest redundant internal guards
-12. **Centralized handlers**: If a middleware/executor catches errors at the call boundary, don't suggest try-catch in individual callees. The handler exists for a reason
-13. **Confidence caps**: CRITICAL/HIGH findings MUST be tool-verified with cited evidence. SPECULATIVE findings (pattern-match without tool verification) are EXCLUDED — use tools to verify before including
-14. **When genuinely suspicious, flag**: If you suspect a real issue AND you made a genuine attempt to verify with tool calls but couldn't fully confirm, report it as 🔍 **Verify** with your reasoning. This is NOT an escape hatch for skipping verification — you must have actually called tools first
-15. **Verify concurrency model**: Before reporting race conditions, confirm the runtime actually allows concurrent access. Single-threaded runtimes (Node.js, Python with GIL) serialize synchronous operations — they cannot race without an explicit yield point. Multi-threaded runtimes (Java, C++, Go) CAN race on shared mutable state. Check the runtime first
-16. **Use definitive language**: Back every claim with tool evidence. Avoid 'could potentially,' 'might lead to,' 'consider adding' — these signal speculation. If you can't state the issue definitively with evidence, it's not a finding
-17. **Documentation accuracy**: If assigned documentation files (.md), verify technical claims (tool availability, API behavior, configuration defaults) against the actual code. Docs that contradict the implementation ARE valid findings`;
-}
