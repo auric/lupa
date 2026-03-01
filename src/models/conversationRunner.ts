@@ -40,6 +40,13 @@ export interface ConversationRunnerConfig {
      * (e.g., coverage gap reports after subagent rounds).
      */
     afterToolCalls?: (toolNames: string[]) => string | undefined;
+    /**
+     * Mutable set of tool names to exclude from subsequent iterations.
+     * The afterToolCalls callback can add names to this set via closure
+     * to programmatically restrict which tools the LLM can call.
+     * Used by the recursive root to disable investigation tools after orientation.
+     */
+    disabledToolNames?: Set<string>;
 }
 
 /**
@@ -168,9 +175,9 @@ export class ConversationRunner {
             handler?.onIterationStart?.(iteration, config.maxIterations);
 
             try {
-                const vscodeTools = config.tools.map((tool) =>
-                    tool.getVSCodeTool()
-                );
+                const vscodeTools = config.tools
+                    .filter((tool) => !config.disabledToolNames?.has(tool.name))
+                    .map((tool) => tool.getVSCodeTool());
 
                 // Early wind-down nudge at ~80% of budget for subagents.
                 // Prompt-based budget management doesn't work — LLMs can't count

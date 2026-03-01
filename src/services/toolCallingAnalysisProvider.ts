@@ -26,6 +26,7 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -252,6 +253,11 @@ export class ToolCallingAnalysisProvider {
                 getContextStatusSuffix,
             };
 
+            // Shared mutable set: the afterToolCalls callback adds investigation
+            // tool names after the first subagent round, and the runner reads it
+            // each iteration to filter the tool list.
+            const disabledToolNames = new Set<string>();
+
             // Run conversation loop using extracted ConversationRunner
             analysisText = await conversationRunner.run(
                 {
@@ -262,8 +268,10 @@ export class ToolCallingAnalysisProvider {
                     requiresExplicitCompletion: true,
                     afterToolCalls: this.createCoverageGapCallback(
                         recursiveState,
-                        parsedDiff
+                        parsedDiff,
+                        disabledToolNames
                     ),
+                    disabledToolNames,
                 },
                 conversationManager,
                 token,
@@ -319,7 +327,8 @@ export class ToolCallingAnalysisProvider {
      */
     private createCoverageGapCallback(
         recursiveState: RecursiveStateManager | undefined,
-        parsedDiff: DiffHunk[]
+        parsedDiff: DiffHunk[],
+        disabledToolNames: Set<string>
     ): ((toolNames: string[]) => string | undefined) | undefined {
         if (!recursiveState || parsedDiff.length === 0) {
             return undefined;
@@ -331,6 +340,18 @@ export class ToolCallingAnalysisProvider {
             if (!toolNames.includes('run_subagent')) {
                 return undefined;
             }
+
+            // After first subagent round, disable investigation tools for the root.
+            // The root is a controller — it delegates, not investigates.
+            if (disabledToolNames.size === 0) {
+                for (const tool of INVESTIGATION_TOOLS) {
+                    disabledToolNames.add(tool);
+                }
+                Log.info(
+                    'Root agent investigation tools disabled after first subagent round'
+                );
+            }
+
             return recursiveState.getCoverageGapMessage(allFiles);
         };
     }

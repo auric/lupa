@@ -56,6 +56,23 @@ const ROOT_ONLY_TOOLS = [
 export const DIFF_TOOLS = ['get_file_diff'] as const;
 
 /**
+ * Investigation tools that should be removed from the recursive root agent
+ * after the orientation phase (first subagent round).
+ * The root is a controller — after it delegates, it should only retain
+ * controller tools (run_subagent, update_plan, think_about_*, submit_review).
+ */
+export const INVESTIGATION_TOOLS = [
+    'get_file_diff',
+    'read_file',
+    'find_symbol',
+    'find_usages',
+    'search_for_pattern',
+    'find_files_by_pattern',
+    'list_dir',
+    'get_symbols_overview',
+] as const;
+
+/**
  * Static limits for subagent execution that don't need user configuration.
  * Dynamic limits (max per session, timeout) come from WorkspaceSettingsService.
  */

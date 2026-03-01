@@ -5,6 +5,7 @@ import {
     MAIN_ANALYSIS_ONLY_TOOLS,
     RECURSIVE_CHILD_DISALLOWED_TOOLS,
     DIFF_TOOLS,
+    INVESTIGATION_TOOLS,
 } from '../models/toolConstants';
 import { TokenConstants } from '../models/tokenConstants';
 
@@ -123,6 +124,43 @@ describe('toolConstants', () => {
 
         it('should maintain MAX_FILE_READ_LINES at 400', () => {
             expect(TokenConstants.MAX_FILE_READ_LINES).toBe(400);
+        });
+    });
+
+    describe('INVESTIGATION_TOOLS', () => {
+        it('should include get_file_diff to prevent root from reading diffs after orientation', () => {
+            expect(INVESTIGATION_TOOLS).toContain('get_file_diff');
+        });
+
+        it('should include core investigation tools', () => {
+            const expected = [
+                'read_file',
+                'find_symbol',
+                'find_usages',
+                'search_for_pattern',
+            ];
+            for (const tool of expected) {
+                expect(
+                    INVESTIGATION_TOOLS.includes(tool as any),
+                    `${tool} should be in INVESTIGATION_TOOLS`
+                ).toBe(true);
+            }
+        });
+
+        it('should NOT include controller tools', () => {
+            const controllerTools = [
+                'run_subagent',
+                'update_plan',
+                'submit_review',
+                'think_about_task',
+                'think_about_completion',
+            ];
+            for (const tool of controllerTools) {
+                expect(
+                    INVESTIGATION_TOOLS.includes(tool as any),
+                    `${tool} should NOT be in INVESTIGATION_TOOLS`
+                ).toBe(false);
+            }
         });
     });
 });

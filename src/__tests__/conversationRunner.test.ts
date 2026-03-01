@@ -1661,6 +1661,61 @@ describe('ConversationRunner', () => {
         });
     });
 
+    describe('disabledToolNames', () => {
+        it('should filter out disabled tools from LLM requests', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Done', toolCalls: undefined },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const disabledTools = new Set<string>();
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [
+                    createMockTool('find_symbol'),
+                    createMockTool('read_file'),
+                    createMockTool('run_subagent'),
+                ],
+                disabledToolNames: disabledTools,
+            };
+
+            // Disable read_file before running
+            disabledTools.add('read_file');
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Verify that the tools sent to the LLM exclude read_file
+            const calls = (modelManager.sendRequest as ReturnType<typeof vi.fn>)
+                .mock.calls;
+            const firstCallTools = calls[0][0].tools;
+            const toolNames = firstCallTools.map(
+                (t: { name: string }) => t.name
+            );
+            expect(toolNames).toContain('find_symbol');
+            expect(toolNames).toContain('run_subagent');
+            expect(toolNames).not.toContain('read_file');
+        });
+    });
+
     describe('Rate-Limit Retry', () => {
         class ChatRateLimited extends Error {
             constructor(message = 'Rate limited') {
