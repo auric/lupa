@@ -183,10 +183,8 @@ export class ConversationRunner {
                     windDownNudged = true;
                     const remaining = config.maxIterations - iteration;
                     conversation.addUserMessage(
-                        `\u23f3 Budget check: You have used ${iteration} of ${config.maxIterations} iterations. ` +
-                            `You have ${remaining} remaining. ` +
-                            `Continue investigating if you have important work remaining, ` +
-                            `but plan to summarize your findings within the next few iterations.`
+                        `Budget check: You have used ${iteration} of ${config.maxIterations} iterations (${remaining} remaining). ` +
+                            `Continue investigating if needed, but begin consolidating your findings soon.`
                     );
                     Log.info(
                         `${logPrefix} Wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
@@ -205,9 +203,8 @@ export class ConversationRunner {
                 if (forceFinalResponse) {
                     windDownInjected = true;
                     conversation.addUserMessage(
-                        '\u26a0\ufe0f This is your FINAL iteration. You MUST respond with your complete findings NOW. ' +
-                            'Do NOT make any tool calls \u2014 provide your full analysis as a text response. ' +
-                            'Summarize everything you have found so far. A partial answer is far better than no answer.'
+                        'This is your final iteration. Please provide your complete findings as a text response. ' +
+                            'Summarize everything you have found so far. A partial answer is better than no answer.'
                     );
                 }
 

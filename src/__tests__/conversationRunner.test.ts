@@ -1655,7 +1655,7 @@ describe('ConversationRunner', () => {
             const windDownCalls = addUserMessageSpy.mock.calls.filter(
                 (call) =>
                     typeof call[0] === 'string' &&
-                    call[0].includes('FINAL iteration')
+                    call[0].includes('final iteration')
             );
             expect(windDownCalls.length).toBe(1);
         });
