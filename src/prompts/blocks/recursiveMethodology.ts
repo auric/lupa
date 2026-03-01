@@ -69,9 +69,20 @@ Sub-agents have \`get_file_diff\` — they read diffs for the files you assign t
 Sub-agents with 4+ files will decompose further by spawning their own sub-agents.
 **Each sub-agent MUST call \`get_file_diff\` for EVERY file in its assignment** — do not skip files based on names alone.
 
-### Step 4: Aggregate Findings
+**Large files**: For files with very large diffs, a single agent's context may not hold the full diff. In this case, multiple sub-agents can each review different sections of the same file. When delegating, specify which functions or line ranges each sub-agent should focus on. Collective coverage across agents counts — a file is covered when all its sections have been reviewed by at least one agent.
 
-After all sub-agents return:
+### Step 4: Review Progress and Address Gaps
+
+After sub-agents return, the system automatically reports which files have been reviewed via \`get_file_diff\`.
+
+4a. Call \`update_plan\` to record: which concern groups completed, key findings summary, and coverage status.
+4b. If a coverage gap is reported (files not yet reviewed): spawn additional sub-agents for uncovered files.
+4c. If any sub-agent reported truncated diffs (file too large for one call): spawn a focused sub-agent for the truncated file with instructions to call \`get_file_diff\` with \`context_lines: false\` or request specific file sections.
+4d. Repeat 4a–4c until all files have been reviewed.
+
+### Step 5: Aggregate Findings
+
+Once all files are covered:
 - Merge findings by severity (critical first)
 - Remove duplicates across agents
 
@@ -95,7 +106,7 @@ After all sub-agents return:
 - Assess overall PR risk
 - Call \`update_plan\` to mark all concern groups as complete
 
-### Step 5: Self-Reflect and Submit
+### Step 6: Self-Reflect and Submit
 
 - Call \`think_about_completion\` to verify coverage
 - Call \`submit_review\` with the final structured review

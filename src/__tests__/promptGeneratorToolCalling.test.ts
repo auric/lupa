@@ -548,7 +548,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(prompt).toContain('parallel');
         });
 
-        it('should have 7 workflow steps in recursive RLM reminder', () => {
+        it('should have 8 workflow steps in recursive RLM reminder', () => {
             const prompt = promptGenerator.generateUserPrompt(
                 sampleParsedDiff,
                 undefined,
@@ -560,7 +560,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
             expect(prompt).toContain(
                 '2. Call `get_file_diff` on **1 key file**'
             );
-            expect(prompt).toContain('7. Call `think_about_completion`');
+            expect(prompt).toContain('8. Call `think_about_completion`');
         });
 
         it('should enforce delegation as mandatory in RLM user prompt', () => {

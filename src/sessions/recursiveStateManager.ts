@@ -318,8 +318,10 @@ export class RecursiveStateManager {
             `${uncovered.length} files have NOT been reviewed by any sub-agent:\n` +
             uncovered.map((f) => `- ${f}`).join('\n') +
             '\n\n' +
-            'You MUST spawn additional sub-agents to review the uncovered files before submitting. ' +
-            'Group related files together and delegate them via `run_subagent`.'
+            'Action required:\n' +
+            '1. Call `update_plan` to record current coverage status and findings so far\n' +
+            '2. Spawn additional sub-agents to review the uncovered files\n' +
+            '3. Group related files together and delegate them via `run_subagent`'
         );
     }
 

@@ -197,10 +197,13 @@ export class PromptGenerator {
         reminder += '3. Call `update_plan` — decompose into concern groups\n';
         reminder +=
             '4. **Make multiple `run_subagent` calls in one response** — one per concern group (parallel execution)\n';
-        reminder += '5. After all agents return, aggregate findings\n';
-        reminder += '6. Check for cross-concern issues\n';
         reminder +=
-            '7. Call `think_about_completion`, then `submit_review`\n\n';
+            '5. After agents return, call `update_plan` to record findings and coverage status\n';
+        reminder +=
+            '6. If coverage gaps reported, spawn additional sub-agents for uncovered files\n';
+        reminder += '7. Aggregate findings, check for cross-concern issues\n';
+        reminder +=
+            '8. Call `think_about_completion`, then `submit_review`\n\n';
 
         reminder +=
             '⚠️ **Delegation is mandatory** — Read at most 1 diff for orientation, then delegate everything via `run_subagent`. ' +

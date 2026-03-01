@@ -46,7 +46,9 @@ ${task.context.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'
 ### Diff Access
 
 You have \`get_file_diff\` to read the actual diff for your assigned files.
-Your parent agent already identified which files belong to your investigation — call \`get_file_diff\` with those paths directly.`
+Your parent agent already identified which files belong to your investigation — call \`get_file_diff\` with those paths directly.
+
+**Truncated diffs**: If \`get_file_diff\` returns a TRUNCATED result for a large file, retry with \`context_lines: false\` or request fewer files per call. If the diff is still truncated, report which files were truncated in your findings summary so the parent agent can arrange additional coverage.`
             : '';
 
         // When canRecurse, the investigation approach defers to decomposition for large scopes
@@ -102,7 +104,12 @@ Do NOT try to review 4+ files directly — you'll exhaust your iterations and pr
 2. Based on ${hasDiffTools ? 'the diff' : 'what you know'}, split your remaining files into focused sub-tasks
 3. **Make multiple \`run_subagent\` tool calls in the same response** — they execute in parallel. Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours)
 4. After sub-agents return, aggregate their findings into your response
-
+${
+    hasDiffTools
+        ? `
+**Large file strategy:** If a file's diff is too large for one agent's context, assign different sections of the same file to different sub-agents. Specify which functions or line ranges each should focus on in the task description. Coverage across agents is collective — the file is covered when all sections have been reviewed.`
+        : ''
+}
 **If your task spans 1-3 files:** Investigate directly — no need to spawn.
 
 **Task format for sub-agents:**
@@ -183,7 +190,15 @@ If you cannot fill in "Evidence" and "Disproof attempted" for a finding, drop it
 
 ### Summary
 2-3 sentences summarizing your investigation for the parent agent.
-
+${
+    hasDiffTools
+        ? `
+### Coverage Notes
+- List any files where \`get_file_diff\` returned a truncated result
+- Note any areas you couldn't fully investigate within your iteration budget
+`
+        : ''
+}
 If you find NO issues after investigation, state what you checked and why it passed. Finding zero issues is a valid and expected outcome for well-written code.
 </response_requirements>
 
