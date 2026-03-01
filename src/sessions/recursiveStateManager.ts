@@ -320,8 +320,10 @@ export class RecursiveStateManager {
             '\n\n' +
             'Action required:\n' +
             '1. Call `update_plan` to record current coverage status and findings so far\n' +
-            '2. Spawn additional sub-agents to review the uncovered files\n' +
-            '3. Group related files together and delegate them via `run_subagent`'
+            '2. Triage uncovered files using the diff metadata (line counts in `<diff_metadata>`):\n' +
+            '   - **Trivial changes** (<30 lines added+removed): review directly via `get_file_diff` — no sub-agent needed for version bumps, config tweaks, or formatting\n' +
+            '   - **Substantive changes** (30+ lines): group related files and delegate via `run_subagent` with SPECIFIC investigation questions informed by Phase 1 findings\n' +
+            '3. For delegated files, include context from completed sub-agent findings so new sub-agents know what concerns to look for'
         );
     }
 
