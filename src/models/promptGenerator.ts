@@ -47,7 +47,7 @@ export class PromptGenerator {
 
     /**
      * Generate user prompt with diff metadata only.
-     * The LLM uses list_changed_files and get_file_diff tools to access diff on demand.
+     * The LLM uses get_file_diff tool to access diff on demand.
      * @param parsedDiff Parsed diff structure (for metadata extraction)
      * @param userInstructions Optional user-provided instructions
      * @param recursiveMode Whether to use recursive review workflow
@@ -138,9 +138,7 @@ export class PromptGenerator {
 
         let reminder = '<analysis_task>\n';
         reminder += `Review the ${fileCount} changed file(s) in this PR.\n\n`;
-        reminder += `**Important**: The diff is NOT embedded in this message. Use these tools to access it:\n`;
-        reminder += `1. \`list_changed_files\` — See all changed files with statistics\n`;
-        reminder += `2. \`get_file_diff\` — Read the actual diff for specific file(s)\n\n`;
+        reminder += `**Important**: The diff is NOT embedded in this message. Use \`get_file_diff\` to access it on demand.\n\n`;
 
         if (spawnSubagents) {
             reminder += `**Note**: This PR has ${fileCount} files. Consider spawning subagents for parallel analysis.\n\n`;

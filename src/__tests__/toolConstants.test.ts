@@ -12,7 +12,6 @@ describe('toolConstants', () => {
     describe('SubagentLimits.DISALLOWED_TOOLS', () => {
         // get_file_diff is analysis-only but intentionally
         // ALLOWED for subagents so they can access diff on demand (RLM approach).
-        // list_changed_files is DISALLOWED for subagents — the parent tells them which files to examine.
         const SUBAGENT_ALLOWED_ANALYSIS_TOOLS = ['get_file_diff'];
 
         it('should include non-diff MAIN_ANALYSIS_ONLY_TOOLS to prevent subagent access', () => {

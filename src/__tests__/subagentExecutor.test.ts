@@ -644,9 +644,8 @@ describe('SubagentExecutor', () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
             const readTool = createMockTool('read_file');
-            const listChangedTool = createMockTool('list_changed_files');
             const getFileDiffTool = createMockTool('get_file_diff');
-            const allTools = [readTool, listChangedTool, getFileDiffTool];
+            const allTools = [readTool, getFileDiffTool];
 
             const executor = createExecutor(modelManager, allTools);
 
@@ -668,7 +667,6 @@ describe('SubagentExecutor', () => {
             const filteredNames = toolsPassedToPrompt.map((t) => t.name);
 
             expect(filteredNames).toContain('read_file');
-            expect(filteredNames).not.toContain('list_changed_files');
             expect(filteredNames).toContain('get_file_diff');
         });
     });

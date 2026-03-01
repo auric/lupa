@@ -47,14 +47,13 @@ const ROOT_ONLY_TOOLS = [
     'update_plan',
     'submit_review',
     'think_about_completion',
-    'think_about_context',
     'think_about_task',
 ] as const;
 
 /**
  * Diff tools that require parsedDiff in ExecutionContext.
  */
-export const DIFF_TOOLS = ['list_changed_files', 'get_file_diff'] as const;
+export const DIFF_TOOLS = ['get_file_diff'] as const;
 
 /**
  * Static limits for subagent execution that don't need user configuration.
@@ -66,7 +65,6 @@ export const SubagentLimits = {
     /** Tools that subagents cannot access (flat mode — no recursion) */
     DISALLOWED_TOOLS: [
         'run_subagent', // Prevent sub-subagent recursion
-        'list_changed_files', // Parent already assigned files — subagents use get_file_diff only
         ...ROOT_ONLY_TOOLS,
     ] as const,
 } as const;
@@ -76,10 +74,7 @@ export const SubagentLimits = {
  * They CAN call run_subagent (enabling recursion) but cannot access
  * plan-tracking and final-review tools that belong to the root agent.
  */
-export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [
-    'list_changed_files', // Parent already assigned files — subagents use get_file_diff only
-    ...ROOT_ONLY_TOOLS,
-] as const;
+export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
 
 /**
  * Tools that are only available during main analysis mode (not exploration mode).

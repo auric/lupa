@@ -116,9 +116,6 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'submit_review':
                 return '🚀 Submitted code review';
 
-            case 'list_changed_files':
-                return `${ACTIVITY.reading} Listed changed files`;
-
             case 'get_file_diff': {
                 const paths = Array.isArray(args.file_paths)
                     ? args.file_paths

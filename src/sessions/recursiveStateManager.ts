@@ -79,7 +79,7 @@ export const RecursionConstants = {
     /** Below this budget a new agent is not worth spawning */
     MIN_VIABLE_BUDGET: 3,
     /** Independent iteration budget allocated to each child agent */
-    DEFAULT_CHILD_BUDGET: 40,
+    DEFAULT_CHILD_BUDGET: 50,
     /** Timeout per allocated iteration (ms) — used to compute subagent execution timeout */
     TIMEOUT_PER_ITERATION_MS: 30_000,
     /** Minimum subagent execution timeout (ms) regardless of budget */

@@ -289,7 +289,6 @@ describe('PromptGenerator - Tool Calling Features', () => {
         it('should include tool usage instructions', () => {
             const prompt = promptGenerator.generateUserPrompt(sampleParsedDiff);
 
-            expect(prompt).toContain('list_changed_files');
             expect(prompt).toContain('get_file_diff');
         });
 

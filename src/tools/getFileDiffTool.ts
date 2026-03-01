@@ -16,7 +16,7 @@ export class GetFileDiffTool extends BaseTool {
         'Get the diff (code changes) for specific files from the current PR. ' +
         'Pass ALL file paths you need in a SINGLE call via the file_paths array — do NOT call this tool once per file. ' +
         'Returns the unified diff with added/removed/context lines and hunk headers. ' +
-        'Use list_changed_files first to see what files changed, then this tool to examine specific files.';
+        'Check <diff_metadata> in your conversation to see what files changed, then use this tool to examine specific files.';
 
     schema = z.object({
         file_paths: z
@@ -29,7 +29,7 @@ export class GetFileDiffTool extends BaseTool {
             .describe(
                 'Array of file paths to fetch diffs for IN ONE CALL (up to 10). ' +
                     'Pass ALL paths you need at once — do NOT make separate calls per file. ' +
-                    'Paths must match those from list_changed_files.'
+                    'Paths must match those shown in <diff_metadata>.'
             ),
         context_lines: z
             .boolean()
@@ -105,7 +105,7 @@ export class GetFileDiffTool extends BaseTool {
 
         if (results.length === 0 && notFound.length > 0) {
             return toolError(
-                `No matching files found for: ${notFound.join(', ')}. Use list_changed_files to see available file paths.`
+                `No matching files found for: ${notFound.join(', ')}. Check <diff_metadata> in the conversation for available file paths.`
             );
         }
 
