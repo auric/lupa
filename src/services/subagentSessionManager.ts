@@ -7,8 +7,9 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  *
  * Session slots are intentionally never freed on cancellation or timeout —
  * a cancelled subagent still consumed model resources, so the budget should
- * reflect actual usage. Only `rollbackSpawn` reclaims a slot, and only when
- * post-spawn registration fails before the subagent starts work.
+ * reflect actual usage. `rollbackSpawn` reclaims a slot when post-spawn
+ * registration fails or when a subagent fails to produce useful work
+ * (LLM errors, service errors, unexpected exceptions).
  */
 export class SubagentSessionManager {
     private count = 0;
