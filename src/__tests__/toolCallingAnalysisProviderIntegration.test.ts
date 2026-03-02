@@ -162,11 +162,8 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            // Verify tool-aware system prompt was generated with both tools
-            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalledWith([
-                expect.any(MockAnalysisTool),
-                expect.any(SubmitReviewTool),
-            ]);
+            // Verify tool-aware system prompt was generated
+            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
 
             // Verify user prompt was generated with parsed diff
             expect(generateUserPromptSpy).toHaveBeenCalledWith(
@@ -274,15 +271,16 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            const systemPromptCall =
-                generateToolAwareSystemPromptSpy.mock.calls[0];
-            const tools = systemPromptCall[0] as ITool[];
+            // System prompt generation no longer receives tools directly (sent via VS Code API)
+            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
 
-            expect(tools).toHaveLength(2);
-            expect(tools[0]).toBeInstanceOf(MockAnalysisTool);
-            expect(tools[0].name).toBe('find_symbol');
-            expect(tools[1]).toBeInstanceOf(SubmitReviewTool);
-            expect(tools[1].name).toBe('submit_review');
+            // Verify tools are still registered in the registry
+            const registeredTools = mockToolRegistry.getAllTools();
+            expect(registeredTools).toHaveLength(2);
+            expect(registeredTools[0]).toBeInstanceOf(MockAnalysisTool);
+            expect(registeredTools[0].name).toBe('find_symbol');
+            expect(registeredTools[1]).toBeInstanceOf(SubmitReviewTool);
+            expect(registeredTools[1].name).toBe('submit_review');
         });
 
         it('should structure user prompt for optimal tool usage', async () => {

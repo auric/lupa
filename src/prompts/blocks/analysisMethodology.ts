@@ -67,7 +67,7 @@ At each checkpoint, **explicitly articulate** your current state—don't just ac
 ### Step 3b: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
 
 The issues you identified are **HYPOTHESES**, not confirmed findings.
-Before including any MEDIUM+ finding in your review, you must attempt to **DISPROVE** it.
+Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` above.
 
 **For each MEDIUM+ hypothesis:**
 1. Ask: "What would make this NOT a problem?"
@@ -75,19 +75,8 @@ Before including any MEDIUM+ finding in your review, you must attempt to **DISPR
 3. If disproved → **DROP** the finding silently. Do not mention it in your review
 4. If not disproved → It survives. Now assign severity based on evidence
 
-**Common disproof patterns:**
-| Hypothesis | Disproof Tool Call |
-|---|---|
-| "Missing error handling" | \`find_usages\` on the function → check if callers/middleware catch |
-| "Missing validation" | \`find_usages\` on the function → check if callers validate first |
-| "Race condition" | Examine the code path → verify an \`await\` exists between read and write |
-| "Missing test" | \`search_for_pattern\` in \`__tests__/\` for the function name |
-| "Value can be null" | \`find_symbol\` → check the declared types and type narrowing at that point |
-| "Method lacks guard" | \`find_usages\` → check if ALL callers perform the guard first |
-
 **Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
 If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
-Every finding in your final review must cite the specific tool output that confirmed it.
 
 ### Step 4: Track Progress (REQUIRED)
 Call \`update_plan\` after completing each checklist item:

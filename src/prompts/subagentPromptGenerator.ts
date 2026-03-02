@@ -29,7 +29,6 @@ export class SubagentPromptGenerator {
         maxIterations: number,
         canRecurse: boolean = false
     ): string {
-        const toolList = this.formatToolList(tools);
         const hasDiffTools = tools.some((t) => t.name === 'get_file_diff');
         const contextSection = task.context
             ? `<context_from_parent>
@@ -153,12 +152,6 @@ ${sanitizedTask}
 
 ${contextSection}
 
-<available_tools>
-## Available Tools
-
-${toolList}
-</available_tools>
-
 <quality_standards>
 ${generateFindingQualityGuidance()}
 
@@ -227,22 +220,5 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - Return partial findings if running low on iterations - partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;
-    }
-
-    /**
-     * Format the list of available tools for the prompt.
-     */
-    private formatToolList(tools: ITool[]): string {
-        if (tools.length === 0) {
-            return 'No tools available.';
-        }
-
-        return tools
-            .map((tool) => {
-                // Get first line of description for conciseness
-                const shortDesc = tool.description.split('\n')[0];
-                return `- **${tool.name}**: ${shortDesc}`;
-            })
-            .join('\n');
     }
 }

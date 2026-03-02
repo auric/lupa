@@ -70,7 +70,7 @@ describe('SubagentPromptGenerator', () => {
             expect(prompt).toContain('&lt;/path&gt;');
         });
 
-        it('should list available tools', () => {
+        it('should include investigation approach referencing tool usage', () => {
             const tools = [
                 createMockTool('find_symbol', 'Finds symbols in code'),
                 createMockTool('read_file', 'Reads file contents'),
@@ -80,16 +80,15 @@ describe('SubagentPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt(task, tools, 10);
 
             expect(prompt).toContain('find_symbol');
-            expect(prompt).toContain('Finds symbols in code');
-            expect(prompt).toContain('read_file');
-            expect(prompt).toContain('Reads file contents');
+            expect(prompt).toContain('## Investigation Approach');
         });
 
-        it('should indicate when no tools are available', () => {
+        it('should generate prompt even with no tools', () => {
             const task: SubagentTask = { task: 'Test task' };
             const prompt = generator.generateSystemPrompt(task, [], 10);
 
-            expect(prompt).toContain('No tools available');
+            expect(prompt).toContain('investigation subagent');
+            expect(prompt).toContain('## Your Assigned Task');
         });
 
         it('should include response requirements section', () => {

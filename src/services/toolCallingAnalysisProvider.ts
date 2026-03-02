@@ -157,12 +157,8 @@ export class ToolCallingAnalysisProvider {
             // Get available tools and generate system prompt
             const availableTools = toolExecutor.getAvailableTools();
             const systemPrompt = isRecursiveMode
-                ? this.promptGenerator.generateRecursiveSystemPrompt(
-                      availableTools
-                  )
-                : this.promptGenerator.generateToolAwareSystemPrompt(
-                      availableTools
-                  );
+                ? this.promptGenerator.generateRecursiveSystemPrompt()
+                : this.promptGenerator.generateToolAwareSystemPrompt();
 
             // Generate user prompt
             executionContext.parsedDiff = parsedDiff;
@@ -202,13 +198,14 @@ export class ToolCallingAnalysisProvider {
                     const usagePercent = Math.round(
                         (validation.totalTokens / validation.maxTokens) * 100
                     );
-                    const remainingTokens =
-                        validation.maxTokens - validation.totalTokens;
+                    const remainingK = Math.round(
+                        (validation.maxTokens - validation.totalTokens) / 1000
+                    );
 
-                    if (usagePercent >= 80) {
-                        return `\n\n⚠️ [Context: ${usagePercent}% used (${validation.totalTokens}/${validation.maxTokens} tokens). ${remainingTokens} remaining - consider wrapping up soon]`;
-                    } else if (usagePercent >= 50) {
-                        return `\n\n[Context: ${usagePercent}% used. ${remainingTokens} tokens remaining]`;
+                    if (usagePercent >= 90) {
+                        return `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
+                    } else if (usagePercent >= 70) {
+                        return `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
                     }
                     return '';
                 } catch (error) {

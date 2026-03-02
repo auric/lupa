@@ -211,11 +211,10 @@ describe('FindFileTool Integration Tests', () => {
 
             // Verify description is LLM-friendly with key features
             expect(vscodeToolDef.description).toContain(
-                'Find files matching glob patterns within a directory'
+                'Find files by NAME/PATH pattern'
             );
             expect(vscodeToolDef.description).toContain('glob patterns');
             expect(vscodeToolDef.description).toContain('.gitignore');
-            expect(vscodeToolDef.description).toContain('relative paths');
             expect(tool!.description).toContain('wildcards');
             expect(tool!.description).toContain('recursive search');
 

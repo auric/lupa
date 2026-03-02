@@ -9,7 +9,6 @@ export {
 export { generateRecursiveRootRole } from './recursiveRootRole';
 export { generateRecursiveMethodology } from './recursiveMethodology';
 export { generateRecursiveToolGuide } from './recursiveToolGuide';
-export { generateToolInventory } from './toolSection';
 export {
     generateToolSelectionGuide,
     generateExplorationToolGuide,

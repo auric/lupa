@@ -1,8 +1,6 @@
-import { ITool } from '../tools/ITool';
 import {
     generatePRReviewerRole,
     generateExplorerRole,
-    generateToolInventory,
     generateToolSelectionGuide,
     generateExplorationToolGuide,
     generateSubagentGuidance,
@@ -49,18 +47,6 @@ export class PromptBuilder {
      */
     addCustomRole(role: string): this {
         this.sections.push(role);
-        return this;
-    }
-
-    /**
-     * Add tool inventory section with all available tools.
-     */
-    addToolInventory(tools: ITool[]): this {
-        if (tools.length > 0) {
-            this.sections.push(
-                '## Available Tools\n\n' + generateToolInventory(tools)
-            );
-        }
         return this;
     }
 
@@ -203,10 +189,9 @@ export class PromptBuilder {
 /**
  * Create a pre-configured builder for PR review prompts.
  */
-export function createPRReviewPromptBuilder(tools: ITool[]): PromptBuilder {
+export function createPRReviewPromptBuilder(): PromptBuilder {
     return new PromptBuilder()
         .addPRReviewerRole()
-        .addToolInventory(tools)
         .addPRToolGuide()
         .addSubagentGuidance()
         .addAnalysisMethodology()
@@ -218,10 +203,9 @@ export function createPRReviewPromptBuilder(tools: ITool[]): PromptBuilder {
 /**
  * Create a pre-configured builder for exploration prompts.
  */
-export function createExplorationPromptBuilder(tools: ITool[]): PromptBuilder {
+export function createExplorationPromptBuilder(): PromptBuilder {
     return new PromptBuilder()
         .addExplorerRole()
-        .addToolInventory(tools)
         .addExplorationToolGuide()
         .addExplorationSubagentGuidance()
         .addExplorationReflection()
@@ -233,12 +217,9 @@ export function createExplorationPromptBuilder(tools: ITool[]): PromptBuilder {
  * Used when maxRecursionDepth >= 1: the root agent decomposes the PR
  * into concern groups and delegates investigation to recursive sub-agents.
  */
-export function createRecursiveRootPromptBuilder(
-    tools: ITool[]
-): PromptBuilder {
+export function createRecursiveRootPromptBuilder(): PromptBuilder {
     return new PromptBuilder()
         .addRecursiveRootRole()
-        .addToolInventory(tools)
         .addRecursiveToolGuide()
         .addRecursiveMethodology()
         .addFindingQualityGuidance()

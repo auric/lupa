@@ -291,9 +291,7 @@ export class ChatParticipantService implements vscode.Disposable {
             );
 
             const systemPrompt =
-                this.deps.promptGenerator.generateExplorationSystemPrompt(
-                    availableTools
-                );
+                this.deps.promptGenerator.generateExplorationSystemPrompt();
 
             const hasHistory = context.history && context.history.length > 0;
             if (hasHistory) {
@@ -565,12 +563,8 @@ export class ChatParticipantService implements vscode.Disposable {
         const conversation = new ConversationManager();
         const availableTools = toolExecutor.getAvailableTools();
         const systemPrompt = isRecursiveMode
-            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
-                  availableTools
-              )
-            : this.deps!.promptGenerator.generateToolAwareSystemPrompt(
-                  availableTools
-              );
+            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt()
+            : this.deps!.promptGenerator.generateToolAwareSystemPrompt();
 
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);

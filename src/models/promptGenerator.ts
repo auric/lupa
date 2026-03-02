@@ -1,7 +1,6 @@
 import { DiffHunk } from '../types/contextTypes';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
-import { ITool } from '../tools/ITool';
 
 /**
  * Centralized prompt generation service.
@@ -11,38 +10,28 @@ export class PromptGenerator {
     private toolAwarePromptGenerator = new ToolAwareSystemPromptGenerator();
 
     /**
-     * Generate tool-aware system prompt with dynamic tool discovery
-     * @param availableTools Array of tools available to the LLM
-     * @returns Complete system prompt with comprehensive tool guidance
+     * Generate tool-aware system prompt with dynamic tool discovery.
+     * Tool descriptions are provided to the LLM via the VS Code API tool schemas,
+     * so the system prompt focuses on methodology and behavioral guidance.
      */
-    public generateToolAwareSystemPrompt(availableTools: ITool[]): string {
-        return this.toolAwarePromptGenerator.generateSystemPrompt(
-            availableTools
-        );
+    public generateToolAwareSystemPrompt(): string {
+        return this.toolAwarePromptGenerator.generateSystemPrompt();
     }
 
     /**
      * Generate recursive review system prompt for the root controller agent.
      * Uses decompose → delegate → aggregate → synthesize methodology.
-     * @param availableTools Array of tools available to the LLM
-     * @returns System prompt for recursive root auditor
      */
-    public generateRecursiveSystemPrompt(availableTools: ITool[]): string {
-        return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt(
-            availableTools
-        );
+    public generateRecursiveSystemPrompt(): string {
+        return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt();
     }
 
     /**
      * Generate exploration-focused system prompt for answering codebase questions.
      * Uses the same tool infrastructure but without PR/diff-specific language.
-     * @param availableTools Array of tools available to the LLM
-     * @returns Complete system prompt for exploration mode
      */
-    public generateExplorationSystemPrompt(availableTools: ITool[]): string {
-        return this.toolAwarePromptGenerator.generateExplorationPrompt(
-            availableTools
-        );
+    public generateExplorationSystemPrompt(): string {
+        return this.toolAwarePromptGenerator.generateExplorationPrompt();
     }
 
     /**

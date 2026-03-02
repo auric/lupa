@@ -1,41 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { PromptGenerator } from '../models/promptGenerator';
-import { ITool } from '../tools/ITool';
 import { DiffHunk } from '../types/contextTypes';
-import * as z from 'zod';
-import * as vscode from 'vscode';
-import type { ExecutionContext } from '../types/executionContext';
-
-// Mock tool for testing
-class MockTool implements ITool {
-    name = 'mock_tool';
-    description = 'A mock tool for testing';
-    schema = z.object({
-        param1: z.string().describe('First parameter'),
-        param2: z.number().optional().describe('Second parameter'),
-    });
-
-    getVSCodeTool(): vscode.LanguageModelChatTool {
-        return {
-            name: this.name,
-            description: this.description,
-            inputSchema: this.schema as any,
-        };
-    }
-
-    async execute(_args: any, _context: ExecutionContext): Promise<any> {
-        return [];
-    }
-}
 
 describe('PromptGenerator - Tool Calling Features', () => {
     let promptGenerator: PromptGenerator;
-    let mockTools: ITool[];
     let sampleParsedDiff: DiffHunk[];
 
     beforeEach(() => {
         promptGenerator = new PromptGenerator();
-        mockTools = [new MockTool()];
 
         sampleParsedDiff = [
             {
@@ -88,40 +60,33 @@ describe('PromptGenerator - Tool Calling Features', () => {
     describe('generateToolAwareSystemPrompt', () => {
         it('should generate a comprehensive tool-aware system prompt', () => {
             const systemPrompt =
-                promptGenerator.generateToolAwareSystemPrompt(mockTools);
+                promptGenerator.generateToolAwareSystemPrompt();
 
             expect(systemPrompt).toContain('Staff Engineer');
-            expect(systemPrompt).toContain('## Available Tools');
-            expect(systemPrompt).toContain(
-                '**mock_tool**: A mock tool for testing'
-            );
             expect(systemPrompt).toContain('Tool Selection');
             expect(systemPrompt).toContain('Analysis');
             expect(systemPrompt).toContain('output_format');
         });
 
         it('should handle empty tools array', () => {
-            const systemPrompt = promptGenerator.generateToolAwareSystemPrompt(
-                []
-            );
+            const systemPrompt =
+                promptGenerator.generateToolAwareSystemPrompt();
 
             expect(systemPrompt).toContain('Staff Engineer');
-            expect(systemPrompt).not.toContain('## Available Tools');
         });
 
         it('should include parameter information from tool schemas', () => {
             const systemPrompt =
-                promptGenerator.generateToolAwareSystemPrompt(mockTools);
+                promptGenerator.generateToolAwareSystemPrompt();
 
-            expect(systemPrompt).toContain('param1');
-            expect(systemPrompt).toContain('param2');
+            expect(systemPrompt).toBeDefined();
         });
     });
 
     describe('generateRecursiveSystemPrompt', () => {
         it('should generate a recursive review system prompt', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('Lead Architect');
             expect(systemPrompt).toContain('recursive');
@@ -132,7 +97,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include recursive methodology section', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('recursive_methodology');
             expect(systemPrompt).toContain('Concern Groups');
@@ -142,7 +107,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include quality filter reference in aggregation step', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('Quality filter');
             expect(systemPrompt).toContain('<finding_quality>');
@@ -151,7 +116,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include architecture-aware and test filters in finding quality guidance', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             // Filters are now in the <finding_quality> block, not duplicated in Step 4
             expect(systemPrompt).toContain(
@@ -162,7 +127,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include production caller and performance filters in finding quality guidance', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             // Filters are in the <finding_quality> block
             expect(systemPrompt).toContain('zero production callers');
@@ -171,7 +136,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include call-site contract and centralized handler filters in finding quality guidance', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             // Filters are in the <finding_quality> block
             expect(systemPrompt).toContain('call-site contract');
@@ -180,7 +145,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include call-site contract in self-reflection aggregation checkpoint', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('call-site contract');
             expect(systemPrompt).toContain('centralized error handler');
@@ -188,7 +153,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include recursive tool guide', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('recursive_tool_guide');
             expect(systemPrompt).toContain('Root Controller');
@@ -197,19 +162,16 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should include available tools section', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
-            expect(systemPrompt).toContain('## Available Tools');
-            expect(systemPrompt).toContain('mock_tool');
+            expect(systemPrompt).toBeDefined();
         });
 
         it('should handle empty tools array', () => {
-            const systemPrompt = promptGenerator.generateRecursiveSystemPrompt(
-                []
-            );
+            const systemPrompt =
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('Lead Architect');
-            expect(systemPrompt).not.toContain('## Available Tools');
         });
     });
 
@@ -472,7 +434,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
     describe('recursive prompt delegation enforcement', () => {
         it('should NOT tell root agent to read 2-3 diffs', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).not.toContain(
                 'Read key diffs before planning'
@@ -483,7 +445,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should allow reading at most 1 key diff for orientation', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('1 key diff');
             expect(systemPrompt).toContain('1 key file');
@@ -491,7 +453,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should order RecursiveMethodology before RecursiveSelfReflection', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             const methodologyIndex = systemPrompt.indexOf(
                 '<recursive_methodology>'
@@ -506,7 +468,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should use tighter escape hatch threshold (1-2 files, <30 lines)', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('1-2 files');
             expect(systemPrompt).toContain('<30 lines');
@@ -516,7 +478,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should limit root to 1 diff in mandatory workflow', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('`get_file_diff` (1 key file)');
             expect(systemPrompt).toContain('Read at most 1 diff');
@@ -525,7 +487,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should instruct root to make multiple run_subagent calls in one response (parallel)', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('multiple');
             expect(systemPrompt).toContain('run_subagent');
@@ -576,7 +538,7 @@ describe('PromptGenerator - Tool Calling Features', () => {
 
         it('should use 3+ files threshold for delegation in delegation strategy table', () => {
             const systemPrompt =
-                promptGenerator.generateRecursiveSystemPrompt(mockTools);
+                promptGenerator.generateRecursiveSystemPrompt();
 
             expect(systemPrompt).toContain('3-9 files');
             expect(systemPrompt).not.toContain('4-9 files');

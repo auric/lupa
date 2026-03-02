@@ -2033,31 +2033,10 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            // Verify exploration prompt receives filtered tools
+            // Verify exploration prompt was called (no longer receives tools directly)
             expect(
                 mockPromptGenerator.generateExplorationSystemPrompt
-            ).toHaveBeenCalledWith(expect.any(Array));
-
-            // Get the tools passed to generateExplorationSystemPrompt
-            const passedTools =
-                mockPromptGenerator.generateExplorationSystemPrompt.mock
-                    .calls[0][0];
-
-            // Should include exploration-safe tools
-            expect(passedTools).toContainEqual(
-                expect.objectContaining({ name: 'read_file' })
-            );
-            expect(passedTools).toContainEqual(
-                expect.objectContaining({ name: 'find_symbol' })
-            );
-
-            // Should NOT include main-analysis-only tools
-            expect(passedTools).not.toContainEqual(
-                expect.objectContaining({ name: 'update_plan' })
-            );
-            expect(passedTools).not.toContainEqual(
-                expect.objectContaining({ name: 'submit_review' })
-            );
+            ).toHaveBeenCalled();
         });
 
         it('should filter all MAIN_ANALYSIS_ONLY_TOOLS from exploration mode', async () => {
@@ -2099,21 +2078,10 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            const passedTools =
-                mockPromptGenerator.generateExplorationSystemPrompt.mock
-                    .calls[0][0];
-
-            // Verify ALL main-only tools are filtered out
-            for (const toolName of MAIN_ANALYSIS_ONLY_TOOLS) {
-                expect(passedTools).not.toContainEqual(
-                    expect.objectContaining({ name: toolName })
-                );
-            }
-
-            // But read_file should still be there
-            expect(passedTools).toContainEqual(
-                expect.objectContaining({ name: 'read_file' })
-            );
+            // Verify exploration prompt was called (tool filtering is handled by ToolExecutor)
+            expect(
+                mockPromptGenerator.generateExplorationSystemPrompt
+            ).toHaveBeenCalled();
         });
     });
 

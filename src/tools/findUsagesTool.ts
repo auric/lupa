@@ -52,13 +52,13 @@ function getDefinitionRange(
  */
 export class FindUsagesTool extends BaseTool {
     name = 'find_usages';
-    description = `Find all places where a symbol is used/called across the codebase.
+    description = `Find all places where a symbol is used/called across the codebase via LSP references.
 
 USE THIS to assess impact of changes—who calls this function?
 USE THIS to verify all callers handle new behavior/parameters.
 COMBINE with find_symbol: first understand the definition, then find who uses it.
 
-Requires file_path where the symbol is defined as starting point.`;
+Requires file_path containing the symbol as the starting point for the reference search.`;
 
     private readonly formatter = new UsageFormatter();
 
@@ -70,12 +70,14 @@ Requires file_path where the symbol is defined as starting point.`;
         symbol_name: z
             .string()
             .min(1, 'Symbol name cannot be empty')
-            .describe('The name of the symbol to find usages for'),
+            .describe(
+                'Exact symbol name to find usages for (e.g., "handleClick", "MyClass"). Must match an occurrence in file_path'
+            ),
         file_path: z
             .string()
             .min(1, 'File path cannot be empty')
             .describe(
-                'The file path where the symbol is defined (used as starting point for reference search)'
+                'Relative path to a file where the symbol appears (any usage or definition). Used as the LSP reference search starting point'
             ),
         should_include_declaration: z
             .boolean()

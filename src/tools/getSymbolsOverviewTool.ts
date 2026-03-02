@@ -28,7 +28,10 @@ export class GetSymbolsOverviewTool extends BaseTool {
     description = `Get a configurable overview of symbols (classes, functions, methods, etc.) in a file or directory.
 Supports hierarchy control, symbol filtering, and body inclusion for detailed code analysis.
 Output format: "lineNumber: symbolName (symbolType)" with optional indentation for hierarchy.
-Respects .gitignore files and provides LLM-optimized formatting for code review.`;
+
+USE THIS to understand file/module structure and orient on unfamiliar code.
+PREFER find_symbol when you know a specific symbol name.
+PREFER list_directory for file-only listing without symbol extraction.`;
 
     schema = z.object({
         path: z

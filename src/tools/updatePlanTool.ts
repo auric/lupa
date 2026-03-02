@@ -20,7 +20,7 @@ export class UpdatePlanTool extends BaseTool {
     name = 'update_plan';
     description =
         'Create or update your review plan. ' +
-        'Call after orientation to decompose into concern groups, and after sub-agent rounds to track progress and coverage.';
+        'Call once after reading the diff to decompose the PR into concern groups, then again after each investigation round to track progress and coverage gaps.';
 
     schema = z.object({
         plan: z
@@ -28,9 +28,8 @@ export class UpdatePlanTool extends BaseTool {
             .min(50)
             .describe(
                 `Markdown-formatted review plan. Must include an Overview section.
-For recursive review: use Concern Groups with status tracking (pending/complete) and coverage notes.
-For direct review: use a Checklist with - [ ] / - [x] items.
-Call this tool multiple times: first to create the plan, then to update with findings and coverage status after sub-agent rounds.`
+Use Concern Groups with status tracking (pending/complete) and coverage notes.
+Call this tool multiple times: first to create the plan, then to update with findings and coverage status after each investigation round.`
             ),
     });
 

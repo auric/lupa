@@ -20,8 +20,9 @@ const InvestigationDecision = z.enum([
 export class ThinkAboutInvestigationTool extends BaseTool {
     name = 'think_about_investigation';
     description =
-        'Articulate your investigation progress (primarily for subagents). ' +
-        'Forces you to state questions answered, evidence gathered, and remaining work within your budget.';
+        'Pause and reflect on investigation progress before continuing. ' +
+        'CALL THIS after 3-5 tool calls to check if you are staying focused and on budget. ' +
+        'decision values: continue_investigating (more work needed), wrap_up_partial (running low on iterations), investigation_complete (all questions answered).';
 
     schema = z
         .object({
