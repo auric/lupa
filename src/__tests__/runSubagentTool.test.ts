@@ -1441,5 +1441,77 @@ describe('RunSubagentTool', () => {
         it('should return empty array for empty tool calls', () => {
             expect(RunSubagentTool.extractFilesExamined([])).toEqual([]);
         });
+
+        it('should resolve suffix paths to canonical filePaths when parsedDiff is provided', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/components/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/utils/helpers.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: ['Button.tsx', 'src/utils/helpers.ts'],
+                    },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            expect(result).toEqual([
+                'src/components/Button.tsx',
+                'src/utils/helpers.ts',
+            ]);
+        });
+
+        it('should fall back to raw path when parsedDiff has no match', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/a.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['nonexistent.ts'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            expect(result).toEqual(['nonexistent.ts']);
+        });
     });
 });

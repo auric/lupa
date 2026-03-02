@@ -46,6 +46,11 @@ export class AsyncSemaphore {
      * Release a semaphore slot, allowing the next queued caller to proceed.
      */
     release(): void {
+        if (this.current <= 0) {
+            throw new Error(
+                'AsyncSemaphore.release() called without a matching acquire()'
+            );
+        }
         this.current--;
         const next = this.queue.shift();
         if (next) {

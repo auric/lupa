@@ -162,6 +162,7 @@ export class ConversationRunner {
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
         this._hitRateLimit = false;
+        this._hitQuotaExhausted = false;
         this._wasCancelled = false;
 
         while (iteration < config.maxIterations) {

@@ -105,4 +105,20 @@ describe('AsyncSemaphore', () => {
         sem.release();
         expect(sem.activeCount).toBe(0);
     });
+
+    it('should throw on release without matching acquire', () => {
+        const sem = new AsyncSemaphore(1);
+        expect(() => sem.release()).toThrow(
+            'release() called without a matching acquire()'
+        );
+    });
+
+    it('should throw on double release', async () => {
+        const sem = new AsyncSemaphore(1);
+        await sem.acquire();
+        sem.release();
+        expect(() => sem.release()).toThrow(
+            'release() called without a matching acquire()'
+        );
+    });
 });

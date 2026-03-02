@@ -1,10 +1,12 @@
 import * as z from 'zod';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { SubagentLimits, SubagentErrors } from '../models/toolConstants';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 import type { SubagentResult } from '../types/modelTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
+import type { DiffHunk } from '../types/contextTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
@@ -207,7 +209,8 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
 
             if (recursiveState && childAgentId) {
                 const filesExamined = RunSubagentTool.extractFilesExamined(
-                    result.toolCalls
+                    result.toolCalls,
+                    context.parsedDiff
                 );
                 if (result.success) {
                     recursiveState.completeAgent(
@@ -349,8 +352,16 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
      * Only counts `get_file_diff` calls — the tool that shows actual PR changes.
      * Other tools (read_file, find_symbol, etc.) read current file state for context
      * but don't constitute reviewing a file's diff.
+     *
+     * When parsedDiff is provided, resolves raw LLM-provided paths to canonical
+     * filePaths using the same normalization and suffix matching as getFileDiffTool.
+     * This prevents coverage tracking mismatches when the LLM uses short paths
+     * (e.g. "Button.tsx" instead of "src/components/Button.tsx").
      */
-    static extractFilesExamined(toolCalls: ToolCallRecord[]): string[] {
+    static extractFilesExamined(
+        toolCalls: ToolCallRecord[],
+        parsedDiff?: DiffHunk[]
+    ): string[] {
         const files = new Set<string>();
         for (const call of toolCalls) {
             if (call.toolName !== 'get_file_diff') {
@@ -361,12 +372,50 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             const filePaths = args['file_paths'];
             if (Array.isArray(filePaths)) {
                 for (const fp of filePaths) {
-                    if (typeof fp === 'string') {
-                        files.add(fp);
+                    if (typeof fp !== 'string') {
+                        continue;
+                    }
+                    const resolved = parsedDiff
+                        ? RunSubagentTool.resolveToCanonicalPath(fp, parsedDiff)
+                        : fp;
+                    if (resolved) {
+                        files.add(resolved);
                     }
                 }
             }
         }
         return [...files];
+    }
+
+    /**
+     * Resolve a raw file path to its canonical parsedDiff filePath.
+     * Applies the same normalization and suffix matching as getFileDiffTool:
+     * exact match first, then suffix match with path separator boundary.
+     */
+    private static resolveToCanonicalPath(
+        rawPath: string,
+        parsedDiff: DiffHunk[]
+    ): string | undefined {
+        const normalized = rawPath
+            .trim()
+            .replace(/\\/g, '/')
+            .replace(/^\/+/, '')
+            .replace(/^\.\//, '');
+        const requestedPath = path.posix.normalize(normalized);
+
+        const exactMatch = parsedDiff.find((f) => f.filePath === requestedPath);
+        if (exactMatch) {
+            return exactMatch.filePath;
+        }
+
+        const suffixMatches = parsedDiff.filter((f) =>
+            f.filePath.endsWith('/' + requestedPath)
+        );
+        if (suffixMatches.length === 1) {
+            return suffixMatches[0]!.filePath;
+        }
+
+        // Ambiguous or no match — return the raw path as fallback
+        return rawPath.trim();
     }
 }

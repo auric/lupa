@@ -197,7 +197,7 @@ export class PromptGenerator {
         reminder +=
             '5. After agents return, call `update_plan` to record findings and coverage status\n';
         reminder +=
-            '6. If coverage gaps reported, triage: review trivial files (<30 lines) directly via `get_file_diff`, delegate substantive ones via `run_subagent`\n';
+            '6. If coverage gaps reported, group uncovered files and delegate via additional `run_subagent` calls\n';
         reminder += '7. Aggregate findings, check for cross-concern issues\n';
         reminder +=
             '8. Call `think_about_completion`, then `submit_review`\n\n';
@@ -208,7 +208,7 @@ export class PromptGenerator {
             'Sub-agents read diffs on demand via `get_file_diff` and return findings to you.\n\n';
         reminder +=
             '⚠️ **Total file coverage required** — Every changed file must be reviewed. ' +
-            'If you receive a coverage gap report after sub-agents complete, triage: review trivial changes directly, delegate substantive ones with specific questions.\n\n';
+            'If you receive a coverage gap report after sub-agents complete, group uncovered files and delegate them via additional `run_subagent` calls.\n\n';
         reminder +=
             'Quality matters more than quantity — a thorough review that finds zero issues is better than a review padded with speculative concerns.\n';
         reminder += '</analysis_task>';
