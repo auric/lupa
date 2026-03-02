@@ -353,6 +353,21 @@ export class SubagentExecutor {
                 };
             }
 
+            // True quota exhaustion (HTTP 402, ChatQuotaExceeded): monthly limit,
+            // non-recoverable until reset. Distinct from ChatRateLimited (HTTP 429).
+            if (conversationRunner.hitQuotaExhausted) {
+                Log.error(
+                    `${logLabel} Quota exhausted at iteration ${currentIteration}/${maxIterations} after ${duration}ms with ${toolCallsMade} tool calls`
+                );
+                return {
+                    success: false,
+                    response,
+                    toolCallsMade,
+                    toolCalls,
+                    error: 'quota_exhausted',
+                };
+            }
+
             // Rate-limit exhaustion: runner ran out of retries, not iteration budget.
             if (conversationRunner.hitRateLimit) {
                 Log.warn(

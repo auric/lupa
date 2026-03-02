@@ -103,14 +103,17 @@ export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
     private _hitMaxIterations = false;
     private _hitRateLimit = false;
+    private _hitQuotaExhausted = false;
     private _wasCancelled = false;
 
     /** Maximum number of consecutive rate-limit retries before giving up */
     private static readonly MAX_RATE_LIMIT_RETRIES = 5;
     /** Initial backoff delay in ms for rate-limited requests */
     private static readonly INITIAL_BACKOFF_MS = 2000;
+    /** Initial backoff delay for quota-flavored rate limits (longer because these need more time) */
+    private static readonly QUOTA_RATE_LIMIT_INITIAL_BACKOFF_MS = 15000;
     /** Maximum backoff delay in ms */
-    private static readonly MAX_BACKOFF_MS = 30000;
+    private static readonly MAX_BACKOFF_MS = 60000;
 
     constructor(
         private readonly client: ILLMClient,
@@ -125,6 +128,11 @@ export class ConversationRunner {
     /** Whether the last run() exited due to rate-limit retry exhaustion. */
     get hitRateLimit(): boolean {
         return this._hitRateLimit;
+    }
+
+    /** Whether the last run() exited due to quota exhaustion (non-recoverable). */
+    get hitQuotaExhausted(): boolean {
+        return this._hitQuotaExhausted;
     }
 
     /** Whether the last run() exited due to cancellation. */
@@ -463,8 +471,25 @@ export class ConversationRunner {
                     return '';
                 }
 
+                // True quota exhaustion (HTTP 402, ChatQuotaExceeded):
+                // Free-user monthly quota depleted — no retry will help until reset.
+                if (this.isQuotaExhaustedError(error)) {
+                    Log.error(
+                        `${logPrefix} Monthly quota exhausted (ChatQuotaExceeded) — stopping immediately`
+                    );
+                    this._hitQuotaExhausted = true;
+                    this._hitRateLimit = true;
+                    return (
+                        lastSubstantiveResponse ||
+                        'Copilot monthly quota exhausted. Please wait for your quota to reset.'
+                    );
+                }
+
                 // Rate limit: backoff and retry WITHOUT burning an iteration.
-                // VS Code API throws errors with "ChatRateLimited" in the name/message.
+                // The API throws ChatRateLimited (HTTP 429) for both transient
+                // rate limits AND quota-flavored throttles ("exceeded your Copilot
+                // token usage"). Both are temporary — use longer backoff for
+                // quota-flavored messages since they need more time to clear.
                 if (this.isRateLimitError(error)) {
                     rateLimitRetries++;
                     if (
@@ -481,13 +506,19 @@ export class ConversationRunner {
                         );
                     }
 
+                    const isQuotaFlavored =
+                        this.isQuotaFlavoredRateLimit(error);
+                    const baseBackoff = isQuotaFlavored
+                        ? ConversationRunner.QUOTA_RATE_LIMIT_INITIAL_BACKOFF_MS
+                        : ConversationRunner.INITIAL_BACKOFF_MS;
                     const backoffMs = Math.min(
-                        ConversationRunner.INITIAL_BACKOFF_MS *
-                            Math.pow(2, rateLimitRetries - 1),
+                        baseBackoff * Math.pow(2, rateLimitRetries - 1),
                         ConversationRunner.MAX_BACKOFF_MS
                     );
                     Log.warn(
-                        `${logPrefix} Rate limited (attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), waiting ${backoffMs}ms before retry`
+                        `${logPrefix} Rate limited${isQuotaFlavored ? ' (quota-flavored)' : ''} ` +
+                            `(attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), ` +
+                            `waiting ${backoffMs}ms before retry`
                     );
 
                     // Don't count rate-limit retries as iterations
@@ -630,6 +661,44 @@ export class ConversationRunner {
     }
 
     /**
+     * Check if an error is a true quota exhaustion error (HTTP 402).
+     * VS Code surfaces this as a LanguageModelError with name='ChatQuotaExceeded'
+     * when the free-user monthly quota is depleted. This is distinct from
+     * ChatRateLimited (HTTP 429) which is always temporary.
+     */
+    private isQuotaExhaustedError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const constructorName = error.constructor?.name ?? '';
+        const name = error.name ?? '';
+        return (
+            constructorName === 'ChatQuotaExceeded' ||
+            constructorName.includes('QuotaExceeded') ||
+            name === 'ChatQuotaExceeded' ||
+            name.includes('QuotaExceeded')
+        );
+    }
+
+    /**
+     * Check if a rate-limit error carries quota-flavored messaging.
+     * The API uses ChatRateLimited (HTTP 429) for both transient rate limits
+     * and quota-flavored throttles ("exceeded your Copilot token usage").
+     * Both are temporary, but quota-flavored errors need longer backoff.
+     */
+    private isQuotaFlavoredRateLimit(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const message = error.message ?? '';
+        return (
+            message.includes('exceeded your Copilot') ||
+            message.includes('token usage') ||
+            message.includes('exhausted this model')
+        );
+    }
+
+    /**
      * Check if an error is a rate limit error from the VS Code Copilot API.
      * The API throws errors with class name "ChatRateLimited".
      */
@@ -637,9 +706,12 @@ export class ConversationRunner {
         if (!(error instanceof Error)) {
             return false;
         }
-        const name = error.constructor?.name ?? '';
+        const constructorName = error.constructor?.name ?? '';
+        const name = error.name ?? '';
         const message = error.message ?? '';
         return (
+            constructorName === 'ChatRateLimited' ||
+            constructorName.includes('RateLimited') ||
             name === 'ChatRateLimited' ||
             name.includes('RateLimited') ||
             message.includes('rate limit') ||
@@ -809,6 +881,7 @@ export class ConversationRunner {
         this.tokenValidator = null;
         this._hitMaxIterations = false;
         this._hitRateLimit = false;
+        this._hitQuotaExhausted = false;
         this._wasCancelled = false;
     }
 }

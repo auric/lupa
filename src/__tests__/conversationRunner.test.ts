@@ -2134,5 +2134,231 @@ describe('ConversationRunner', () => {
             // All 4 calls should have been made (2 rate-limits + 2 successes)
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(4);
         });
+
+        describe('Quota Exhaustion', () => {
+            it('should retry quota-flavored rate limits with longer backoff', async () => {
+                let callCount = 0;
+                const modelManager = {
+                    sendRequest: vi.fn().mockImplementation(() => {
+                        callCount++;
+                        if (callCount === 1) {
+                            const err = new Error(
+                                'Sorry, you have exceeded your Copilot token usage. Please review our Terms of Service'
+                            );
+                            err.name = 'ChatRateLimited';
+                            return Promise.reject(err);
+                        }
+                        return Promise.resolve({
+                            content: 'Success after quota backoff',
+                            toolCalls: undefined,
+                        });
+                    }),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test prompt',
+                    maxIterations: 10,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                const resultPromise = runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                // Quota-flavored backoff starts at 15s (vs 2s for normal rate limits)
+                await vi.advanceTimersByTimeAsync(60000);
+
+                const result = await resultPromise;
+
+                // Should retry (not kill immediately) and succeed
+                expect(result).toBe('Success after quota backoff');
+                expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+                expect(runner.hitQuotaExhausted).toBe(false);
+                expect(runner.hitRateLimit).toBe(false);
+            });
+
+            it('should return last substantive response after quota-flavored retries exhausted', async () => {
+                let callCount = 0;
+                const modelManager = {
+                    sendRequest: vi.fn().mockImplementation(() => {
+                        callCount++;
+                        if (callCount === 1) {
+                            return Promise.resolve({
+                                content: null,
+                                toolCalls: [
+                                    {
+                                        id: 'call_1',
+                                        function: {
+                                            name: 'test_tool',
+                                            arguments: '{}',
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                        if (callCount === 2) {
+                            return Promise.resolve({
+                                content:
+                                    'Found a critical security vulnerability in the auth.ts module that allows bypass',
+                                toolCalls: [
+                                    {
+                                        id: 'call_2',
+                                        function: {
+                                            name: 'test_tool',
+                                            arguments: '{}',
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                        // All subsequent calls: quota-flavored rate limit
+                        const err = new Error(
+                            'Sorry, you have exceeded your Copilot token usage.'
+                        );
+                        err.name = 'ChatRateLimited';
+                        return Promise.reject(err);
+                    }),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor([
+                    {
+                        name: 'test_tool',
+                        success: true,
+                        result: 'Tool result',
+                    },
+                ]);
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test prompt',
+                    maxIterations: 10,
+                    tools: [createMockTool('test_tool')],
+                };
+
+                conversation.addUserMessage('Test');
+                const resultPromise = runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                // Advance through all retry backoffs
+                for (let i = 0; i < 10; i++) {
+                    await vi.advanceTimersByTimeAsync(120000);
+                }
+
+                const result = await resultPromise;
+
+                // Should exhaust retries and return last good response
+                expect(result).toContain('critical security vulnerability');
+                expect(runner.hitRateLimit).toBe(true);
+            });
+
+            it('should fail immediately on true ChatQuotaExceeded (HTTP 402)', async () => {
+                class ChatQuotaExceeded extends Error {
+                    constructor() {
+                        super('Quota exceeded');
+                        this.name = 'ChatQuotaExceeded';
+                    }
+                }
+
+                const modelManager = {
+                    sendRequest: vi
+                        .fn()
+                        .mockRejectedValue(new ChatQuotaExceeded()),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test',
+                    maxIterations: 5,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                const result = await runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                // True quota: 1 attempt, no retries
+                expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+                expect(runner.hitQuotaExhausted).toBe(true);
+                expect(runner.hitRateLimit).toBe(true);
+                expect(result).toContain('quota exhausted');
+            });
+
+            it('should reset hitQuotaExhausted flag on reset()', async () => {
+                class ChatQuotaExceeded extends Error {
+                    constructor() {
+                        super('Quota exceeded');
+                        this.name = 'ChatQuotaExceeded';
+                    }
+                }
+
+                const modelManager = {
+                    sendRequest: vi
+                        .fn()
+                        .mockRejectedValue(new ChatQuotaExceeded()),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test',
+                    maxIterations: 5,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                await runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+                expect(runner.hitQuotaExhausted).toBe(true);
+
+                runner.reset();
+                expect(runner.hitQuotaExhausted).toBe(false);
+            });
+        });
     });
 });
