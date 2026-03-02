@@ -328,8 +328,6 @@
     word-break: break-word;
     font-family: var(--vscode-editor-font-family, monospace);
     color: var(--vscode-editor-foreground);
-    max-height: 200px;
-    overflow: auto;
 }
 
 .tc-error-box {

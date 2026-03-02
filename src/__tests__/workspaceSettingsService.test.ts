@@ -331,5 +331,18 @@ describe('WorkspaceSettingsService', () => {
 
             expect(service.getMaxRecursionDepth()).toBe(0);
         });
+
+        it('should return max allowed maxRecursionDepth from settings file', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    maxRecursionDepth: RECURSION_LIMITS.maxDepth.max,
+                })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxRecursionDepth()).toBe(
+                RECURSION_LIMITS.maxDepth.max
+            );
+        });
     });
 });

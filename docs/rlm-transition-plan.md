@@ -143,7 +143,7 @@ LLM calls submit_review → Final review output
 | Flat subagent structure    | Can't follow deep dependency chains | Recursive depth (max 2-3)                              |
 | Free-text subagent results | Parent wastes tokens parsing        | Structured summary protocol                            |
 | All-in-one review          | One bad agent = no review           | Multiple focused agents, partial results               |
-| Fixed iteration budget     | Not allocated efficiently           | Independent per-agent budget (DEFAULT_CHILD_BUDGET=30) |
+| Fixed iteration budget     | Not allocated efficiently           | Independent per-agent budget (DEFAULT_CHILD_BUDGET=50) |
 | Subagents can't see diff   | Limits their usefulness             | Children receive relevant diff hunks via context       |
 
 ---
@@ -256,14 +256,7 @@ Depth 0 — ROOT AUDITOR (Controller)
 ├── Depth 1 — RECURSIVE REVIEWER (Investigator)
 │   ├── Role: Focused investigation of specific concern
 │   ├── Tools: All except update_plan, submit_review, main-only reflection
-│   ├── Budget: DEFAULT_CHILD_BUDGET (30 iterations, independent of parent)
-│   ├── Diff: Reads diffs on-demand via get_file_diff
-│   ├── Can recurse: YES (if depth < maxDepth)
-│   │
-│   └── Depth 2 — LEAF INVESTIGATOR (Deep Dive)
-│       ├── Role: Single-function or single-chain investigation
-│       ├── Tools: All except run_subagent + main-only tools
-│       ├── Budget: DEFAULT_CHILD_BUDGET (30 iterations, independent of parent)
+│   ├── Budget: DEFAULT_CHILD_BUDGET (50 iterations, independent of parent)
 │       ├── Diff: Reads diffs on-demand via get_file_diff
 │       └── Can recurse: NO (leaf node)
 ```
@@ -274,7 +267,7 @@ Depth 0 — ROOT AUDITOR (Controller)
 
 ```
 Root agent:  maxIterations (user-configured, default 100)
-Child agents: RecursionConstants.DEFAULT_CHILD_BUDGET (30) each
+Child agents: RecursionConstants.DEFAULT_CHILD_BUDGET (50) each
               — independent of parent budget, NOT deducted from parent
 
 Total compute bounded by:
@@ -884,7 +877,7 @@ Key principles applied in all prompts:
 | Recursive loop (infinite spawning)              | Low        | Critical | Hard depth limit + total agent cap + budget exhaustion                                            |
 | Cross-concern issues missed                     | Medium     | Medium   | Root agent does cross-concern analysis after aggregation                                          |
 | Increased complexity for contributors           | Medium     | Medium   | Feature flag, clear documentation, encapsulated in 2-3 files                                      |
-| Budget allocation too aggressive                | Medium     | Medium   | Conservative defaults (flat DEFAULT_CHILD_BUDGET=30 per child, bounded by maxSubagentsPerSession) |
+| Budget allocation too aggressive                | Medium     | Medium   | Conservative defaults (flat DEFAULT_CHILD_BUDGET=50 per child, bounded by maxSubagentsPerSession) |
 | Subagent fails → partial review                 | Low        | Low      | Other agents compensate; root reports partial coverage                                            |
 
 ### Fallback Mechanism
@@ -989,7 +982,7 @@ Identical to current linear behavior. SubagentExecutor uses existing DISALLOWED_
 ```typescript
 const RecursionConstants = {
     MIN_VIABLE_BUDGET: 3, // Min iterations to justify spawning a new agent
-    DEFAULT_CHILD_BUDGET: 30, // Each child gets a flat 30-iteration budget (independent of parent)
+    DEFAULT_CHILD_BUDGET: 50, // Each child gets a flat 50-iteration budget (independent of parent)
     TIMEOUT_PER_ITERATION_MS: 30_000, // ~30s per iteration for subagent timeout calculation
     MIN_SUBAGENT_TIMEOUT_MS: 120_000, // 2-minute minimum timeout floor
 };
