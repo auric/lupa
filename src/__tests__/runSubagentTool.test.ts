@@ -775,6 +775,7 @@ describe('RunSubagentTool', () => {
                 error: 'cancelled',
                 toolCallsMade: 0,
                 toolCalls: [],
+                executionTimeMs: 10,
             });
 
             const result = await executePromise;
@@ -1485,7 +1486,7 @@ describe('RunSubagentTool', () => {
             ]);
         });
 
-        it('should fall back to raw path when parsedDiff has no match', () => {
+        it('should exclude unresolvable paths from results', () => {
             const parsedDiff = [
                 {
                     filePath: 'src/a.ts',
@@ -1511,7 +1512,44 @@ describe('RunSubagentTool', () => {
                 toolCalls,
                 parsedDiff
             );
-            expect(result).toEqual(['nonexistent.ts']);
+            expect(result).toEqual([]);
+        });
+
+        it('should exclude ambiguous suffix matches from results', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/components/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/ui/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['Button.tsx'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            // Ambiguous — "Button.tsx" matches both; excluded from coverage
+            expect(result).toEqual([]);
         });
     });
 });

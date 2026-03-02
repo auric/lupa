@@ -2022,6 +2022,48 @@ describe('ConversationRunner', () => {
             expect(runner.hitMaxIterations).toBe(false);
         });
 
+        it('should not over-report iterationsUsed on rate-limit retry', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    return Promise.resolve({
+                        content: 'Success after retry',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+            await resultPromise;
+
+            // Rate-limited attempt should not count: 1 successful iteration, not 2
+            expect(runner.iterationsUsed).toBe(1);
+        });
+
         it('should return gracefully when retries are exhausted', async () => {
             const modelManager = {
                 sendRequest: vi.fn().mockImplementation(() => {

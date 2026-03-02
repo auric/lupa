@@ -390,8 +390,10 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
 
     /**
      * Resolve a raw file path to its canonical parsedDiff filePath.
-     * Applies the same normalization and suffix matching as getFileDiffTool:
-     * exact match first, then suffix match with path separator boundary.
+     * Uses the same normalization and suffix matching as getFileDiffTool:
+     * exact match first, then unambiguous suffix match.
+     * Returns undefined for ambiguous or unresolvable paths — only canonical
+     * matches count toward coverage tracking.
      */
     private static resolveToCanonicalPath(
         rawPath: string,
@@ -416,7 +418,8 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             return suffixMatches[0]!.filePath;
         }
 
-        // Ambiguous or no match — return the raw path as fallback
-        return rawPath.trim();
+        // Ambiguous (multiple matches) or no match — return undefined so
+        // unresolvable paths don't pollute coverage tracking
+        return undefined;
     }
 }

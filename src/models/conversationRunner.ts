@@ -558,6 +558,7 @@ export class ConversationRunner {
 
                     // Don't count rate-limit retries as iterations
                     iteration--;
+                    this._iterationsUsed = iteration;
 
                     await this.sleepWithCancellation(backoffMs, token);
                     if (token.isCancellationRequested) {

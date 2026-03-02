@@ -18,7 +18,10 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
+import {
+    INVESTIGATION_TOOLS,
+    MAIN_ANALYSIS_ONLY_TOOLS,
+} from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -584,6 +587,11 @@ export class ChatParticipantService implements vscode.Disposable {
         let analysisCompleted = false;
         let analysisError: string | undefined;
 
+        // Shared mutable set: the afterToolCalls callback adds investigation
+        // tool names after the first subagent round, and the runner reads it
+        // each iteration to filter the tool list.
+        const disabledToolNames = new Set<string>();
+
         try {
             const analysisResult = await runner.run(
                 {
@@ -595,8 +603,10 @@ export class ChatParticipantService implements vscode.Disposable {
                     requiresExplicitCompletion: true,
                     afterToolCalls: this.createCoverageGapCallback(
                         recursiveState,
-                        parsedDiff
+                        parsedDiff,
+                        disabledToolNames
                     ),
+                    disabledToolNames,
                 },
                 conversation,
                 token,
@@ -649,7 +659,8 @@ export class ChatParticipantService implements vscode.Disposable {
 
     private createCoverageGapCallback(
         recursiveState: RecursiveStateManager | undefined,
-        parsedDiff: DiffHunk[]
+        parsedDiff: DiffHunk[],
+        disabledToolNames: Set<string>
     ): ((toolNames: string[]) => string | undefined) | undefined {
         if (!recursiveState || parsedDiff.length === 0) {
             return undefined;
@@ -661,6 +672,18 @@ export class ChatParticipantService implements vscode.Disposable {
             if (!toolNames.includes('run_subagent')) {
                 return undefined;
             }
+
+            // After first subagent round, disable investigation tools for the root.
+            // The root is a controller — it delegates, not investigates.
+            if (disabledToolNames.size === 0) {
+                for (const tool of INVESTIGATION_TOOLS) {
+                    disabledToolNames.add(tool);
+                }
+                Log.info(
+                    '[ChatParticipantService] Root agent investigation tools disabled after first subagent round'
+                );
+            }
+
             return recursiveState.getCoverageGapMessage(allFiles);
         };
     }
