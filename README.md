@@ -8,7 +8,7 @@
 
 > ⚠️ **Important: Read before using!**
 >
-> Lupa makes **many tool calls per analysis** (often 50–100+). Each tool call counts against your GitHub Copilot premium request quota. **Avoid expensive models** like Claude Opus 4.5 (3x credits) or Claude Sonnet 4.5 (1x credits) unless you have credits to spare.
+> Lupa uses **many LLM iterations per analysis** (often 100–400+, depending on PR size). GitHub Copilot charges credits per iteration (LLM turn), not per tool call — and a single iteration may invoke multiple tools. **Avoid expensive models** like Claude Opus 4.5 (3x credits) or Claude Sonnet 4.5 (1x credits) unless you have credits to spare.
 >
 > See [Model Selection](#model-selection) for free and low-cost alternatives.
 
@@ -84,15 +84,15 @@ Lupa uses **GPT-4.1** as the default because it's free. With the recursive appro
 
 ### ⚠️ Premium Models Are Expensive
 
-Lupa is heavy on tool calling (50–100+ calls per analysis is normal). Each call counts against your premium request quota.
+Lupa uses many LLM iterations per analysis — 100–400+ is typical depending on PR size. Each iteration (LLM turn) counts against your premium request quota, regardless of how many tools are called within that turn.
 
-**Cost examples for a typical analysis:**
+**Cost examples (typical 40-file PR, ~200 iterations):**
 
-- Claude Opus 4.5 (3x credits): 150–300 premium requests consumed
-- Claude Sonnet 4.5 (1x credits): 50–100 premium requests consumed
+- Claude Opus 4.5 (3x credits): ~600 premium requests consumed
+- Claude Sonnet 4.5 (1x credits): ~200 premium requests consumed
 - GPT-4.1 (free): No credits consumed
 
-Monitor your usage in your GitHub account settings.
+Larger PRs use more iterations (e.g., an 80-file PR may reach 350+ iterations). Monitor your usage in your GitHub account settings.
 
 ### 💡 Free and Low-Cost Models
 
