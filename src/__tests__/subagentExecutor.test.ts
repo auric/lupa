@@ -639,6 +639,143 @@ describe('SubagentExecutor', () => {
         });
     });
 
+    describe('Shallow Investigation Nudge', () => {
+        it('should nudge subagent when only orientation tools are used', async () => {
+            // Flow: call get_file_diff → try to respond → nudge → call find_symbol → respond
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file_path":"auth.ts"}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Based on the diff, looks fine.' }, // triggers nudge
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'find_symbol',
+                                arguments:
+                                    '{"symbol_name":"authenticate","include_body":true}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'After deeper investigation: found real issue.',
+                },
+            ]);
+
+            const tools = [
+                createMockTool('get_file_diff'),
+                createMockTool('find_symbol'),
+            ];
+            const executor = createExecutor(modelManager, tools);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe(
+                'After deeper investigation: found real issue.'
+            );
+            // Model should have been called 4 times (tool call, nudged content, tool call, final)
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(4);
+        });
+
+        it('should accept response immediately when investigation tools are used', async () => {
+            // Flow: call find_symbol → respond → accepted (no nudge)
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments:
+                                    '{"symbol_name":"validate","include_body":true}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Found issue in validate function.' },
+            ]);
+
+            const tools = [
+                createMockTool('get_file_diff'),
+                createMockTool('find_symbol'),
+            ];
+            const executor = createExecutor(modelManager, tools);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('Found issue in validate function.');
+            // Only 2 calls: tool call + final response (no nudge)
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+        });
+
+        it('should only nudge once even with repeated shallow attempts', async () => {
+            // Flow: get_file_diff → try respond (nudge) → get_file_diff again → respond (accepted, already nudged)
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file_path":"auth.ts"}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Diff looks fine.' }, // triggers nudge (first time)
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file_path":"utils.ts"}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Still only reading diffs...' }, // no nudge (already nudged once)
+            ]);
+
+            const tools = [createMockTool('get_file_diff')];
+            const executor = createExecutor(modelManager, tools);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('Still only reading diffs...');
+        });
+    });
+
     describe('Diff Tool Filtering', () => {
         it('should keep diff tools when parsedDiff is provided', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);

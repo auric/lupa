@@ -271,7 +271,8 @@ export class ToolCallingAnalysisProvider {
                     afterToolCalls: this.createCoverageGapCallback(
                         recursiveState,
                         parsedDiff,
-                        disabledToolNames
+                        disabledToolNames,
+                        subagentSessionManager
                     ),
                     disabledToolNames,
                 },
@@ -331,7 +332,8 @@ export class ToolCallingAnalysisProvider {
     private createCoverageGapCallback(
         recursiveState: RecursiveStateManager | undefined,
         parsedDiff: DiffHunk[],
-        disabledToolNames: Set<string>
+        disabledToolNames: Set<string>,
+        sessionManager: SubagentSessionManager
     ): ((toolNames: string[]) => string | undefined) | undefined {
         if (!recursiveState || parsedDiff.length === 0) {
             return undefined;
@@ -342,6 +344,15 @@ export class ToolCallingAnalysisProvider {
         return (toolNames: string[]) => {
             if (!toolNames.includes('run_subagent')) {
                 return undefined;
+            }
+
+            // If subagent budget is exhausted, re-enable investigation tools
+            // so the root can directly examine uncovered files.
+            if (!sessionManager.canSpawn()) {
+                for (const tool of INVESTIGATION_TOOLS) {
+                    disabledToolNames.delete(tool);
+                }
+                return recursiveState.getCoverageGapFallbackMessage(allFiles);
             }
 
             // After first subagent round, disable investigation tools for the root.

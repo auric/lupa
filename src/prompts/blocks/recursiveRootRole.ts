@@ -1,6 +1,10 @@
 /**
  * Root auditor role definition for recursive review mode.
  * The root agent acts as a review controller: decompose → delegate → aggregate → synthesize.
+ *
+ * Note: The 3+ file threshold here is intentionally more aggressive than the 4+ threshold
+ * in subagentGuidance.ts (standard mode). Root mode delegates more because the root controller
+ * should avoid direct investigation entirely.
  */
 
 export function generateRecursiveRootRole(): string {

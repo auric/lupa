@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { createMockCancellationTokenSource } from './testUtils/mockFactories';
 
 const createMockSettings = (
     maxPerSession: number = ANALYSIS_LIMITS.maxSubagentsPerSession
@@ -155,6 +156,56 @@ describe('SubagentSessionManager', () => {
             sessionManager.reset();
             expect(sessionManager.canSpawn()).toBe(true);
             expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
+        });
+    });
+
+    describe('Cancellation Propagation', () => {
+        it('should return undefined from registerSubagentCancellation when no parent token set', () => {
+            const childSource = createMockCancellationTokenSource();
+            const disposable =
+                sessionManager.registerSubagentCancellation(childSource);
+            expect(disposable).toBeUndefined();
+        });
+
+        it('should cancel child source when parent token fires', () => {
+            const parentSource = createMockCancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentSource.token);
+
+            const childSource = createMockCancellationTokenSource();
+            const disposable =
+                sessionManager.registerSubagentCancellation(childSource);
+
+            expect(disposable).toBeDefined();
+            expect(childSource.cancel).not.toHaveBeenCalled();
+
+            // Fire parent cancellation
+            parentSource.cancel();
+            expect(childSource.cancel).toHaveBeenCalled();
+        });
+
+        it('should propagate to multiple child sources', () => {
+            const parentSource = createMockCancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentSource.token);
+
+            const child1 = createMockCancellationTokenSource();
+            const child2 = createMockCancellationTokenSource();
+            sessionManager.registerSubagentCancellation(child1);
+            sessionManager.registerSubagentCancellation(child2);
+
+            parentSource.cancel();
+            expect(child1.cancel).toHaveBeenCalled();
+            expect(child2.cancel).toHaveBeenCalled();
+        });
+
+        it('should clear parent token on reset', () => {
+            const parentSource = createMockCancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentSource.token);
+            sessionManager.reset();
+
+            const childSource = createMockCancellationTokenSource();
+            const disposable =
+                sessionManager.registerSubagentCancellation(childSource);
+            expect(disposable).toBeUndefined();
         });
     });
 });

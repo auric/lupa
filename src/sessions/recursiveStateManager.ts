@@ -329,6 +329,33 @@ export class RecursiveStateManager {
     }
 
     /**
+     * Generate a coverage gap message for when subagent budget is exhausted.
+     * Instructs the root to investigate remaining files directly.
+     * Returns undefined if all files are covered.
+     */
+    getCoverageGapFallbackMessage(allFiles: string[]): string | undefined {
+        const covered = this.getCoveredFiles();
+        const uncovered = allFiles.filter((f) => !covered.has(f));
+
+        if (uncovered.length === 0) {
+            return undefined;
+        }
+
+        const coveredCount = allFiles.length - uncovered.length;
+        return (
+            `Coverage gap: ${coveredCount}/${allFiles.length} files have been examined. ` +
+            `${uncovered.length} files have NOT been reviewed by any sub-agent:\n` +
+            uncovered.map((f) => `- ${f}`).join('\n') +
+            '\n\n' +
+            'Sub-agent budget is exhausted — no more sub-agents can be spawned.\n' +
+            'Action required: Investigate the remaining files DIRECTLY using your investigation tools.\n' +
+            '1. Call `update_plan` to record current coverage status\n' +
+            '2. Use `get_file_diff`, `find_symbol`, `find_usages`, and `read_file` to examine uncovered files\n' +
+            '3. Write findings for each uncovered file based on your investigation'
+        );
+    }
+
+    /**
      * Collect all findings from every agent in the tree.
      */
     getAllFindings(): RecursiveReviewFinding[] {

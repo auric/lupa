@@ -142,7 +142,8 @@
     transition: background 0.1s;
 }
 
-.tc-agent-header:hover {
+.tc-agent-header:hover,
+.tc-agent-header:focus-visible {
     background: var(--vscode-list-hoverBackground);
 }
 
@@ -209,7 +210,8 @@
     transition: background 0.1s;
 }
 
-.tc-row-header:hover {
+.tc-row-header:hover,
+.tc-row-header:focus-visible {
     background: var(--vscode-list-hoverBackground);
 }
 
