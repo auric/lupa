@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rate limit handling**: Automatic retry with exponential backoff (2s → 30s, up to 5 retries) when hitting API rate limits, without consuming analysis iterations.
 - **Better subagent budgets**: Each sub-agent gets its own independent iteration budget instead of a shrinking fraction of the parent's remaining budget.
 - **Recursive review works at all depths**: Fixed a bug where sub-agents beyond depth 1 couldn't spawn their own sub-agents.
+- **Chat participant subagents** now use the chat-selected model.
 
 #### Finding Quality
 

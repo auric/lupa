@@ -3,7 +3,7 @@ import { ConversationManager } from '../models/conversationManager';
 import { ConversationRunner } from '../models/conversationRunner';
 import { ToolRegistry } from '../models/toolRegistry';
 import { ToolExecutor } from '../models/toolExecutor';
-import { CopilotModelManager } from '../models/copilotModelManager';
+import type { ILLMClient } from '../models/ILLMClient';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import {
     SubagentLimits,
@@ -63,7 +63,7 @@ export class SubagentExecutor {
     private recursiveState: RecursiveStateManager | undefined;
 
     constructor(
-        private readonly modelManager: CopilotModelManager,
+        private readonly llmClient: ILLMClient,
         private readonly toolRegistry: ToolRegistry,
         private readonly promptGenerator: SubagentPromptGenerator,
         private readonly workspaceSettings: WorkspaceSettingsService,
@@ -192,7 +192,7 @@ export class SubagentExecutor {
                 maxIterations * ANALYSIS_LIMITS.toolCallMultiplier
             );
             const conversationRunner = new ConversationRunner(
-                this.modelManager,
+                this.llmClient,
                 toolExecutor
             );
 

@@ -9,6 +9,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ConversationRunner } from '../models/conversationRunner';
 import { ConversationManager } from '../models/conversationManager';
 import { ChatLLMClient } from '../models/chatLLMClient';
+import type { ILLMClient } from '../models/ILLMClient';
 import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { ChatContextManager } from '../models/chatContextManager';
@@ -263,8 +264,11 @@ export class ChatParticipantService implements vscode.Disposable {
             );
 
             // Create per-request subagent infrastructure with chat handler
+            const timeoutMs =
+                this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+            const client = new ChatLLMClient(request.model, timeoutMs);
             const { subagentSessionManager, subagentExecutor } =
-                this.createSubagentContext(token, debouncedHandler);
+                this.createSubagentContext(token, client, debouncedHandler);
 
             // Create per-request ToolExecutor with subagent context
             const toolExecutor = new ToolExecutor(this.deps.toolRegistry, {
@@ -273,9 +277,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 cancellationToken: token,
             });
 
-            const timeoutMs =
-                this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
-            const client = new ChatLLMClient(request.model, timeoutMs);
             const runner = new ConversationRunner(client, toolExecutor);
             const conversation = new ConversationManager();
 
@@ -514,8 +515,11 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Create per-analysis instances for complete isolation
         const planManager = new PlanSessionManager();
+        const timeoutMs =
+            this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+        const client = new ChatLLMClient(request.model, timeoutMs);
         const { subagentSessionManager, subagentExecutor } =
-            this.createSubagentContext(token, debouncedHandler);
+            this.createSubagentContext(token, client, debouncedHandler);
 
         // Determine if recursive review mode is available
         const maxRecursionDepth =
@@ -557,9 +561,6 @@ export class ChatParticipantService implements vscode.Disposable {
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
 
-        const timeoutMs =
-            this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
-        const client = new ChatLLMClient(request.model, timeoutMs);
         const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
         const availableTools = toolExecutor.getAvailableTools();
@@ -746,6 +747,7 @@ export class ChatParticipantService implements vscode.Disposable {
      */
     private createSubagentContext(
         token: vscode.CancellationToken,
+        llmClient: ILLMClient,
         chatHandler?: ChatToolCallHandler
     ): {
         subagentSessionManager: SubagentSessionManager;
@@ -755,7 +757,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.workspaceSettings
         );
         const subagentExecutor = new SubagentExecutor(
-            this.deps!.copilotModelManager,
+            llmClient,
             this.deps!.toolRegistry,
             new SubagentPromptGenerator(),
             this.deps!.workspaceSettings,

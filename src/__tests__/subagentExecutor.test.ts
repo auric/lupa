@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { SubagentExecutor } from '../services/subagentExecutor';
-import { CopilotModelManager } from '../models/copilotModelManager';
+import type { ILLMClient } from '../models/ILLMClient';
 import { ToolRegistry } from '../models/toolRegistry';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import {
@@ -33,7 +33,7 @@ const createMockModelManager = (
             maxInputTokens: 100000,
             countTokens: vi.fn().mockResolvedValue(100),
         }),
-    } as unknown as CopilotModelManager;
+    } as unknown as ILLMClient;
 };
 
 const createMockTool = (name: string): ITool =>
@@ -66,7 +66,7 @@ describe('SubagentExecutor', () => {
     });
 
     const createExecutor = (
-        modelManager: CopilotModelManager,
+        modelManager: ILLMClient,
         tools: ITool[] = [createMockTool('read_file')]
     ) => {
         const registry = new ToolRegistry();
@@ -253,7 +253,7 @@ describe('SubagentExecutor', () => {
                     maxInputTokens: 100000,
                     countTokens: vi.fn().mockResolvedValue(100),
                 }),
-            } as unknown as CopilotModelManager;
+            } as unknown as ILLMClient;
 
             const executor = createExecutor(modelManager);
 
