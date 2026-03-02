@@ -550,6 +550,7 @@ export function createFileExistsError(
 export function createMockWorkspaceSettings(
     overrides: Partial<{
         maxRecursionDepth: number;
+        enableSubagentBatching: boolean;
     }> = {}
 ): WorkspaceSettingsService {
     return {
@@ -558,6 +559,8 @@ export function createMockWorkspaceSettings(
         getMaxSubagentsPerSession: () => ANALYSIS_LIMITS.maxSubagentsPerSession,
         getMaxRecursionDepth: () =>
             overrides.maxRecursionDepth ?? RECURSION_LIMITS.maxDepth.default,
+        getEnableSubagentBatching: () =>
+            overrides.enableSubagentBatching ?? true,
     } as WorkspaceSettingsService;
 }
 

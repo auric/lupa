@@ -2709,4 +2709,221 @@ describe('ConversationRunner', () => {
             });
         });
     });
+
+    describe('flushBatchedSubagents Hook', () => {
+        it('should call flush callback after tool calls when run_subagent is not in batch', async () => {
+            const flushBatchedSubagents = vi
+                .fn()
+                .mockResolvedValue(
+                    '## Batched Results\n\nSubagent findings here'
+                );
+
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'read_file',
+                                arguments: '{"path":"test.ts"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'Final analysis',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'read_file',
+                    success: true,
+                    result: 'file content',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('read_file')],
+                flushBatchedSubagents,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Final analysis');
+            expect(flushBatchedSubagents).toHaveBeenCalledWith(['read_file']);
+        });
+
+        it('should inject flush results as user message', async () => {
+            const flushBatchedSubagents = vi
+                .fn()
+                .mockResolvedValue('## Subagent Results\n\nFindings here');
+
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'update_plan',
+                                arguments: '{"status":"investigating"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'Analysis with subagent results',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'update_plan',
+                    success: true,
+                    result: 'Plan updated',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('update_plan')],
+                flushBatchedSubagents,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Verify flush result was injected into conversation
+            const userMessages = conversation.getMessagesByRole('user');
+            const hasFlushMessage = userMessages.some(
+                (m) =>
+                    typeof m.content === 'string' &&
+                    m.content.includes('Subagent Results')
+            );
+            expect(hasFlushMessage).toBe(true);
+        });
+
+        it('should not flush when callback returns undefined', async () => {
+            const flushBatchedSubagents = vi.fn().mockResolvedValue(undefined);
+
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'read_file',
+                                arguments: '{"path":"test.ts"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'Final',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'read_file',
+                    success: true,
+                    result: 'content',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('read_file')],
+                flushBatchedSubagents,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // No user message injected for flush
+            const userMessages = conversation.getMessagesByRole('user');
+            const hasFlushMessage = userMessages.some(
+                (m) =>
+                    typeof m.content === 'string' &&
+                    m.content.includes('Subagent Results')
+            );
+            expect(hasFlushMessage).toBe(false);
+        });
+
+        it('should flush pending subagents before submit_review nudge on text-only response', async () => {
+            const flushBatchedSubagents = vi
+                .fn()
+                .mockResolvedValueOnce(
+                    '## Batched Results\n\nSubagent findings'
+                )
+                .mockResolvedValue(undefined);
+
+            const modelManager = createMockModelManager([
+                {
+                    // Turn 1: text only (no tool calls) while requiresExplicitCompletion
+                    content: 'Thinking about results...',
+                    toolCalls: undefined,
+                },
+                {
+                    // Turn 2: after flush, model submits review
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'submit_review',
+                                arguments: '{"review":"Final review"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'submit_review',
+                    success: true,
+                    result: 'Complete review',
+                    metadata: { isCompletion: true },
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [
+                    createMockTool('submit_review'),
+                    createMockTool('run_subagent'),
+                ],
+                requiresExplicitCompletion: true,
+                flushBatchedSubagents,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Flush was called with empty tool names (text-only response)
+            expect(flushBatchedSubagents).toHaveBeenCalledWith([]);
+            expect(result).toBe('Complete review');
+        });
+    });
 });

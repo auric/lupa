@@ -28,7 +28,10 @@ describe('WorkspaceSettingsSchema', () => {
             const result = WorkspaceSettingsSchema.safeParse(validSettings);
             expect(result.success).toBe(true);
             if (result.success) {
-                expect(result.data).toEqual(validSettings);
+                expect(result.data).toEqual({
+                    ...validSettings,
+                    enableSubagentBatching: true,
+                });
             }
         });
 

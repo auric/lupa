@@ -41,6 +41,11 @@ export const WorkspaceSettingsSchema = z.looseObject({
         .min(RECURSION_LIMITS.maxDepth.min)
         .max(RECURSION_LIMITS.maxDepth.max)
         .default(RECURSION_LIMITS.maxDepth.default),
+    /**
+     * Accumulate subagent calls across iterations for batched parallel execution.
+     * Helps models that spawn one subagent per iteration instead of multiple in parallel.
+     */
+    enableSubagentBatching: z.boolean().default(true),
     logLevel: z.enum(LOG_LEVELS).default('info'),
 });
 

@@ -3,6 +3,7 @@ import { PlanSessionManager } from '../services/planSessionManager';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import type { SubagentBatchManager } from '../sessions/subagentBatchManager';
 import type { DiffHunk } from './contextTypes';
 
 /**
@@ -72,4 +73,12 @@ export interface ExecutionContext {
      * Present only during analysis mode (not exploration mode).
      */
     parsedDiff?: DiffHunk[];
+
+    /**
+     * Batch manager for accumulating subagent calls across iterations.
+     * When present, RunSubagentTool enqueues tasks instead of executing immediately.
+     * ConversationRunner flushes the batch when the model stops emitting run_subagent calls.
+     * Created per-analysis when subagent batching is enabled.
+     */
+    subagentBatchManager?: SubagentBatchManager;
 }

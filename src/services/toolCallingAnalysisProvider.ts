@@ -25,8 +25,16 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
-import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import {
+    RecursiveStateManager,
+    RecursionConstants,
+} from '../sessions/recursiveStateManager';
+import {
+    SubagentBatchManager,
+    type QueuedSubagent,
+} from '../sessions/subagentBatchManager';
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
+import { RunSubagentTool } from '../tools/runSubagentTool';
 import type { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -115,6 +123,14 @@ export class ToolCallingAnalysisProvider {
             recursiveState.startAgent('root');
         }
 
+        // Create batch manager for accumulating subagent calls across iterations.
+        // Only in recursive mode (which has subagents) and when the setting is enabled.
+        const batchManager =
+            isRecursiveMode &&
+            this.workspaceSettings.getEnableSubagentBatching()
+                ? new SubagentBatchManager()
+                : undefined;
+
         // Create execution context as a mutable reference so parsedDiff can be
         // set after diff processing
         const executionContext: ExecutionContext = {
@@ -125,6 +141,7 @@ export class ToolCallingAnalysisProvider {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
+            subagentBatchManager: batchManager,
         };
 
         const toolExecutor = new ToolExecutor(
@@ -272,6 +289,16 @@ export class ToolCallingAnalysisProvider {
                         subagentSessionManager
                     ),
                     disabledToolNames,
+                    flushBatchedSubagents: batchManager
+                        ? this.createFlushBatchCallback(
+                              batchManager,
+                              subagentExecutor,
+                              subagentSessionManager,
+                              recursiveState,
+                              executionContext,
+                              token
+                          )
+                        : undefined,
                 },
                 conversationManager,
                 token,
@@ -392,6 +419,200 @@ export class ToolCallingAnalysisProvider {
             },
             wasCancelled,
         };
+    }
+
+    /**
+     * Create a callback that flushes batched subagent tasks for parallel execution.
+     * Returns undefined (no-op) if there are no pending tasks or the model is still
+     * accumulating (current iteration had run_subagent calls).
+     */
+    private createFlushBatchCallback(
+        batchManager: SubagentBatchManager,
+        subagentExecutor: SubagentExecutor,
+        sessionManager: SubagentSessionManager,
+        recursiveState: RecursiveStateManager | undefined,
+        executionContext: ExecutionContext,
+        parentToken: vscode.CancellationToken
+    ): (currentToolNames: string[]) => Promise<string | undefined> {
+        return async (currentToolNames: string[]) => {
+            if (!batchManager.hasPending()) {
+                return undefined;
+            }
+
+            // Still accumulating: this iteration had run_subagent calls
+            if (currentToolNames.includes('run_subagent')) {
+                return undefined;
+            }
+
+            const queued = batchManager.drain();
+            Log.info(
+                `Flushing ${queued.length} batched subagent(s) for parallel execution`
+            );
+
+            const results = await Promise.allSettled(
+                queued.map((entry) =>
+                    this.executeBatchedSubagent(
+                        entry,
+                        subagentExecutor,
+                        sessionManager,
+                        recursiveState,
+                        executionContext,
+                        parentToken
+                    )
+                )
+            );
+
+            const lines: string[] = [
+                `## Batched Subagent Results (${queued.length} executed in parallel)\n`,
+            ];
+
+            for (let i = 0; i < results.length; i++) {
+                const result = results[i]!;
+                const entry = queued[i]!;
+                lines.push(`### Subagent #${entry.subagentId}\n`);
+                if (result.status === 'fulfilled') {
+                    lines.push(result.value);
+                } else {
+                    lines.push(`Error: ${getErrorMessage(result.reason)}`);
+                }
+                lines.push('');
+            }
+
+            return lines.join('\n');
+        };
+    }
+
+    /**
+     * Execute a single batched subagent with timeout/cancellation management.
+     * Mirrors the execution logic from RunSubagentTool.execute() but without
+     * the budget validation (already done at enqueue time).
+     */
+    private async executeBatchedSubagent(
+        entry: QueuedSubagent,
+        executor: SubagentExecutor,
+        sessionManager: SubagentSessionManager,
+        recursiveState: RecursiveStateManager | undefined,
+        executionContext: ExecutionContext,
+        parentToken: vscode.CancellationToken
+    ): Promise<string> {
+        const timeoutMs =
+            entry.childBudget !== undefined
+                ? Math.max(
+                      RecursionConstants.MIN_SUBAGENT_TIMEOUT_MS,
+                      entry.childBudget *
+                          RecursionConstants.TIMEOUT_PER_ITERATION_MS
+                  )
+                : this.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+
+        const cancellationTokenSource = new vscode.CancellationTokenSource();
+        const parentCancellationDisposable =
+            sessionManager.registerSubagentCancellation(
+                cancellationTokenSource
+            );
+        let cancelledByTimeout = false;
+        const timeoutHandle = setTimeout(() => {
+            cancelledByTimeout = true;
+            cancellationTokenSource.cancel();
+        }, timeoutMs);
+
+        try {
+            const result = await executor.execute(
+                { task: entry.task, context: entry.taskContext },
+                cancellationTokenSource.token,
+                entry.subagentId,
+                {
+                    recursionDepth: 1,
+                    agentId: entry.childAgentId,
+                    recursiveState,
+                    parsedDiff: executionContext.parsedDiff,
+                    subagentSessionManager: sessionManager,
+                    childBudget: entry.childBudget,
+                }
+            );
+
+            clearTimeout(timeoutHandle);
+
+            // Update recursive state with results
+            if (recursiveState && entry.childAgentId) {
+                const filesExamined = RunSubagentTool.extractFilesExamined(
+                    result.toolCalls,
+                    executionContext.parsedDiff
+                );
+                if (result.success) {
+                    recursiveState.completeAgent(
+                        entry.childAgentId,
+                        [],
+                        filesExamined
+                    );
+                } else if (result.error === 'cancelled') {
+                    recursiveState.cancelAgent(entry.childAgentId);
+                } else if (
+                    result.error === 'max_iterations' ||
+                    result.error === 'rate_limited'
+                ) {
+                    recursiveState.completeAgent(
+                        entry.childAgentId,
+                        [],
+                        filesExamined
+                    );
+                } else {
+                    recursiveState.failAgent(
+                        entry.childAgentId,
+                        result.error ?? 'Unknown error'
+                    );
+                }
+            }
+
+            if (!result.success) {
+                if (result.error === 'cancelled') {
+                    if (
+                        cancelledByTimeout &&
+                        !parentToken.isCancellationRequested
+                    ) {
+                        return `Subagent #${entry.subagentId} timed out after ${Math.round(timeoutMs / 1000)}s`;
+                    }
+                    return `Subagent #${entry.subagentId} was cancelled`;
+                }
+                const partial = result.response?.trim();
+                const errorMsg = `Subagent #${entry.subagentId} failed: ${result.error}`;
+                return partial
+                    ? `${errorMsg}\n\nPartial findings:\n${partial}`
+                    : errorMsg;
+            }
+
+            return (
+                `**Subagent #${entry.subagentId} Investigation Complete**\n\n` +
+                `**Tool calls made:** ${result.toolCallsMade}\n\n` +
+                `---\n\n${result.response}`
+            );
+        } catch (error) {
+            clearTimeout(timeoutHandle);
+
+            if (recursiveState && entry.childAgentId) {
+                if (isCancellationError(error)) {
+                    recursiveState.cancelAgent(entry.childAgentId);
+                } else {
+                    recursiveState.failAgent(
+                        entry.childAgentId,
+                        getErrorMessage(error)
+                    );
+                }
+            }
+
+            if (isCancellationError(error)) {
+                throw error;
+            }
+
+            if (cancelledByTimeout && !parentToken.isCancellationRequested) {
+                return `Subagent #${entry.subagentId} timed out after ${Math.round(timeoutMs / 1000)}s`;
+            }
+
+            sessionManager.rollbackSpawn();
+            return `Subagent #${entry.subagentId} failed: ${getErrorMessage(error)}`;
+        } finally {
+            parentCancellationDisposable?.dispose();
+            cancellationTokenSource.dispose();
+        }
     }
 
     dispose(): void {

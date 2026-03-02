@@ -59,6 +59,17 @@ export interface ConversationRunnerConfig {
         iteration: number,
         maxIterations: number
     ) => string | undefined;
+    /**
+     * Called after tool processing or on text-only responses to flush batched subagent tasks.
+     * Receives the tool names from the current iteration (empty array for text-only responses).
+     * Returns formatted results to inject as a user message, or undefined if nothing to flush.
+     *
+     * Flush triggers when: the batch queue has pending tasks AND the current iteration
+     * had no run_subagent calls (the model has finished delegating).
+     */
+    flushBatchedSubagents?: (
+        currentToolNames: string[]
+    ) => Promise<string | undefined>;
 }
 
 /**
@@ -437,12 +448,44 @@ export class ConversationRunner {
                         }
                     }
 
+                    // Flush batched subagents when the model has stopped delegating.
+                    // Trigger: queue has pending tasks AND this iteration had no run_subagent calls.
+                    if (config.flushBatchedSubagents) {
+                        const toolNames = toolCalls.map(
+                            (tc) => tc.function.name
+                        );
+                        const batchResult =
+                            await config.flushBatchedSubagents(toolNames);
+                        if (batchResult) {
+                            conversation.addUserMessage(batchResult);
+                            Log.info(
+                                `${logPrefix} Injected batched subagent results (${batchResult.length} chars)`
+                            );
+                        }
+                    }
+
                     continue;
                 }
 
                 // No tool calls - check if explicit completion is required
                 // Main analysis requires submit_review; subagents/exploration can complete directly
                 if (config.requiresExplicitCompletion) {
+                    // Flush pending batched subagents before nudging for submit_review.
+                    // The model gave a text response while subagents are queued — execute them
+                    // and let the model see results before deciding to continue or submit.
+                    if (config.flushBatchedSubagents) {
+                        const batchResult = await config.flushBatchedSubagents(
+                            []
+                        );
+                        if (batchResult) {
+                            conversation.addUserMessage(batchResult);
+                            Log.info(
+                                `${logPrefix} Flushed batched subagents before completion nudge (${batchResult.length} chars)`
+                            );
+                            continue;
+                        }
+                    }
+
                     completionNudgeCount++;
 
                     // After MAX_COMPLETION_NUDGES attempts, accept the response to prevent infinite loops
