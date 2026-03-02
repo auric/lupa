@@ -1,4 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import {
+    ChevronRight,
+    Bot,
+    Wrench,
+    AlertCircle,
+    CheckCircle2,
+    XCircle,
+    Clock,
+    GitBranch,
+} from 'lucide-react';
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
 import type { ToolCallsData, ToolCallRecord } from '../../types/toolCallTypes';
@@ -8,263 +18,360 @@ interface ToolCallsTabProps {
     onCopy?: (text: string) => void;
 }
 
-/**
- * Formats tool calls data as markdown for clipboard export
- */
-const formatToolCallsAsMarkdown = (toolCalls: ToolCallsData): string => {
+interface AgentSection {
+    id: string;
+    name: string;
+    depth: number;
+    calls: ToolCallRecord[];
+    executionTimeMs: number | undefined;
+    success: boolean;
+    failedCount: number;
+}
+
+function extractAgentName(call: ToolCallRecord): string {
+    const args = call.arguments as Record<string, unknown>;
+    if (
+        args.investigation_focus &&
+        typeof args.investigation_focus === 'string'
+    ) {
+        const focus = args.investigation_focus;
+        return focus.length > 60 ? focus.slice(0, 57) + '...' : focus;
+    }
+    if (args.task && typeof args.task === 'string') {
+        const task = args.task;
+        return task.length > 60 ? task.slice(0, 57) + '...' : task;
+    }
+    return 'Subagent';
+}
+
+function flattenToAgents(
+    calls: ToolCallRecord[],
+    parentName: string = 'Root Agent',
+    depth: number = 0,
+    idPrefix: string = 'agent'
+): AgentSection[] {
+    const sections: AgentSection[] = [];
+    const ownCalls: ToolCallRecord[] = [];
+    let childCounter = 0;
+
+    for (const call of calls) {
+        ownCalls.push(call);
+        if (call.toolName === 'run_subagent' && call.nestedCalls?.length) {
+            childCounter++;
+            const childId = `${idPrefix}-${childCounter}`;
+            const childName = extractAgentName(call);
+            const childSections = flattenToAgents(
+                call.nestedCalls,
+                childName,
+                depth + 1,
+                childId
+            );
+            sections.push(...childSections);
+        }
+    }
+
+    const failedCount = ownCalls.filter((c) => !c.success).length;
+
+    // Insert this agent at the beginning
+    sections.unshift({
+        id: idPrefix,
+        name: parentName,
+        depth,
+        calls: ownCalls,
+        executionTimeMs: undefined, // Root doesn't have a single execution time
+        success: failedCount === 0,
+        failedCount,
+    });
+
+    return sections;
+}
+
+function countAllCalls(calls: ToolCallRecord[]): number {
+    let count = 0;
+    for (const call of calls) {
+        count++;
+        if (call.nestedCalls?.length) {
+            count += countAllCalls(call.nestedCalls);
+        }
+    }
+    return count;
+}
+
+function countAllFailed(calls: ToolCallRecord[]): number {
+    let count = 0;
+    for (const call of calls) {
+        if (!call.success) {
+            count++;
+        }
+        if (call.nestedCalls?.length) {
+            count += countAllFailed(call.nestedCalls);
+        }
+    }
+    return count;
+}
+
+function formatDuration(ms: number | undefined): string {
+    if (ms === undefined) {
+        return '';
+    }
+    if (ms < 1000) {
+        return `${ms}ms`;
+    }
+    if (ms < 60000) {
+        return `${(ms / 1000).toFixed(1)}s`;
+    }
+    const mins = Math.floor(ms / 60000);
+    const secs = Math.round((ms % 60000) / 1000);
+    return `${mins}m ${secs}s`;
+}
+
+function getArgPreview(call: ToolCallRecord): string {
+    const args = call.arguments as Record<string, unknown>;
+    // Show the most useful argument as a preview
+    const previewKeys = [
+        'symbol_name',
+        'file_path',
+        'pattern',
+        'directory_path',
+        'investigation_focus',
+        'topic',
+        'content',
+        'task',
+    ];
+    for (const key of previewKeys) {
+        const val = args[key];
+        if (typeof val === 'string' && val.length > 0) {
+            const preview = val.length > 50 ? val.slice(0, 47) + '...' : val;
+            return preview;
+        }
+    }
+    const keys = Object.keys(args);
+    if (keys.length === 0) {
+        return '';
+    }
+    const firstKey = keys[0]!;
+    const firstVal = args[firstKey];
+    if (typeof firstVal === 'string') {
+        return firstVal.length > 50 ? firstVal.slice(0, 47) + '...' : firstVal;
+    }
+    return '';
+}
+
+const formatToolCallsAsMarkdown = (
+    toolCalls: ToolCallsData,
+    agents: AgentSection[]
+): string => {
+    const totalCalls = countAllCalls(toolCalls.calls);
+    const totalFailed = countAllFailed(toolCalls.calls);
     const lines: string[] = [
         '# Tool Calls Report',
         '',
-        '## Summary',
+        `- **Total Calls:** ${totalCalls}`,
+        `- **Agents:** ${agents.length}`,
+        totalFailed > 0 ? `- **Failed:** ${totalFailed}` : '',
         '',
-        `- **Total Calls:** ${toolCalls.totalCalls}`,
-        `- **Successful:** ${toolCalls.successfulCalls}`,
-        `- **Failed:** ${toolCalls.failedCalls}`,
-        `- **Analysis Completed:** ${toolCalls.analysisCompleted ? 'Yes' : 'No'}`,
-    ];
+    ].filter(Boolean);
 
-    if (toolCalls.analysisError) {
-        lines.push(`- **Error:** ${toolCalls.analysisError}`);
-    }
-
-    lines.push('', '## Tool Calls', '');
-
-    const formatCall = (
-        call: ToolCallRecord,
-        prefix: string,
-        isNested: boolean = false
-    ) => {
-        const status = call.success ? '✅' : '❌';
-        const duration =
-            call.durationMs !== undefined ? ` (${call.durationMs}ms)` : '';
-        const headingLevel = isNested ? '####' : '###';
-
+    for (const agent of agents) {
+        const depthPrefix = agent.depth > 0 ? '  '.repeat(agent.depth) : '';
         lines.push(
-            `${headingLevel} ${prefix} ${status} ${call.toolName}${duration}`
+            `## ${depthPrefix}${agent.name} (${agent.calls.length} calls)`,
+            ''
         );
-        lines.push('');
 
-        lines.push('**Arguments:**');
-        lines.push('```json');
-        lines.push(JSON.stringify(call.arguments, null, 2));
-        lines.push('```');
-        lines.push('');
+        for (const call of agent.calls) {
+            const status = call.success ? '✅' : '❌';
+            const duration =
+                call.durationMs !== undefined
+                    ? ` (${formatDuration(call.durationMs)})`
+                    : '';
+            lines.push(`### ${status} ${call.toolName}${duration}`, '');
+            lines.push('**Arguments:**', '```json');
+            lines.push(JSON.stringify(call.arguments, null, 2));
+            lines.push('```', '');
 
-        if (call.error) {
-            lines.push('**Error:**');
-            lines.push(`> ${call.error}`);
-        } else {
-            lines.push('**Result:**');
-            if (typeof call.result === 'string') {
-                lines.push('```');
-                lines.push(call.result);
-                lines.push('```');
+            if (call.error) {
+                lines.push('**Error:**', `> ${call.error}`, '');
             } else {
-                lines.push('```json');
-                lines.push(JSON.stringify(call.result, null, 2));
-                lines.push('```');
+                lines.push('**Result:**');
+                if (typeof call.result === 'string') {
+                    lines.push('```', call.result, '```');
+                } else {
+                    lines.push(
+                        '```json',
+                        JSON.stringify(call.result, null, 2),
+                        '```'
+                    );
+                }
+                lines.push('');
             }
         }
-        lines.push('');
-
-        // Format nested calls if present (for subagent)
-        if (call.nestedCalls && call.nestedCalls.length > 0) {
-            lines.push('**Subagent Tool Calls:**', '');
-            call.nestedCalls.forEach((nestedCall, nestedIndex) => {
-                formatCall(nestedCall, `${prefix}.${nestedIndex + 1}`, true);
-            });
-        }
-    };
-
-    toolCalls.calls.forEach((call, index) => {
-        formatCall(call, `${index + 1}`);
-    });
+    }
 
     return lines.join('\n');
 };
 
-interface ToolCallItemProps {
+interface ToolCallRowProps {
     call: ToolCallRecord;
     index: number;
-    prefix?: string;
-    isNested?: boolean;
 }
 
-const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
-    <svg
-        className={`tool-call-chevron ${expanded ? 'tool-call-chevron--expanded' : ''}`}
-        viewBox="0 0 16 16"
-        fill="currentColor"
-    >
-        <path d="M5.7 13.7L5 13l4.6-4.6L5 3.7l.7-.7 5 5.3-5 5.4z" />
-    </svg>
-);
-
-const ToolCallItem = ({
-    call,
-    index,
-    prefix = '',
-    isNested = false,
-}: ToolCallItemProps) => {
+const ToolCallRow = ({ call, index }: ToolCallRowProps) => {
     const [expanded, setExpanded] = useState(false);
-    const [nestedExpanded, setNestedExpanded] = useState(false);
 
-    const handleToggle = () => {
-        setExpanded((prev) => !prev);
-    };
+    const preview = getArgPreview(call);
+    const isSubagent = call.toolName === 'run_subagent';
+    const displayDuration = isSubagent
+        ? (call.executionTimeMs ?? call.durationMs)
+        : call.durationMs;
 
-    const handleNestedToggle = () => {
-        setNestedExpanded((prev) => !prev);
-    };
+    return (
+        <div className="tc-row">
+            <div
+                className="tc-row-header"
+                onClick={() => setExpanded((p) => !p)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => e.key === 'Enter' && setExpanded((p) => !p)}
+            >
+                <ChevronRight
+                    size={14}
+                    className={`tc-chevron ${expanded ? 'tc-chevron--open' : ''}`}
+                />
+                <span className="tc-row-index">{index + 1}</span>
+                {call.success ? (
+                    <CheckCircle2 size={14} className="tc-icon--success" />
+                ) : (
+                    <XCircle size={14} className="tc-icon--failed" />
+                )}
+                <span className="tc-row-name">{call.toolName}</span>
+                {preview && <span className="tc-row-preview">{preview}</span>}
+                {isSubagent && call.nestedCalls && (
+                    <span className="tc-subagent-pill">
+                        <GitBranch size={10} />
+                        {call.nestedCalls.length} calls
+                    </span>
+                )}
+                {displayDuration !== undefined && (
+                    <span className="tc-row-duration">
+                        {formatDuration(displayDuration)}
+                    </span>
+                )}
+            </div>
+            {expanded && (
+                <div className="tc-row-detail">
+                    <div className="tc-detail-section">
+                        <div className="tc-detail-label">Arguments</div>
+                        <div className="tc-detail-content">
+                            <JsonViewer
+                                data={call.arguments}
+                                rootKey="args"
+                                collapseDepth={3}
+                                maxHeight="200px"
+                            />
+                        </div>
+                    </div>
 
-    const formatDuration = (ms: number | undefined): string => {
-        if (ms === undefined) {
-            return '';
-        }
-        if (ms < 1000) {
-            return `${ms}ms`;
-        }
-        return `${(ms / 1000).toFixed(2)}s`;
-    };
+                    {call.error ? (
+                        <div className="tc-detail-section">
+                            <div className="tc-detail-label">Error</div>
+                            <div className="tc-error-box">{call.error}</div>
+                        </div>
+                    ) : (
+                        <div className="tc-detail-section">
+                            <div className="tc-detail-label">Result</div>
+                            <div className="tc-detail-content">
+                                {typeof call.result === 'string' ? (
+                                    <pre className="tc-result-pre">
+                                        {call.result}
+                                    </pre>
+                                ) : (
+                                    <JsonViewer
+                                        data={call.result}
+                                        rootKey="result"
+                                        collapseDepth={2}
+                                        maxHeight="200px"
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
-    const displayIndex = prefix ? `${prefix}.${index + 1}` : `${index + 1}`;
-    const hasNestedCalls = call.nestedCalls && call.nestedCalls.length > 0;
+interface AgentCardProps {
+    agent: AgentSection;
+    defaultExpanded?: boolean;
+}
+
+const AgentCard = ({ agent, defaultExpanded = false }: AgentCardProps) => {
+    const [expanded, setExpanded] = useState(defaultExpanded);
 
     return (
         <div
-            className={`tool-call-item ${isNested ? 'tool-call-item--nested' : ''}`}
+            className={`tc-agent ${agent.depth > 0 ? 'tc-agent--child' : ''}`}
+            style={
+                agent.depth > 1
+                    ? { marginLeft: `${(agent.depth - 1) * 12}px` }
+                    : undefined
+            }
         >
             <div
-                className="tool-call-header"
-                onClick={handleToggle}
+                className="tc-agent-header"
+                onClick={() => setExpanded((p) => !p)}
                 role="button"
                 tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && handleToggle()}
+                onKeyDown={(e) => e.key === 'Enter' && setExpanded((p) => !p)}
             >
-                <ChevronIcon expanded={expanded} />
-                <span
-                    className={`tool-call-status ${call.success ? 'tool-call-status--success' : 'tool-call-status--failed'}`}
+                <ChevronRight
+                    size={16}
+                    className={`tc-chevron ${expanded ? 'tc-chevron--open' : ''}`}
                 />
-                <span className="tool-call-name">
-                    {displayIndex}. {call.toolName}
+                <Bot
+                    size={16}
+                    className={
+                        agent.depth === 0
+                            ? 'tc-agent-icon--root'
+                            : 'tc-agent-icon--child'
+                    }
+                />
+                <span className="tc-agent-name">{agent.name}</span>
+                <span className="tc-agent-meta">
+                    {agent.calls.length} call
+                    {agent.calls.length !== 1 ? 's' : ''}
                 </span>
-                {hasNestedCalls && (
-                    <span className="tool-call-subagent-badge">
-                        {call.nestedCalls!.length} subagent calls
+                {agent.executionTimeMs !== undefined && (
+                    <span className="tc-agent-meta">
+                        <Clock size={12} />
+                        {formatDuration(agent.executionTimeMs)}
                     </span>
                 )}
-                {call.durationMs !== undefined && (
-                    <span className="tool-call-duration">
-                        {formatDuration(call.durationMs)}
+                {agent.failedCount > 0 && (
+                    <span className="tc-agent-failed">
+                        {agent.failedCount} failed
                     </span>
                 )}
             </div>
-            <div
-                className={`tool-call-body ${expanded ? 'tool-call-body--expanded' : ''}`}
-            >
-                <div className="tool-call-section">
-                    <div className="tool-call-section-title">Arguments</div>
-                    <div className="tool-call-json-wrapper">
-                        <JsonViewer
-                            data={call.arguments}
-                            rootKey="args"
-                            collapseDepth={3}
-                            maxHeight="200px"
-                        />
-                    </div>
+            {expanded && (
+                <div className="tc-agent-body">
+                    {agent.calls.map((call, i) => (
+                        <ToolCallRow key={call.id} call={call} index={i} />
+                    ))}
                 </div>
-
-                {call.error ? (
-                    <div className="tool-call-section">
-                        <div className="tool-call-section-title">Error</div>
-                        <div className="tool-call-error-message">
-                            {call.error}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="tool-call-section">
-                        <div className="tool-call-section-title">Result</div>
-                        <div className="tool-call-json-wrapper">
-                            {typeof call.result === 'string' ? (
-                                <pre
-                                    style={{
-                                        margin: 0,
-                                        padding: '0.5rem',
-                                        fontSize: '0.75rem',
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-word',
-                                        fontFamily:
-                                            'var(--vscode-editor-font-family, monospace)',
-                                        color: 'var(--vscode-editor-foreground)',
-                                        maxHeight: '200px',
-                                        overflow: 'auto',
-                                    }}
-                                >
-                                    {call.result}
-                                </pre>
-                            ) : (
-                                <JsonViewer
-                                    data={call.result}
-                                    rootKey="result"
-                                    collapseDepth={2}
-                                    maxHeight="200px"
-                                />
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* Nested tool calls from subagent */}
-                {hasNestedCalls && (
-                    <div className="tool-call-section tool-call-nested-section">
-                        <div
-                            className="tool-call-section-title tool-call-nested-header"
-                            onClick={handleNestedToggle}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) =>
-                                e.key === 'Enter' && handleNestedToggle()
-                            }
-                        >
-                            <ChevronIcon expanded={nestedExpanded} />
-                            Subagent Tool Calls ({call.nestedCalls!.length})
-                        </div>
-                        <div
-                            className={`tool-call-nested-list ${nestedExpanded ? 'tool-call-nested-list--expanded' : ''}`}
-                        >
-                            {call.nestedCalls!.map(
-                                (nestedCall, nestedIndex) => (
-                                    <ToolCallItem
-                                        key={nestedCall.id}
-                                        call={nestedCall}
-                                        index={nestedIndex}
-                                        prefix={displayIndex}
-                                        isNested={true}
-                                    />
-                                )
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
+            )}
         </div>
     );
 };
 
 const EmptyState = () => (
-    <div className="tool-calls-empty">
-        <svg
-            className="tool-calls-empty-icon"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-        >
-            <path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-        </svg>
-        <div className="tool-calls-empty-title">No Tool Calls</div>
-        <div className="tool-calls-empty-description">
-            The analysis was performed without using any tools.
+    <div className="tc-empty">
+        <Wrench size={36} strokeWidth={1.2} className="tc-empty-icon" />
+        <div className="tc-empty-title">No Tool Calls</div>
+        <div className="tc-empty-desc">
+            The analysis completed without using any tools.
         </div>
     </div>
 );
@@ -274,63 +381,121 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
         return <EmptyState />;
     }
 
-    const {
-        calls,
-        totalCalls,
-        successfulCalls,
-        failedCalls,
-        analysisCompleted,
-        analysisError,
-    } = toolCalls;
+    const agents = useMemo(
+        () => flattenToAgents(toolCalls.calls),
+        [toolCalls.calls]
+    );
 
-    const markdownText = formatToolCallsAsMarkdown(toolCalls);
+    // Compute execution time for child agents from their run_subagent parent records
+    // (handled in agentsWithTimes below)
+
+    // Simpler: set execution time on child agents by walking the original structure
+    const agentsWithTimes = useMemo(() => {
+        // Build execution time map by walking original calls
+        const timeMap = new Map<number, number | undefined>();
+        let childIdx = 0;
+        const walkForTimes = (calls: ToolCallRecord[], depth: number) => {
+            for (const call of calls) {
+                if (
+                    call.toolName === 'run_subagent' &&
+                    call.nestedCalls?.length
+                ) {
+                    childIdx++;
+                    timeMap.set(
+                        childIdx,
+                        call.executionTimeMs ?? call.durationMs
+                    );
+                    walkForTimes(call.nestedCalls, depth + 1);
+                }
+            }
+        };
+        walkForTimes(toolCalls.calls, 0);
+
+        // Apply times to agent sections (children are indexed 1..N in order)
+        let childAgentIdx = 0;
+        return agents.map((agent) => {
+            if (agent.depth > 0) {
+                childAgentIdx++;
+                return {
+                    ...agent,
+                    executionTimeMs: timeMap.get(childAgentIdx),
+                };
+            }
+            return agent;
+        });
+    }, [agents, toolCalls.calls]);
+
+    const totalCalls = useMemo(
+        () => countAllCalls(toolCalls.calls),
+        [toolCalls.calls]
+    );
+    const totalFailed = useMemo(
+        () => countAllFailed(toolCalls.calls),
+        [toolCalls.calls]
+    );
+
+    const markdownText = useMemo(
+        () => formatToolCallsAsMarkdown(toolCalls, agentsWithTimes),
+        [toolCalls, agentsWithTimes]
+    );
 
     return (
-        <div className="tool-calls-container">
-            <div className="tool-calls-summary">
-                <div className="tool-calls-stat">
-                    <span className="tool-calls-stat-label">Total:</span>
-                    <span className="tool-calls-stat-value">{totalCalls}</span>
+        <div className="tc-container">
+            {/* Stats bar */}
+            <div className="tc-stats">
+                <div className="tc-stat">
+                    <Wrench size={13} />
+                    <span className="tc-stat-value">{totalCalls}</span>
+                    <span className="tc-stat-label">tool calls</span>
                 </div>
-                {successfulCalls > 0 && (
-                    <div className="tool-calls-stat tool-calls-stat--success">
-                        <span className="tool-calls-stat-label">Success:</span>
-                        <span className="tool-calls-stat-value">
-                            {successfulCalls}
-                        </span>
-                    </div>
-                )}
-                {failedCalls > 0 && (
-                    <div className="tool-calls-stat tool-calls-stat--failed">
-                        <span className="tool-calls-stat-label">Failed:</span>
-                        <span className="tool-calls-stat-value">
-                            {failedCalls}
-                        </span>
-                    </div>
-                )}
-                {!analysisCompleted && (
-                    <div className="tool-calls-stat tool-calls-stat--error">
-                        <span className="tool-calls-stat-label">
-                            Analysis incomplete
-                        </span>
-                    </div>
-                )}
-                <div className="tool-calls-copy-button">
-                    <CopyButton text={markdownText} onCopy={onCopy} />
+                <span className="tc-stat-sep" />
+                <div className="tc-stat">
+                    <Bot size={13} />
+                    <span className="tc-stat-value">
+                        {agentsWithTimes.length}
+                    </span>
+                    <span className="tc-stat-label">
+                        agent{agentsWithTimes.length !== 1 ? 's' : ''}
+                    </span>
                 </div>
+                {totalFailed > 0 && (
+                    <>
+                        <span className="tc-stat-sep" />
+                        <div className="tc-stat tc-stat--failed">
+                            <AlertCircle size={13} />
+                            <span className="tc-stat-value">{totalFailed}</span>
+                            <span className="tc-stat-label">failed</span>
+                        </div>
+                    </>
+                )}
+                {!toolCalls.analysisCompleted && (
+                    <>
+                        <span className="tc-stat-sep" />
+                        <div className="tc-stat tc-stat--warn">
+                            <AlertCircle size={13} />
+                            <span className="tc-stat-label">incomplete</span>
+                        </div>
+                    </>
+                )}
+                <div className="tc-stats-spacer" />
+                <CopyButton text={markdownText} onCopy={onCopy} />
             </div>
 
-            {analysisError && (
-                <div style={{ padding: '0.5rem' }}>
-                    <div className="tool-call-error-message">
-                        Analysis Error: {analysisError}
-                    </div>
+            {toolCalls.analysisError && (
+                <div className="tc-error-banner">
+                    <AlertCircle size={14} />
+                    {toolCalls.analysisError}
                 </div>
             )}
 
-            <div className="tool-calls-list">
-                {calls.map((call, index) => (
-                    <ToolCallItem key={call.id} call={call} index={index} />
+            {/* Agent tree */}
+            <div className="tc-list">
+                {agentsWithTimes.map((agent, i) => (
+                    <AgentCard
+                        key={agent.id}
+                        agent={agent}
+                        defaultExpanded={i === 0}
+                    />
                 ))}
             </div>
         </div>

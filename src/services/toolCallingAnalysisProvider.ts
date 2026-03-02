@@ -248,6 +248,7 @@ export class ToolCallingAnalysisProvider {
                         durationMs: durationMs ?? 0,
                         timestamp: Date.now(),
                         nestedCalls: metadata?.nestedToolCalls,
+                        executionTimeMs: metadata?.executionTimeMs,
                     });
                 },
                 getContextStatusSuffix,

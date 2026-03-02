@@ -349,6 +349,7 @@ export class SubagentExecutor {
                     response,
                     toolCallsMade,
                     toolCalls,
+                    executionTimeMs: duration,
                     error: 'max_iterations',
                 };
             }
@@ -364,6 +365,7 @@ export class SubagentExecutor {
                     response,
                     toolCallsMade,
                     toolCalls,
+                    executionTimeMs: duration,
                     error: 'quota_exhausted',
                 };
             }
@@ -378,6 +380,7 @@ export class SubagentExecutor {
                     response,
                     toolCallsMade,
                     toolCalls,
+                    executionTimeMs: duration,
                     error: 'rate_limited',
                 };
             }
@@ -393,6 +396,7 @@ export class SubagentExecutor {
                     response: '',
                     toolCallsMade,
                     toolCalls,
+                    executionTimeMs: duration,
                     error: 'cancelled',
                 };
             }
@@ -406,6 +410,7 @@ export class SubagentExecutor {
                 response,
                 toolCallsMade,
                 toolCalls,
+                executionTimeMs: duration,
             };
         } catch (error) {
             if (isCancellationError(error)) {
@@ -420,6 +425,7 @@ export class SubagentExecutor {
                 response: '',
                 toolCallsMade,
                 toolCalls: [],
+                executionTimeMs: Date.now() - startTime,
                 error: errorMessage,
             };
         }

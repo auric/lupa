@@ -24,6 +24,8 @@ export interface ToolResultMetadata {
     nestedToolCalls?: ToolCallRecord[];
     /** Whether this tool signals completion (used by submit_review) */
     isCompletion?: boolean;
+    /** Actual wall-clock execution time for subagent tool calls */
+    executionTimeMs?: number;
 }
 
 /**

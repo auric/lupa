@@ -24,6 +24,8 @@ export interface ToolCallRecord {
     timestamp: number;
     /** Nested tool calls from subagent (only for run_subagent tool) */
     nestedCalls?: ToolCallRecord[];
+    /** Actual wall-clock execution time (only for run_subagent — replaces inaccurate batch-averaged durationMs) */
+    executionTimeMs?: number;
 }
 
 /**

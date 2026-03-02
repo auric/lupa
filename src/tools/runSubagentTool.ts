@@ -294,6 +294,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
 
             return toolSuccess(this.formatResult(result, subagentId), {
                 nestedToolCalls: result.toolCalls,
+                executionTimeMs: result.executionTimeMs,
             });
         } catch (error) {
             clearTimeout(timeoutHandle);
