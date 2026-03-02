@@ -53,6 +53,7 @@ The `ServiceManager` initializes services in strict order to resolve dependencie
 - `SubagentSessionManager` - Tracks subagent spawn count and limits
 - `SubagentExecutor` - Executes subagent investigations
 - `PlanSessionManager` - Review plan state
+- `RecursiveStateManager` - Agent tree, budget tracking, deduplication (when `maxRecursionDepth >= 1`)
 - `TokenValidator` instance - Context window tracking
 
 ### Key Entry Points
