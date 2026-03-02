@@ -1,4 +1,4 @@
-/* Tool Calls Tab — Agent Tree View */
+/* Tool Calls Tab — Unified Agent Tree View */
 
 /* ── Container ── */
 
@@ -82,7 +82,7 @@
     font-size: 0.75rem;
 }
 
-/* ── Agent list ── */
+/* ── Scrollable call list ── */
 
 .tc-list {
     flex: 1;
@@ -107,18 +107,18 @@
     background: var(--vscode-scrollbarSlider-hoverBackground);
 }
 
-/* ── Agent card ── */
+/* ── Inline agent (subagent section embedded in the call flow) ── */
 
 .tc-agent {
-    margin-bottom: 0.25rem;
+    margin-bottom: 2px;
     border: 1px solid var(--vscode-panel-border);
     border-radius: 5px;
     overflow: hidden;
     background: var(--vscode-editor-background);
 }
 
-.tc-agent--child {
-    margin-left: 12px;
+.tc-agent--nested {
+    margin-left: 0;
     border-left: 2px solid var(--vscode-focusBorder);
 }
 
@@ -126,7 +126,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    padding: 0.5rem 0.625rem;
+    padding: 0.4375rem 0.625rem;
     background: var(--vscode-editorWidget-background);
     cursor: pointer;
     user-select: none;
@@ -180,6 +180,7 @@
 
 .tc-agent-body {
     border-top: 1px solid var(--vscode-panel-border);
+    padding-left: 10px;
 }
 
 /* ── Tool call row ── */
@@ -197,7 +198,7 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    padding: 0.3125rem 0.625rem 0.3125rem 1rem;
+    padding: 0.3125rem 0.625rem 0.3125rem 0.5rem;
     cursor: pointer;
     user-select: none;
     font-size: 0.75rem;
@@ -206,6 +207,27 @@
 
 .tc-row-header:hover {
     background: var(--vscode-list-hoverBackground);
+}
+
+/* Meta row (task & result toggle inside agent) */
+.tc-row--meta {
+    background: color-mix(
+        in srgb,
+        var(--vscode-editorWidget-background) 30%,
+        transparent
+    );
+}
+
+.tc-row-header--meta {
+    padding: 0.25rem 0.625rem 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+}
+
+.tc-row-metaLabel {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.6875rem;
+    font-style: italic;
+    opacity: 0.7;
 }
 
 .tc-row-index {
@@ -244,19 +266,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     margin-left: 0.25rem;
-}
-
-.tc-subagent-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.625rem;
-    padding: 0.0625rem 0.375rem;
-    border-radius: 10px;
-    background: var(--vscode-badge-background);
-    color: var(--vscode-badge-foreground);
-    font-weight: 500;
-    flex-shrink: 0;
 }
 
 .tc-row-duration {
