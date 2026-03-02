@@ -11,7 +11,7 @@ const ContextDecision = z.enum([
 ]);
 
 /**
- * Self-reflection tool for main agent: evaluates gathered context.
+ * Self-reflection tool for evaluating gathered context.
  *
  * Forces explicit articulation of findings rather than passive checklists.
  * Per prompt engineering best practices: "articulation > checklists" -
