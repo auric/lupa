@@ -140,11 +140,22 @@ export class GetFileDiffTool extends BaseTool {
         }
 
         if (omitted.length > 0) {
-            output += `\n\nNote: ${omitted.length} file(s) omitted due to response size limit — request them in a separate call: ${omitted.join(', ')}`;
+            const omittedNote = `\n\nNote: ${omitted.length} file(s) omitted due to response size limit — request them in a separate call: ${omitted.join(', ')}`;
+            if (output.length + omittedNote.length <= maxChars) {
+                output += omittedNote;
+            } else {
+                const shortNote = `\n\nNote: ${omitted.length} file(s) omitted due to response size limit.`;
+                if (output.length + shortNote.length <= maxChars) {
+                    output += shortNote;
+                }
+            }
         }
 
         if (notFound.length > 0) {
-            output += `\n\nNote: No diff found for: ${notFound.join(', ')}`;
+            const notFoundNote = `\n\nNote: No diff found for: ${notFound.join(', ')}`;
+            if (output.length + notFoundNote.length <= maxChars) {
+                output += notFoundNote;
+            }
         }
 
         return toolSuccess(output);

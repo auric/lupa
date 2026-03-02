@@ -534,6 +534,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.deps!.workspaceSettings.getMaxIterations()
             );
             recursiveState.startAgent('root');
+            subagentExecutor.setRecursiveState(recursiveState);
         }
 
         // Create execution context as a mutable reference so parsedDiff can be
