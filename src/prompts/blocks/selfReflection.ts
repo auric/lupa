@@ -17,8 +17,8 @@ Use these to improve analysis quality. Each requires **structured articulation**
 | Tool | When | What to Articulate |
 |------|------|-------------------|
 | \`think_about_context\` | After gathering context | files_examined, key_findings, remaining_gaps, decision |
-| \`think_about_task\` | Before conclusions | analysis_focus, hypotheses_found, disproof_attempts, surviving_findings, decision |
-| \`think_about_completion\` | Before final response | summary_draft, issue_counts, files_analyzed, hypothesis_kill_ratio, recommendation |
+| \`think_about_task\` | Before conclusions | analysis_focus, issues_found, areas_needing_investigation, positive_observations, decision |
+| \`think_about_completion\` | Before final response | summary_draft, critical_issues_count, high_issues_count, files_analyzed, files_in_diff, recommendation, decision |
 
 ### Submitting Your Review (REQUIRED)
 After completing \`think_about_completion\`, you MUST call \`submit_review\` to deliver your findings.
@@ -32,9 +32,9 @@ Static checklists ("Did I do X?") are less effective than explicit articulation:
 
 ### Workflow
 1. Gather context → \`think_about_context\` with files_examined and key_findings
-2. Analyze → \`think_about_task\` with analysis_focus and hypotheses_found
-   - For each hypothesis: state (1) which tool output supports it, (2) what disproof you attempted, (3) why disproof failed. Drop hypotheses where you cannot answer all three
-3. Synthesize → \`think_about_completion\` with summary_draft, recommendation, and hypothesis_kill_ratio ("Started with N hypotheses, M survived"). If >80% survived, revisit your disproof rigor
+2. Analyze → \`think_about_task\` with analysis_focus and issues_found
+   - For each issue: state (1) which tool output supports it, (2) what disproof you attempted, (3) why disproof failed. Drop issues where you cannot answer all three
+3. Synthesize → \`think_about_completion\` with summary_draft, critical_issues_count, high_issues_count, recommendation, and decision. If >80% of initial hypotheses survived disproof, revisit your rigor
 4. **Finalize** → \`submit_review\` with the complete review output
 </self_reflection>`;
 }
@@ -51,8 +51,8 @@ You are a **controller**, not an investigator. Reflection checkpoints must reinf
 
 | Tool | When | What to Articulate |
 |------|------|-------------------|
-| \`think_about_task\` | After all sub-agents return | analysis_focus (cross-concern patterns), hypotheses_found (from sub-agents), disproof_attempts (validation of uncertain findings), surviving_findings |
-| \`think_about_completion\` | Before \`submit_review\` | summary_draft (aggregated review), issue_counts, files_analyzed (vs total), hypothesis_kill_ratio, recommendation |
+| \`think_about_task\` | After all sub-agents return | analysis_focus (cross-concern patterns), issues_found (from sub-agents), areas_needing_investigation (uncertain findings), positive_observations |
+| \`think_about_completion\` | Before \`submit_review\` | summary_draft (aggregated review), critical_issues_count, high_issues_count, files_analyzed (vs total), files_in_diff, recommendation, decision |
 
 ### Delegation Checkpoints
 

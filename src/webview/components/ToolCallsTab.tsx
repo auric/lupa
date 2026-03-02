@@ -216,6 +216,7 @@ const ToolCallRow = ({
                 onClick={() => setExpanded((p) => !p)}
                 role="button"
                 tabIndex={0}
+                aria-expanded={expanded}
                 onKeyDown={(e) => e.key === 'Enter' && setExpanded((p) => !p)}
             >
                 <ChevronRight
@@ -309,6 +310,7 @@ const InlineAgent = ({
                 onClick={() => setExpanded((p) => !p)}
                 role="button"
                 tabIndex={0}
+                aria-expanded={expanded}
                 onKeyDown={(e) => e.key === 'Enter' && setExpanded((p) => !p)}
             >
                 <ChevronRight
@@ -353,6 +355,7 @@ const InlineAgent = ({
                             onClick={() => setDetailExpanded((p) => !p)}
                             role="button"
                             tabIndex={0}
+                            aria-expanded={detailExpanded}
                             onKeyDown={(e) =>
                                 e.key === 'Enter' &&
                                 setDetailExpanded((p) => !p)

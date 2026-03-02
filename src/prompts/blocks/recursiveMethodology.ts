@@ -24,7 +24,7 @@ From the metadata and this one diff:
 Call \`update_plan\` with your decomposition based on the metadata.
 **Check your agent limit** (shown in \`<analysis_task>\`) — plan within the allowed number of sub-agents.
 Spawning sub-agents does NOT reduce your own iteration budget — each runs independently.
-Target **2-4 files per concern group** for thorough review.
+Target **2-3 files per concern group** for thorough review.
 **CRITICAL: Every changed file MUST appear in exactly one concern group.** Cross-check your plan against the full file list — any file not assigned to a group will be flagged as a coverage gap.
 \`\`\`markdown
 ## Recursive Review Plan
@@ -124,6 +124,6 @@ Sub-agents receive full code exploration tools:
 - They CAN spawn their own sub-agents for large scopes (4+ files)
 - They return structured findings you can directly incorporate
 
-**Assign 2-4 files per sub-agent.** If a concern group has 4+ files, the sub-agent will automatically decompose further.
+**Assign 2-3 files per sub-agent.** Sub-agents with 4+ files will automatically decompose further.
 </recursive_methodology>`;
 }
