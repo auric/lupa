@@ -13,6 +13,7 @@ import { WorkspaceSettingsService } from './workspaceSettingsService';
  */
 export class SubagentSessionManager {
     private count = 0;
+    private nextId = 0;
     private parentCancellationToken: vscode.CancellationToken | undefined;
 
     constructor(private readonly workspaceSettings: WorkspaceSettingsService) {}
@@ -27,10 +28,12 @@ export class SubagentSessionManager {
 
     /**
      * Record that a subagent was spawned and return its ID.
+     * IDs are monotonically increasing and never reused, even after rollback.
      */
     recordSpawn(): number {
         this.count++;
-        return this.count;
+        this.nextId++;
+        return this.nextId;
     }
 
     /**
@@ -77,6 +80,7 @@ export class SubagentSessionManager {
 
     reset(): void {
         this.count = 0;
+        this.nextId = 0;
         this.parentCancellationToken = undefined;
     }
 }

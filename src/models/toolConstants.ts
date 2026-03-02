@@ -39,9 +39,10 @@ export class ToolConstants {
  * that require PR-level context and should never be given to subagents.
  * Shared base for all disallowed-tool lists to prevent drift.
  *
- * NOTE: think_about_investigation is intentionally EXCLUDED from this list.
- * It's the only think tool designed for focused investigations without
- * needing diff context or PR-level review state that subagents don't have.
+ * NOTE: think_about_investigation and think_about_context are intentionally
+ * EXCLUDED from this list. They are designed for focused investigations
+ * without needing diff context or PR-level review state that subagents
+ * don't have.
  */
 const ROOT_ONLY_TOOLS = [
     'update_plan',

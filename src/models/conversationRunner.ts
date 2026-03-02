@@ -360,13 +360,47 @@ export class ConversationRunner {
                     // Reset nudge counter - model is cooperating with tool calls
                     completionNudgeCount = 0;
 
+                    let toolCalls = response.toolCalls;
+
+                    // Defense-in-depth: block tool calls for disabled tools.
+                    // The LLM shouldn't know about disabled tools (they're excluded
+                    // from the tool list), but guard against hallucinated names.
+                    if (config.disabledToolNames?.size) {
+                        const blocked = toolCalls.filter((tc) =>
+                            config.disabledToolNames!.has(tc.function.name)
+                        );
+                        if (blocked.length > 0) {
+                            const names = blocked
+                                .map((tc) => tc.function.name)
+                                .join(', ');
+                            Log.warn(
+                                `${logPrefix} Blocked ${blocked.length} disabled tool call(s): ${names}`
+                            );
+                            for (const tc of blocked) {
+                                conversation.addToolMessage(
+                                    tc.id || `blocked_${tc.function.name}`,
+                                    `Error: Tool '${tc.function.name}' is not available.`
+                                );
+                            }
+                            toolCalls = toolCalls.filter(
+                                (tc) =>
+                                    !config.disabledToolNames!.has(
+                                        tc.function.name
+                                    )
+                            );
+                            if (toolCalls.length === 0) {
+                                continue;
+                            }
+                        }
+                    }
+
                     // Track tool names for investigation depth checks
-                    for (const tc of response.toolCalls) {
+                    for (const tc of toolCalls) {
                         toolNamesCalled.add(tc.function.name);
                     }
 
                     const result = await this.handleToolCalls(
-                        response.toolCalls,
+                        toolCalls,
                         conversation,
                         handler,
                         logPrefix

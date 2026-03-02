@@ -120,6 +120,15 @@ describe('SubagentSessionManager', () => {
             expect(sessionManager.getCount()).toBe(0);
             expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
         });
+
+        it('should not reuse IDs after rollback', () => {
+            const id1 = sessionManager.recordSpawn();
+            const id2 = sessionManager.recordSpawn();
+            sessionManager.rollbackSpawn();
+            const id3 = sessionManager.recordSpawn();
+            expect(id3).toBeGreaterThan(id2);
+            expect(new Set([id1, id2, id3]).size).toBe(3);
+        });
     });
 
     describe('Reset', () => {

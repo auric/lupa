@@ -1959,6 +1959,62 @@ describe('ConversationRunner', () => {
             expect(toolNames).toContain('run_subagent');
             expect(toolNames).not.toContain('read_file');
         });
+
+        it('should block disabled tool calls at execution time (defense-in-depth)', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{}',
+                            },
+                        },
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'read_file',
+                                arguments: '{}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Done', toolCalls: undefined },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const disabledTools = new Set(['read_file']);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [
+                    createMockTool('find_symbol'),
+                    createMockTool('read_file'),
+                ],
+                disabledToolNames: disabledTools,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Verify that only allowed tool was executed
+            const executeCalls = (
+                toolExecutor.executeTools as ReturnType<typeof vi.fn>
+            ).mock.calls;
+            expect(executeCalls.length).toBe(1);
+            const executedNames = executeCalls[0][0].map(
+                (r: { name: string }) => r.name
+            );
+            expect(executedNames).toEqual(['find_symbol']);
+            expect(executedNames).not.toContain('read_file');
+        });
     });
 
     describe('Rate-Limit Retry', () => {
