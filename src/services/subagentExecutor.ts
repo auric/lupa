@@ -319,6 +319,9 @@ export class SubagentExecutor {
                             error,
                             durationMs,
                             timestamp: Date.now(),
+                            nestedCalls: metadata?.nestedToolCalls,
+                            executionTimeMs: metadata?.executionTimeMs,
+                            iterationsUsed: metadata?.iterationsUsed,
                         });
                         // Forward to subagent adapter for chat UI completion feedback
                         subagentAdapter?.onToolCallComplete(
@@ -350,6 +353,7 @@ export class SubagentExecutor {
                     toolCallsMade,
                     toolCalls,
                     executionTimeMs: duration,
+                    iterationsUsed: conversationRunner.iterationsUsed,
                     error: 'max_iterations',
                 };
             }
@@ -366,6 +370,7 @@ export class SubagentExecutor {
                     toolCallsMade,
                     toolCalls,
                     executionTimeMs: duration,
+                    iterationsUsed: conversationRunner.iterationsUsed,
                     error: 'quota_exhausted',
                 };
             }
@@ -381,6 +386,7 @@ export class SubagentExecutor {
                     toolCallsMade,
                     toolCalls,
                     executionTimeMs: duration,
+                    iterationsUsed: conversationRunner.iterationsUsed,
                     error: 'rate_limited',
                 };
             }
@@ -397,6 +403,7 @@ export class SubagentExecutor {
                     toolCallsMade,
                     toolCalls,
                     executionTimeMs: duration,
+                    iterationsUsed: conversationRunner.iterationsUsed,
                     error: 'cancelled',
                 };
             }
@@ -411,6 +418,7 @@ export class SubagentExecutor {
                 toolCallsMade,
                 toolCalls,
                 executionTimeMs: duration,
+                iterationsUsed: conversationRunner.iterationsUsed,
             };
         } catch (error) {
             if (isCancellationError(error)) {

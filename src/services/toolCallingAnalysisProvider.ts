@@ -249,6 +249,7 @@ export class ToolCallingAnalysisProvider {
                         timestamp: Date.now(),
                         nestedCalls: metadata?.nestedToolCalls,
                         executionTimeMs: metadata?.executionTimeMs,
+                        iterationsUsed: metadata?.iterationsUsed,
                     });
                 },
                 getContextStatusSuffix,
@@ -317,7 +318,8 @@ export class ToolCallingAnalysisProvider {
             analysisText,
             analysisCompleted,
             analysisError,
-            conversationRunner.wasCancelled
+            conversationRunner.wasCancelled,
+            conversationRunner.iterationsUsed
         );
     }
 
@@ -362,7 +364,8 @@ export class ToolCallingAnalysisProvider {
         analysis: string,
         completed: boolean,
         error: string | undefined,
-        wasCancelled: boolean
+        wasCancelled: boolean,
+        iterationsUsed?: number
     ): ToolCallingAnalysisResult {
         const successfulCalls = toolCallRecords.filter((r) => r.success).length;
         const failedCalls = toolCallRecords.filter((r) => !r.success).length;
@@ -376,6 +379,8 @@ export class ToolCallingAnalysisProvider {
                 failedCalls,
                 analysisCompleted: completed,
                 analysisError: error,
+                iterationsUsed,
+                maxIterations: this.maxIterations,
             },
             wasCancelled,
         };

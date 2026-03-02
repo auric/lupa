@@ -117,6 +117,8 @@ export interface SubagentResult {
     toolCalls: ToolCallRecord[];
     /** Actual wall-clock execution time of the subagent in milliseconds */
     executionTimeMs: number | undefined;
+    /** Number of LLM iterations (turns) used by the subagent */
+    iterationsUsed?: number;
     /** Error message if success is false */
     error?: string;
 }

@@ -345,4 +345,30 @@ describe('WorkspaceSettingsService', () => {
             );
         });
     });
+
+    describe('resetSettingsToDefaults', () => {
+        it('should reset maxRecursionDepth to default', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxRecursionDepth: 0 })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+            expect(service.getMaxRecursionDepth()).toBe(0);
+
+            service.resetSettingsToDefaults();
+
+            expect(service.getMaxRecursionDepth()).toBe(
+                RECURSION_LIMITS.maxDepth.default
+            );
+        });
+
+        it('should schedule a debounced save after reset', () => {
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.writeFileSync).mockClear();
+
+            service.resetSettingsToDefaults();
+            vi.advanceTimersByTime(1000);
+
+            expect(fs.writeFileSync).toHaveBeenCalled();
+        });
+    });
 });

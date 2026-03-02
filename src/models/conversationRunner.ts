@@ -105,6 +105,7 @@ export class ConversationRunner {
     private _hitRateLimit = false;
     private _hitQuotaExhausted = false;
     private _wasCancelled = false;
+    private _iterationsUsed = 0;
 
     /** Maximum number of consecutive rate-limit retries before giving up */
     private static readonly MAX_RATE_LIMIT_RETRIES = 5;
@@ -138,6 +139,11 @@ export class ConversationRunner {
         return this._wasCancelled;
     }
 
+    /** Number of iterations (LLM turns) used in the last run(). */
+    get iterationsUsed(): number {
+        return this._iterationsUsed;
+    }
+
     /**
      * Execute a conversation loop until completion or max iterations.
      * @returns The final response content from the LLM
@@ -164,9 +170,11 @@ export class ConversationRunner {
         this._hitRateLimit = false;
         this._hitQuotaExhausted = false;
         this._wasCancelled = false;
+        this._iterationsUsed = 0;
 
         while (iteration < config.maxIterations) {
             iteration++;
+            this._iterationsUsed = iteration;
             Log.info(
                 `${logPrefix} Iteration ${iteration}/${config.maxIterations}`
             );

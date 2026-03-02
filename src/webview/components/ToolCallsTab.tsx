@@ -7,6 +7,7 @@ import {
     CheckCircle2,
     XCircle,
     Clock,
+    MessageSquare,
 } from 'lucide-react';
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
@@ -46,8 +47,27 @@ function countAllFailed(calls: ToolCallRecord[]): number {
 function countAgents(calls: ToolCallRecord[]): number {
     let count = 0;
     for (const call of calls) {
-        if (call.toolName === 'run_subagent' && call.nestedCalls?.length) {
-            count += 1 + countAgents(call.nestedCalls);
+        if (call.toolName === 'run_subagent') {
+            count += 1;
+            if (call.nestedCalls?.length) {
+                count += countAgents(call.nestedCalls);
+            }
+        }
+    }
+    return count;
+}
+
+function countAllIterations(
+    calls: ToolCallRecord[],
+    rootIterations: number | undefined
+): number {
+    let count = rootIterations ?? 0;
+    for (const call of calls) {
+        if (call.toolName === 'run_subagent' && call.iterationsUsed) {
+            count += call.iterationsUsed;
+        }
+        if (call.nestedCalls?.length) {
+            count += countAllIterations(call.nestedCalls, 0);
         }
     }
     return count;
@@ -159,11 +179,16 @@ function formatCallsMarkdown(calls: ToolCallRecord[], depth: number): string[] {
 function formatToolCallsAsMarkdown(toolCalls: ToolCallsData): string {
     const totalCalls = countAllCalls(toolCalls.calls);
     const totalFailed = countAllFailed(toolCalls.calls);
+    const totalIterations = countAllIterations(
+        toolCalls.calls,
+        toolCalls.iterationsUsed
+    );
     const lines: string[] = [
         '# Tool Calls Report',
         '',
         `- **Total Calls:** ${totalCalls}`,
         totalFailed > 0 ? `- **Failed:** ${totalFailed}` : '',
+        totalIterations > 0 ? `- **Total Iterations:** ${totalIterations}` : '',
         '',
     ].filter(Boolean);
     lines.push(...formatCallsMarkdown(toolCalls.calls, 0));
@@ -298,10 +323,21 @@ const InlineAgent = ({
                     }
                 />
                 <span className="tc-row-index">{index}</span>
+                {call.success ? (
+                    <CheckCircle2 size={14} className="tc-icon--success" />
+                ) : (
+                    <XCircle size={14} className="tc-icon--failed" />
+                )}
                 <span className="tc-agent-name">{name}</span>
                 <span className="tc-agent-meta">
                     {totalNested} call{totalNested !== 1 ? 's' : ''}
                 </span>
+                {call.iterationsUsed !== undefined && (
+                    <span className="tc-agent-meta">
+                        <MessageSquare size={11} />
+                        {call.iterationsUsed} iter
+                    </span>
+                )}
                 {displayDuration !== undefined && (
                     <span className="tc-agent-meta">
                         <Clock size={12} />
@@ -409,10 +445,7 @@ const CallList = ({
         <>
             {calls.map((call) => {
                 const currentIdx = idx++;
-                if (
-                    call.toolName === 'run_subagent' &&
-                    call.nestedCalls?.length
-                ) {
+                if (call.toolName === 'run_subagent') {
                     return (
                         <InlineAgent
                             key={call.id}
@@ -457,6 +490,10 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
         () => countAgents(toolCalls.calls) + 1,
         [toolCalls.calls]
     );
+    const totalIterations = useMemo(
+        () => countAllIterations(toolCalls.calls, toolCalls.iterationsUsed),
+        [toolCalls.calls, toolCalls.iterationsUsed]
+    );
 
     const markdownText = useMemo(
         () => formatToolCallsAsMarkdown(toolCalls),
@@ -480,6 +517,18 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                         agent{agentCount !== 1 ? 's' : ''}
                     </span>
                 </div>
+                {totalIterations > 0 && (
+                    <>
+                        <span className="tc-stat-sep" />
+                        <div className="tc-stat">
+                            <MessageSquare size={13} />
+                            <span className="tc-stat-value">
+                                {totalIterations}
+                            </span>
+                            <span className="tc-stat-label">iterations</span>
+                        </div>
+                    </>
+                )}
                 {totalFailed > 0 && (
                     <>
                         <span className="tc-stat-sep" />

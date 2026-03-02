@@ -26,6 +26,8 @@ export interface ToolResultMetadata {
     isCompletion?: boolean;
     /** Actual wall-clock execution time for subagent tool calls */
     executionTimeMs?: number;
+    /** Number of LLM iterations (turns) used by a subagent */
+    iterationsUsed?: number;
 }
 
 /**

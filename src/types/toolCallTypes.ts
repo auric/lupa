@@ -26,6 +26,8 @@ export interface ToolCallRecord {
     nestedCalls?: ToolCallRecord[];
     /** Actual wall-clock execution time (only for run_subagent — replaces inaccurate batch-averaged durationMs) */
     executionTimeMs?: number;
+    /** Number of LLM iterations (turns) used (only for run_subagent) */
+    iterationsUsed?: number;
 }
 
 /**
@@ -44,6 +46,10 @@ export interface ToolCallsData {
     analysisCompleted: boolean;
     /** Error message if the analysis was interrupted */
     analysisError: string | undefined;
+    /** Number of LLM iterations (turns) used by the main analysis */
+    iterationsUsed?: number;
+    /** Maximum iterations configured for the main analysis */
+    maxIterations?: number;
 }
 
 /**
