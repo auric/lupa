@@ -80,6 +80,8 @@ export const INVESTIGATION_TOOLS = [
 export const SubagentLimits = {
     /** Minimum task length to ensure meaningful instructions */
     MIN_TASK_LENGTH: 30,
+    /** Maximum task length to prevent token exhaustion in subagent prompts */
+    MAX_TASK_LENGTH: 20_000,
     /** Tools that subagents cannot access (flat mode — no recursion) */
     DISALLOWED_TOOLS: [
         'run_subagent', // Prevent sub-subagent recursion

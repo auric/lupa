@@ -67,8 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Stop Button & Cancellation
 
-- **Stop button now works reliably everywhere**: Clicking Stop immediately halts all analysis activity—file searches, symbol lookups, and subagent investigations all stop within seconds, even during long-running operations.
-- **Every tool responds to cancellation immediately**: All tools now check for cancellation at entry and between loop iterations (e.g., processing references, filtering symbols), so pressing Stop takes effect within milliseconds instead of waiting for the current operation to finish.
+- **Stop button now works reliably everywhere**: Clicking Stop promptly halts analysis activity—file searches, symbol lookups, and subagent investigations all stop within seconds. In-flight tool executions may complete before the runner exits.
+- **Every tool responds to cancellation promptly**: All tools now check for cancellation at entry and between loop iterations (e.g., processing references, filtering symbols), so pressing Stop takes effect quickly instead of waiting for the current operation to finish.
 - **Ripgrep searches killed on cancel**: Pattern search processes are now terminated immediately when you press Stop, instead of running to completion in the background.
 - **Works on slow/stalled connections**: Cancellation now responds quickly even when network conditions are poor, instead of potentially waiting 5+ minutes.
 - **No more "unhandled rejection" warnings**: Spurious error messages when clicking Stop at certain moments are now suppressed.

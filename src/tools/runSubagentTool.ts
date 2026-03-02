@@ -62,6 +62,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     SubagentLimits.MIN_TASK_LENGTH,
                     SubagentErrors.taskTooShort(SubagentLimits.MIN_TASK_LENGTH)
                 )
+                .max(SubagentLimits.MAX_TASK_LENGTH)
                 .describe(
                     'Detailed investigation task. Include: ' +
                         '1) WHAT to investigate (specific question or concern), ' +
