@@ -52,6 +52,20 @@
     color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
+.tc-stat--primary .tc-stat-value {
+    color: var(--vscode-foreground);
+    font-weight: 700;
+}
+
+.tc-stat--primary svg {
+    opacity: 0.8;
+}
+
+.tc-stat-info {
+    opacity: 0.4;
+    cursor: help;
+}
+
 .tc-stat--warn {
     color: var(--vscode-editorWarning-foreground, #cca700);
 }
@@ -117,11 +131,6 @@
     background: var(--vscode-editor-background);
 }
 
-.tc-agent--nested {
-    margin-left: 0;
-    border-left: 2px solid var(--vscode-focusBorder);
-}
-
 .tc-agent-header {
     display: flex;
     align-items: center;
@@ -137,13 +146,8 @@
     background: var(--vscode-list-hoverBackground);
 }
 
-.tc-agent-icon--root {
+.tc-agent-icon {
     color: var(--vscode-symbolIcon-functionForeground, #b180d7);
-    flex-shrink: 0;
-}
-
-.tc-agent-icon--child {
-    color: var(--vscode-symbolIcon-variableForeground, #75beff);
     flex-shrink: 0;
 }
 

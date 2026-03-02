@@ -225,6 +225,15 @@ export class SubagentExecutor {
                   )
                 : undefined;
 
+            // Track whether we've already nudged the subagent for shallow investigation.
+            // Fire at most once to avoid infinite loops if the model repeatedly ignores the nudge.
+            let shallowInvestigationNudged = false;
+            const ORIENTATION_ONLY_TOOLS = new Set([
+                'get_file_diff',
+                'list_directory',
+                'think_about_investigation',
+            ]);
+
             // Run the conversation loop with labeled logging and progress reporting
             const response = await conversationRunner.run(
                 {
@@ -232,6 +241,37 @@ export class SubagentExecutor {
                     maxIterations,
                     tools: filteredTools,
                     label: logLabel,
+                    beforeAcceptingResponse: (
+                        toolNamesCalled,
+                        iteration,
+                        maxIter
+                    ) => {
+                        // Only nudge once, and only if there's budget remaining
+                        if (
+                            shallowInvestigationNudged ||
+                            iteration >= maxIter - 1
+                        ) {
+                            return undefined;
+                        }
+                        // If the subagent only called orientation tools (or no tools),
+                        // nudge it to investigate deeper
+                        const hasInvestigationTools = [...toolNamesCalled].some(
+                            (name) => !ORIENTATION_ONLY_TOOLS.has(name)
+                        );
+                        if (
+                            toolNamesCalled.size > 0 &&
+                            !hasInvestigationTools
+                        ) {
+                            shallowInvestigationNudged = true;
+                            return (
+                                'You only read the diff without investigating the actual codebase. ' +
+                                'Reading diffs is orientation, not investigation. You MUST use tools like ' +
+                                '`find_symbol` (with include_body: true), `find_usages`, or `search_for_pattern` ' +
+                                'to gather evidence before writing findings. Continue investigating.'
+                            );
+                        }
+                        return undefined;
+                    },
                 },
                 conversation,
                 token,

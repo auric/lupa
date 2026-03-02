@@ -8,6 +8,7 @@ import {
     XCircle,
     Clock,
     MessageSquare,
+    Info,
 } from 'lucide-react';
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
@@ -302,7 +303,7 @@ const InlineAgent = ({
     const displayDuration = call.executionTimeMs ?? call.durationMs;
 
     return (
-        <div className={`tc-agent ${depth > 0 ? 'tc-agent--nested' : ''}`}>
+        <div className="tc-agent">
             <div
                 className="tc-agent-header"
                 onClick={() => setExpanded((p) => !p)}
@@ -311,16 +312,8 @@ const InlineAgent = ({
                 onKeyDown={(e) => e.key === 'Enter' && setExpanded((p) => !p)}
             >
                 <ChevronRight
-                    size={16}
+                    size={14}
                     className={`tc-chevron ${expanded ? 'tc-chevron--open' : ''}`}
-                />
-                <Bot
-                    size={16}
-                    className={
-                        depth === 0
-                            ? 'tc-agent-icon--root'
-                            : 'tc-agent-icon--child'
-                    }
                 />
                 <span className="tc-row-index">{index}</span>
                 {call.success ? (
@@ -328,6 +321,7 @@ const InlineAgent = ({
                 ) : (
                     <XCircle size={14} className="tc-icon--failed" />
                 )}
+                <Bot size={14} className="tc-agent-icon" />
                 <span className="tc-agent-name">{name}</span>
                 <span className="tc-agent-meta">
                     {totalNested} call{totalNested !== 1 ? 's' : ''}
@@ -504,6 +498,22 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
         <div className="tc-container">
             {/* Stats bar */}
             <div className="tc-stats">
+                {totalIterations > 0 && (
+                    <>
+                        <div
+                            className="tc-stat tc-stat--primary"
+                            title="LLM iterations (turns) — each iteration consumes Copilot credits"
+                        >
+                            <MessageSquare size={13} />
+                            <span className="tc-stat-value">
+                                {totalIterations}
+                            </span>
+                            <span className="tc-stat-label">iterations</span>
+                            <Info size={11} className="tc-stat-info" />
+                        </div>
+                        <span className="tc-stat-sep" />
+                    </>
+                )}
                 <div className="tc-stat">
                     <Wrench size={13} />
                     <span className="tc-stat-value">{totalCalls}</span>
@@ -517,18 +527,6 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                         agent{agentCount !== 1 ? 's' : ''}
                     </span>
                 </div>
-                {totalIterations > 0 && (
-                    <>
-                        <span className="tc-stat-sep" />
-                        <div className="tc-stat">
-                            <MessageSquare size={13} />
-                            <span className="tc-stat-value">
-                                {totalIterations}
-                            </span>
-                            <span className="tc-stat-label">iterations</span>
-                        </div>
-                    </>
-                )}
                 {totalFailed > 0 && (
                     <>
                         <span className="tc-stat-sep" />

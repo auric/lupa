@@ -47,6 +47,18 @@ export interface ConversationRunnerConfig {
      * Used by the recursive root to disable investigation tools after orientation.
      */
     disabledToolNames?: Set<string>;
+    /**
+     * Called before accepting a no-tool-call response as final (non-explicit-completion mode).
+     * If it returns a string, that message is injected and the conversation continues.
+     * If it returns undefined, the response is accepted as final.
+     * Receives the set of tool names called so far and the current iteration.
+     * Used by subagents to enforce minimum investigation depth.
+     */
+    beforeAcceptingResponse?: (
+        toolNamesCalled: Set<string>,
+        iteration: number,
+        maxIterations: number
+    ) => string | undefined;
 }
 
 /**
@@ -171,6 +183,7 @@ export class ConversationRunner {
         this._hitQuotaExhausted = false;
         this._wasCancelled = false;
         this._iterationsUsed = 0;
+        const toolNamesCalled = new Set<string>();
 
         while (iteration < config.maxIterations) {
             iteration++;
@@ -347,6 +360,11 @@ export class ConversationRunner {
                     // Reset nudge counter - model is cooperating with tool calls
                     completionNudgeCount = 0;
 
+                    // Track tool names for investigation depth checks
+                    for (const tc of response.toolCalls) {
+                        toolNamesCalled.add(tc.function.name);
+                    }
+
                     const result = await this.handleToolCalls(
                         response.toolCalls,
                         conversation,
@@ -451,7 +469,22 @@ export class ConversationRunner {
                     continue;
                 }
 
-                // For subagents and other contexts, accept the response as final
+                // For subagents and other contexts, check investigation depth before accepting
+                if (config.beforeAcceptingResponse) {
+                    const nudge = config.beforeAcceptingResponse(
+                        toolNamesCalled,
+                        iteration,
+                        config.maxIterations
+                    );
+                    if (nudge) {
+                        Log.info(
+                            `${logPrefix} Investigation depth check: injecting nudge at iteration ${iteration}`
+                        );
+                        conversation.addUserMessage(nudge);
+                        continue;
+                    }
+                }
+
                 Log.info(`${logPrefix} Completed successfully`);
                 return (
                     response.content ||

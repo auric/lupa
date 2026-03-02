@@ -1439,6 +1439,251 @@ describe('ConversationRunner', () => {
         });
     });
 
+    describe('beforeAcceptingResponse Callback', () => {
+        it('should inject nudge message when callback returns a string', async () => {
+            const modelManager = createMockModelManager([
+                // First: model calls get_file_diff
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file":"test.ts"}',
+                            },
+                        },
+                    ],
+                },
+                // Second: model tries to finish without deeper investigation
+                {
+                    content: 'Here are my findings from the diff...',
+                    toolCalls: undefined,
+                },
+                // Third: after nudge, model uses find_symbol
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"myFunc"}',
+                            },
+                        },
+                    ],
+                },
+                // Fourth: model finishes with deeper analysis
+                {
+                    content: 'Deep analysis with symbol information.',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'get_file_diff',
+                    success: true,
+                    result: 'diff content',
+                },
+                {
+                    name: 'find_symbol',
+                    success: true,
+                    result: 'symbol info',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            // Capture snapshots of toolNamesCalled at each invocation (it's a shared Set)
+            const capturedToolNames: Set<string>[] = [];
+            const beforeAcceptingResponse = vi
+                .fn()
+                .mockImplementation((toolNames: Set<string>) => {
+                    capturedToolNames.push(new Set(toolNames));
+                    if (capturedToolNames.length === 1) {
+                        return 'You only read the diff. Use find_symbol to investigate deeper.';
+                    }
+                    return undefined;
+                });
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [
+                    createMockTool('get_file_diff'),
+                    createMockTool('find_symbol'),
+                ],
+                requiresExplicitCompletion: false,
+                beforeAcceptingResponse,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Deep analysis with symbol information.');
+            expect(beforeAcceptingResponse).toHaveBeenCalledTimes(2);
+            // First call: only get_file_diff was used
+            expect(capturedToolNames[0]).toEqual(new Set(['get_file_diff']));
+            // Second call: both tools were used
+            expect(capturedToolNames[1]).toEqual(
+                new Set(['get_file_diff', 'find_symbol'])
+            );
+            // Verify nudge message was injected
+            const history = conversation.getHistory();
+            const nudge = history.find(
+                (m) =>
+                    m.role === 'user' && m.content?.includes('Use find_symbol')
+            );
+            expect(nudge).toBeDefined();
+        });
+
+        it('should accept response when callback returns undefined', async () => {
+            const modelManager = createMockModelManager([
+                // Model calls find_symbol (a deep investigation tool)
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"test"}',
+                            },
+                        },
+                    ],
+                },
+                // Model finishes
+                {
+                    content: 'Analysis with proper investigation.',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'find_symbol',
+                    success: true,
+                    result: 'symbol info',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            // Callback returns undefined — investigation was sufficient
+            const beforeAcceptingResponse = vi.fn().mockReturnValue(undefined);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: false,
+                beforeAcceptingResponse,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Analysis with proper investigation.');
+            expect(beforeAcceptingResponse).toHaveBeenCalledTimes(1);
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+        });
+
+        it('should not call beforeAcceptingResponse when requiresExplicitCompletion is true', async () => {
+            const modelManager = createMockModelManager([
+                // No tool calls — explicit completion mode nudges submit_review instead
+                {
+                    content: 'Attempt without submit_review',
+                    toolCalls: undefined,
+                },
+                {
+                    content: 'Second attempt',
+                    toolCalls: undefined,
+                },
+                {
+                    content: 'Third attempt - accepted after max nudges',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const beforeAcceptingResponse = vi.fn();
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+                beforeAcceptingResponse,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // beforeAcceptingResponse should never be called in explicit completion mode
+            expect(beforeAcceptingResponse).not.toHaveBeenCalled();
+        });
+
+        it('should pass correct iteration and maxIterations to callback', async () => {
+            const modelManager = createMockModelManager([
+                // First: tool call
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file":"a.ts"}',
+                            },
+                        },
+                    ],
+                },
+                // Second: no tool calls — triggers callback
+                {
+                    content: 'Done after one tool call.',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'get_file_diff',
+                    success: true,
+                    result: 'diff',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const beforeAcceptingResponse = vi.fn().mockReturnValue(undefined);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 20,
+                tools: [createMockTool('get_file_diff')],
+                requiresExplicitCompletion: false,
+                beforeAcceptingResponse,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Callback should receive iteration=2 (second iteration) and maxIterations=20
+            expect(beforeAcceptingResponse).toHaveBeenCalledWith(
+                expect.any(Set),
+                2,
+                20
+            );
+        });
+    });
+
     describe('Wind-down Mechanism', () => {
         it('should force text response on last iteration for non-explicit-completion', async () => {
             // 3 iterations: first 2 make tool calls, third is forced text
