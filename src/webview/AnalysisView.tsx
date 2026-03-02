@@ -5,18 +5,8 @@ import { useCopyToClipboard } from './hooks/useCopyToClipboard';
 import { AnalysisTab } from './components/AnalysisTab';
 import { ToolCallsTab } from './components/ToolCallsTab';
 import { DiffTab } from './components/DiffTab';
-import type { ToolCallsData, ToolCallRecord } from '../types/toolCallTypes';
-
-function countAllCalls(calls: ToolCallRecord[]): number {
-    let count = 0;
-    for (const call of calls) {
-        count++;
-        if (call.nestedCalls?.length) {
-            count += countAllCalls(call.nestedCalls);
-        }
-    }
-    return count;
-}
+import type { ToolCallsData } from '../types/toolCallTypes';
+import { countAllCalls } from './utils/toolCallCounting';
 
 interface AnalysisViewProps {
     title: string;

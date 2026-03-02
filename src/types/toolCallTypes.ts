@@ -34,13 +34,13 @@ export interface ToolCallRecord {
  * Collection of tool calls for an analysis session
  */
 export interface ToolCallsData {
-    /** Array of tool call records */
+    /** Array of tool call records (top-level; nested calls are in ToolCallRecord.nestedCalls) */
     calls: ToolCallRecord[];
-    /** Total number of tool calls made */
+    /** Number of top-level tool calls (excludes nested subagent calls) */
     totalCalls: number;
-    /** Number of successful tool calls */
+    /** Number of successful top-level tool calls */
     successfulCalls: number;
-    /** Number of failed tool calls */
+    /** Number of failed top-level tool calls */
     failedCalls: number;
     /** Whether the analysis was completed or interrupted */
     analysisCompleted: boolean;

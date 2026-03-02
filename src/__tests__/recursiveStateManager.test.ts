@@ -494,6 +494,16 @@ describe('RecursiveStateManager', () => {
             const covered = manager.getCoveredFiles();
             expect(covered).toEqual(new Set(['a.ts']));
         });
+
+        it('should not count files from running agents as covered', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+
+            // Root is running, not completed — its files shouldn't count
+            // (filesExamined is only set via completeAgent, but the status
+            // check is the real guard for correctness)
+            expect(manager.isFileAlreadyCovered('file1.ts')).toBe(false);
+        });
     });
 
     describe('getCoverageGapMessage', () => {
@@ -696,6 +706,102 @@ describe('RecursiveStateManager', () => {
 
             // Remaining is 30 — no cap applied with independent budgets
             expect(tightManager.getRemainingBudget()).toBe(30);
+        });
+
+        it('should include pending agents in remaining budget', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.registerAgent('root', 'Child', 10);
+            // child-1 is pending (not started)
+
+            expect(manager.getRemainingBudget()).toBe(35); // 25 running + 10 pending
+        });
+
+        it('should exclude failed agents from remaining budget', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.registerAgent('root', 'Child', 10);
+            manager.startAgent('child-1');
+            manager.failAgent('child-1', 'error');
+
+            expect(manager.getRemainingBudget()).toBe(25); // only root (running)
+        });
+
+        it('should exclude cancelled agents from remaining budget', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.registerAgent('root', 'Child', 10);
+            manager.startAgent('child-1');
+            manager.cancelAgent('child-1');
+
+            expect(manager.getRemainingBudget()).toBe(25); // only root (running)
+        });
+    });
+
+    describe('getAgentProgress', () => {
+        it('should exclude root agent from counts', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+
+            const progress = manager.getAgentProgress();
+            expect(progress).toEqual({ running: 0, completed: 0, total: 0 });
+        });
+
+        it('should count running sub-agents', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+            manager.registerAgent('root', 'Child 1', 10);
+            manager.startAgent('child-1');
+            manager.registerAgent('root', 'Child 2', 10);
+            manager.startAgent('child-2');
+
+            const progress = manager.getAgentProgress();
+            expect(progress).toEqual({ running: 2, completed: 0, total: 2 });
+        });
+
+        it('should count terminal states as completed', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+
+            manager.registerAgent('root', 'Completed', 10);
+            manager.startAgent('child-1');
+            manager.completeAgent('child-1', [], []);
+
+            manager.registerAgent('root', 'Failed', 10);
+            manager.startAgent('child-2');
+            manager.failAgent('child-2', 'error');
+
+            manager.registerAgent('root', 'Cancelled', 10);
+            manager.startAgent('child-3');
+            manager.cancelAgent('child-3');
+
+            const progress = manager.getAgentProgress();
+            expect(progress).toEqual({ running: 0, completed: 3, total: 3 });
+        });
+
+        it('should handle mixed statuses', () => {
+            manager.registerAgent(undefined, 'Root', 25);
+            manager.startAgent('root');
+
+            manager.registerAgent('root', 'Running', 10);
+            manager.startAgent('child-1');
+
+            manager.registerAgent('root', 'Completed', 10);
+            manager.startAgent('child-2');
+            manager.completeAgent('child-2', [], []);
+
+            manager.registerAgent('root', 'Pending', 10);
+            // child-3 stays pending
+
+            const progress = manager.getAgentProgress();
+            expect(progress.running).toBe(1);
+            expect(progress.completed).toBe(1);
+            expect(progress.total).toBe(3); // pending counted in total
+        });
+
+        it('should return zeros for empty tree', () => {
+            const progress = manager.getAgentProgress();
+            expect(progress).toEqual({ running: 0, completed: 0, total: 0 });
         });
     });
 

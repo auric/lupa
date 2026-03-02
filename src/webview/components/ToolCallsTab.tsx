@@ -13,6 +13,7 @@ import {
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
 import type { ToolCallsData, ToolCallRecord } from '../../types/toolCallTypes';
+import { countAllCalls } from '../utils/toolCallCounting';
 
 interface ToolCallsTabProps {
     toolCalls: ToolCallsData | null;
@@ -20,17 +21,6 @@ interface ToolCallsTabProps {
 }
 
 // ── Helpers ──
-
-function countAllCalls(calls: ToolCallRecord[]): number {
-    let count = 0;
-    for (const call of calls) {
-        count++;
-        if (call.nestedCalls?.length) {
-            count += countAllCalls(call.nestedCalls);
-        }
-    }
-    return count;
-}
 
 function countAllFailed(calls: ToolCallRecord[]): number {
     let count = 0;
