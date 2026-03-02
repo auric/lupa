@@ -314,9 +314,9 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Reset analysis settings to their defaults
+     * Reset user-configurable settings to their defaults
      */
-    public resetAnalysisLimitsToDefaults(): void {
+    public resetSettingsToDefaults(): void {
         this.settings.maxRecursionDepth = RECURSION_LIMITS.maxDepth.default;
         this.debouncedSaveSettings();
     }

@@ -765,7 +765,7 @@ Changes in `analyze()`:
 
 - Add settings: `maxRecursionDepth`, `maxSubagentsPerSession`
 - Add getters with defaults
-- Add to `resetAnalysisLimitsToDefaults()`
+- Add to `resetSettingsToDefaults()`
 
 **Modify**: `src/config/settingsSchema.ts` (or equivalent)
 

@@ -38,7 +38,7 @@ export class CommandRegistry implements vscode.Disposable {
 
         // Settings commands
         this.registerCommand('lupa.resetAnalysisLimits', () =>
-            this.resetAnalysisLimitsToDefaults()
+            this.resetSettingsToDefaults()
         );
 
         // Development/testing commands
@@ -52,13 +52,11 @@ export class CommandRegistry implements vscode.Disposable {
     }
 
     /**
-     * Reset analysis limits to their default values
+     * Reset user-configurable settings to their default values
      */
-    private resetAnalysisLimitsToDefaults(): void {
-        this.services.workspaceSettings.resetAnalysisLimitsToDefaults();
-        vscode.window.showInformationMessage(
-            'Analysis settings reset to defaults.'
-        );
+    private resetSettingsToDefaults(): void {
+        this.services.workspaceSettings.resetSettingsToDefaults();
+        vscode.window.showInformationMessage('Settings reset to defaults.');
     }
 
     /**
