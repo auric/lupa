@@ -2136,7 +2136,10 @@ describe('ConversationRunner', () => {
         });
 
         describe('Quota Exhaustion', () => {
-            it('should retry quota-flavored rate limits with longer backoff', async () => {
+            it('should retry ChatRateLimited with quota-flavored message (HTTP 429)', async () => {
+                // The "exceeded your Copilot token usage" message uses
+                // ChatRateLimited (HTTP 429) — a temporary burst throttle,
+                // not the monthly quota. Should retry with normal backoff.
                 let callCount = 0;
                 const modelManager = {
                     sendRequest: vi.fn().mockImplementation(() => {
@@ -2149,7 +2152,7 @@ describe('ConversationRunner', () => {
                             return Promise.reject(err);
                         }
                         return Promise.resolve({
-                            content: 'Success after quota backoff',
+                            content: 'Success after backoff',
                             toolCalls: undefined,
                         });
                     }),
@@ -2178,19 +2181,19 @@ describe('ConversationRunner', () => {
                     createCancellationToken()
                 );
 
-                // Quota-flavored backoff starts at 15s (vs 2s for normal rate limits)
+                // Quota-flavored backoff uses standard 2s initial
                 await vi.advanceTimersByTimeAsync(60000);
 
                 const result = await resultPromise;
 
-                // Should retry (not kill immediately) and succeed
-                expect(result).toBe('Success after quota backoff');
+                // Should retry and succeed — NOT kill immediately
+                expect(result).toBe('Success after backoff');
                 expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
                 expect(runner.hitQuotaExhausted).toBe(false);
                 expect(runner.hitRateLimit).toBe(false);
             });
 
-            it('should return last substantive response after quota-flavored retries exhausted', async () => {
+            it('should return last substantive response when retries exhausted on quota-flavored errors', async () => {
                 let callCount = 0;
                 const modelManager = {
                     sendRequest: vi.fn().mockImplementation(() => {
@@ -2275,6 +2278,8 @@ describe('ConversationRunner', () => {
             });
 
             it('should fail immediately on true ChatQuotaExceeded (HTTP 402)', async () => {
+                // ChatQuotaExceeded = monthly premium request quota depleted.
+                // No retry will help — quota resets monthly.
                 class ChatQuotaExceeded extends Error {
                     constructor() {
                         super('Quota exceeded');

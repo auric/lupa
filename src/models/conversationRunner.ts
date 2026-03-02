@@ -110,8 +110,6 @@ export class ConversationRunner {
     private static readonly MAX_RATE_LIMIT_RETRIES = 5;
     /** Initial backoff delay in ms for rate-limited requests */
     private static readonly INITIAL_BACKOFF_MS = 2000;
-    /** Initial backoff delay for quota-flavored rate limits (longer because these need more time) */
-    private static readonly QUOTA_RATE_LIMIT_INITIAL_BACKOFF_MS = 15000;
     /** Maximum backoff delay in ms */
     private static readonly MAX_BACKOFF_MS = 60000;
 
@@ -485,11 +483,11 @@ export class ConversationRunner {
                     );
                 }
 
-                // Rate limit: backoff and retry WITHOUT burning an iteration.
-                // The API throws ChatRateLimited (HTTP 429) for both transient
-                // rate limits AND quota-flavored throttles ("exceeded your Copilot
-                // token usage"). Both are temporary — use longer backoff for
-                // quota-flavored messages since they need more time to clear.
+                // Rate limit (HTTP 429): backoff and retry WITHOUT burning an iteration.
+                // VS Code surfaces this as LanguageModelError with name='ChatRateLimited'.
+                // This covers both transient rate limits and quota-flavored throttles
+                // ("exceeded your Copilot token usage") which use the same HTTP 429
+                // and are equally temporary despite the scary wording.
                 if (this.isRateLimitError(error)) {
                     rateLimitRetries++;
                     if (
@@ -506,18 +504,13 @@ export class ConversationRunner {
                         );
                     }
 
-                    const isQuotaFlavored =
-                        this.isQuotaFlavoredRateLimit(error);
-                    const baseBackoff = isQuotaFlavored
-                        ? ConversationRunner.QUOTA_RATE_LIMIT_INITIAL_BACKOFF_MS
-                        : ConversationRunner.INITIAL_BACKOFF_MS;
                     const backoffMs = Math.min(
-                        baseBackoff * Math.pow(2, rateLimitRetries - 1),
+                        ConversationRunner.INITIAL_BACKOFF_MS *
+                            Math.pow(2, rateLimitRetries - 1),
                         ConversationRunner.MAX_BACKOFF_MS
                     );
                     Log.warn(
-                        `${logPrefix} Rate limited${isQuotaFlavored ? ' (quota-flavored)' : ''} ` +
-                            `(attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), ` +
+                        `${logPrefix} Rate limited (attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), ` +
                             `waiting ${backoffMs}ms before retry`
                     );
 
@@ -663,8 +656,8 @@ export class ConversationRunner {
     /**
      * Check if an error is a true quota exhaustion error (HTTP 402).
      * VS Code surfaces this as a LanguageModelError with name='ChatQuotaExceeded'
-     * when the free-user monthly quota is depleted. This is distinct from
-     * ChatRateLimited (HTTP 429) which is always temporary.
+     * when the monthly premium request quota is depleted. This is distinct from
+     * ChatRateLimited (HTTP 429) which is always a temporary burst throttle.
      */
     private isQuotaExhaustedError(error: unknown): boolean {
         if (!(error instanceof Error)) {
@@ -681,26 +674,11 @@ export class ConversationRunner {
     }
 
     /**
-     * Check if a rate-limit error carries quota-flavored messaging.
-     * The API uses ChatRateLimited (HTTP 429) for both transient rate limits
-     * and quota-flavored throttles ("exceeded your Copilot token usage").
-     * Both are temporary, but quota-flavored errors need longer backoff.
-     */
-    private isQuotaFlavoredRateLimit(error: unknown): boolean {
-        if (!(error instanceof Error)) {
-            return false;
-        }
-        const message = error.message ?? '';
-        return (
-            message.includes('exceeded your Copilot') ||
-            message.includes('token usage') ||
-            message.includes('exhausted this model')
-        );
-    }
-
-    /**
      * Check if an error is a rate limit error from the VS Code Copilot API.
-     * The API throws errors with class name "ChatRateLimited".
+     * VS Code surfaces this as a LanguageModelError with name='ChatRateLimited'
+     * (HTTP 429). This covers both transient rate limits and quota-flavored
+     * throttles ("exceeded your Copilot token usage") — both are temporary
+     * despite the scary wording on the latter.
      */
     private isRateLimitError(error: unknown): boolean {
         if (!(error instanceof Error)) {
