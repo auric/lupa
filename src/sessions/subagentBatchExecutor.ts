@@ -16,9 +16,21 @@ import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 
 /**
+ * Number of consecutive non-subagent tool-calling iterations to wait before flushing.
+ * Models that emit one tool per iteration typically interleave run_subagent with update_plan:
+ *   IT1: run_subagent → IT2: update_plan → IT3: run_subagent → IT4: update_plan → ...
+ * A cooldown of 2 ensures we don't flush after a single update_plan between subagent calls.
+ */
+const FLUSH_COOLDOWN_ITERATIONS = 2;
+
+/**
  * Create a callback that flushes batched subagent tasks for parallel execution.
  * Returns undefined (no-op) if there are no pending tasks or the model is still
  * accumulating (current iteration had run_subagent calls).
+ *
+ * Uses a cooldown window: after the last run_subagent call, waits for
+ * FLUSH_COOLDOWN_ITERATIONS consecutive non-subagent iterations before flushing.
+ * Text-only responses (empty currentToolNames) bypass the cooldown.
  *
  * Shared between ToolCallingAnalysisProvider and ChatParticipantService.
  */
@@ -31,16 +43,33 @@ export function createFlushBatchCallback(
     parentToken: vscode.CancellationToken,
     fallbackTimeoutMs: number
 ): (currentToolNames: string[]) => Promise<string | undefined> {
+    let gapIterations = 0;
+
     return async (currentToolNames: string[]) => {
         if (!batchManager.hasPending()) {
             return undefined;
         }
 
-        // Still accumulating: this iteration had run_subagent calls
+        // Still accumulating: this iteration had run_subagent calls — reset cooldown
         if (currentToolNames.includes('run_subagent')) {
+            gapIterations = 0;
             return undefined;
         }
 
+        // For tool-calling iterations, apply cooldown to allow the model time to
+        // queue multiple subagents across iterations (e.g., run_subagent → update_plan → run_subagent).
+        // Text-only responses (empty array) bypass cooldown — the model stopped calling tools.
+        if (currentToolNames.length > 0) {
+            gapIterations++;
+            if (gapIterations < FLUSH_COOLDOWN_ITERATIONS) {
+                Log.info(
+                    `SubagentBatchManager: Cooldown ${gapIterations}/${FLUSH_COOLDOWN_ITERATIONS}, holding ${batchManager.getPendingCount()} pending subagent(s)`
+                );
+                return undefined;
+            }
+        }
+
+        gapIterations = 0;
         const queued = batchManager.drain();
         Log.info(
             `Flushing ${queued.length} batched subagent(s) for parallel execution`

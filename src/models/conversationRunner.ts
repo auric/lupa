@@ -427,6 +427,24 @@ export class ConversationRunner {
 
                     // If submit_review was called, return its content as the final review
                     if (result.finalReview) {
+                        // Safety net: flush any pending batched subagents before accepting.
+                        // The model may call submit_review before all subagent results are in.
+                        // Inject results and let the model re-submit with complete findings.
+                        if (config.flushBatchedSubagents) {
+                            const batchResult =
+                                await config.flushBatchedSubagents([]);
+                            if (token.isCancellationRequested) {
+                                this._wasCancelled = true;
+                                return '';
+                            }
+                            if (batchResult) {
+                                conversation.addUserMessage(batchResult);
+                                Log.info(
+                                    `${logPrefix} Flushed batched subagents before accepting submit_review (${batchResult.length} chars)`
+                                );
+                                continue;
+                            }
+                        }
                         Log.info(
                             `${logPrefix} Completed via submit_review tool`
                         );
@@ -449,7 +467,9 @@ export class ConversationRunner {
                     }
 
                     // Flush batched subagents when the model has stopped delegating.
-                    // Trigger: queue has pending tasks AND this iteration had no run_subagent calls.
+                    // Uses a cooldown window: waits for multiple non-subagent iterations
+                    // before flushing, so models that interleave run_subagent/update_plan
+                    // one-at-a-time can accumulate a full batch.
                     if (config.flushBatchedSubagents) {
                         const toolNames = toolCalls.map(
                             (tc) => tc.function.name

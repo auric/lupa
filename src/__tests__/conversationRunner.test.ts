@@ -2925,5 +2925,81 @@ describe('ConversationRunner', () => {
             expect(flushBatchedSubagents).toHaveBeenCalledWith([]);
             expect(result).toBe('Complete review');
         });
+
+        it('should flush pending subagents before accepting submit_review', async () => {
+            const flushBatchedSubagents = vi
+                .fn()
+                .mockResolvedValueOnce(
+                    '## Subagent Results\n\nFindings from children'
+                )
+                .mockResolvedValue(undefined);
+
+            const modelManager = createMockModelManager([
+                {
+                    // Turn 1: model calls submit_review while subagents pending
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'submit_review',
+                                arguments: '{"review":"Final review"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    // Turn 2: after seeing subagent results, model re-submits
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'submit_review',
+                                arguments: '{"review":"Updated review"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'submit_review',
+                    success: true,
+                    result: 'Final review content',
+                    metadata: { isCompletion: true },
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+                flushBatchedSubagents,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // First submit_review triggered flush (pending subagents),
+            // second submit_review accepted (no pending subagents)
+            expect(flushBatchedSubagents).toHaveBeenCalledWith([]);
+            expect(result).toBe('Final review content');
+
+            // Verify subagent results were injected before re-submission
+            const userMessages = conversation.getMessagesByRole('user');
+            const hasFlushMessage = userMessages.some(
+                (m) =>
+                    typeof m.content === 'string' &&
+                    m.content.includes('Subagent Results')
+            );
+            expect(hasFlushMessage).toBe(true);
+        });
     });
 });
