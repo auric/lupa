@@ -30,7 +30,7 @@ describe('WorkspaceSettingsSchema', () => {
             if (result.success) {
                 expect(result.data).toEqual({
                     ...validSettings,
-                    enableSubagentBatching: true,
+                    enableSubagentBatching: false,
                 });
             }
         });

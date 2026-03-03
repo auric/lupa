@@ -45,7 +45,7 @@ export const WorkspaceSettingsSchema = z.looseObject({
      * Accumulate subagent calls across iterations for batched parallel execution.
      * Helps models that spawn one subagent per iteration instead of multiple in parallel.
      */
-    enableSubagentBatching: z.boolean().default(true),
+    enableSubagentBatching: z.boolean().default(false),
     logLevel: z.enum(LOG_LEVELS).default('info'),
 });
 
