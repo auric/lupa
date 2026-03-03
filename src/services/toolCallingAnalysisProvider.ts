@@ -26,11 +26,7 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import { SubagentBatchManager } from '../sessions/subagentBatchManager';
-import {
-    createFlushBatchCallback,
-    type BatchFlushResult,
-} from '../sessions/subagentBatchExecutor';
+
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
 
@@ -120,14 +116,6 @@ export class ToolCallingAnalysisProvider {
             recursiveState.startAgent('root');
         }
 
-        // Create batch manager for accumulating subagent calls across iterations.
-        // Only in recursive mode (which has subagents) and when the setting is enabled.
-        const batchManager =
-            isRecursiveMode &&
-            this.workspaceSettings.getEnableSubagentBatching()
-                ? new SubagentBatchManager()
-                : undefined;
-
         // Create execution context as a mutable reference so parsedDiff can be
         // set after diff processing
         const executionContext: ExecutionContext = {
@@ -138,7 +126,6 @@ export class ToolCallingAnalysisProvider {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
-            subagentBatchManager: batchManager,
         };
 
         const toolExecutor = new ToolExecutor(
@@ -286,37 +273,6 @@ export class ToolCallingAnalysisProvider {
                         subagentSessionManager
                     ),
                     disabledToolNames,
-                    flushBatchedSubagents: batchManager
-                        ? createFlushBatchCallback(
-                              batchManager,
-                              subagentExecutor,
-                              subagentSessionManager,
-                              recursiveState,
-                              executionContext,
-                              token,
-                              this.workspaceSettings.getRequestTimeoutSeconds() *
-                                  1000
-                          )
-                        : undefined,
-                    onBatchFlushComplete: (result: BatchFlushResult) => {
-                        // Retroactively fill in nestedCalls on queued run_subagent ToolCallRecords
-                        for (const meta of result.subagentResults) {
-                            const record = toolCallRecords.find(
-                                (r) =>
-                                    r.toolName === 'run_subagent' &&
-                                    !r.nestedCalls &&
-                                    typeof r.result === 'string' &&
-                                    r.result.includes(
-                                        `Subagent #${meta.subagentId} queued`
-                                    )
-                            );
-                            if (record) {
-                                record.nestedCalls = meta.nestedToolCalls;
-                                record.executionTimeMs = meta.executionTimeMs;
-                                record.iterationsUsed = meta.iterationsUsed;
-                            }
-                        }
-                    },
                 },
                 conversationManager,
                 token,

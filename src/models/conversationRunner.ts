@@ -12,8 +12,6 @@ import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUti
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 
-import type { BatchFlushResult } from '../sessions/subagentBatchExecutor';
-
 /**
  * Configuration for running a conversation loop.
  */
@@ -61,22 +59,6 @@ export interface ConversationRunnerConfig {
         iteration: number,
         maxIterations: number
     ) => string | undefined;
-    /**
-     * Called after tool processing or on text-only responses to flush batched subagent tasks.
-     * Receives the tool names from the current iteration (empty array for text-only responses).
-     * Returns flush result with LLM-facing message and structured metadata, or undefined.
-     *
-     * Flush triggers when: the batch queue has pending tasks AND the current iteration
-     * had no run_subagent calls (the model has finished delegating).
-     */
-    flushBatchedSubagents?: (
-        currentToolNames: string[]
-    ) => Promise<BatchFlushResult | undefined>;
-    /**
-     * Called after a successful batch flush with the structured results.
-     * Used by callers to retroactively update tool call records with nested metadata.
-     */
-    onBatchFlushComplete?: (result: BatchFlushResult) => void;
 }
 
 /**
@@ -434,27 +416,6 @@ export class ConversationRunner {
 
                     // If submit_review was called, return its content as the final review
                     if (result.finalReview) {
-                        // Safety net: flush any pending batched subagents before accepting.
-                        // The model may call submit_review before all subagent results are in.
-                        // Inject results and let the model re-submit with complete findings.
-                        if (config.flushBatchedSubagents) {
-                            const batchResult =
-                                await config.flushBatchedSubagents([]);
-                            if (token.isCancellationRequested) {
-                                this._wasCancelled = true;
-                                return '';
-                            }
-                            if (batchResult) {
-                                conversation.addUserMessage(
-                                    batchResult.message
-                                );
-                                config.onBatchFlushComplete?.(batchResult);
-                                Log.info(
-                                    `${logPrefix} Flushed batched subagents before accepting submit_review (${batchResult.message.length} chars)`
-                                );
-                                continue;
-                            }
-                        }
                         Log.info(
                             `${logPrefix} Completed via submit_review tool`
                         );
@@ -476,56 +437,12 @@ export class ConversationRunner {
                         }
                     }
 
-                    // Flush batched subagents when the model has stopped delegating.
-                    // Uses a cooldown window: waits for multiple non-subagent iterations
-                    // before flushing, so models that interleave run_subagent/update_plan
-                    // one-at-a-time can accumulate a full batch.
-                    if (config.flushBatchedSubagents) {
-                        const toolNames = toolCalls.map(
-                            (tc) => tc.function.name
-                        );
-                        const batchResult =
-                            await config.flushBatchedSubagents(toolNames);
-                        if (token.isCancellationRequested) {
-                            this._wasCancelled = true;
-                            return '';
-                        }
-                        if (batchResult) {
-                            conversation.addUserMessage(batchResult.message);
-                            config.onBatchFlushComplete?.(batchResult);
-                            Log.info(
-                                `${logPrefix} Injected batched subagent results (${batchResult.message.length} chars)`
-                            );
-                        }
-                    }
-
                     continue;
                 }
 
                 // No tool calls - check if explicit completion is required
                 // Main analysis requires submit_review; subagents/exploration can complete directly
                 if (config.requiresExplicitCompletion) {
-                    // Flush pending batched subagents before nudging for submit_review.
-                    // The model gave a text response while subagents are queued — execute them
-                    // and let the model see results before deciding to continue or submit.
-                    if (config.flushBatchedSubagents) {
-                        const batchResult = await config.flushBatchedSubagents(
-                            []
-                        );
-                        if (token.isCancellationRequested) {
-                            this._wasCancelled = true;
-                            return '';
-                        }
-                        if (batchResult) {
-                            conversation.addUserMessage(batchResult.message);
-                            config.onBatchFlushComplete?.(batchResult);
-                            Log.info(
-                                `${logPrefix} Flushed batched subagents before completion nudge (${batchResult.message.length} chars)`
-                            );
-                            continue;
-                        }
-                    }
-
                     completionNudgeCount++;
 
                     // After MAX_COMPLETION_NUDGES attempts, accept the response to prevent infinite loops

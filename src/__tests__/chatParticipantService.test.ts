@@ -168,7 +168,6 @@ describe('ChatParticipantService', () => {
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getEnableSubagentBatching: vi.fn().mockReturnValue(true),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -397,7 +396,6 @@ describe('ChatParticipantService', () => {
             const recursiveWorkspaceSettings = {
                 ...mockWorkspaceSettings,
                 getMaxRecursionDepth: vi.fn().mockReturnValue(1),
-                getEnableSubagentBatching: vi.fn().mockReturnValue(true),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
             };
 
@@ -453,7 +451,6 @@ describe('ChatParticipantService', () => {
             const nonRecursiveSettings = {
                 ...mockWorkspaceSettings,
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getEnableSubagentBatching: vi.fn().mockReturnValue(true),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
             };
 
@@ -516,7 +513,6 @@ describe('ChatParticipantService', () => {
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getEnableSubagentBatching: vi.fn().mockReturnValue(true),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -978,7 +974,6 @@ describe('ChatParticipantService', () => {
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getEnableSubagentBatching: vi.fn().mockReturnValue(true),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -1412,7 +1407,6 @@ describe('ChatParticipantService', () => {
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getEnableSubagentBatching: vi.fn().mockReturnValue(true),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -2122,7 +2116,6 @@ describe('ChatParticipantService', () => {
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
                 getMaxRecursionDepth: vi.fn().mockReturnValue(0),
-                getEnableSubagentBatching: vi.fn().mockReturnValue(true),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi

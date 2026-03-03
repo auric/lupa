@@ -314,13 +314,6 @@ export class WorkspaceSettingsService implements vscode.Disposable {
     }
 
     /**
-     * Whether to accumulate subagent calls across iterations for batched parallel execution.
-     */
-    public getEnableSubagentBatching(): boolean {
-        return this.settings.enableSubagentBatching;
-    }
-
-    /**
      * Reset user-configurable settings to their defaults
      */
     public resetSettingsToDefaults(): void {

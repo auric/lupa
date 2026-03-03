@@ -161,25 +161,6 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
             recursiveState.startAgent(childAgentId);
         }
 
-        // Batched execution: enqueue instead of running immediately.
-        // The ConversationRunner flush hook will execute all queued subagents
-        // in parallel once the model stops emitting run_subagent calls.
-        if (context.subagentBatchManager) {
-            context.subagentBatchManager.enqueue({
-                task,
-                taskContext,
-                subagentId,
-                childAgentId,
-                childBudget,
-                currentDepth,
-            });
-            const pending = context.subagentBatchManager.getPendingCount();
-            return toolSuccess(
-                `Subagent #${subagentId} queued for batched parallel execution (${pending} pending). ` +
-                    `Continue delegating remaining work items — all queued subagents will execute in parallel once you finish delegating.`
-            );
-        }
-
         // Compute subagent execution timeout.
         // In recursive mode (childBudget defined): proportional to iteration budget,
         // allowing ~30s per iteration with a 2-minute minimum floor.

@@ -24,8 +24,7 @@ import {
     MAIN_ANALYSIS_ONLY_TOOLS,
 } from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import { SubagentBatchManager } from '../sessions/subagentBatchManager';
-import { createFlushBatchCallback } from '../sessions/subagentBatchExecutor';
+
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -541,13 +540,6 @@ export class ChatParticipantService implements vscode.Disposable {
             subagentExecutor.setRecursiveState(recursiveState);
         }
 
-        // Create batch manager for accumulating subagent calls across iterations
-        const batchManager =
-            isRecursiveMode &&
-            this.deps!.workspaceSettings.getEnableSubagentBatching()
-                ? new SubagentBatchManager()
-                : undefined;
-
         // Create execution context as a mutable reference so parsedDiff can be
         // set after diff processing (RLM approach needs it on the context for tools)
         const executionContext: ExecutionContext = {
@@ -558,7 +550,6 @@ export class ChatParticipantService implements vscode.Disposable {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
-            subagentBatchManager: batchManager,
         };
 
         const toolExecutor = new ToolExecutor(
@@ -614,18 +605,6 @@ export class ChatParticipantService implements vscode.Disposable {
                         subagentSessionManager
                     ),
                     disabledToolNames,
-                    flushBatchedSubagents: batchManager
-                        ? createFlushBatchCallback(
-                              batchManager,
-                              subagentExecutor,
-                              subagentSessionManager,
-                              recursiveState,
-                              executionContext,
-                              token,
-                              this.deps!.workspaceSettings.getRequestTimeoutSeconds() *
-                                  1000
-                          )
-                        : undefined,
                 },
                 conversation,
                 token,
