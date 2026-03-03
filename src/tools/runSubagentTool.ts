@@ -171,6 +171,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                 subagentId,
                 childAgentId,
                 childBudget,
+                currentDepth,
             });
             const pending = context.subagentBatchManager.getPendingCount();
             return toolSuccess(

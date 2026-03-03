@@ -12,8 +12,25 @@ import {
 } from './subagentBatchManager';
 import { RunSubagentTool } from '../tools/runSubagentTool';
 import type { ExecutionContext } from '../types/executionContext';
+import type { ToolCallRecord } from '../types/toolCallTypes';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+
+/** Metadata for a single batched subagent after execution. */
+export interface BatchedSubagentMeta {
+    subagentId: number;
+    nestedToolCalls: ToolCallRecord[];
+    executionTimeMs: number | undefined;
+    iterationsUsed: number | undefined;
+}
+
+/** Result returned by the flush callback — includes both the LLM-facing message and structured metadata. */
+export interface BatchFlushResult {
+    /** Formatted markdown for injection into the conversation. */
+    message: string;
+    /** Per-subagent metadata for updating ToolCallRecord entries. */
+    subagentResults: BatchedSubagentMeta[];
+}
 
 /**
  * Number of consecutive non-subagent tool-calling iterations to wait before flushing.
@@ -42,7 +59,7 @@ export function createFlushBatchCallback(
     executionContext: ExecutionContext,
     parentToken: vscode.CancellationToken,
     fallbackTimeoutMs: number
-): (currentToolNames: string[]) => Promise<string | undefined> {
+): (currentToolNames: string[]) => Promise<BatchFlushResult | undefined> {
     let gapIterations = 0;
 
     return async (currentToolNames: string[]) => {
@@ -98,20 +115,33 @@ export function createFlushBatchCallback(
         const lines: string[] = [
             `## Batched Subagent Results (${queued.length} executed in parallel)\n`,
         ];
+        const subagentResults: BatchedSubagentMeta[] = [];
 
         for (let i = 0; i < results.length; i++) {
             const result = results[i]!;
             const entry = queued[i]!;
             lines.push(`### Subagent #${entry.subagentId}\n`);
             if (result.status === 'fulfilled') {
-                lines.push(result.value);
+                lines.push(result.value.text);
+                subagentResults.push({
+                    subagentId: entry.subagentId,
+                    nestedToolCalls: result.value.toolCalls,
+                    executionTimeMs: result.value.executionTimeMs,
+                    iterationsUsed: result.value.iterationsUsed,
+                });
             } else {
                 lines.push(`Error: ${getErrorMessage(result.reason)}`);
+                subagentResults.push({
+                    subagentId: entry.subagentId,
+                    nestedToolCalls: [],
+                    executionTimeMs: undefined,
+                    iterationsUsed: undefined,
+                });
             }
             lines.push('');
         }
 
-        return lines.join('\n');
+        return { message: lines.join('\n'), subagentResults };
     };
 }
 
@@ -120,6 +150,13 @@ export function createFlushBatchCallback(
  * Mirrors the execution logic from RunSubagentTool.execute() but without
  * the budget validation (already done at enqueue time).
  */
+interface BatchedSubagentExecResult {
+    text: string;
+    toolCalls: ToolCallRecord[];
+    executionTimeMs: number | undefined;
+    iterationsUsed: number | undefined;
+}
+
 async function executeBatchedSubagent(
     entry: QueuedSubagent,
     executor: SubagentExecutor,
@@ -128,7 +165,7 @@ async function executeBatchedSubagent(
     executionContext: ExecutionContext,
     parentToken: vscode.CancellationToken,
     fallbackTimeoutMs: number
-): Promise<string> {
+): Promise<BatchedSubagentExecResult> {
     const timeoutMs =
         entry.childBudget !== undefined
             ? Math.max(
@@ -153,7 +190,7 @@ async function executeBatchedSubagent(
             cancellationTokenSource.token,
             entry.subagentId,
             {
-                recursionDepth: 1,
+                recursionDepth: entry.currentDepth + 1,
                 agentId: entry.childAgentId,
                 recursiveState,
                 parsedDiff: executionContext.parsedDiff,
@@ -195,28 +232,35 @@ async function executeBatchedSubagent(
             }
         }
 
+        const meta = {
+            toolCalls: result.toolCalls,
+            executionTimeMs: result.executionTimeMs,
+            iterationsUsed: result.iterationsUsed,
+        };
+
         if (!result.success) {
             if (result.error === 'cancelled') {
-                if (
-                    cancelledByTimeout &&
-                    !parentToken.isCancellationRequested
-                ) {
-                    return `Subagent #${entry.subagentId} timed out after ${Math.round(timeoutMs / 1000)}s`;
-                }
-                return `Subagent #${entry.subagentId} was cancelled`;
+                const text =
+                    cancelledByTimeout && !parentToken.isCancellationRequested
+                        ? `Subagent #${entry.subagentId} timed out after ${Math.round(timeoutMs / 1000)}s`
+                        : `Subagent #${entry.subagentId} was cancelled`;
+                return { text, ...meta };
             }
             const partial = result.response?.trim();
             const errorMsg = `Subagent #${entry.subagentId} failed: ${result.error}`;
-            return partial
+            const text = partial
                 ? `${errorMsg}\n\nPartial findings:\n${partial}`
                 : errorMsg;
+            return { text, ...meta };
         }
 
-        return (
-            `**Subagent #${entry.subagentId} Investigation Complete**\n\n` +
-            `**Tool calls made:** ${result.toolCallsMade}\n\n` +
-            `---\n\n${result.response}`
-        );
+        return {
+            text:
+                `**Subagent #${entry.subagentId} Investigation Complete**\n\n` +
+                `**Tool calls made:** ${result.toolCallsMade}\n\n` +
+                `---\n\n${result.response}`,
+            ...meta,
+        };
     } catch (error) {
         clearTimeout(timeoutHandle);
 
@@ -235,12 +279,24 @@ async function executeBatchedSubagent(
             throw error;
         }
 
+        const emptyMeta = {
+            toolCalls: [] as ToolCallRecord[],
+            executionTimeMs: undefined,
+            iterationsUsed: undefined,
+        };
+
         if (cancelledByTimeout && !parentToken.isCancellationRequested) {
-            return `Subagent #${entry.subagentId} timed out after ${Math.round(timeoutMs / 1000)}s`;
+            return {
+                text: `Subagent #${entry.subagentId} timed out after ${Math.round(timeoutMs / 1000)}s`,
+                ...emptyMeta,
+            };
         }
 
         sessionManager.rollbackSpawn();
-        return `Subagent #${entry.subagentId} failed: ${getErrorMessage(error)}`;
+        return {
+            text: `Subagent #${entry.subagentId} failed: ${getErrorMessage(error)}`,
+            ...emptyMeta,
+        };
     } finally {
         parentCancellationDisposable?.dispose();
         cancellationTokenSource.dispose();

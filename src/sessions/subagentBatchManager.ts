@@ -15,6 +15,8 @@ export interface QueuedSubagent {
     childAgentId: string | undefined;
     /** Allocated iteration budget for recursive mode */
     childBudget: number | undefined;
+    /** The parent agent's recursion depth at enqueue time */
+    currentDepth: number;
 }
 
 /**

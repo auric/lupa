@@ -20,6 +20,7 @@ function createEntry(overrides: Partial<QueuedSubagent> = {}): QueuedSubagent {
         subagentId: 1,
         childAgentId: 'child-1',
         childBudget: 10,
+        currentDepth: 0,
         ...overrides,
     };
 }

@@ -12,6 +12,7 @@ import {
 } from '../models/copilotModelManager';
 import { ToolExecutor } from '../models/toolExecutor';
 import type { ITool } from '../tools/ITool';
+import type { BatchFlushResult } from '../sessions/subagentBatchExecutor';
 
 // Mock dependencies
 const createMockModelManager = (
@@ -2712,11 +2713,10 @@ describe('ConversationRunner', () => {
 
     describe('flushBatchedSubagents Hook', () => {
         it('should call flush callback after tool calls when run_subagent is not in batch', async () => {
-            const flushBatchedSubagents = vi
-                .fn()
-                .mockResolvedValue(
-                    '## Batched Results\n\nSubagent findings here'
-                );
+            const flushBatchedSubagents = vi.fn().mockResolvedValue({
+                message: '## Batched Results\n\nSubagent findings here',
+                subagentResults: [],
+            } satisfies BatchFlushResult);
 
             const modelManager = createMockModelManager([
                 {
@@ -2764,9 +2764,10 @@ describe('ConversationRunner', () => {
         });
 
         it('should inject flush results as user message', async () => {
-            const flushBatchedSubagents = vi
-                .fn()
-                .mockResolvedValue('## Subagent Results\n\nFindings here');
+            const flushBatchedSubagents = vi.fn().mockResolvedValue({
+                message: '## Subagent Results\n\nFindings here',
+                subagentResults: [],
+            } satisfies BatchFlushResult);
 
             const modelManager = createMockModelManager([
                 {
@@ -2868,9 +2869,10 @@ describe('ConversationRunner', () => {
         it('should flush pending subagents before submit_review nudge on text-only response', async () => {
             const flushBatchedSubagents = vi
                 .fn()
-                .mockResolvedValueOnce(
-                    '## Batched Results\n\nSubagent findings'
-                )
+                .mockResolvedValueOnce({
+                    message: '## Batched Results\n\nSubagent findings',
+                    subagentResults: [],
+                } satisfies BatchFlushResult)
                 .mockResolvedValue(undefined);
 
             const modelManager = createMockModelManager([
@@ -2929,9 +2931,10 @@ describe('ConversationRunner', () => {
         it('should flush pending subagents before accepting submit_review', async () => {
             const flushBatchedSubagents = vi
                 .fn()
-                .mockResolvedValueOnce(
-                    '## Subagent Results\n\nFindings from children'
-                )
+                .mockResolvedValueOnce({
+                    message: '## Subagent Results\n\nFindings from children',
+                    subagentResults: [],
+                } satisfies BatchFlushResult)
                 .mockResolvedValue(undefined);
 
             const modelManager = createMockModelManager([

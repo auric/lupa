@@ -12,6 +12,8 @@ import { extractReviewFromMalformedToolCall } from '../utils/reviewExtractionUti
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 
+import type { BatchFlushResult } from '../sessions/subagentBatchExecutor';
+
 /**
  * Configuration for running a conversation loop.
  */
@@ -62,14 +64,19 @@ export interface ConversationRunnerConfig {
     /**
      * Called after tool processing or on text-only responses to flush batched subagent tasks.
      * Receives the tool names from the current iteration (empty array for text-only responses).
-     * Returns formatted results to inject as a user message, or undefined if nothing to flush.
+     * Returns flush result with LLM-facing message and structured metadata, or undefined.
      *
      * Flush triggers when: the batch queue has pending tasks AND the current iteration
      * had no run_subagent calls (the model has finished delegating).
      */
     flushBatchedSubagents?: (
         currentToolNames: string[]
-    ) => Promise<string | undefined>;
+    ) => Promise<BatchFlushResult | undefined>;
+    /**
+     * Called after a successful batch flush with the structured results.
+     * Used by callers to retroactively update tool call records with nested metadata.
+     */
+    onBatchFlushComplete?: (result: BatchFlushResult) => void;
 }
 
 /**
@@ -438,9 +445,12 @@ export class ConversationRunner {
                                 return '';
                             }
                             if (batchResult) {
-                                conversation.addUserMessage(batchResult);
+                                conversation.addUserMessage(
+                                    batchResult.message
+                                );
+                                config.onBatchFlushComplete?.(batchResult);
                                 Log.info(
-                                    `${logPrefix} Flushed batched subagents before accepting submit_review (${batchResult.length} chars)`
+                                    `${logPrefix} Flushed batched subagents before accepting submit_review (${batchResult.message.length} chars)`
                                 );
                                 continue;
                             }
@@ -481,9 +491,10 @@ export class ConversationRunner {
                             return '';
                         }
                         if (batchResult) {
-                            conversation.addUserMessage(batchResult);
+                            conversation.addUserMessage(batchResult.message);
+                            config.onBatchFlushComplete?.(batchResult);
                             Log.info(
-                                `${logPrefix} Injected batched subagent results (${batchResult.length} chars)`
+                                `${logPrefix} Injected batched subagent results (${batchResult.message.length} chars)`
                             );
                         }
                     }
@@ -506,9 +517,10 @@ export class ConversationRunner {
                             return '';
                         }
                         if (batchResult) {
-                            conversation.addUserMessage(batchResult);
+                            conversation.addUserMessage(batchResult.message);
+                            config.onBatchFlushComplete?.(batchResult);
                             Log.info(
-                                `${logPrefix} Flushed batched subagents before completion nudge (${batchResult.length} chars)`
+                                `${logPrefix} Flushed batched subagents before completion nudge (${batchResult.message.length} chars)`
                             );
                             continue;
                         }
