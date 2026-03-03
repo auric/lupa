@@ -301,7 +301,7 @@ export class SubagentExecutor {
                         // onToolCallStart populates toolNamesUsed before this callback fires,
                         // so we reliably know which tools were called in the current batch.
                         const hasInvestigated = [...toolNamesUsed].some(
-                            (n) => n !== 'get_file_diff'
+                            (n) => !ORIENTATION_ONLY_TOOLS.has(n)
                         );
                         if (toolNamesUsed.size > 0 && !hasInvestigated) {
                             if (canRecurse) {

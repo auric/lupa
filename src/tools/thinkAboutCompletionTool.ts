@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { flexibleStringArrayNonEmpty } from './schemaHelpers';
 import { SEVERITY } from '../config/chatEmoji';
 
 const CompletionDecision = z.enum(['needs_work', 'ready_to_submit']);
@@ -46,12 +47,9 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 .int()
                 .min(0)
                 .describe('Number of high-severity issues found'),
-            files_analyzed: z
-                .array(z.string())
-                .min(1)
-                .describe(
-                    'List of files reviewed (directly via get_file_diff or via sub-agent delegation)'
-                ),
+            files_analyzed: flexibleStringArrayNonEmpty.describe(
+                'List of files reviewed (directly via get_file_diff or via sub-agent delegation)'
+            ),
             files_in_diff: z
                 .number()
                 .int()

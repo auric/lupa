@@ -435,7 +435,7 @@ export class ConversationRunner {
 
                     // Post-tool-call hook: inject coverage gaps or other messages
                     if (config.afterToolCalls) {
-                        const toolNames = response.toolCalls.map(
+                        const toolNames = toolCalls.map(
                             (tc) => tc.function.name
                         );
                         const injectedMessage =
@@ -456,6 +456,10 @@ export class ConversationRunner {
                         );
                         const batchResult =
                             await config.flushBatchedSubagents(toolNames);
+                        if (token.isCancellationRequested) {
+                            this._wasCancelled = true;
+                            return '';
+                        }
                         if (batchResult) {
                             conversation.addUserMessage(batchResult);
                             Log.info(
@@ -477,6 +481,10 @@ export class ConversationRunner {
                         const batchResult = await config.flushBatchedSubagents(
                             []
                         );
+                        if (token.isCancellationRequested) {
+                            this._wasCancelled = true;
+                            return '';
+                        }
                         if (batchResult) {
                             conversation.addUserMessage(batchResult);
                             Log.info(

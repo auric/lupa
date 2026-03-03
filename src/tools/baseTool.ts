@@ -14,7 +14,9 @@ export abstract class BaseTool implements ITool {
         return {
             name: this.name,
             description: this.description,
-            inputSchema: z.toJSONSchema(this.schema),
+            inputSchema: z.toJSONSchema(this.schema, {
+                unrepresentable: 'any',
+            }),
         };
     }
 

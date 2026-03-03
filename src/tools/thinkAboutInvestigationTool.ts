@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { flexibleStringArray } from './schemaHelpers';
 
 const InvestigationDecision = z.enum([
     'continue_investigating',
@@ -29,17 +30,15 @@ export class ThinkAboutInvestigationTool extends BaseTool {
             assigned_task: z
                 .string()
                 .describe('What task were you assigned to investigate?'),
-            questions_answered: z
-                .array(z.string())
-                .describe('Questions from the task that you have answered'),
-            questions_remaining: z
-                .array(z.string())
-                .describe('Questions that still need investigation'),
-            evidence_gathered: z
-                .array(z.string())
-                .describe(
-                    'Concrete evidence found (file paths, code references, findings)'
-                ),
+            questions_answered: flexibleStringArray.describe(
+                'Questions from the task that you have answered'
+            ),
+            questions_remaining: flexibleStringArray.describe(
+                'Questions that still need investigation'
+            ),
+            evidence_gathered: flexibleStringArray.describe(
+                'Concrete evidence found (file paths, code references, findings)'
+            ),
             estimated_iterations_used: z
                 .number()
                 .int()

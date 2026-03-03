@@ -3,6 +3,10 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import {
+    flexibleStringArray,
+    flexibleStringArrayNonEmpty,
+} from './schemaHelpers';
 
 const ContextDecision = z.enum([
     'need_more_context',
@@ -25,22 +29,15 @@ export class ThinkAboutContextTool extends BaseTool {
 
     schema = z
         .object({
-            files_examined: z
-                .array(z.string())
-                .min(1)
-                .describe(
-                    'List of files or symbols you have investigated so far'
-                ),
-            key_findings: z
-                .array(z.string())
-                .describe(
-                    'Key observations from your investigation (can be empty if none yet)'
-                ),
-            remaining_gaps: z
-                .array(z.string())
-                .describe(
-                    'Specific unknowns or areas that still need investigation'
-                ),
+            files_examined: flexibleStringArrayNonEmpty.describe(
+                'List of files or symbols you have investigated so far'
+            ),
+            key_findings: flexibleStringArray.describe(
+                'Key observations from your investigation (can be empty if none yet)'
+            ),
+            remaining_gaps: flexibleStringArray.describe(
+                'Specific unknowns or areas that still need investigation'
+            ),
             decision: ContextDecision.describe(
                 'Your decision: need_more_context (use tools), need_subagent (spawn investigation), or context_sufficient (proceed)'
             ),

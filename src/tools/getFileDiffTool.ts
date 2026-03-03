@@ -20,11 +20,21 @@ export class GetFileDiffTool extends BaseTool {
 
     schema = z.object({
         file_paths: z
-            .array(z.string().trim().min(1))
-            .min(1, 'At least one file path is required')
-            .max(
-                10,
-                'Maximum 10 files per request to avoid overwhelming context'
+            .preprocess(
+                (val) =>
+                    typeof val === 'string'
+                        ? val
+                              .split('\n')
+                              .map((l) => l.replace(/^[-•*]\s*/, '').trim())
+                              .filter(Boolean)
+                        : val,
+                z
+                    .array(z.string().trim().min(1))
+                    .min(1, 'At least one file path is required')
+                    .max(
+                        10,
+                        'Maximum 10 files per request to avoid overwhelming context'
+                    )
             )
             .describe(
                 'Array of file paths to fetch diffs for IN ONE CALL (up to 10). ' +
