@@ -207,7 +207,10 @@ const ToolCallRow = ({
                 role="button"
                 tabIndex={0}
                 aria-expanded={expanded}
-                onKeyDown={(e) => e.key === 'Enter' && setExpanded((p) => !p)}
+                onKeyDown={(e) =>
+                    (e.key === 'Enter' || e.key === ' ') &&
+                    setExpanded((p) => !p)
+                }
             >
                 <ChevronRight
                     size={14}
@@ -301,7 +304,10 @@ const InlineAgent = ({
                 role="button"
                 tabIndex={0}
                 aria-expanded={expanded}
-                onKeyDown={(e) => e.key === 'Enter' && setExpanded((p) => !p)}
+                onKeyDown={(e) =>
+                    (e.key === 'Enter' || e.key === ' ') &&
+                    setExpanded((p) => !p)
+                }
             >
                 <ChevronRight
                     size={14}
@@ -347,7 +353,7 @@ const InlineAgent = ({
                             tabIndex={0}
                             aria-expanded={detailExpanded}
                             onKeyDown={(e) =>
-                                e.key === 'Enter' &&
+                                (e.key === 'Enter' || e.key === ' ') &&
                                 setDetailExpanded((p) => !p)
                             }
                         >

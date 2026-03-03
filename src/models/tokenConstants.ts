@@ -12,13 +12,6 @@ export class TokenConstants {
     static readonly DEFAULT_MAX_INPUT_TOKENS = 8000;
     static readonly DEFAULT_CACHE_LIFETIME_MS = 5 * 60 * 1000; // 5 minutes
 
-    // Truncation constants
-    static readonly TRUNCATION_MESSAGES = {
-        CONTEXT:
-            '\n\n[Context truncated to fit token limit. Some information might be missing.]',
-        PARTIAL: '\n\n[File content partially truncated to fit token limit]',
-    } as const;
-
     // Context optimization constants
     static readonly MIN_CONTENT_TOKENS_FOR_PARTIAL = 10;
     static readonly SAFETY_BUFFER_FOR_PARTIAL = 5;

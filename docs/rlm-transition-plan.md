@@ -250,7 +250,7 @@ ConversationRunner.run() — Root Agent Loop
 Depth 0 — ROOT AUDITOR (Controller)
 ├── Role: Decompose → Delegate → Aggregate → Synthesize
 ├── Tools: All tools available
-├── Budget: maxIterations (user-configured, default 100)
+├── Budget: maxIterations (hardcoded, currently 600)
 ├── Diff: Metadata in prompt; reads diffs on-demand via get_file_diff
 │
 ├── Depth 1 — RECURSIVE REVIEWER (Investigator)
@@ -266,16 +266,16 @@ Depth 0 — ROOT AUDITOR (Controller)
 **Independent per-agent budgets** following the RLM paper model:
 
 ```
-Root agent:  maxIterations (user-configured, default 100)
+Root agent:  maxIterations (hardcoded, currently 600)
 Child agents: RecursionConstants.DEFAULT_CHILD_BUDGET (50) each
               — independent of parent budget, NOT deducted from parent
 
 Total compute bounded by:
-  - maxSubagentsPerSession (default 30): session-level hard cap across all depths
+  - maxSubagentsPerSession (currently 75): session-level hard cap across all depths
   - maxRecursionDepth (default 2): limits nesting depth
   - RecursionConstants.MIN_VIABLE_BUDGET (3): minimum to spawn a new agent
 
-Example with maxSubagentsPerSession=30:
+Example with maxSubagentsPerSession=75:
   Root: 100 iterations
   Up to 30 child agents, each with 30 iterations
   Total worst-case: 100 + (30 × 30) = 1000 iterations
@@ -399,7 +399,7 @@ Hierarchical naming enables:
 ### 6.3 Loop Prevention
 
 1. **Hard depth limit**: `maxDepth` setting (default 2)
-2. **Session spawn cap**: `maxSubagentsPerSession` setting (default 30)
+2. **Session spawn cap**: `maxSubagentsPerSession` constant (currently 75)
 3. **Minimum budget**: Won't spawn with < MIN_VIABLE_BUDGET (3) iterations allocated
 4. **File deduplication**: Warns if spawning agent for files already covered
 5. **Cancellation cascade**: Parent cancel → all children cancelled
@@ -958,17 +958,17 @@ The system programmatically verifies that every changed file has been reviewed v
 
 ```json
 {
-    "maxRecursionDepth": 2,
-    "maxSubagentsPerSession": 30
+    "maxRecursionDepth": 2
 }
 ```
 
+> Note: `maxSubagentsPerSession` (75) and `maxIterations` (600) are now hardcoded constants in `ANALYSIS_LIMITS`, not user-configurable settings.
+
 ### Setting Definitions
 
-| Setting                  | Type   | Default | Range | Description                                         |
-| ------------------------ | ------ | ------- | ----- | --------------------------------------------------- |
-| `maxRecursionDepth`      | number | 2       | 0-3   | Maximum recursive depth (0 = flat/current behavior) |
-| `maxSubagentsPerSession` | number | 30      | 1-50  | Maximum subagent spawns per analysis                |
+| Setting             | Type   | Default | Range | Description                                         |
+| ------------------- | ------ | ------- | ----- | --------------------------------------------------- |
+| `maxRecursionDepth` | number | 2       | 0-3   | Maximum recursive depth (0 = flat/current behavior) |
 
 ### Behavior When `maxRecursionDepth = 0`
 
