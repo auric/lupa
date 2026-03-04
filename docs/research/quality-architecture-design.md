@@ -48,14 +48,16 @@ The target is < 20% FP rate on complex codebases with high recall — finding bu
 
 ### What Lupa Has That Competitors Don't
 
-| Capability                 | Lupa              | CodeRabbit    | Qodo           | cubic          | BitsAI-CR   |
-| -------------------------- | ----------------- | ------------- | -------------- | -------------- | ----------- |
-| Live Language Server (LSP) | ✅ Hot in VS Code | ❌ Cloud-only | ❌ Cloud-only  | ❌ Cloud-only  | ❌ Internal |
-| Type checking on findings  | Possible          | Impossible    | Impossible     | Impossible     | Possible\*  |
-| Reference counting         | Possible          | grep only     | grep only      | grep only      | Possible\*  |
-| Symbol resolution          | Full LSP          | Pattern match | Pattern match  | Pattern match  | AST-based   |
-| Recursive agent tree       | ✅ RLM            | ❌ Flat       | ✅ Multi-agent | ✅ Multi-agent | ❌ Pipeline |
-| Per-analysis isolation     | ✅                | ?             | ?              | ?              | ❌          |
+| Capability                    | Lupa                       | CodeRabbit    | Qodo           | cubic           | BitsAI-CR   |
+| ----------------------------- | -------------------------- | ------------- | -------------- | --------------- | ----------- |
+| Live Language Server (LSP)    | ✅ Hot in VS Code          | ❌ Cloud-only | ❌ Cloud-only  | ❌ Cloud-only   | ❌ Internal |
+| Type checking on findings     | Possible                   | Impossible    | Impossible     | Impossible      | Possible\*  |
+| Reference counting            | Possible                   | grep only     | grep only      | grep only       | Possible\*  |
+| Symbol resolution             | Full LSP                   | Pattern match | Pattern match  | Pattern match   | AST-based   |
+| Recursive agent tree          | ✅ RLM                     | ❌ Flat       | ✅ Multi-agent | ✅ Multi-agent  | ❌ Pipeline |
+| Per-analysis isolation        | ✅                         | ?             | ?              | ?               | ❌          |
+| Incremental finding recording | Planned (`record_finding`) | Unknown       | Unknown        | `store_comment` | ❌ Pipeline |
+| LSP validation at record time | Planned (novel)            | Impossible    | Impossible     | Impossible      | Impossible  |
 
 \*BitsAI-CR is internal to ByteDance; they can integrate internal tooling. External competitors cannot.
 
@@ -76,8 +78,9 @@ This is architecturally impossible for API-only competitors. They can't run `exe
 - **CodeRabbit**: Evidence verification scripts (grep/ast-grep checks before posting). Lupa has the tools but doesn't enforce evidence chains.
 - **BitsAI-CR**: Taxonomy-guided generation (219 categorized rules → 3.4x precision). Lupa has some taxonomy but not as structured.
 - **cubic/Qodo**: Multi-pass verification agents. Lupa has prompt gates but no architectural enforcement of verification.
+- **Competitors with `store_comment` pattern**: Incremental finding recording during investigation. Findings are committed as discovered, not batched at the end. This means findings survive timeout/cancellation, are recorded when context is freshest, and are structured from the start. Lupa's current flow loses findings if analysis is interrupted, and root must extract findings from unstructured prose.
 
-The quality architecture addresses all three gaps.
+The quality architecture addresses all four gaps.
 
 ---
 
@@ -100,11 +103,14 @@ The quality architecture addresses all three gaps.
 │  Root plans → spawns concern-group subagents                │
 │  Subagents investigate with tools + Intelligence Brief      │
 │  Evidence recorded to shared Evidence Ledger                │
+│  Findings committed incrementally to FindingStore           │
+│  (optional LSP pre-validation at record time)               │
 │  Investigation depth tracked per-file per-agent             │
 │  Cross-agent evidence queries enabled                       │
 │                                                             │
-│  Components: EvidenceLedger, InvestigationAudit,            │
-│              record_evidence tool, query_evidence tool       │
+│  Components: EvidenceLedger, FindingStore,                  │
+│              InvestigationAudit, record_evidence tool,       │
+│              query_evidence tool, record_finding tool        │
 ├─────────────────────────────────────────────────────────────┤
 │  PHASE 2: Aggregation + Verification                        │
 │                                                             │
@@ -132,10 +138,13 @@ The quality architecture addresses all three gaps.
 
 ```
 Diff ──→ Phase 0 ──→ Intelligence Brief ──→ Phase 1 ──→ Evidence Ledger
-                                                              │
-                                                              ▼
+                                                         ├──→ FindingStore
+                                                         │    (LSP pre-validated)
+                                                         │
+                                                         ▼
                                               Structured Subagent Results
                                               (provenance + depth + evidence)
+                                              + FindingStore (structured findings)
                                                               │
                                                               ▼
                                               Phase 2: Root Aggregation
@@ -285,6 +294,114 @@ interface EvidenceQuery {
 
 **Estimated effort**: 3-4 days
 **Risk**: Low. Evidence quality depends on agent cooperation (writing useful entries). Mitigated by prompt guidance and by making evidence queries optional (agents can ignore the ledger entirely).
+
+### 4.3 Incremental Finding Recording (`record_finding` + `FindingStore`)
+
+**What**: A `record_finding` tool that agents call to commit structured review findings as they discover them, stored in a per-analysis `FindingStore`. Replaces the current pattern where findings exist only as prose inside the LLM's context window until the final `submit_review`.
+
+**Why (Competitor Analysis)**: Competitors using a `store_comment` pattern record findings incrementally during investigation — each finding committed when the supporting context is freshest in the context window. Lupa's current flow is:
+
+```
+subagent investigates → produces prose → root reads prose → extracts findings → submit_review
+```
+
+This means findings are:
+
+- Encoded in unstructured prose (root must parse natural language to extract them)
+- Subject to summarization loss (the finding description may lose precision as it flows through agent levels)
+- Lost on timeout/cancellation (if the agent doesn't finish, its partial findings vanish)
+- Disconnected from their investigation trail (root can't see which tool calls supported which finding)
+
+**The `record_finding` pattern changes this to:**
+
+```
+subagent investigates → record_finding(structured) → FindingStore holds it
+                        ↕ LSP pre-validation (optional)
+root reads FindingStore → aggregates/deduplicates → CoVe verification → submit_review
+```
+
+**Design**:
+
+```typescript
+interface RecordedFinding {
+    id: string; // auto-generated
+    agentId: string; // provenance
+    timestamp: number;
+    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+    category: string;
+    title: string;
+    file: string;
+    lineRange: [number, number];
+    description: string;
+    supportingToolCalls: string[]; // tool names used to build this finding
+    disproof: {
+        attempted: boolean;
+        method: string;
+        result: string;
+    };
+    verifiableClaims: VerifiableClaim[]; // claims suitable for LSP validation
+    // System-populated after recording:
+    lspValidation?: {
+        status: 'verified' | 'refuted' | 'inconclusive' | 'pending';
+        details: string;
+    };
+}
+```
+
+**Novel composition with LSP (Lupa's unique advantage)**:
+
+When an agent calls `record_finding`, the system can optionally run immediate LSP validation on the finding's `verifiableClaims`:
+
+1. Agent calls `record_finding({ ..., verifiableClaims: [{ claim_type: 'no_callers', symbol: 'processItems' }] })`
+2. System stores the finding in `FindingStore`
+3. System runs `LSPValidationService.validate()` on each claim
+4. System annotates the finding: `lspValidation: { status: 'refuted', details: 'Found 12 references' }`
+5. Tool returns to agent: "Finding recorded. LSP check: REFUTED — processItems has 12 references across 5 files."
+6. Agent drops or revises the finding BEFORE it reaches the root
+
+**This catches FPs at the source agent, not at the aggregation layer.** The competitor records findings but doesn't validate them. Lupa records AND validates against compiler ground truth — a genuinely novel composition.
+
+**How it differs from Evidence Ledger**:
+
+| Aspect          | Evidence Ledger (`record_evidence`)       | Finding Store (`record_finding`)              |
+| --------------- | ----------------------------------------- | --------------------------------------------- |
+| Purpose         | Raw observations and facts                | Actionable review findings                    |
+| Content         | "Function X has 30 callers"               | "Function X should not be inlined because..." |
+| Consumer        | Other agents (cross-agent learning)       | Root agent (aggregation + verification)       |
+| Lifecycle       | Supporting data; may not appear in review | Each entry IS a candidate review finding      |
+| LSP integration | None (facts don't need validation)        | Optional pre-validation at record time        |
+
+**How it differs from `submit_review`**:
+
+| Aspect           | `record_finding`                         | `submit_review`              |
+| ---------------- | ---------------------------------------- | ---------------------------- |
+| When             | During investigation                     | End of analysis              |
+| Who              | Any agent (subagent or root)             | Root only                    |
+| Purpose          | Commit individual findings incrementally | Finalize the complete review |
+| Survives timeout | Yes (in FindingStore)                    | No (lost if not called)      |
+| Output           | Internal structured data                 | User-facing markdown         |
+
+**Graceful degradation on timeout/cancellation**: If analysis is interrupted, `FindingStore` already contains whatever findings agents committed. The system can format partial results from the store. This is significantly better than the current behavior where a cancelled analysis produces nothing.
+
+**Implementation**:
+
+- `FindingStore` class: per-analysis lifecycle, queryable by file/severity/agent
+- `record_finding` tool: extends `BaseTool`, writes to `FindingStore`, optionally triggers LSP pre-validation
+- `FindingStore` added to `ExecutionContext` alongside `EvidenceLedger`
+- Root queries `FindingStore` instead of parsing prose for findings
+- `submit_review` incorporates and formats stored findings
+
+**Files to create/modify**:
+
+- `src/sessions/findingStore.ts` — FindingStore class
+- `src/tools/recordFindingTool.ts` — record_finding tool
+- `src/types/findingTypes.ts` — RecordedFinding interface
+- `src/services/serviceManager.ts` — register tool
+- `src/services/toolCallingAnalysisProvider.ts` — create FindingStore per-analysis
+- `src/tools/submitReviewTool.ts` — incorporate stored findings
+
+**Estimated effort**: 3-4 days (without LSP pre-validation), +1-2 days (with LSP pre-validation)
+**Risk**: Low for the store itself. Medium for LSP pre-validation (depends on Phase 2 LSP service).
 
 ---
 
@@ -554,6 +671,8 @@ interface VerifiableClaim {
 
 **CoVe Verification Phase** — already in the roadmap (Phase 3) but enhanced with LSP integration. This is the bridge between prompt-level verification (existing) and programmatic ground truth (new).
 
+**Incremental Finding Recording (`record_finding`)** — inspired by competitor analysis. The `store_comment` pattern (incrementally recording findings during investigation) solves three problems at once: (a) findings survive timeout/cancellation, (b) root operates on structured data instead of parsing prose, (c) enables LSP pre-validation at the point of discovery. Included in Pillar 1 as an evidence infrastructure component (Section 4.3).
+
 ---
 
 ## 8. Implementation Phases
@@ -564,10 +683,11 @@ Each phase delivers standalone value. Later phases build on earlier ones but are
 
 **Goal**: Make investigation quality visible and queryable.
 
-| Component               | Files                                                                                                                                                                                                                              | Estimated Effort | Dependencies |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------ |
-| Investigation Audit     | `src/utils/investigationAudit.ts`, `src/types/investigationTypes.ts`, modify `src/tools/runSubagentTool.ts`                                                                                                                        | 2-3 days         | None         |
-| Evidence Ledger + Tools | `src/sessions/evidenceLedger.ts`, `src/types/evidenceTypes.ts`, `src/tools/recordEvidenceTool.ts`, `src/tools/queryEvidenceTool.ts`, modify `src/services/serviceManager.ts`, modify `src/services/toolCallingAnalysisProvider.ts` | 3-4 days         | None         |
+| Component                     | Files                                                                                                                                                                                                                              | Estimated Effort | Dependencies                                  |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | --------------------------------------------- |
+| Investigation Audit           | `src/utils/investigationAudit.ts`, `src/types/investigationTypes.ts`, modify `src/tools/runSubagentTool.ts`                                                                                                                        | 2-3 days         | None                                          |
+| Evidence Ledger + Tools       | `src/sessions/evidenceLedger.ts`, `src/types/evidenceTypes.ts`, `src/tools/recordEvidenceTool.ts`, `src/tools/queryEvidenceTool.ts`, modify `src/services/serviceManager.ts`, modify `src/services/toolCallingAnalysisProvider.ts` | 3-4 days         | None                                          |
+| FindingStore + record_finding | `src/sessions/findingStore.ts`, `src/types/findingTypes.ts`, `src/tools/recordFindingTool.ts`, modify `src/tools/submitReviewTool.ts`                                                                                              | 3-4 days         | None (LSP pre-validation deferred to Phase 2) |
 
 **Acceptance criteria**:
 
@@ -575,6 +695,9 @@ Each phase delivers standalone value. Later phases build on earlier ones but are
 - Depth scores computed correctly for all tool combinations
 - Evidence ledger queryable by file, symbol, category
 - Cross-agent evidence queries return correct results in multi-subagent scenarios
+- Findings recorded via `record_finding` survive timeout/cancellation
+- Root can query FindingStore by file, severity, agent
+- `submit_review` incorporates stored findings alongside any prose findings
 
 ### Phase 2: LSP-Grounded Verification (The Moat)
 
@@ -615,9 +738,9 @@ Each phase delivers standalone value. Later phases build on earlier ones but are
 
 | Phase                            | Days | Cumulative |
 | -------------------------------- | ---- | ---------- |
-| Phase 1: Evidence Infrastructure | 5-7  | 5-7        |
-| Phase 2: LSP Verification        | 8-11 | 13-18      |
-| Phase 3: Quality Enforcement     | 9-13 | 22-31      |
+| Phase 1: Evidence Infrastructure | 8-11 | 8-11       |
+| Phase 2: LSP Verification        | 8-11 | 16-22      |
+| Phase 3: Quality Enforcement     | 9-13 | 25-35      |
 
 **Recommendation**: Implement Phases 1 and 2 as one PR. Phase 3 as a separate PR. Each PR delivers measurable quality improvement.
 
@@ -652,6 +775,14 @@ Each LSP query gets 2s max. If the language server is slow or unresponsive, the 
 ### D7: Evidence entries are lightweight claims, not full file contents
 
 An evidence entry is: `{ category: "caller_pattern", symbol: "processItems", claim: "has 30 callers across 5 files", confidence: "high" }`. NOT: `{ content: "<entire file contents>" }`. This prevents the ledger from becoming a context dump.
+
+### D8: `record_finding` coexists with `submit_review`, doesn't replace it
+
+`record_finding` is incremental recording during investigation; `submit_review` is the final aggregation and formatting step. Root still calls `submit_review` at the end, but it operates on structured `FindingStore` data rather than reconstructing findings from prose. This is NOT a breaking change to the current flow — it's an additive improvement. Agents that don't call `record_finding` still work (their findings flow through prose as before). The system degrades gracefully to the current behavior.
+
+### D9: LSP pre-validation at record time is optional and non-blocking
+
+When `record_finding` triggers LSP validation, it's best-effort: if `LSPValidationService` isn't available (Phase 2 not yet built, or language server down), the finding is stored without validation. The validation result is informational — the agent receives it and can choose to adjust, but the system doesn't auto-drop findings based on LSP results during recording. Dropping happens at the root's CoVe phase (Phase 3) where the root has full context.
 
 ---
 

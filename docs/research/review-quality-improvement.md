@@ -673,15 +673,16 @@ Seven architectural improvements were brainstormed to address the gaps identifie
 
 ### Evaluation Summary
 
-| #   | Approach                    | Effort | Verdict             | Rationale                                                                                          |
-| --- | --------------------------- | ------ | ------------------- | -------------------------------------------------------------------------------------------------- |
-| 1   | Provenance-Enriched Results | 2 days | **KEEP (merge)**    | Data already exists in `ToolCallRecord[]`, just discarded at `formatResult` boundary               |
-| 2   | Investigation Depth Scoring | 2 days | **KEEP (merge)**    | Mechanical computation from tool calls; merged with #1 as "Investigation Audit"                    |
-| 3   | Evidence Ledger             | 4 days | **KEEP (redesign)** | User's original idea; most valuable in deep RLM trees where evidence degrades at each level        |
-| 4   | LSP-Grounded Validation     | 7 days | **KEEP (core)**     | THE technical moat — compiler-grade ground truth, architecturally impossible for cloud competitors |
-| 5   | Adversarial Verification    | 3 days | **KEEP (scoped)**   | Only for CRITICAL findings; merged with CoVe for HIGH/MEDIUM                                       |
-| 6   | Semantic Diff Enrichment    | 4 days | **KEEP**            | Pre-computed LSP context; reduces tool call waste, improves severity assessment                    |
-| 7   | MapReduce Aggregation       | 7 days | **ABANDON**         | RLM recursive tree already provides hierarchical aggregation; adds cost without information gain   |
+| #   | Approach                      | Effort | Verdict             | Rationale                                                                                                                                          |
+| --- | ----------------------------- | ------ | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Provenance-Enriched Results   | 2 days | **KEEP (merge)**    | Data already exists in `ToolCallRecord[]`, just discarded at `formatResult` boundary                                                               |
+| 2   | Investigation Depth Scoring   | 2 days | **KEEP (merge)**    | Mechanical computation from tool calls; merged with #1 as "Investigation Audit"                                                                    |
+| 3   | Evidence Ledger               | 4 days | **KEEP (redesign)** | User's original idea; most valuable in deep RLM trees where evidence degrades at each level                                                        |
+| 4   | LSP-Grounded Validation       | 7 days | **KEEP (core)**     | THE technical moat — compiler-grade ground truth, architecturally impossible for cloud competitors                                                 |
+| 5   | Adversarial Verification      | 3 days | **KEEP (scoped)**   | Only for CRITICAL findings; merged with CoVe for HIGH/MEDIUM                                                                                       |
+| 6   | Semantic Diff Enrichment      | 4 days | **KEEP**            | Pre-computed LSP context; reduces tool call waste, improves severity assessment                                                                    |
+| 7   | MapReduce Aggregation         | 7 days | **ABANDON**         | RLM recursive tree already provides hierarchical aggregation; adds cost without information gain                                                   |
+| 8   | Incremental Finding Recording | 4 days | **KEEP (new)**      | Competitor analysis: `store_comment` pattern commits findings during investigation, not at end. Enables LSP pre-validation at record time (novel). |
 
 ### Key Insights
 
@@ -697,7 +698,7 @@ Seven architectural improvements were brainstormed to address the gaps identifie
 
 The six surviving approaches compose into three pillars:
 
-- **Pillar 1 — Evidence Infrastructure**: Investigation Audit (#1+#2), Evidence Ledger (#3)
+- **Pillar 1 — Evidence Infrastructure**: Investigation Audit (#1+#2), Evidence Ledger (#3), Incremental Finding Recording (#8)
 - **Pillar 2 — LSP-Grounded Verification**: Semantic Diff Enrichment (#6), LSP Validation (#4)
 - **Pillar 3 — Architectural Quality Enforcement**: Structured Output, CoVe+LSP verification, Adversarial verification for CRITICAL (#5)
 
