@@ -106,8 +106,10 @@ export class ThinkAboutInvestigationTool extends BaseTool {
             case 'continue_investigating':
                 guidance +=
                     '**Action**: Focus on highest-priority remaining question(s).\n';
-                guidance +=
-                    "- Use `get_file_diff` if you haven't read the diff for all assigned files\n";
+                if (context.parsedDiff) {
+                    guidance +=
+                        "- Use `get_file_diff` if you haven't read the diff for all assigned files\n";
+                }
                 guidance +=
                     '- Prioritize questions most relevant to the parent task\n';
                 guidance += '- Be efficient with remaining iterations\n';

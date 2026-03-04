@@ -89,8 +89,13 @@ export class ThinkAboutContextTool extends BaseTool {
                 guidance += `**Next Steps**: Spawn a subagent for deep investigation.\n`;
                 guidance +=
                     '- Specify which files the subagent should examine\n';
-                guidance +=
-                    '- Sub-agents have `get_file_diff` and code exploration tools\n';
+                if (context.parsedDiff) {
+                    guidance +=
+                        '- Sub-agents have `get_file_diff` and code exploration tools\n';
+                } else {
+                    guidance +=
+                        '- Sub-agents have code exploration tools (`read_file`, `find_symbol`, `find_usages`)\n';
+                }
                 guidance += '- Ask focused questions about specific concerns\n';
                 break;
             case 'context_sufficient':

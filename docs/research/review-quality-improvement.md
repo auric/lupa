@@ -1,7 +1,7 @@
 # Review Quality Improvement: Reducing False Positives in AI Code Review
 
 **Date:** June 2025 (updated March 2026)
-**Based on:** Empirical triage of 40 findings across 3 review rounds + extensive industry research
+**Based on:** Empirical triage of 58 findings across 4+ review rounds + extensive industry research
 
 ---
 
@@ -11,18 +11,21 @@ AI code review tools produce **60–85% false positive rates** on complex codeba
 
 The highest-ROI improvements shift verification from self-judgment (LLM evaluating its own claims) to external checks (programmatic validation, tool-based re-verification, structured output schemas). All recommended approaches are **language-agnostic** — they work across TypeScript, Python, Java, Go, C#, Rust, and any other language without per-language tooling. This document catalogs root causes, maps the current architecture, and provides a prioritized roadmap.
 
+**Key blind spot discovered**: Beyond FP reduction, Lupa's own review consistently _misses_ real bugs that competitors find — particularly **context-conditional correctness** issues where code behaves correctly in one execution mode but incorrectly in another. Reducing FPs and improving true positive recall are complementary goals requiring different techniques (see Section 2.6 and Appendix C).
+
 ---
 
 ## 1. Empirical FP Data
 
 ### Triage Results
 
-| Round     | Source           | Findings | FP     | Debatable | Valid | FP Rate    |
-| --------- | ---------------- | -------- | ------ | --------- | ----- | ---------- |
-| 1         | Lupa self-review | 10       | 7      | 2         | 1     | 70–90%     |
-| 2         | External LLM     | 10       | 8      | 2         | 0     | 80–100%    |
-| 3         | External LLM     | 20       | 12     | 3         | 5     | 60–75%     |
-| **Total** |                  | **40**   | **27** | **7**     | **6** | **67–85%** |
+| Round     | Source           | Findings | FP     | Debatable | Valid  | FP Rate    |
+| --------- | ---------------- | -------- | ------ | --------- | ------ | ---------- |
+| 1         | Lupa self-review | 10       | 7      | 2         | 1      | 70–90%     |
+| 2         | External LLM     | 10       | 8      | 2         | 0      | 80–100%    |
+| 3         | External LLM     | 20       | 12     | 3         | 5      | 60–75%     |
+| 4         | Multi-tool       | 18       | 12     | 1         | 5      | 67–72%     |
+| **Total** |                  | **58**   | **39** | **8**     | **11** | **67–81%** |
 
 _Range depends on whether debatable findings are counted as FP._
 
@@ -115,6 +118,33 @@ Derived from manually triaging 40 findings. Each category includes the percentag
 
 **Fix targets**: Cross-reference documentation in prompt blocks (partial), full prompt dump for reviewer context (gap), programmatic complementarity checking (unlikely to be feasible).
 
+### 2.6 Missed True Positives: Context-Conditional Correctness (new in Round 4)
+
+**Pattern**: The reviewer does NOT produce a false positive — instead, it **fails to find a real bug**. Code that works correctly in one execution context produces incorrect behavior in another, but the reviewer never checks alternative contexts.
+
+**Examples from competitor reviews (findings Lupa missed)**:
+
+- `thinkAboutContextTool` guidance hardcodes "sub-agents have `get_file_diff`" — but in exploration mode, `parsedDiff` is undefined and `get_file_diff` is unavailable
+- `thinkAboutInvestigationTool` guidance says "use `get_file_diff`" unconditionally — same issue
+- `extractFilesExamined` only handles array `file_paths` — but ToolCallRecord stores pre-Zod args, so newline-delimited strings are silently missed
+
+**Root cause**: The reviewer examines code in its "happy path" context (analysis mode with a diff) and never asks: "what other execution contexts can this code run in?" This is the inverse of Mode/Context Confusion (Section 2.3) — there, the reviewer is confused about modes. Here, the reviewer fails to consider that the code itself may be mode-unaware.
+
+**Why generic techniques fail to catch this**:
+
+- **CoVe** asks "is this claim factually true?" — but the code IS correct in analysis mode, so fact-checking confirms it
+- **Devil's Advocate** challenges findings that exist — it doesn't generate missing findings
+- **Self-consistency** reproduces the same blind spot across runs
+- **Structured output validation** catches format errors, not missing investigation paths
+
+**What would catch it**:
+
+- **Domain-specific investigation patterns**: "For each tool, check: can it run in exploration mode? If yes, does it reference diff-specific functionality without checking `context.parsedDiff`?"
+- **Execution context matrix**: Cross-reference optional `ExecutionContext` fields against tool behavior
+- **Taxonomy-guided generation with context categories**: BitsAI-CR's taxonomy approach applied to execution-mode correctness
+
+**Fix targets**: Domain-specific review patterns in prompt taxonomy (gap), execution-mode verification prompts (gap), context-conditional correctness as explicit finding category (gap).
+
 ---
 
 ## 3. Current Quality Architecture
@@ -184,17 +214,18 @@ Code-level validation that runs automatically.
 
 Where FPs slip through despite the current architecture.
 
-| #   | Gap                                                        | Impact                                                                                   | FP Category Affected                    | Severity |
-| --- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------- | -------- |
-| 1   | **No programmatic validation of finding content**          | Findings with invalid file paths, wrong line numbers, or missing evidence pass through   | Wrong Factual Premise                   | High     |
-| 2   | **No cross-validation between findings**                   | Contradictory findings (e.g., "too much validation" + "missing validation") both survive | All categories                          | Medium   |
-| 3   | **No deduplication logic at aggregation**                  | Multiple subagents report same issue from different angles                               | Noise                                   | Medium   |
-| 4   | **No verification agent / second opinion**                 | Single model judges its own work; self-assessment is unreliable                          | All categories                          | High     |
-| 5   | **No feedback loop from FP → prompt refinement**           | Known FP patterns require manual prompt editing                                          | All categories                          | Medium   |
-| 6   | **Root agent trusts subagent severity without re-scoring** | Subagents tend to inflate severity; root passes it through                               | Severity inflation                      | Medium   |
-| 7   | **No tool-based verification phase (CoVe-style)**          | Findings are never re-verified with independent tool calls after generation              | Theoretical-Only, Wrong Factual Premise | High     |
-| 8   | **Single-model, single-pass for initial review**           | No diversity of perspective; one model's blind spots dominate                            | Design Intent Blindness                 | Medium   |
-| 9   | **No confidence scoring on individual findings**           | Binary include/exclude decision; no graduated confidence                                 | All categories                          | Low      |
+| #   | Gap                                                        | Impact                                                                                                                       | FP Category Affected                          | Severity |
+| --- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------- |
+| 1   | **No programmatic validation of finding content**          | Findings with invalid file paths, wrong line numbers, or missing evidence pass through                                       | Wrong Factual Premise                         | High     |
+| 2   | **No cross-validation between findings**                   | Contradictory findings (e.g., "too much validation" + "missing validation") both survive                                     | All categories                                | Medium   |
+| 3   | **No deduplication logic at aggregation**                  | Multiple subagents report same issue from different angles                                                                   | Noise                                         | Medium   |
+| 4   | **No verification agent / second opinion**                 | Single model judges its own work; self-assessment is unreliable                                                              | All categories                                | High     |
+| 5   | **No feedback loop from FP → prompt refinement**           | Known FP patterns require manual prompt editing                                                                              | All categories                                | Medium   |
+| 6   | **Root agent trusts subagent severity without re-scoring** | Subagents tend to inflate severity; root passes it through                                                                   | Severity inflation                            | Medium   |
+| 7   | **No tool-based verification phase (CoVe-style)**          | Findings are never re-verified with independent tool calls after generation                                                  | Theoretical-Only, Wrong Factual Premise       | High     |
+| 8   | **Single-model, single-pass for initial review**           | No diversity of perspective; one model's blind spots dominate                                                                | Design Intent Blindness                       | Medium   |
+| 9   | **No confidence scoring on individual findings**           | Binary include/exclude decision; no graduated confidence                                                                     | All categories                                | Low      |
+| 10  | **No domain-specific investigation patterns**              | Reviewer has generic patterns but no codebase-specific review checklist (e.g., "check all execution contexts for each tool") | Context-Conditional Correctness, Mode/Context | High     |
 
 ---
 
@@ -510,6 +541,10 @@ Static analysis (linters, type checkers, AST parsers) provides high-precision fa
 
 A model checking its own work inherits the same blind spots that produced errors. Research consistently shows that adversarial/debate approaches (DEBATE framework: +10–16% human correlation, Microsoft CORE: -25.8% FP) outperform self-review. The architectural separation — fresh context, different persona, explicit mandate to refute — breaks the coherence bias that sustains false positives.
 
+### Principle 9: Guidance Text IS Code
+
+In a tool-calling system, string literals that guide LLM behavior are as impactful as conditional logic — they directly control what the model does next. A wrong string in guidance can cause the LLM to call unavailable tools, investigate irrelevant paths, or skip critical checks. Review guidance text with the same rigor as executable code: check it against all execution contexts, verify referenced tools/features exist, and test conditional availability.
+
 ---
 
 ## 8. Measurement Framework
@@ -582,3 +617,47 @@ To track improvement, measure these metrics across reviews:
 | Qodo 2.0                               | 2026        | Multi-agent system with context engineering across repos and prior PRs          |
 | CodeRabbit Evidence Verification       | 2025-2026   | Generates shell/grep checks to confirm assumptions before posting comments      |
 | A Roadmap for Modern Code Review (ACM) | 2025        | Survey: RAG + prompt engineering as cost-efficient alternative to fine-tuning   |
+
+---
+
+## Appendix C: Missed True Positives — Why Lupa Fails to Find Real Bugs
+
+Beyond false positives, Lupa's review pipeline has a **recall problem**: it consistently misses real bugs that competitor tools (GitHub Copilot, CodeRabbit) find. This appendix analyzes the pattern.
+
+### Observed Missed Findings (Round 4)
+
+| Finding                                               | Found By       | Category                  | Why Lupa Missed It                                               |
+| ----------------------------------------------------- | -------------- | ------------------------- | ---------------------------------------------------------------- |
+| `thinkAboutContextTool` hardcodes diff guidance       | GitHub Copilot | Context-conditional       | Reviewer never checked exploration mode path                     |
+| `thinkAboutInvestigationTool` hardcodes diff guidance | GitHub Copilot | Context-conditional       | Same — code correct in primary mode, wrong in secondary          |
+| `extractFilesExamined` ignores string `file_paths`    | GitHub Copilot | Pre-Zod/post-Zod mismatch | Reviewer doesn't trace data through Zod coercion boundary        |
+| Missing root registration in test                     | CodeRabbit     | Test correctness          | Reviewer treats tests as ground truth, doesn't verify test setup |
+| Fake timer cleanup leak                               | CodeRabbit     | Test isolation            | Reviewer doesn't check cross-test side effects                   |
+
+### Root Cause Analysis
+
+**1. Happy-path bias**: The reviewer investigates code in its primary execution context. If the code works correctly there, the investigation ends. It never asks: "what other contexts can this code run in?" This is a fundamental limitation of single-pass review — the reviewer forms a mental model early and stops exploring once that model is satisfied.
+
+**2. Boundary blindness**: The reviewer doesn't trace data across transformation boundaries (Zod schema coercion, JSON serialization, pre/post processing). `extractFilesExamined` sees `file_paths` as a string but doesn't connect this to `coerceToStringArray` running during tool execution (not during recording). This requires understanding the full data pipeline from LLM output → JSON parse → ToolCallRecord → extractFilesExamined.
+
+**3. Guidance-as-data assumption**: The reviewer treats string literal guidance as documentation ("just explanation text") rather than as executable behavior that controls the LLM. In tool-calling systems, guidance text has the same impact as branching logic — it determines what the model calls next.
+
+**4. Test trust bias**: The reviewer assumes existing tests are correct and focuses on whether code matches tests. It rarely asks whether the test itself is wrong (missing setup, wrong assertions, leaked state). CodeRabbit caught both a missing `registerAgent` call and a leaked `useFakeTimers()` that Lupa's review accepted uncritically.
+
+### Implications for Improvement Roadmap
+
+Reducing FPs and improving recall require **different interventions**:
+
+| Goal           | Technique                                                         | Why                            |
+| -------------- | ----------------------------------------------------------------- | ------------------------------ |
+| Reduce FPs     | CoVe, Devil's Advocate, structured validation                     | Challenges _existing_ findings |
+| Improve recall | Domain-specific investigation patterns, execution-mode checklists | Expands _investigation scope_  |
+
+FP reduction techniques (Phases 2–5) won't improve recall because they filter and challenge findings that already exist. To find bugs the reviewer currently misses, we need **investigation augmentation**:
+
+- **Execution context enumeration**: For each changed tool/service, enumerate all `ExecutionContext` modes it can run in (analysis, exploration, subagent). Check behavior in each.
+- **Data boundary tracing**: For data that crosses transformation boundaries (Zod, JSON, serialization), verify the code handles both pre-transformation and post-transformation shapes.
+- **Test skepticism prompts**: "Does the test setup match production usage? Are there leaked mocks/timers? Does beforeEach register all required state?"
+- **Taxonomy-guided investigation**: BitsAI-CR's 3.4x precision improvement from taxonomy suggests that **category-specific investigation checklists** would also improve recall. Instead of generic "review this code," provide: "For tool code, check: (1) all ExecutionContext paths, (2) guidance text accuracy per mode, (3) schema coercion boundaries."
+
+These patterns should be added to the review prompt taxonomy (Phase 2 enhancement) and to the CoVe verification questions (Phase 3 enhancement).
