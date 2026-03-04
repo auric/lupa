@@ -56,9 +56,7 @@ export class CommandRegistry implements vscode.Disposable {
      */
     private resetSettingsToDefaults(): void {
         this.services.workspaceSettings.resetSettingsToDefaults();
-        vscode.window.showInformationMessage(
-            'Recursion depth reset to default.'
-        );
+        vscode.window.showInformationMessage('Settings reset to default.');
     }
 
     /**
