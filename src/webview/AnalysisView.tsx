@@ -6,6 +6,7 @@ import { AnalysisTab } from './components/AnalysisTab';
 import { ToolCallsTab } from './components/ToolCallsTab';
 import { DiffTab } from './components/DiffTab';
 import type { ToolCallsData } from '../types/toolCallTypes';
+import { countAllCalls } from './utils/toolCallCounting';
 
 interface AnalysisViewProps {
     title: string;
@@ -47,7 +48,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({
 
     const viewType = windowWidth > 1024 ? 'split' : 'unified';
 
-    const toolCallsCount = toolCalls?.totalCalls ?? 0;
+    const toolCallsCount = toolCalls ? countAllCalls(toolCalls.calls) : 0;
 
     return (
         <div className="h-full flex flex-col bg-background min-h-0">

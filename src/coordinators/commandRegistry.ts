@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { AnalysisOrchestrator } from './analysisOrchestrator';
 import { CopilotModelCoordinator } from './copilotModelCoordinator';
 import { IServiceRegistry } from '../services/serviceManager';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 
 /**
  * CommandRegistry handles all VS Code command registration.
@@ -39,7 +38,7 @@ export class CommandRegistry implements vscode.Disposable {
 
         // Settings commands
         this.registerCommand('lupa.resetAnalysisLimits', () =>
-            this.resetAnalysisLimitsToDefaults()
+            this.resetSettingsToDefaults()
         );
 
         // Development/testing commands
@@ -53,15 +52,11 @@ export class CommandRegistry implements vscode.Disposable {
     }
 
     /**
-     * Reset analysis limits to their default values
+     * Reset user-configurable settings to their default values
      */
-    private resetAnalysisLimitsToDefaults(): void {
-        this.services.workspaceSettings.resetAnalysisLimitsToDefaults();
-        vscode.window.showInformationMessage(
-            'Analysis limits reset to defaults: ' +
-                `Max Iterations: ${ANALYSIS_LIMITS.maxIterations.default}, ` +
-                `Request Timeout: ${ANALYSIS_LIMITS.requestTimeoutSeconds.default}s`
-        );
+    private resetSettingsToDefaults(): void {
+        this.services.workspaceSettings.resetSettingsToDefaults();
+        vscode.window.showInformationMessage('Settings reset to default.');
     }
 
     /**

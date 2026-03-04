@@ -5,13 +5,12 @@
 
 /**
  * Generate subagent guidance for PR review mode.
- * Focuses on the critical constraint that subagents cannot see the diff.
  */
 export function generateSubagentGuidance(): string {
     return `<subagent_guidance>
 ## Subagent Delegation
 
-\`run_subagent\` spawns an isolated agent to investigate specific questions about the **current codebase**.
+\`run_subagent\` spawns an isolated agent to investigate specific questions.
 
 ### When to Spawn (MANDATORY)
 
@@ -21,25 +20,19 @@ export function generateSubagentGuidance(): string {
 | Security-sensitive code | Dedicated security investigation subagent |
 | Complex dependency chain (3+ files) | Dependency-tracing subagent |
 
-### Critical Constraint
+### Subagent Diff Access
 
-⚠️ **Subagents CANNOT see the diff.** They explore current code only.
+✅ **Subagents have \`get_file_diff\`** — they read diffs for the files you assign.
 
-| ✅ Valid Questions | ❌ Invalid Questions |
-|-------------------|---------------------|
-| "What does X do?" | "What changed in X?" |
-| "How does Y handle errors?" | "Was the refactoring correct?" |
-| "Does Z have method W?" | "What was removed?" |
-
-**Before spawning, ask yourself:** "Could someone who never saw the git history answer this?"
+⚠️ **Subagents do NOT see \`<diff_metadata>\`** — you must tell them which files to examine. Include specific file paths in every subagent task.
 
 ### Task Format
 
 \`\`\`
 task: "Investigate [module] for [concern].
 Questions:
-1. [Question about current behavior]
-2. [Question about current behavior]
+1. [Question about the changes and their impact]
+2. [Question about the changes and their impact]
 Examine: [function1], [function2]"
 
 context: "[Your concern - what prompted this investigation]"
@@ -57,8 +50,6 @@ Examine: login, authenticate, hashPassword"
 
 context: "Reviewing authentication changes - need to verify security patterns"
 \`\`\`
-
-Subagent findings are about current code—correlate with your diff to determine relevance.
 </subagent_guidance>`;
 }
 

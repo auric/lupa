@@ -5,12 +5,13 @@ import { SubagentExecutor } from '../services/subagentExecutor';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import { SubagentLimits } from '../models/toolConstants';
-import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import type { SubagentResult } from '../types/modelTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import {
     createMockWorkspaceSettings,
     createMockExecutionContext,
+    createTestRecursiveState,
 } from './testUtils/mockFactories';
 import { TimeoutError } from '../types/errorTypes';
 
@@ -120,7 +121,8 @@ describe('RunSubagentTool', () => {
                     context: 'PR adds new JWT validation',
                 }),
                 expect.anything(),
-                expect.any(Number)
+                expect.any(Number),
+                expect.anything()
             );
         });
     });
@@ -162,12 +164,13 @@ describe('RunSubagentTool', () => {
             expect(mockExecutor.execute).toHaveBeenCalledWith(
                 expect.anything(),
                 expect.anything(),
-                1
+                1,
+                expect.anything()
             );
         });
 
         it('should reject when session limit reached', async () => {
-            const maxSubagents = SUBAGENT_LIMITS.maxPerSession.default;
+            const maxSubagents = ANALYSIS_LIMITS.maxSubagentsPerSession;
             const mockExecutor = createMockExecutor();
             const tool = new RunSubagentTool(workspaceSettings);
             const context = createSubagentExecutionContext(
@@ -188,6 +191,81 @@ describe('RunSubagentTool', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toContain('Maximum subagents');
+        });
+
+        it('should rollback spawn count on generic executor failure', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'LLM service error',
+                toolCallsMade: 0,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            expect(sessionManager.getCount()).toBe(0);
+
+            await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Slot should be recovered — agent barely started
+            expect(sessionManager.getCount()).toBe(0);
+        });
+
+        it('should NOT rollback spawn count on max_iterations (agent completed work)', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Partial findings',
+                error: 'max_iterations',
+                toolCallsMade: 30,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Slot stays consumed — agent ran to iteration limit
+            expect(sessionManager.getCount()).toBe(1);
+        });
+
+        it('should rollback spawn count when executor throws non-cancellation error', async () => {
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockRejectedValue(new Error('Unexpected executor crash')),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            expect(sessionManager.getCount()).toBe(0);
+
+            await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            // Slot should be recovered — executor crashed
+            expect(sessionManager.getCount()).toBe(0);
         });
     });
 
@@ -323,6 +401,144 @@ describe('RunSubagentTool', () => {
             expect(result.success).toBe(false);
             expect(result.error).toContain('maximum iterations');
             expect(result.error).not.toContain('Partial findings');
+        });
+    });
+
+    describe('Rate Limited Handling', () => {
+        it('should report rate_limited as failed tool call with tool count', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'rate_limited',
+                toolCallsMade: 8,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('rate limited');
+            expect(result.error).toContain('8');
+        });
+
+        it('should include partial findings in rate_limited error', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Found issues in auth module',
+                error: 'rate_limited',
+                toolCallsMade: 15,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Partial findings');
+            expect(result.error).toContain('Found issues in auth module');
+        });
+
+        it('should NOT rollback spawn count on rate_limited', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Partial data',
+                error: 'rate_limited',
+                toolCallsMade: 10,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(sessionManager.getCount()).toBe(1);
+        });
+    });
+
+    describe('Quota Exhausted Handling', () => {
+        it('should report quota_exhausted as failed tool call', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'quota_exhausted',
+                toolCallsMade: 20,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('quota exhausted');
+            expect(result.error).toContain('20');
+        });
+
+        it('should include partial findings in quota_exhausted error', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Reviewed 3 files before quota hit',
+                error: 'quota_exhausted',
+                toolCallsMade: 25,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Partial findings');
+            expect(result.error).toContain('Reviewed 3 files before quota hit');
+        });
+
+        it('should NOT rollback spawn count on quota_exhausted', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Some work done',
+                error: 'quota_exhausted',
+                toolCallsMade: 5,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(sessionManager.getCount()).toBe(1);
         });
     });
 
@@ -536,47 +752,65 @@ describe('RunSubagentTool', () => {
 
         it('should prioritize parent cancellation over timeout when both occur', async () => {
             // Race condition: timeout fires during executor unwinding from parent cancellation.
-            // Use 10ms timeout; executor delays 100ms to ensure timeout fires first.
-            const shortTimeoutSettings = createMockWorkspaceSettings({
-                requestTimeoutSeconds: 0.01,
-            });
+            // Use fake timers to avoid CI flakiness from real wall-clock delays.
+            vi.useFakeTimers();
+            try {
+                const shortTimeoutSettings = {
+                    ...createMockWorkspaceSettings(),
+                    getRequestTimeoutSeconds: () => 0.01, // 10ms timeout
+                } as WorkspaceSettingsService;
 
-            const parentTokenSource = new vscode.CancellationTokenSource();
-            sessionManager.setParentCancellationToken(parentTokenSource.token);
+                const parentTokenSource = new vscode.CancellationTokenSource();
+                sessionManager.setParentCancellationToken(
+                    parentTokenSource.token
+                );
 
-            const mockExecutor = {
-                execute: vi.fn().mockImplementation(async () => {
-                    // Wait for the 10ms timeout to fire
-                    await new Promise((resolve) => setTimeout(resolve, 100));
-                    // Parent also cancels during execution (the race)
-                    parentTokenSource.cancel();
-                    return {
-                        success: false,
-                        response: '',
-                        error: 'cancelled',
-                        toolCallsMade: 0,
-                        toolCalls: [],
-                    };
-                }),
-            } as unknown as SubagentExecutor;
+                let resolveExecutor!: (value: any) => void;
+                const executorPromise = new Promise((resolve) => {
+                    resolveExecutor = resolve;
+                });
 
-            const tool = new RunSubagentTool(shortTimeoutSettings);
-            const context = createMockExecutionContext({
-                subagentExecutor: mockExecutor,
-                subagentSessionManager: sessionManager,
-                cancellationToken: parentTokenSource.token,
-            });
+                const mockExecutor = {
+                    execute: vi.fn().mockReturnValue(executorPromise),
+                } as unknown as SubagentExecutor;
 
-            const result = await tool.execute(
-                {
-                    task: 'Investigate the authentication flow thoroughly',
-                },
-                context
-            );
+                const tool = new RunSubagentTool(shortTimeoutSettings);
+                const context = createMockExecutionContext({
+                    subagentExecutor: mockExecutor,
+                    subagentSessionManager: sessionManager,
+                    cancellationToken: parentTokenSource.token,
+                });
 
-            // Both timeout AND parent cancellation occurred, but parent wins
-            expect(result.success).toBe(false);
-            expect(result.error).not.toContain('timed out');
+                const resultPromise = tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    context
+                );
+
+                // Advance past the 10ms timeout
+                await vi.advanceTimersByTimeAsync(50);
+
+                // Parent also cancels (the race)
+                parentTokenSource.cancel();
+
+                // Executor finishes after both timeout and cancellation fired
+                resolveExecutor({
+                    success: false,
+                    response: '',
+                    error: 'cancelled',
+                    toolCallsMade: 0,
+                    toolCalls: [],
+                });
+
+                const result = await resultPromise;
+
+                // Both timeout AND parent cancellation occurred, but parent wins
+                expect(result.success).toBe(false);
+                expect(result.error).not.toContain('timed out');
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 
@@ -679,10 +913,889 @@ describe('RunSubagentTool', () => {
                 error: 'cancelled',
                 toolCallsMade: 0,
                 toolCalls: [],
+                executionTimeMs: 10,
             });
 
             const result = await executePromise;
             expect(result.success).toBe(false);
+        });
+    });
+
+    describe('Recursive Depth Tracking', () => {
+        it('should pass recursionDepth=1 to executor when no recursiveState', async () => {
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursionDepth: 1,
+                    agentId: undefined,
+                    recursiveState: undefined,
+                })
+            );
+        });
+
+        it('should use currentDepth from context for recursionDepth calculation', async () => {
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                currentDepth: 2,
+                currentAgentId: 'child-1',
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursionDepth: 3,
+                })
+            );
+        });
+
+        it('should use RecursiveStateManager spawn guard when available', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(true);
+            // Should have registered a child agent
+            expect(recursiveState.getTotalAgentCount()).toBe(2);
+        });
+
+        it('should reject spawn when budget is insufficient', async () => {
+            const mockRecursiveState = {
+                canSpawnChild: vi.fn().mockReturnValue({
+                    allowed: false,
+                    reason: `Insufficient budget (2 < ${3})`,
+                }),
+            };
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState: mockRecursiveState as any,
+                currentDepth: 1,
+                currentAgentId: 'child-1',
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Insufficient budget');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
+
+        it('should reject spawn when RecursiveStateManager depth limit reached', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState(1);
+            const childId = recursiveState.registerAgent(rootId, 'child', 50);
+            recursiveState.startAgent(childId);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 1,
+                currentAgentId: childId,
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('depth');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
+
+        it('should pass recursiveState through to executor options', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursiveState,
+                })
+            );
+        });
+
+        it('should pass childAgentId through to executor options when recursiveState is present', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    agentId: 'child-1',
+                })
+            );
+        });
+
+        it('should pass parsedDiff through to executor options', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const parsedDiff = [
+                {
+                    filePath: 'file.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: 'diff --git a/file.ts b/file.ts',
+                },
+            ];
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+                parsedDiff,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    parsedDiff,
+                })
+            );
+        });
+
+        it('should default currentDepth to 0 when undefined with recursiveState', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                // currentDepth intentionally omitted — should default to 0
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            // recursionDepth should be currentDepth(0) + 1 = 1
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    recursionDepth: 1,
+                })
+            );
+        });
+
+        it('should mark child agent as completed on success', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({ success: true });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            // Find the child node
+            const rootNode = recursiveState.getNode(rootId)!;
+            expect(rootNode.childIds).toHaveLength(1);
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should mark child agent as failed on executor error', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = {
+                execute: vi.fn().mockRejectedValue(new Error('LLM failure')),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('failed');
+        });
+
+        it('should mark child agent as cancelled on cancellation result', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'cancelled',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('cancelled');
+        });
+
+        it('should mark child agent as completed on max_iterations', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'max_iterations',
+                toolCallsMade: 30,
+                response: 'Some partial findings',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should mark child agent as completed on rate_limited', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'rate_limited',
+                toolCallsMade: 15,
+                response: 'Partial rate-limited findings',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should mark child agent as completed on quota_exhausted', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'quota_exhausted',
+                toolCallsMade: 20,
+                response: 'Partial quota findings',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should only count get_file_diff calls for filesExamined', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: true,
+                toolCalls: [
+                    {
+                        id: '1',
+                        toolName: 'read_file',
+                        arguments: { filePath: 'src/foo.ts' },
+                        result: 'content',
+                        success: true,
+                        error: undefined,
+                        durationMs: 10,
+                        timestamp: Date.now(),
+                    },
+                    {
+                        id: '2',
+                        toolName: 'get_file_diff',
+                        arguments: { file_paths: ['src/bar.ts', 'src/baz.ts'] },
+                        result: 'diff',
+                        success: true,
+                        error: undefined,
+                        durationMs: 10,
+                        timestamp: Date.now(),
+                    },
+                    {
+                        id: '3',
+                        toolName: 'search_for_pattern',
+                        arguments: { pattern: 'foo' },
+                        result: 'matches',
+                        success: true,
+                        error: undefined,
+                        durationMs: 10,
+                        timestamp: Date.now(),
+                    },
+                ],
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            // Only get_file_diff files count — read_file and search_for_pattern are ignored
+            expect(childNode.filesExamined).toEqual(
+                expect.arrayContaining(['src/bar.ts', 'src/baz.ts'])
+            );
+            expect(childNode.filesExamined).toHaveLength(2);
+        });
+
+        it('should fall back to flat SessionManager when no recursiveState', async () => {
+            const maxSubagents = ANALYSIS_LIMITS.maxSubagentsPerSession;
+            for (let i = 0; i < maxSubagents; i++) {
+                sessionManager.recordSpawn();
+            }
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+            // No recursiveState → uses sessionManager.canSpawn()
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Maximum subagents');
+        });
+
+        it('should enforce session limit even when recursiveState is present', async () => {
+            const maxSubagents = ANALYSIS_LIMITS.maxSubagentsPerSession;
+            for (let i = 0; i < maxSubagents; i++) {
+                sessionManager.recordSpawn();
+            }
+
+            const { recursiveState, rootId } = createTestRecursiveState(3, 200);
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Maximum subagents');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+        });
+
+        it('should mark child agent as cancelled (not failed) when executor throws CancellationError', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = {
+                execute: vi
+                    .fn()
+                    .mockRejectedValue(new vscode.CancellationError()),
+            } as unknown as SubagentExecutor;
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await expect(
+                tool.execute(
+                    {
+                        task: 'Investigate the authentication flow thoroughly',
+                    },
+                    context
+                )
+            ).rejects.toThrow(vscode.CancellationError);
+
+            // Agent should be marked as cancelled, NOT failed
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('cancelled');
+        });
+
+        it('should pass subagentSessionManager through to executor options', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    subagentSessionManager: sessionManager,
+                })
+            );
+        });
+
+        it('should return toolError when registerAgent throws', async () => {
+            // Create a mock recursiveState where registerAgent throws
+            const mockRecursiveState = {
+                canSpawnChild: vi.fn().mockReturnValue({ allowed: true }),
+                allocateChildBudget: vi.fn().mockReturnValue(30),
+                registerAgent: vi.fn().mockImplementation(() => {
+                    throw new Error('Root agent already registered');
+                }),
+            };
+
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState: mockRecursiveState as any,
+                currentDepth: 0,
+                currentAgentId: 'root',
+            });
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Failed to register subagent');
+            expect(mockExecutor.execute).not.toHaveBeenCalled();
+            // Spawn count should be rolled back so the budget slot isn't consumed
+            expect(sessionManager.getCount()).toBe(0);
+        });
+    });
+
+    describe('extractFilesExamined', () => {
+        it('should only extract files from get_file_diff calls', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'read_file',
+                    arguments: { filePath: 'src/a.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: '2',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/b.ts', 'src/c.ts'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            // read_file should NOT count — only get_file_diff
+            expect(result).toEqual(['src/b.ts', 'src/c.ts']);
+        });
+
+        it('should deduplicate file paths across multiple get_file_diff calls', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/a.ts', 'src/b.ts'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: '2',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['src/a.ts'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            expect(result).toEqual(['src/a.ts', 'src/b.ts']);
+        });
+
+        it('should ignore non-get_file_diff tools even with file path arguments', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'read_file',
+                    arguments: { filePath: 'src/a.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: '2',
+                    toolName: 'find_symbol',
+                    arguments: { name: 'MyClass', file_path: 'src/b.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+                {
+                    id: '3',
+                    toolName: 'search_for_pattern',
+                    arguments: { pattern: 'foo', path: 'src/c.ts' },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            expect(result).toEqual([]);
+        });
+
+        it('should return empty array for empty tool calls', () => {
+            expect(RunSubagentTool.extractFilesExamined([])).toEqual([]);
+        });
+
+        it('should resolve suffix paths to canonical filePaths when parsedDiff is provided', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/components/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/utils/helpers.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: ['Button.tsx', 'src/utils/helpers.ts'],
+                    },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            expect(result).toEqual([
+                'src/components/Button.tsx',
+                'src/utils/helpers.ts',
+            ]);
+        });
+
+        it('should exclude unresolvable paths from results', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/a.ts',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['nonexistent.ts'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            expect(result).toEqual([]);
+        });
+
+        it('should exclude ambiguous suffix matches from results', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/components/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+                {
+                    filePath: 'src/ui/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: { file_paths: ['Button.tsx'] },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            // Ambiguous — "Button.tsx" matches both; excluded from coverage
+            expect(result).toEqual([]);
+        });
+
+        it('should handle newline-delimited string file_paths (pre-Zod args)', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: 'src/auth.ts\nsrc/service.ts',
+                    },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            expect(result).toEqual(['src/auth.ts', 'src/service.ts']);
+        });
+
+        it('should resolve newline-delimited string paths against parsedDiff', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/components/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: 'Button.tsx\nMissing.ts',
+                    },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            expect(result).toEqual(['src/components/Button.tsx']);
         });
     });
 });

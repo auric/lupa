@@ -3,12 +3,12 @@
 **Magnify your code intelligence**
 
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.107+-blue.svg)](https://code.visualstudio.com/)
-[![Version](https://img.shields.io/badge/version-0.1.11-green.svg)](./CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](./CHANGELOG.md)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](./LICENSE)
 
 > ⚠️ **Important: Read before using!**
 >
-> Lupa makes **many tool calls per analysis** (often 50–100+). Each tool call counts against your GitHub Copilot premium request quota. **Avoid expensive models** like Claude Opus 4.5 (3x credits) or Claude Sonnet 4.5 (1x credits) unless you have credits to spare.
+> Lupa uses **many LLM iterations per analysis** (often 100–400+, depending on PR size). GitHub Copilot charges credits per iteration (LLM turn), not per tool call — and a single iteration may invoke multiple tools. **Avoid expensive models** like Claude Opus 4.5 (3x credits) or Claude Sonnet 4.5 (1x credits) unless you have credits to spare.
 >
 > See [Model Selection](#model-selection) for free and low-cost alternatives.
 
@@ -25,8 +25,9 @@ Lupa is a VS Code extension for pull request analysis using GitHub Copilot model
 ## Features
 
 - 🔍 **Deep Code Analysis** — LLM-driven analysis with dynamic context gathering
-- 🛠️ **14 Specialized Tools** — Symbol lookup, file reading, grep search, usage finding, plan tracking, and more
-- 🤖 **Subagent Delegation** — Complex investigations handled by autonomous sub-agents
+- 🛠️ **15 Specialized Tools** — Symbol lookup, file reading, grep search, diff access, usage finding, plan tracking, and more
+- 🤖 **Recursive Language Model (RLM)** — Diff-on-demand architecture where the LLM loads context via tools instead of receiving the full diff
+- 🌲 **Recursive Agent Tree** — Complex PRs decomposed into concern groups with sub-agents analyzing each independently
 - 📊 **Rich Webview UI** — Interactive results with Markdown rendering and syntax highlighting
 - 💬 **Chat Integration** — Native VS Code chat participant for quick analysis
 
@@ -52,7 +53,7 @@ Use the `@lupa` chat participant directly in VS Code's chat for quick inline ana
 Type `@lupa` in the chat and use one of the available slash commands. The chat interface provides a clean, conversational experience with:
 
 - **Clickable file references** - File paths appear as links you can click to open
-- **Visible subagent work** - When subagents investigate, their tool calls show with a "🔹 #N:" prefix
+- **Visible subagent work** - When subagents investigate, their tool calls appear with a "🔹 child-N:" prefix in recursive mode (e.g., "🔹 child-1: 📂 Read src/auth.ts") or "🔹 #N:" in flat mode. Deep subagents show hierarchical IDs like "🔹 child-1.1:" when recursion is enabled.
 
 ### Exploration Mode
 
@@ -79,31 +80,30 @@ The selected model is saved in `.vscode/lupa.json` and persists across sessions.
 
 ### Default Model
 
-Lupa uses **GPT-4.1** as the default because it's free. GPT-4.1 works reasonably well for small to medium PRs, but **struggles with large code changes** — it may fail to use tools correctly or produce incomplete analysis when there's too much context.
-
-For larger PRs, consider using a more capable model.
+Lupa uses **GPT-4.1** as the default because it's free. With the recursive approach, GPT-4.1 now handles even large PRs well — the agent tree decomposes complex changes into focused investigations, preventing context overload.
 
 ### ⚠️ Premium Models Are Expensive
 
-Lupa is heavy on tool calling (50–100+ calls per analysis is normal). Each call counts against your premium request quota.
+Lupa uses many LLM iterations per analysis — 100–400+ is typical depending on PR size. Each iteration (LLM turn) counts against your premium request quota, regardless of how many tools are called within that turn.
 
-**Cost examples for a typical analysis:**
+**Cost examples (typical 40-file PR, ~200 iterations):**
 
-- Claude Opus 4.5 (3x credits): 150–300 premium requests consumed
-- Claude Sonnet 4.5 (1x credits): 50–100 premium requests consumed
+- Claude Opus 4.5 (3x credits): ~600 premium requests consumed
+- Claude Sonnet 4.5 (1x credits): ~200 premium requests consumed
 - GPT-4.1 (free): No credits consumed
 
-Monitor your usage in your GitHub account settings.
+Larger PRs use more iterations (e.g., an 80-file PR may reach 350+ iterations). Monitor your usage in your GitHub account settings.
 
 ### 💡 Free and Low-Cost Models
 
 Recommended for Lupa:
 
-| Model                 | Cost  | Notes                                             |
-| --------------------- | ----- | ------------------------------------------------- |
-| **GPT-4.1** (default) | Free  | Works for small PRs, struggles with large changes |
-| **Grok Code Fast 1**  | 0.25x | Good balance of speed and quality                 |
-| **Raptor Mini**       | Free  | Good for larger PRs                               |
+| Model                 | Cost | Notes                                                                     |
+| --------------------- | ---- | ------------------------------------------------------------------------- |
+| **GPT-4.1** (default) | Free | Recommended — works well with the recursive approach for PRs of all sizes |
+| **Raptor Mini**       | Free | Good alternative, but may not run subagents in parallel                   |
+
+> **Note:** Some smaller models (GPT-5 mini, Raptor Mini) may not reliably spawn subagents in parallel, leading to sequential analysis that takes longer. GPT-4.1 handles parallel delegation well.
 
 ### 💰 Using Your Own API Key
 
@@ -131,10 +131,31 @@ Settings are stored in `.vscode/lupa.json`:
 ```json
 {
     "preferredModelIdentifier": "copilot/gpt-4.1",
-    "maxIterations": 100,
-    "requestTimeoutSeconds": 300,
-    "maxSubagentsPerSession": 10,
+    "maxRecursionDepth": 2,
     "logLevel": "info"
+}
+```
+
+### Recursive Review Mode
+
+Lupa uses a **Recursive Language Model (RLM)** approach inspired by the [Recursive Language Models paper](https://arxiv.org/abs/2512.24601) — the LLM actively explores context on demand rather than receiving the full diff at once, preventing "context rot" on large PRs.
+
+When `maxRecursionDepth` is 1 or higher (the default is 2), Lupa uses recursive review mode:
+
+1. The **root agent** scans the PR scope and decomposes it into concern groups
+2. **Sub-agents** are spawned to analyze each concern group independently
+3. Sub-agents at sufficient depth can spawn their own sub-agents
+4. The root agent **aggregates** all findings into a unified review
+
+This is particularly effective for large PRs with many files across different domains (e.g., API changes + frontend updates + test modifications).
+
+> **Fallback behavior**: Recursive mode gives the LLM the _capability_ to decompose work, but decomposition is not guaranteed. If the LLM does not spawn sub-agents (e.g., for trivial PRs), the analysis proceeds as a single root-agent investigation.
+
+To revert to flat, single-agent analysis, set `maxRecursionDepth` to `0` in your `.vscode/lupa.json`:
+
+```json
+{
+    "maxRecursionDepth": 0
 }
 ```
 

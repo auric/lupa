@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { flexibleStringArray } from './schemaHelpers';
 import { SEVERITY, ISSUE_SEVERITY_VALUES } from '../config/chatEmoji';
 
 const TaskDecision = z.enum([
@@ -44,14 +45,12 @@ export class ThinkAboutTaskTool extends BaseTool {
                 .describe(
                     'Issues identified so far with file location and severity'
                 ),
-            areas_needing_investigation: z
-                .array(z.string())
-                .describe(
-                    'Areas that still need deeper investigation or verification'
-                ),
-            positive_observations: z
-                .array(z.string())
-                .describe('Good practices observed (balance is important)'),
+            areas_needing_investigation: flexibleStringArray.describe(
+                'Areas that still need deeper investigation or verification'
+            ),
+            positive_observations: flexibleStringArray.describe(
+                'Good practices observed (balance is important)'
+            ),
             decision: TaskDecision.describe(
                 'Your decision: off_track (refocus on diff), gaps_in_coverage (continue analysis), or ready_to_synthesize'
             ),
@@ -115,8 +114,9 @@ export class ThinkAboutTaskTool extends BaseTool {
                 break;
             case 'gaps_in_coverage':
                 guidance += `**Action**: Continue analysis for the ${areas_needing_investigation.length} uncovered area(s).\n`;
+                guidance +=
+                    '- Use `run_subagent` to delegate investigation of uncovered areas\n';
                 guidance += '- Update your plan with new items if needed\n';
-                guidance += '- Consider spawning subagents for complex areas\n';
                 break;
             case 'ready_to_synthesize':
                 guidance += '**Action**: Proceed to final synthesis.\n';

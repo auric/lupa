@@ -15,8 +15,8 @@ import type {
     AnalysisProgressCallback,
     SubagentProgressContext,
 } from '../types/toolCallTypes';
-import { TokenConstants } from '../models/tokenConstants';
 import { DiffUtils } from '../utils/diffUtils';
+import type { DiffHunk } from '../types/contextTypes';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -25,6 +25,10 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
+import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+
+import { INVESTIGATION_TOOLS } from '../models/toolConstants';
+import type { ExecutionContext } from '../types/executionContext';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -87,15 +91,46 @@ export class ToolCallingAnalysisProvider {
             progressCallback,
             progressContext
         );
+
+        // Determine analysis approach and recursive mode.
+        const maxRecursionDepth = this.workspaceSettings.getMaxRecursionDepth();
+        const isRecursiveMode = maxRecursionDepth >= 1;
+
+        // Create RecursiveStateManager when in recursive mode
+        const recursiveState = isRecursiveMode
+            ? new RecursiveStateManager(maxRecursionDepth)
+            : undefined;
+
+        // Wire recursive state to SubagentExecutor for aggregate progress reporting
+        if (recursiveState) {
+            subagentExecutor.setRecursiveState(recursiveState);
+        }
+
+        // Register root agent in recursive state tree
+        if (recursiveState) {
+            recursiveState.registerAgent(
+                undefined,
+                'Root review controller',
+                this.maxIterations
+            );
+            recursiveState.startAgent('root');
+        }
+
+        // Create execution context as a mutable reference so parsedDiff can be
+        // set after diff processing
+        const executionContext: ExecutionContext = {
+            planManager,
+            subagentSessionManager,
+            subagentExecutor,
+            cancellationToken: token,
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: 'root',
+        };
+
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
-            this.workspaceSettings,
-            {
-                planManager,
-                subagentSessionManager,
-                subagentExecutor,
-                cancellationToken: token,
-            }
+            executionContext
         );
         const conversationRunner = new ConversationRunner(
             this.copilotModelManager,
@@ -112,31 +147,28 @@ export class ToolCallingAnalysisProvider {
             progressCallback?.('Initializing analysis...', 0.5);
             subagentSessionManager.setParentCancellationToken(token);
 
-            // Check diff size and handle truncation/tool availability
-            progressCallback?.('Processing diff...', 0.5);
-            const { processedDiff, toolsAvailable, toolsDisabledMessage } =
-                await this.processDiffSize(diff);
-
-            // Get available tools and generate system prompt based on tool availability
-            const availableTools = toolsAvailable
-                ? toolExecutor.getAvailableTools()
-                : [];
-            const systemPrompt =
-                this.promptGenerator.generateToolAwareSystemPrompt(
-                    availableTools
-                );
-
             // Parse diff for structured analysis
-            const parsedDiff = DiffUtils.parseDiff(processedDiff);
+            progressCallback?.('Processing diff...', 0.5);
+            const parsedDiff = DiffUtils.parseDiff(diff);
 
-            // Generate user prompt with processed diff
-            let userMessage =
-                this.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
+            Log.info(
+                `Tools always enabled, ${parsedDiff.length} files via diff tools`
+            );
 
-            // Add tools disabled message if applicable
-            if (toolsDisabledMessage) {
-                userMessage = `${toolsDisabledMessage}\n\n${userMessage}`;
-            }
+            // Get available tools and generate system prompt
+            const availableTools = toolExecutor.getAvailableTools();
+            const systemPrompt = isRecursiveMode
+                ? this.promptGenerator.generateRecursiveSystemPrompt()
+                : this.promptGenerator.generateToolAwareSystemPrompt();
+
+            // Generate user prompt
+            executionContext.parsedDiff = parsedDiff;
+            const userMessage = this.promptGenerator.generateUserPrompt(
+                parsedDiff,
+                undefined,
+                isRecursiveMode,
+                this.workspaceSettings.getMaxSubagentsPerSession()
+            );
 
             conversationManager.addUserMessage(userMessage);
             progressCallback?.('Starting conversation with AI model...', 0.5);
@@ -167,13 +199,14 @@ export class ToolCallingAnalysisProvider {
                     const usagePercent = Math.round(
                         (validation.totalTokens / validation.maxTokens) * 100
                     );
-                    const remainingTokens =
-                        validation.maxTokens - validation.totalTokens;
+                    const remainingK = Math.round(
+                        (validation.maxTokens - validation.totalTokens) / 1000
+                    );
 
-                    if (usagePercent >= 80) {
-                        return `\n\n⚠️ [Context: ${usagePercent}% used (${validation.totalTokens}/${validation.maxTokens} tokens). ${remainingTokens} remaining - consider wrapping up soon]`;
-                    } else if (usagePercent >= 50) {
-                        return `\n\n[Context: ${usagePercent}% used. ${remainingTokens} tokens remaining]`;
+                    if (usagePercent >= 90) {
+                        return `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
+                    } else if (usagePercent >= 70) {
+                        return `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
                     }
                     return '';
                 } catch (error) {
@@ -213,10 +246,17 @@ export class ToolCallingAnalysisProvider {
                         durationMs: durationMs ?? 0,
                         timestamp: Date.now(),
                         nestedCalls: metadata?.nestedToolCalls,
+                        executionTimeMs: metadata?.executionTimeMs,
+                        iterationsUsed: metadata?.iterationsUsed,
                     });
                 },
                 getContextStatusSuffix,
             };
+
+            // Shared mutable set: the afterToolCalls callback adds investigation
+            // tool names after the first subagent round, and the runner reads it
+            // each iteration to filter the tool list.
+            const disabledToolNames = new Set<string>();
 
             // Run conversation loop using extracted ConversationRunner
             analysisText = await conversationRunner.run(
@@ -226,6 +266,13 @@ export class ToolCallingAnalysisProvider {
                     tools: availableTools,
                     label: 'Main Analysis',
                     requiresExplicitCompletion: true,
+                    afterToolCalls: this.createCoverageGapCallback(
+                        recursiveState,
+                        parsedDiff,
+                        disabledToolNames,
+                        subagentSessionManager
+                    ),
+                    disabledToolNames,
                 },
                 conversationManager,
                 token,
@@ -253,7 +300,16 @@ export class ToolCallingAnalysisProvider {
         } finally {
             // Clear parent cancellation token to release references
             subagentSessionManager.setParentCancellationToken(undefined);
-            // No other cleanup needed - all per-analysis instances are garbage collected
+            // Complete root agent lifecycle in recursive state tree
+            if (recursiveState) {
+                if (analysisCompleted) {
+                    recursiveState.completeAgent('root');
+                } else if (analysisError) {
+                    recursiveState.failAgent('root', analysisError);
+                } else {
+                    recursiveState.cancelAgent('root');
+                }
+            }
         }
 
         return this.buildAnalysisResult(
@@ -261,8 +317,50 @@ export class ToolCallingAnalysisProvider {
             analysisText,
             analysisCompleted,
             analysisError,
-            conversationRunner.wasCancelled
+            conversationRunner.wasCancelled,
+            conversationRunner.iterationsUsed
         );
+    }
+
+    private createCoverageGapCallback(
+        recursiveState: RecursiveStateManager | undefined,
+        parsedDiff: DiffHunk[],
+        disabledToolNames: Set<string>,
+        sessionManager: SubagentSessionManager
+    ): ((toolNames: string[]) => string | undefined) | undefined {
+        if (!recursiveState || parsedDiff.length === 0) {
+            return undefined;
+        }
+
+        const allFiles = parsedDiff.map((d) => d.filePath);
+
+        return (toolNames: string[]) => {
+            if (!toolNames.includes('run_subagent')) {
+                return undefined;
+            }
+
+            // If subagent budget is exhausted, re-enable investigation tools
+            // so the root can directly examine uncovered files.
+            if (!sessionManager.canSpawn()) {
+                for (const tool of INVESTIGATION_TOOLS) {
+                    disabledToolNames.delete(tool);
+                }
+                return recursiveState.getCoverageGapFallbackMessage(allFiles);
+            }
+
+            // After first subagent round, disable investigation tools for the root.
+            // The root is a controller — it delegates, not investigates.
+            if (disabledToolNames.size === 0) {
+                for (const tool of INVESTIGATION_TOOLS) {
+                    disabledToolNames.add(tool);
+                }
+                Log.info(
+                    'Root agent investigation tools disabled after first subagent round'
+                );
+            }
+
+            return recursiveState.getCoverageGapMessage(allFiles);
+        };
     }
 
     private buildAnalysisResult(
@@ -270,7 +368,8 @@ export class ToolCallingAnalysisProvider {
         analysis: string,
         completed: boolean,
         error: string | undefined,
-        wasCancelled: boolean
+        wasCancelled: boolean,
+        iterationsUsed?: number
     ): ToolCallingAnalysisResult {
         const successfulCalls = toolCallRecords.filter((r) => r.success).length;
         const failedCalls = toolCallRecords.filter((r) => !r.success).length;
@@ -284,96 +383,11 @@ export class ToolCallingAnalysisProvider {
                 failedCalls,
                 analysisCompleted: completed,
                 analysisError: error,
+                iterationsUsed,
+                maxIterations: this.maxIterations,
             },
             wasCancelled,
         };
-    }
-
-    /**
-     * Process diff size and determine if tools should be available
-     * @param diff Original diff content
-     * @returns Object with processed diff, tool availability, and disabled message
-     */
-    private async processDiffSize(diff: string): Promise<{
-        processedDiff: string;
-        toolsAvailable: boolean;
-        toolsDisabledMessage?: string;
-    }> {
-        try {
-            const model = await this.copilotModelManager.getCurrentModel();
-            const maxTokens =
-                model.maxInputTokens || TokenConstants.DEFAULT_MAX_INPUT_TOKENS;
-
-            // Parse diff for structured analysis
-            const parsedDiff = DiffUtils.parseDiff(diff);
-
-            // Generate actual system prompt and user message to get real token counts
-            const availableTools = this.toolRegistry.getAllTools();
-            const systemPrompt =
-                this.promptGenerator.generateToolAwareSystemPrompt(
-                    availableTools
-                );
-            const userMessage =
-                this.promptGenerator.generateToolCallingUserPrompt(parsedDiff);
-
-            // Count real tokens for actual content that will be sent
-            const systemPromptTokens = await model.countTokens(systemPrompt);
-            const userMessageTokens = await model.countTokens(userMessage);
-            const totalUsedTokens = systemPromptTokens + userMessageTokens;
-
-            // Leave significant room for tool conversations (30% of total context)
-            const minSpaceForTools = Math.floor(maxTokens * 0.3);
-            const availableForTools = maxTokens - totalUsedTokens;
-
-            // If there's enough space for meaningful tool interactions, enable tools
-            if (availableForTools >= minSpaceForTools) {
-                return {
-                    processedDiff: diff,
-                    toolsAvailable: true,
-                };
-            }
-
-            // If diff is too large, truncate it and disable tools
-            Log.warn(
-                `Diff uses too much context (${totalUsedTokens}/${maxTokens} tokens, only ${availableForTools} remaining). Truncating and disabling tools.`
-            );
-
-            // Calculate how much of the diff we can keep to leave room for basic analysis
-            const targetTotalTokens = Math.floor(maxTokens * 0.8); // Use 80% for truncated content
-            const targetDiffTokens = targetTotalTokens - systemPromptTokens;
-            const estimatedCharsPerToken =
-                TokenConstants.CHARS_PER_TOKEN_ESTIMATE;
-            const targetChars = Math.floor(
-                targetDiffTokens * estimatedCharsPerToken
-            );
-
-            // Truncate the diff
-            let truncatedDiff = diff.substring(0, targetChars);
-
-            // Try to truncate at a sensible boundary (line break)
-            const lastLineBreak = truncatedDiff.lastIndexOf('\n');
-            if (lastLineBreak > targetChars * 0.8) {
-                // If line break is reasonably close to target
-                truncatedDiff = truncatedDiff.substring(0, lastLineBreak);
-            }
-
-            // Add truncation indicator
-            truncatedDiff += '\n\n[... diff truncated due to size ...]';
-
-            return {
-                processedDiff: truncatedDiff,
-                toolsAvailable: false,
-                toolsDisabledMessage:
-                    TokenConstants.TOOL_CONTEXT_MESSAGES.TOOLS_DISABLED,
-            };
-        } catch (error) {
-            Log.error('Error processing diff size:', error);
-            // On error, return original diff with tools available
-            return {
-                processedDiff: diff,
-                toolsAvailable: true,
-            };
-        }
     }
 
     dispose(): void {

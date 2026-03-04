@@ -6,10 +6,11 @@ import { vi } from 'vitest';
 import * as vscode from 'vscode';
 import {
     ANALYSIS_LIMITS,
-    SUBAGENT_LIMITS,
+    RECURSION_LIMITS,
 } from '../../models/workspaceSettingsSchema';
 import type { WorkspaceSettingsService } from '../../services/workspaceSettingsService';
 import type { ExecutionContext } from '../../types/executionContext';
+import { RecursiveStateManager } from '../../sessions/recursiveStateManager';
 
 /**
  * Creates a mock Position object with proper comparison methods.
@@ -548,20 +549,15 @@ export function createFileExistsError(
  */
 export function createMockWorkspaceSettings(
     overrides: Partial<{
-        maxIterations: number;
-        requestTimeoutSeconds: number;
-        maxSubagentsPerSession: number;
+        maxRecursionDepth: number;
     }> = {}
 ): WorkspaceSettingsService {
     return {
-        getMaxIterations: () =>
-            overrides.maxIterations ?? ANALYSIS_LIMITS.maxIterations.default,
-        getRequestTimeoutSeconds: () =>
-            overrides.requestTimeoutSeconds ??
-            ANALYSIS_LIMITS.requestTimeoutSeconds.default,
-        getMaxSubagentsPerSession: () =>
-            overrides.maxSubagentsPerSession ??
-            SUBAGENT_LIMITS.maxPerSession.default,
+        getMaxIterations: () => ANALYSIS_LIMITS.maxIterations,
+        getRequestTimeoutSeconds: () => ANALYSIS_LIMITS.requestTimeoutSeconds,
+        getMaxSubagentsPerSession: () => ANALYSIS_LIMITS.maxSubagentsPerSession,
+        getMaxRecursionDepth: () =>
+            overrides.maxRecursionDepth ?? RECURSION_LIMITS.maxDepth.default,
     } as WorkspaceSettingsService;
 }
 
@@ -636,4 +632,26 @@ export function createCancelledExecutionContext(
         subagentExecutor: undefined,
         ...overrides,
     };
+}
+
+/**
+ * Creates a RecursiveStateManager with a root agent registered and started.
+ * Eliminates the 3-line repetitive setup pattern in recursive tool tests.
+ *
+ * @param maxDepth Maximum recursion depth (default: 3)
+ * @param rootBudget Iteration budget for the root agent (default: 100)
+ * @returns Object with the state manager and root agent ID
+ */
+export function createTestRecursiveState(
+    maxDepth = 3,
+    rootBudget = 100
+): { recursiveState: RecursiveStateManager; rootId: string } {
+    const recursiveState = new RecursiveStateManager(maxDepth);
+    const rootId = recursiveState.registerAgent(
+        undefined,
+        'root task',
+        rootBudget
+    );
+    recursiveState.startAgent(rootId);
+    return { recursiveState, rootId };
 }

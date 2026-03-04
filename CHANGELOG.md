@@ -5,6 +5,52 @@ All notable changes to Lupa will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-21
+
+### Added
+
+#### Recursive Language Model (RLM) Analysis
+
+- **New diff-on-demand architecture**: The LLM receives `<diff_metadata>` (file list with change stats) and fetches specific file diffs via the `get_file_diff` tool instead of receiving the full diff in the prompt. This prevents context window overflow on large PRs and lets the LLM prioritize which files to examine.
+- **Recursive review mode**: Large PRs are automatically decomposed into concern groups, with sub-agents analyzing each group independently. The root agent aggregates all findings into a unified review. Controlled by `maxRecursionDepth` setting (default: 2).
+- **Sub-agents can read PR diffs**: Sub-agents request diffs via the `get_file_diff` tool for files assigned by the root agent, enabling deep investigation of specific files without context limitations.
+
+### Fixed
+
+#### Analysis Reliability
+
+- **Large diffs no longer break analysis**: Tools remain enabled regardless of diff size — the LLM fetches diffs on demand instead of embedding them in the prompt.
+- **Rate limit handling**: Automatic retry with exponential backoff (2s → 60s, up to 5 retries) when hitting API rate limits, without consuming analysis iterations.
+- **Better subagent budgets**: Each sub-agent gets its own independent iteration budget instead of a shrinking fraction of the parent's remaining budget.
+- **Recursive review works at all depths**: Fixed a bug where sub-agents beyond depth 1 couldn't spawn their own sub-agents.
+- **Chat participant subagents** now use the chat-selected model.
+
+#### Finding Quality
+
+- **Fewer false positives**: Multi-layered verification gates prevent reporting pre-existing issues, feature requests as bugs, missing validation when callers already validate, and unquantified performance concerns.
+- **Scope boundary enforcement**: Findings must pass the "Revert Test" — only issues introduced or worsened by the PR are reported.
+- **Design intent awareness**: The LLM searches for comments, docs, tests, and commit history before reporting design choices as flaws.
+
+#### Tool Reliability
+
+- **Path normalization**: Backslash paths from the LLM are normalized to forward slashes, and exact path matches take priority over suffix matches.
+- **`find_usages` handles `LocationLink` responses**: Definition lookups no longer silently lose valid definitions that use `LocationLink` format.
+- **Prompt sanitization**: File paths and diff content containing `<>` characters no longer break prompt XML structure.
+
+#### Performance
+
+- **`find_usages` O(n) deduplication**: Reference deduplication replaced O(n²) `filter/findIndex` with a `Set`-based linear scan, reducing overhead for large reference lists.
+- **Bounded definition provider calls**: `findSymbolPosition` now caps definition provider invocations at 10 per symbol, preventing accumulated latency on common identifiers. Falls back to first textual occurrence when the cap is reached.
+- **`get_file_diff` path hardening**: Added `path.posix.normalize` for LLM-provided paths and rejection of `..` path traversal segments.
+
+### Changed
+
+- **Recursive review enabled by default**: `maxRecursionDepth` defaults to 2. Set to 0 in `.vscode/lupa.json` to use flat single-agent analysis.
+- **Tool response limit tripled** (20K → 60K chars) and **file read limit doubled** (200 → 400 lines) for better context gathering.
+- **Removed `maxTotalAgents` setting**: `maxSubagentsPerSession` (hardcoded to 75) is the single spawn cap for both flat and recursive modes.
+- **`generateToolCallingUserPrompt` renamed to `generateUserPrompt`**: The method now accepts `recursiveMode` and `maxSubagents` parameters for recursive prompt generation.
+- **Updated documentation**: Architecture docs, component inventory, and project overview updated for RLM architecture.
+
 ## [0.1.12] - 2026-02-21
 
 ### Fixed
@@ -21,8 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Stop Button & Cancellation
 
-- **Stop button now works reliably everywhere**: Clicking Stop immediately halts all analysis activity—file searches, symbol lookups, and subagent investigations all stop within seconds, even during long-running operations.
-- **Every tool responds to cancellation immediately**: All tools now check for cancellation at entry and between loop iterations (e.g., processing references, filtering symbols), so pressing Stop takes effect within milliseconds instead of waiting for the current operation to finish.
+- **Stop button now works reliably everywhere**: Clicking Stop promptly halts analysis activity—file searches, symbol lookups, and subagent investigations all stop within seconds. In-flight tool executions may complete before the runner exits.
+- **Every tool responds to cancellation promptly**: All tools now check for cancellation at entry and between loop iterations (e.g., processing references, filtering symbols), so pressing Stop takes effect quickly instead of waiting for the current operation to finish.
 - **Ripgrep searches killed on cancel**: Pattern search processes are now terminated immediately when you press Stop, instead of running to completion in the background.
 - **Works on slow/stalled connections**: Cancellation now responds quickly even when network conditions are poor, instead of potentially waiting 5+ minutes.
 - **No more "unhandled rejection" warnings**: Spurious error messages when clicking Stop at certain moments are now suppressed.
@@ -408,6 +454,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.2.0]: https://github.com/auric/lupa/releases/tag/v0.2.0
+[0.1.12]: https://github.com/auric/lupa/releases/tag/v0.1.12
 [0.1.11]: https://github.com/auric/lupa/releases/tag/v0.1.11
 [0.1.10]: https://github.com/auric/lupa/releases/tag/v0.1.10
 [0.1.9]: https://github.com/auric/lupa/releases/tag/v0.1.9

@@ -110,9 +110,12 @@ describe('ListDirTool', () => {
             const invalidInput = { relative_path: '', recursive: false };
             expect(schema.safeParse(invalidInput).success).toBe(false);
 
-            // Test missing fields should fail
-            const missingFields = { relative_path: 'src' };
-            expect(schema.safeParse(missingFields).success).toBe(false);
+            // Test missing recursive should succeed (defaults to false)
+            const missingRecursive = { relative_path: 'src' };
+            expect(schema.safeParse(missingRecursive).success).toBe(true);
+            expect(schema.safeParse(missingRecursive).data?.recursive).toBe(
+                false
+            );
         });
 
         it('should create valid VS Code tool definition', () => {

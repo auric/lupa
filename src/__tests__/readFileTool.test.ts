@@ -248,7 +248,7 @@ describe('ReadFileTool', () => {
 
         it('should return error when line_count exceeds maximum', async () => {
             const fileContent = Array.from(
-                { length: 300 },
+                { length: 600 },
                 (_, i) => `line ${i + 1}`
             ).join('\n');
             mockWorkspaceFs.readFile.mockResolvedValue(
@@ -259,18 +259,18 @@ describe('ReadFileTool', () => {
                 {
                     file_path: 'test.ts',
                     start_line: 1,
-                    line_count: 250,
+                    line_count: 500,
                 },
                 createMockExecutionContext()
             );
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain('exceeds maximum of 200');
+            expect(result.error).toContain('exceeds maximum of 400');
         });
 
         it('should return error when end_line range exceeds maximum', async () => {
             const fileContent = Array.from(
-                { length: 400 },
+                { length: 600 },
                 (_, i) => `line ${i + 1}`
             ).join('\n');
             mockWorkspaceFs.readFile.mockResolvedValue(
@@ -281,19 +281,59 @@ describe('ReadFileTool', () => {
                 {
                     file_path: 'test.ts',
                     start_line: 1,
-                    end_line: 400,
+                    end_line: 600,
                 },
                 createMockExecutionContext()
             );
 
             expect(result.success).toBe(false);
-            expect(result.error).toContain('exceeds maximum of 200');
+            expect(result.error).toContain('exceeds maximum of 400');
             expect(result.error).toContain('Split into multiple calls');
+        });
+
+        it('should clamp end_line to file length when it exceeds total lines', async () => {
+            const fileContent = 'line 1\nline 2\nline 3\nline 4\nline 5';
+            mockWorkspaceFs.readFile.mockResolvedValue(
+                Buffer.from(fileContent)
+            );
+
+            const result = await readFileTool.execute(
+                {
+                    file_path: 'test.ts',
+                    start_line: 1,
+                    end_line: 100,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('(lines 1-5 of 5)');
+            expect(result.data).toContain('line 5');
+        });
+
+        it('should clamp line_count to file length when it exceeds remaining lines', async () => {
+            const fileContent = 'line 1\nline 2\nline 3';
+            mockWorkspaceFs.readFile.mockResolvedValue(
+                Buffer.from(fileContent)
+            );
+
+            const result = await readFileTool.execute(
+                {
+                    file_path: 'test.ts',
+                    start_line: 2,
+                    line_count: 50,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data).toContain('(lines 2-3 of 3)');
+            expect(result.data).toContain('line 3');
         });
 
         it('should truncate with metadata when only start_line provided and file is large', async () => {
             const fileContent = Array.from(
-                { length: 300 },
+                { length: 600 },
                 (_, i) => `line ${i + 1}`
             ).join('\n');
             mockWorkspaceFs.readFile.mockResolvedValue(
@@ -309,9 +349,9 @@ describe('ReadFileTool', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('(lines 1-200 of 300)');
+            expect(result.data).toContain('(lines 1-400 of 600)');
             expect(result.data).toContain(
-                '[Truncated: 100 more lines. Use start_line=201 to continue]'
+                '[Truncated: 200 more lines. Use start_line=401 to continue]'
             );
         });
 

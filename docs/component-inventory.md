@@ -37,11 +37,12 @@
 
 These components are created fresh for each analysis session, not managed by ServiceManager:
 
-| Component                | File                        | Description                                    |
-| ------------------------ | --------------------------- | ---------------------------------------------- |
-| `SubagentExecutor`       | `subagentExecutor.ts`       | Isolated subagent execution for one analysis   |
-| `SubagentSessionManager` | `subagentSessionManager.ts` | Subagent lifecycle and limits for one analysis |
-| `PlanSessionManager`     | `planSessionManager.ts`     | Review plan state for current analysis         |
+| Component                | File                        | Description                                                 |
+| ------------------------ | --------------------------- | ----------------------------------------------------------- |
+| `SubagentExecutor`       | `subagentExecutor.ts`       | Isolated subagent execution for one analysis                |
+| `SubagentSessionManager` | `subagentSessionManager.ts` | Subagent lifecycle and limits for one analysis              |
+| `PlanSessionManager`     | `planSessionManager.ts`     | Review plan state for current analysis                      |
+| `RecursiveStateManager`  | `recursiveStateManager.ts`  | Recursive agent tree, budget allocation, file deduplication |
 
 ---
 
@@ -95,6 +96,12 @@ These components are created fresh for each analysis session, not managed by Ser
 | `FindFilesByPatternTool` | `findFilesByPatternTool.ts` | `find_files`           | Glob-based file search              |
 | `GetSymbolsOverviewTool` | `getSymbolsOverviewTool.ts` | `get_symbols_overview` | Hierarchical symbol structure       |
 | `SearchForPatternTool`   | `searchForPatternTool.ts`   | `search_for_pattern`   | Text/regex search via ripgrep       |
+
+### Diff Tools (RLM - Recursive Language Model approach)
+
+| Tool              | File                 | Name            | Description                        |
+| ----------------- | -------------------- | --------------- | ---------------------------------- |
+| `GetFileDiffTool` | `getFileDiffTool.ts` | `get_file_diff` | Retrieve diff for specific file(s) |
 
 ### Reasoning Tools
 
@@ -235,14 +242,14 @@ These components are created fresh for each analysis session, not managed by Ser
 
 ## Commands (from `package.json`)
 
-| Command ID                 | Title                 | Description          |
-| -------------------------- | --------------------- | -------------------- |
-| `lupa.analyzePR`           | Analyze Pull Request  | Start PR analysis    |
-| `lupa.selectLanguageModel` | Select Language Model | Choose Copilot model |
-| `lupa.selectRepository`    | Select Git Repository | Choose repository    |
-| `lupa.resetAnalysisLimits` | Reset Analysis Limits | Reset to defaults    |
-| `lupa.openToolTesting`     | Open Tool Testing     | Dev tool testing UI  |
-| `lupa.testWebview`         | Test Webview          | Dev webview testing  |
+| Command ID                 | Title                      | Description          |
+| -------------------------- | -------------------------- | -------------------- |
+| `lupa.analyzePR`           | Analyze Pull Request       | Start PR analysis    |
+| `lupa.selectLanguageModel` | Select Language Model      | Choose Copilot model |
+| `lupa.selectRepository`    | Select Git Repository      | Choose repository    |
+| `lupa.resetAnalysisLimits` | Reset Settings to Defaults | Reset to defaults    |
+| `lupa.openToolTesting`     | Open Tool Testing          | Dev tool testing UI  |
+| `lupa.testWebview`         | Test Webview               | Dev webview testing  |
 
 ---
 

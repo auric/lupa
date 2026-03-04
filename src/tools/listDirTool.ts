@@ -19,7 +19,11 @@ import { Log } from '../services/loggingService';
 export class ListDirTool extends BaseTool {
     name = 'list_directory';
     description =
-        'List files and directories within a specified path, with optional recursion. Respects .gitignore files.';
+        'List files and directories within a specified path, with optional recursion. Respects .gitignore files. ' +
+        'Returns names with trailing / for directories. ' +
+        'USE THIS for quick directory structure overview. ' +
+        'PREFER find_files_by_pattern when searching for files by name/extension across the tree. ' +
+        'PREFER get_symbols_overview when you need code symbols, not just filenames.';
 
     schema = z.object({
         relative_path: z
@@ -30,6 +34,7 @@ export class ListDirTool extends BaseTool {
             ),
         recursive: z
             .boolean()
+            .default(false)
             .describe('Whether to scan subdirectories recursively'),
     });
 

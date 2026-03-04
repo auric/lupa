@@ -22,7 +22,9 @@ export class SubmitReviewTool extends BaseTool {
     name = 'submit_review';
     description =
         'Submit your final PR review. Call this as the FINAL step when all analysis is complete. ' +
-        'The review content should follow the output format with summary, findings, and recommendations.';
+        'BEFORE calling: for EACH finding verify (1) you can name the tool call that confirmed it, ' +
+        '(2) you attempted to disprove it and the disproof failed, (3) the file is in the changed files list. ' +
+        'Remove any finding that fails these checks. A review with zero findings is normal for well-written PRs.';
 
     /**
      * Minimum 20 chars is intentionally lower than reviewExtractionUtils' 50-char
@@ -36,7 +38,8 @@ export class SubmitReviewTool extends BaseTool {
                 .min(20)
                 .describe(
                     'The complete markdown-formatted review following the output format specification. ' +
-                        'Must include summary section, findings by category, and recommendations.'
+                        'Each finding must have Evidence and Disproof Attempted sections. ' +
+                        'Omit empty categories. If no findings survived verification, submit an approval.'
                 ),
         })
         .strict();

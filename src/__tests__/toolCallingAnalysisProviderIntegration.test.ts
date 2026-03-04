@@ -126,7 +126,9 @@ index 1234567..abcdefg 100644
 
         mockPromptGenerator = new PromptGenerator();
 
-        const mockWorkspaceSettings = createMockWorkspaceSettings();
+        const mockWorkspaceSettings = createMockWorkspaceSettings({
+            maxRecursionDepth: 0,
+        });
 
         provider = new ToolCallingAnalysisProvider(
             mockToolRegistry,
@@ -153,22 +155,22 @@ index 1234567..abcdefg 100644
                 mockPromptGenerator,
                 'generateToolAwareSystemPrompt'
             );
-            const generateToolCallingUserPromptSpy = vi.spyOn(
+            const generateUserPromptSpy = vi.spyOn(
                 mockPromptGenerator,
-                'generateToolCallingUserPrompt'
+                'generateUserPrompt'
             );
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            // Verify tool-aware system prompt was generated with both tools
-            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalledWith([
-                expect.any(MockAnalysisTool),
-                expect.any(SubmitReviewTool),
-            ]);
+            // Verify tool-aware system prompt was generated
+            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
 
-            // Verify tool-calling user prompt was generated
-            expect(generateToolCallingUserPromptSpy).toHaveBeenCalledWith(
-                expect.any(Array) // parsed diff
+            // Verify user prompt was generated with parsed diff
+            expect(generateUserPromptSpy).toHaveBeenCalledWith(
+                expect.any(Array), // parsed diff
+                undefined, // no user instructions
+                false, // non-recursive mode (maxRecursionDepth=0)
+                expect.any(Number) // maxSubagents
             );
         });
 
@@ -269,27 +271,27 @@ index 1234567..abcdefg 100644
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            const systemPromptCall =
-                generateToolAwareSystemPromptSpy.mock.calls[0];
-            const tools = systemPromptCall[0] as ITool[];
+            // System prompt generation no longer receives tools directly (sent via VS Code API)
+            expect(generateToolAwareSystemPromptSpy).toHaveBeenCalled();
 
-            expect(tools).toHaveLength(2);
-            expect(tools[0]).toBeInstanceOf(MockAnalysisTool);
-            expect(tools[0].name).toBe('find_symbol');
-            expect(tools[1]).toBeInstanceOf(SubmitReviewTool);
-            expect(tools[1].name).toBe('submit_review');
+            // Verify tools are still registered in the registry
+            const registeredTools = mockToolRegistry.getAllTools();
+            expect(registeredTools).toHaveLength(2);
+            expect(registeredTools[0]).toBeInstanceOf(MockAnalysisTool);
+            expect(registeredTools[0].name).toBe('find_symbol');
+            expect(registeredTools[1]).toBeInstanceOf(SubmitReviewTool);
+            expect(registeredTools[1].name).toBe('submit_review');
         });
 
         it('should structure user prompt for optimal tool usage', async () => {
-            const generateToolCallingUserPromptSpy = vi.spyOn(
+            const generateUserPromptSpy = vi.spyOn(
                 mockPromptGenerator,
-                'generateToolCallingUserPrompt'
+                'generateUserPrompt'
             );
 
             await provider.analyze(sampleDiff, tokenSource.token);
 
-            const userPromptCall =
-                generateToolCallingUserPromptSpy.mock.calls[0];
+            const userPromptCall = generateUserPromptSpy.mock.calls[0];
             const [parsedDiffParam] = userPromptCall;
 
             expect(parsedDiffParam).toBeInstanceOf(Array);
@@ -497,14 +499,14 @@ index 0000000..3333333
 +    return 'new';
 +}`;
 
-            const generateToolCallingUserPromptSpy = vi.spyOn(
+            const generateUserPromptSpy = vi.spyOn(
                 mockPromptGenerator,
-                'generateToolCallingUserPrompt'
+                'generateUserPrompt'
             );
 
             await provider.analyze(complexDiff, tokenSource.token);
 
-            const parsedDiff = generateToolCallingUserPromptSpy.mock
+            const parsedDiff = generateUserPromptSpy.mock
                 .calls[0][0] as DiffHunk[];
 
             expect(parsedDiff).toHaveLength(2);
@@ -810,6 +812,62 @@ index 3333333..4444444 100644
 
             tokenSource1.dispose();
             tokenSource2.dispose();
+        });
+    });
+
+    describe('recursive mode integration', () => {
+        it('should use recursive system prompt when analysisApproach is rlm with depth >= 1', async () => {
+            const rlmSettings = createMockWorkspaceSettings({
+                maxRecursionDepth: 2,
+            });
+
+            const rlmProvider = new ToolCallingAnalysisProvider(
+                mockToolRegistry,
+                mockCopilotModelManager,
+                mockPromptGenerator,
+                rlmSettings
+            );
+
+            const generateRecursiveSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateRecursiveSystemPrompt'
+            );
+            const generateToolAwareSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolAwareSystemPrompt'
+            );
+
+            await rlmProvider.analyze(sampleDiff, tokenSource.token);
+
+            expect(generateRecursiveSpy).toHaveBeenCalled();
+            expect(generateToolAwareSpy).not.toHaveBeenCalled();
+        });
+
+        it('should use non-recursive prompt when rlm approach with depth 0', async () => {
+            const noRecursionSettings = createMockWorkspaceSettings({
+                maxRecursionDepth: 0,
+            });
+
+            const noRecursionProvider = new ToolCallingAnalysisProvider(
+                mockToolRegistry,
+                mockCopilotModelManager,
+                mockPromptGenerator,
+                noRecursionSettings
+            );
+
+            const generateRecursiveSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateRecursiveSystemPrompt'
+            );
+            const generateToolAwareSpy = vi.spyOn(
+                mockPromptGenerator,
+                'generateToolAwareSystemPrompt'
+            );
+
+            await noRecursionProvider.analyze(sampleDiff, tokenSource.token);
+
+            expect(generateToolAwareSpy).toHaveBeenCalled();
+            expect(generateRecursiveSpy).not.toHaveBeenCalled();
         });
     });
 });

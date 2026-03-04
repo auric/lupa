@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import {
     ConversationRunner,
@@ -80,7 +80,7 @@ const createCancellationToken = (
     cancelled = false
 ): vscode.CancellationToken => ({
     isCancellationRequested: cancelled,
-    onCancellationRequested: vi.fn(),
+    onCancellationRequested: vi.fn().mockReturnValue({ dispose: vi.fn() }),
 });
 
 describe('ConversationRunner', () => {
@@ -296,6 +296,146 @@ describe('ConversationRunner', () => {
         });
     });
 
+    describe('afterToolCalls Hook', () => {
+        it('should inject message when callback returns a string', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'run_subagent',
+                                arguments: '{"task":"review files"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'Final review after gap report',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'run_subagent',
+                    success: true,
+                    result: 'Subagent findings',
+                },
+            ]);
+
+            const afterToolCalls = vi
+                .fn()
+                .mockReturnValue('Coverage gap: 3 files uncovered');
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('run_subagent')],
+                afterToolCalls,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            expect(afterToolCalls).toHaveBeenCalledWith(['run_subagent']);
+            const history = conversation.getHistory();
+            const injected = history.find(
+                (m) => m.role === 'user' && m.content?.includes('Coverage gap')
+            );
+            expect(injected).toBeDefined();
+        });
+
+        it('should not inject message when callback returns undefined', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"test"}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'Analysis complete',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'find_symbol',
+                    success: true,
+                    result: 'Found symbol',
+                },
+            ]);
+
+            const afterToolCalls = vi.fn().mockReturnValue(undefined);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+                afterToolCalls,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            expect(afterToolCalls).toHaveBeenCalledWith(['find_symbol']);
+            const history = conversation.getHistory();
+            const userMessages = history.filter((m) => m.role === 'user');
+            // Only the initial user message should exist, no injected message
+            expect(userMessages).toHaveLength(0);
+        });
+
+        it('should not call afterToolCalls when submit_review ends the loop', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'submit_review',
+                                arguments: '{"review":"Final review text"}',
+                            },
+                        },
+                    ],
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'submit_review',
+                    success: true,
+                    result: 'Final review text',
+                    metadata: { isCompletion: true },
+                },
+            ]);
+
+            const afterToolCalls = vi.fn();
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                afterToolCalls,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // afterToolCalls should NOT be called because submit_review exits the loop before the hook
+            expect(afterToolCalls).not.toHaveBeenCalled();
+        });
+    });
+
     describe('Iteration Limits', () => {
         it('should stop at max iterations', async () => {
             // Always return tool calls to keep the loop going
@@ -446,6 +586,58 @@ describe('ConversationRunner', () => {
 
             runner.reset();
             expect(runner.hitMaxIterations).toBe(false);
+        });
+
+        it('should reset hitRateLimit flag on reset()', async () => {
+            vi.useFakeTimers();
+            try {
+                class ChatRateLimited extends Error {
+                    constructor() {
+                        super('Rate limited');
+                        this.name = 'ChatRateLimited';
+                    }
+                }
+                const modelManager = {
+                    sendRequest: vi.fn().mockImplementation(() => {
+                        return Promise.reject(new ChatRateLimited());
+                    }),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test prompt',
+                    maxIterations: 10,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                const resultPromise = runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                for (let i = 0; i < 10; i++) {
+                    await vi.advanceTimersByTimeAsync(60000);
+                }
+
+                await resultPromise;
+                expect(runner.hitRateLimit).toBe(true);
+
+                runner.reset();
+                expect(runner.hitRateLimit).toBe(false);
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 
@@ -1011,14 +1203,14 @@ describe('ConversationRunner', () => {
     });
 
     describe('Explicit Completion and Nudging', () => {
-        it('should nudge model when requiresExplicitCompletion is true and no tool calls', async () => {
+        it('should send soft continue on first no-tool-call, then nudge submit_review on second', async () => {
             const modelManager = createMockModelManager([
-                // First response: no tool calls, should trigger nudge
+                // First response: no tool calls, should trigger soft continue
                 {
                     content: 'Here is my initial analysis...',
                     toolCalls: undefined,
                 },
-                // Second response: model calls submit_review after nudge
+                // Second response: model calls submit_review after soft continue
                 {
                     content: null,
                     toolCalls: [
@@ -1061,12 +1253,14 @@ describe('ConversationRunner', () => {
             expect(result).toBe('Final review content');
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
 
-            // Verify nudge message was added to conversation
+            // Verify soft continue message was added (not the firm nudge)
             const history = conversation.getHistory();
-            const nudgeMessage = history.find(
-                (m) => m.role === 'user' && m.content?.includes('submit_review')
+            const softContinue = history.find(
+                (m) =>
+                    m.role === 'user' &&
+                    m.content?.includes('Continue investigating')
             );
-            expect(nudgeMessage).toBeDefined();
+            expect(softContinue).toBeDefined();
         });
 
         it('should accept response after MAX_COMPLETION_NUDGES when model never calls submit_review', async () => {
@@ -1249,6 +1443,1277 @@ describe('ConversationRunner', () => {
                 '## Summary\n> **TL;DR**: Extracted review content with detailed findings and recommendations.'
             );
             expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+        });
+    });
+
+    describe('beforeAcceptingResponse Callback', () => {
+        it('should inject nudge message when callback returns a string', async () => {
+            const modelManager = createMockModelManager([
+                // First: model calls get_file_diff
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file":"test.ts"}',
+                            },
+                        },
+                    ],
+                },
+                // Second: model tries to finish without deeper investigation
+                {
+                    content: 'Here are my findings from the diff...',
+                    toolCalls: undefined,
+                },
+                // Third: after nudge, model uses find_symbol
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"myFunc"}',
+                            },
+                        },
+                    ],
+                },
+                // Fourth: model finishes with deeper analysis
+                {
+                    content: 'Deep analysis with symbol information.',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'get_file_diff',
+                    success: true,
+                    result: 'diff content',
+                },
+                {
+                    name: 'find_symbol',
+                    success: true,
+                    result: 'symbol info',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            // Capture snapshots of toolNamesCalled at each invocation (it's a shared Set)
+            const capturedToolNames: Set<string>[] = [];
+            const beforeAcceptingResponse = vi
+                .fn()
+                .mockImplementation((toolNames: Set<string>) => {
+                    capturedToolNames.push(new Set(toolNames));
+                    if (capturedToolNames.length === 1) {
+                        return 'You only read the diff. Use find_symbol to investigate deeper.';
+                    }
+                    return undefined;
+                });
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [
+                    createMockTool('get_file_diff'),
+                    createMockTool('find_symbol'),
+                ],
+                requiresExplicitCompletion: false,
+                beforeAcceptingResponse,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Deep analysis with symbol information.');
+            expect(beforeAcceptingResponse).toHaveBeenCalledTimes(2);
+            // First call: only get_file_diff was used
+            expect(capturedToolNames[0]).toEqual(new Set(['get_file_diff']));
+            // Second call: both tools were used
+            expect(capturedToolNames[1]).toEqual(
+                new Set(['get_file_diff', 'find_symbol'])
+            );
+            // Verify nudge message was injected
+            const history = conversation.getHistory();
+            const nudge = history.find(
+                (m) =>
+                    m.role === 'user' && m.content?.includes('Use find_symbol')
+            );
+            expect(nudge).toBeDefined();
+        });
+
+        it('should accept response when callback returns undefined', async () => {
+            const modelManager = createMockModelManager([
+                // Model calls find_symbol (a deep investigation tool)
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{"name":"test"}',
+                            },
+                        },
+                    ],
+                },
+                // Model finishes
+                {
+                    content: 'Analysis with proper investigation.',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'find_symbol',
+                    success: true,
+                    result: 'symbol info',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            // Callback returns undefined — investigation was sufficient
+            const beforeAcceptingResponse = vi.fn().mockReturnValue(undefined);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: false,
+                beforeAcceptingResponse,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Analysis with proper investigation.');
+            expect(beforeAcceptingResponse).toHaveBeenCalledTimes(1);
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+        });
+
+        it('should not call beforeAcceptingResponse when requiresExplicitCompletion is true', async () => {
+            const modelManager = createMockModelManager([
+                // No tool calls — explicit completion mode nudges submit_review instead
+                {
+                    content: 'Attempt without submit_review',
+                    toolCalls: undefined,
+                },
+                {
+                    content: 'Second attempt',
+                    toolCalls: undefined,
+                },
+                {
+                    content: 'Third attempt - accepted after max nudges',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const beforeAcceptingResponse = vi.fn();
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('submit_review')],
+                requiresExplicitCompletion: true,
+                beforeAcceptingResponse,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // beforeAcceptingResponse should never be called in explicit completion mode
+            expect(beforeAcceptingResponse).not.toHaveBeenCalled();
+        });
+
+        it('should pass correct iteration and maxIterations to callback', async () => {
+            const modelManager = createMockModelManager([
+                // First: tool call
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file":"a.ts"}',
+                            },
+                        },
+                    ],
+                },
+                // Second: no tool calls — triggers callback
+                {
+                    content: 'Done after one tool call.',
+                    toolCalls: undefined,
+                },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                {
+                    name: 'get_file_diff',
+                    success: true,
+                    result: 'diff',
+                },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const beforeAcceptingResponse = vi.fn().mockReturnValue(undefined);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 20,
+                tools: [createMockTool('get_file_diff')],
+                requiresExplicitCompletion: false,
+                beforeAcceptingResponse,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Callback should receive iteration=2 (second iteration) and maxIterations=20
+            expect(beforeAcceptingResponse).toHaveBeenCalledWith(
+                expect.any(Set),
+                2,
+                20
+            );
+        });
+    });
+
+    describe('Wind-down Mechanism', () => {
+        it('should force text response on last iteration for non-explicit-completion', async () => {
+            // 3 iterations: first 2 make tool calls, third is forced text
+            let callIndex = 0;
+            const modelManager = createMockModelManager(
+                Array(3).fill({
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: { name: 'find_symbol', arguments: '{}' },
+                        },
+                    ],
+                })
+            );
+            // Override to return text on 3rd call (when tools are empty)
+            (
+                modelManager.sendRequest as ReturnType<typeof vi.fn>
+            ).mockImplementation((request: any) => {
+                callIndex++;
+                if (request.tools.length === 0) {
+                    return Promise.resolve({
+                        content: 'Final findings from subagent',
+                        toolCalls: undefined,
+                    });
+                }
+                return Promise.resolve({
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: `call_${callIndex}`,
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{}',
+                            },
+                        },
+                    ],
+                });
+            });
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 3,
+                tools: [createMockTool('find_symbol')],
+                // No requiresExplicitCompletion — subagent mode
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            expect(result).toBe('Final findings from subagent');
+            expect(runner.hitMaxIterations).toBe(false);
+        });
+
+        it('should NOT force text on last iteration when requiresExplicitCompletion is true', async () => {
+            // Main analysis with requiresExplicitCompletion should keep tools on last iteration
+            const modelManager = createMockModelManager(
+                Array(3).fill({
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: { name: 'find_symbol', arguments: '{}' },
+                        },
+                    ],
+                })
+            );
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: true,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // All sendRequest calls should have tools
+            const calls = (modelManager.sendRequest as ReturnType<typeof vi.fn>)
+                .mock.calls;
+            for (const call of calls) {
+                expect(call[0].tools.length).toBeGreaterThan(0);
+            }
+        });
+
+        it('should return last substantive response when hitting max iterations', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    // Second call has substantive content alongside tool calls
+                    if (callCount === 2) {
+                        return Promise.resolve({
+                            content:
+                                'I found a critical security issue in the authentication module that needs immediate attention.',
+                            toolCalls: [
+                                {
+                                    id: `call_${callCount}`,
+                                    function: {
+                                        name: 'find_symbol',
+                                        arguments: '{}',
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 3,
+                tools: [createMockTool('find_symbol')],
+                requiresExplicitCompletion: true,
+            };
+
+            const result = await runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Should return the substantive response from call #2, not generic message
+            expect(result).toContain('critical security issue');
+            expect(runner.hitMaxIterations).toBe(true);
+        });
+
+        it('should inject wind-down user message on last iteration', async () => {
+            const addUserMessageSpy = vi.spyOn(conversation, 'addUserMessage');
+
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((request: any) => {
+                    callCount++;
+                    if (request.tools.length === 0) {
+                        return Promise.resolve({
+                            content: 'My final analysis',
+                            toolCalls: undefined,
+                        });
+                    }
+                    return Promise.resolve({
+                        content: null,
+                        toolCalls: [
+                            {
+                                id: `call_${callCount}`,
+                                function: {
+                                    name: 'find_symbol',
+                                    arguments: '{}',
+                                },
+                            },
+                        ],
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Check that a wind-down message was injected
+            const windDownCalls = addUserMessageSpy.mock.calls.filter(
+                (call) =>
+                    typeof call[0] === 'string' &&
+                    call[0].includes('final iteration')
+            );
+            expect(windDownCalls.length).toBe(1);
+        });
+    });
+
+    describe('disabledToolNames', () => {
+        it('should filter out disabled tools from LLM requests', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Done', toolCalls: undefined },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const disabledTools = new Set<string>();
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [
+                    createMockTool('find_symbol'),
+                    createMockTool('read_file'),
+                    createMockTool('run_subagent'),
+                ],
+                disabledToolNames: disabledTools,
+            };
+
+            // Disable read_file before running
+            disabledTools.add('read_file');
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Verify that the tools sent to the LLM exclude read_file
+            const calls = (modelManager.sendRequest as ReturnType<typeof vi.fn>)
+                .mock.calls;
+            const firstCallTools = calls[0][0].tools;
+            const toolNames = firstCallTools.map(
+                (t: { name: string }) => t.name
+            );
+            expect(toolNames).toContain('find_symbol');
+            expect(toolNames).toContain('run_subagent');
+            expect(toolNames).not.toContain('read_file');
+        });
+
+        it('should block disabled tool calls at execution time (defense-in-depth)', async () => {
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments: '{}',
+                            },
+                        },
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'read_file',
+                                arguments: '{}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Done', toolCalls: undefined },
+            ]);
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const disabledTools = new Set(['read_file']);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 5,
+                tools: [
+                    createMockTool('find_symbol'),
+                    createMockTool('read_file'),
+                ],
+                disabledToolNames: disabledTools,
+            };
+
+            await runner.run(config, conversation, createCancellationToken());
+
+            // Verify that only allowed tool was executed
+            const executeCalls = (
+                toolExecutor.executeTools as ReturnType<typeof vi.fn>
+            ).mock.calls;
+            expect(executeCalls.length).toBe(1);
+            const executedNames = executeCalls[0][0].map(
+                (r: { name: string }) => r.name
+            );
+            expect(executedNames).toEqual(['find_symbol']);
+            expect(executedNames).not.toContain('read_file');
+        });
+    });
+
+    describe('Rate-Limit Retry', () => {
+        class ChatRateLimited extends Error {
+            constructor(message = 'Rate limited') {
+                super(message);
+                this.name = 'ChatRateLimited';
+            }
+        }
+
+        beforeEach(() => {
+            vi.useFakeTimers();
+        });
+
+        afterEach(() => {
+            vi.useRealTimers();
+        });
+
+        it('should retry on rate-limit error without consuming an iteration', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    return Promise.resolve({
+                        content: 'Success after retry',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Advance through the backoff sleep
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+
+            expect(result).toBe('Success after retry');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+            expect(runner.hitMaxIterations).toBe(false);
+        });
+
+        it('should not over-report iterationsUsed on rate-limit retry', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    return Promise.resolve({
+                        content: 'Success after retry',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+            await resultPromise;
+
+            // Rate-limited attempt should not count: 1 successful iteration, not 2
+            expect(runner.iterationsUsed).toBe(1);
+        });
+
+        it('should return gracefully when retries are exhausted', async () => {
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    return Promise.reject(new ChatRateLimited());
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Advance through all retry backoffs (5 retries with exponential backoff)
+            for (let i = 0; i < 10; i++) {
+                await vi.advanceTimersByTimeAsync(60000);
+            }
+
+            const result = await resultPromise;
+
+            expect(result).toContain('Rate limited');
+            expect(runner.hitRateLimit).toBe(true);
+            expect(runner.hitMaxIterations).toBe(false);
+        });
+
+        it('should return last substantive response when retries exhausted', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.resolve({
+                            content:
+                                'I found a critical issue: the authentication module has a bypass vulnerability that allows unauthenticated access.',
+                            toolCalls: [
+                                {
+                                    id: 'call_1',
+                                    function: {
+                                        name: 'find_symbol',
+                                        arguments: '{}',
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    return Promise.reject(new ChatRateLimited());
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 10,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            for (let i = 0; i < 10; i++) {
+                await vi.advanceTimersByTimeAsync(60000);
+            }
+
+            const result = await resultPromise;
+
+            expect(result).toContain('authentication module');
+        });
+
+        it('should keep tools disabled when rate-limit retry happens after wind-down', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation((_request: any) => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    id: 'call_1',
+                                    function: {
+                                        name: 'find_symbol',
+                                        arguments: '{}',
+                                    },
+                                },
+                            ],
+                        });
+                    }
+                    if (callCount === 2) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    // Retry after rate-limit: tools should STILL be empty (verified below)
+                    return Promise.resolve({
+                        content: 'Final findings after rate-limit retry',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+
+            const toolExecutor = createMockToolExecutor([
+                { name: 'find_symbol', success: true, result: 'Found' },
+            ]);
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test prompt',
+                maxIterations: 2,
+                tools: [createMockTool('find_symbol')],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+
+            expect(result).toBe('Final findings after rate-limit retry');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(3);
+            // The 3rd call (after rate-limit retry) should have empty tools
+            const thirdCallArgs = (
+                modelManager.sendRequest as ReturnType<typeof vi.fn>
+            ).mock.calls[2][0];
+            expect(thirdCallArgs.tools).toHaveLength(0);
+        });
+
+        it('should detect rate-limit error by class name', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        const err = new Error('some error');
+                        Object.defineProperty(err, 'constructor', {
+                            value: { name: 'ChatRateLimited' },
+                        });
+                        return Promise.reject(err);
+                    }
+                    return Promise.resolve({
+                        content: 'Success',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+            expect(result).toBe('Success');
+        });
+
+        it('should detect rate-limit error by message content', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(
+                            new Error('Request was rate limited by the server')
+                        );
+                    }
+                    return Promise.resolve({
+                        content: 'Success',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 5,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            await vi.advanceTimersByTimeAsync(60000);
+
+            const result = await resultPromise;
+            expect(result).toBe('Success');
+        });
+
+        it('should not retry non-rate-limit errors with backoff', async () => {
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(
+                            new Error('Internal server error')
+                        );
+                    }
+                    return Promise.resolve({
+                        content: 'Recovery',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 3,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // No timer advancement needed — non-rate-limit errors don't backoff sleep
+            const result = await resultPromise;
+
+            // Error consumed an iteration (unlike rate-limit which doesn't),
+            // then the next iteration succeeded
+            expect(result).toBe('Recovery');
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+        });
+
+        it('should reset rate-limit counter after a successful response', async () => {
+            // Sequence: rate-limit → success (with tool call) → rate-limit → success
+            // If counter doesn't reset, the second rate-limit would start at retry=1
+            // instead of retry=0, reaching the max faster.
+            let callCount = 0;
+            const modelManager = {
+                sendRequest: vi.fn().mockImplementation(() => {
+                    callCount++;
+                    if (callCount === 1) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    if (callCount === 2) {
+                        // Successful response with tool call to trigger another iteration
+                        return Promise.resolve({
+                            content: null,
+                            toolCalls: [
+                                {
+                                    name: 'test_tool',
+                                    callId: '1',
+                                    input: {},
+                                },
+                            ],
+                        });
+                    }
+                    if (callCount === 3) {
+                        return Promise.reject(new ChatRateLimited());
+                    }
+                    // Final success
+                    return Promise.resolve({
+                        content: 'Final result',
+                        toolCalls: undefined,
+                    });
+                }),
+                getCurrentModel: vi.fn().mockResolvedValue({
+                    id: 'test-model',
+                    maxInputTokens: 100000,
+                    countTokens: vi.fn().mockResolvedValue(100),
+                }),
+            } as unknown as CopilotModelManager;
+            const toolExecutor = createMockToolExecutor();
+            const runner = new ConversationRunner(modelManager, toolExecutor);
+
+            const config: ConversationRunnerConfig = {
+                systemPrompt: 'Test',
+                maxIterations: 10,
+                tools: [],
+            };
+
+            conversation.addUserMessage('Test');
+            const resultPromise = runner.run(
+                config,
+                conversation,
+                createCancellationToken()
+            );
+
+            // Advance through both rate-limit backoffs
+            await vi.advanceTimersByTimeAsync(120000);
+
+            const result = await resultPromise;
+            expect(result).toBe('Final result');
+            // All 4 calls should have been made (2 rate-limits + 2 successes)
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(4);
+        });
+
+        describe('Quota Exhaustion', () => {
+            it('should retry ChatRateLimited with quota-flavored message (HTTP 429)', async () => {
+                // The "exceeded your Copilot token usage" message uses
+                // ChatRateLimited (HTTP 429) — a temporary burst throttle,
+                // not the monthly quota. Should retry with normal backoff.
+                let callCount = 0;
+                const modelManager = {
+                    sendRequest: vi.fn().mockImplementation(() => {
+                        callCount++;
+                        if (callCount === 1) {
+                            const err = new Error(
+                                'Sorry, you have exceeded your Copilot token usage. Please review our Terms of Service'
+                            );
+                            err.name = 'ChatRateLimited';
+                            return Promise.reject(err);
+                        }
+                        return Promise.resolve({
+                            content: 'Success after backoff',
+                            toolCalls: undefined,
+                        });
+                    }),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test prompt',
+                    maxIterations: 10,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                const resultPromise = runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                // Quota-flavored backoff uses standard 2s initial
+                await vi.advanceTimersByTimeAsync(60000);
+
+                const result = await resultPromise;
+
+                // Should retry and succeed — NOT kill immediately
+                expect(result).toBe('Success after backoff');
+                expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+                expect(runner.hitQuotaExhausted).toBe(false);
+                expect(runner.hitRateLimit).toBe(false);
+            });
+
+            it('should return last substantive response when retries exhausted on quota-flavored errors', async () => {
+                let callCount = 0;
+                const modelManager = {
+                    sendRequest: vi.fn().mockImplementation(() => {
+                        callCount++;
+                        if (callCount === 1) {
+                            return Promise.resolve({
+                                content: null,
+                                toolCalls: [
+                                    {
+                                        id: 'call_1',
+                                        function: {
+                                            name: 'test_tool',
+                                            arguments: '{}',
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                        if (callCount === 2) {
+                            return Promise.resolve({
+                                content:
+                                    'Found a critical security vulnerability in the auth.ts module that allows bypass',
+                                toolCalls: [
+                                    {
+                                        id: 'call_2',
+                                        function: {
+                                            name: 'test_tool',
+                                            arguments: '{}',
+                                        },
+                                    },
+                                ],
+                            });
+                        }
+                        // All subsequent calls: quota-flavored rate limit
+                        const err = new Error(
+                            'Sorry, you have exceeded your Copilot token usage.'
+                        );
+                        err.name = 'ChatRateLimited';
+                        return Promise.reject(err);
+                    }),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor([
+                    {
+                        name: 'test_tool',
+                        success: true,
+                        result: 'Tool result',
+                    },
+                ]);
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test prompt',
+                    maxIterations: 10,
+                    tools: [createMockTool('test_tool')],
+                };
+
+                conversation.addUserMessage('Test');
+                const resultPromise = runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                // Advance through all retry backoffs
+                for (let i = 0; i < 10; i++) {
+                    await vi.advanceTimersByTimeAsync(120000);
+                }
+
+                const result = await resultPromise;
+
+                // Should exhaust retries and return last good response
+                expect(result).toContain('critical security vulnerability');
+                expect(runner.hitRateLimit).toBe(true);
+            });
+
+            it('should fail immediately on true ChatQuotaExceeded (HTTP 402)', async () => {
+                // ChatQuotaExceeded = monthly premium request quota depleted.
+                // No retry will help — quota resets monthly.
+                class ChatQuotaExceeded extends Error {
+                    constructor() {
+                        super('Quota exceeded');
+                        this.name = 'ChatQuotaExceeded';
+                    }
+                }
+
+                const modelManager = {
+                    sendRequest: vi
+                        .fn()
+                        .mockRejectedValue(new ChatQuotaExceeded()),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test',
+                    maxIterations: 5,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                const result = await runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                // True quota: 1 attempt, no retries
+                expect(modelManager.sendRequest).toHaveBeenCalledTimes(1);
+                expect(runner.hitQuotaExhausted).toBe(true);
+                expect(runner.hitRateLimit).toBe(true);
+                expect(result).toContain('quota exhausted');
+            });
+
+            it('should reset hitQuotaExhausted flag on reset()', async () => {
+                class ChatQuotaExceeded extends Error {
+                    constructor() {
+                        super('Quota exceeded');
+                        this.name = 'ChatQuotaExceeded';
+                    }
+                }
+
+                const modelManager = {
+                    sendRequest: vi
+                        .fn()
+                        .mockRejectedValue(new ChatQuotaExceeded()),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test',
+                    maxIterations: 5,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                await runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+                expect(runner.hitQuotaExhausted).toBe(true);
+
+                runner.reset();
+                expect(runner.hitQuotaExhausted).toBe(false);
+            });
         });
     });
 });

@@ -1,6 +1,6 @@
 # Lupa Architecture Documentation
 
-> **Version**: 0.1.12 | **Generated**: February 20, 2026 | **Type**: VS Code Extension
+> **Version**: 0.2.0 | **Generated**: February 21, 2026 | **Type**: VS Code Extension
 
 ## Executive Summary
 
@@ -17,6 +17,8 @@
 | Zod Schema Validation         | Type-safe tool parameter validation with automatic JSON schema generation    |
 | Progress-Only Tool Streaming  | Uses `stream.progress()` for transient tool feedback; clears on completion   |
 | Parallel Tool Execution       | `ToolExecutor` uses `Promise.all` for concurrent tool calls                  |
+| RLM Diff-on-Demand            | PR diff not embedded in prompt; LLM requests diffs via tools on demand       |
+| Recursive Agent Tree          | Root controller decomposes work, child agents investigate in parallel        |
 
 ---
 
@@ -123,12 +125,13 @@ Core business logic implementing specific capabilities.
 
 These components are created fresh for each analysis, not managed as singletons:
 
-| Component                 | Responsibility                           |
-| ------------------------- | ---------------------------------------- |
-| `SubagentExecutor`        | Isolated subagent investigations         |
-| `SubagentSessionManager`  | Subagent spawn count and limits          |
-| `PlanSessionManager`      | Review plan state for current analysis   |
-| `TokenValidator` instance | Context window tracking for one analysis |
+| Component                 | Responsibility                                |
+| ------------------------- | --------------------------------------------- |
+| `SubagentExecutor`        | Isolated subagent investigations              |
+| `SubagentSessionManager`  | Subagent spawn count and limits               |
+| `RecursiveStateManager`   | Agent tree tracking, depth/budget enforcement |
+| `PlanSessionManager`      | Review plan state for current analysis        |
+| `TokenValidator` instance | Context window tracking for one analysis      |
 
 ### Layer 3: Models (`src/models/`)
 
@@ -184,7 +187,7 @@ The prompt system uses composable blocks that can be mixed and matched for diffe
 | `selfReflection.ts`      | Self-reflection checkpoint guidance             |
 | `toolSection.ts`         | Tool inventory and descriptions                 |
 | `toolSelectionGuide.ts`  | When to use each tool                           |
-| `subagentGuidance.ts`    | Subagent delegation rules                       |
+| `subagentGuidance.ts`    | Subagent delegation rules (diff-tool-aware)     |
 | `promptBlocks.ts`        | Re-exports all block generators                 |
 
 The `PromptBuilder` uses a fluent interface to compose these blocks:
@@ -593,16 +596,47 @@ File discovery tools (`FindFilesByPatternTool`, `ListDirTool`, `GetSymbolsOvervi
 
 ```json
 {
-    "maxIterations": 25,
-    "requestTimeoutSeconds": 180,
-    "maxSubagentsPerSession": 3,
-    "preferredModelIdentifier": "copilot/gpt-4.1"
+    "preferredModelIdentifier": "copilot/gpt-4.1",
+    "maxRecursionDepth": 2,
+    "logLevel": "info"
 }
 ```
 
+### Analysis Modes
+
+Lupa uses a Recursive Language Model (RLM) approach where a root agent decomposes the PR into focused investigations delegated to child agents.
+
+| Setting             | Default | Description                                          |
+| ------------------- | ------- | ---------------------------------------------------- |
+| `maxRecursionDepth` | 2       | Maximum agent depth (0 = no recursion, 1+ = enabled) |
+
+Total spawns per analysis are capped by `maxSubagentsPerSession` (hardcoded to 75).
+
+**Recursive mode activates** when `maxRecursionDepth >= 1`. This applies to both `ToolCallingAnalysisProvider` and `ChatParticipantService`. The root agent reads at most 1 key diff (the most impactful file) for orientation, then MUST delegate all investigation to sub-agents via `run_subagent` when there are 3+ files to review. Sub-agents are spawned in parallel (all in the same turn) and each reads their own diffs via `get_file_diff`. Child agents with `canRecurse=true` MUST spawn sub-agents to further decompose when assigned 4+ files — this is enforced as a MANDATORY rule in the system prompts.
+
+**Non-recursive mode** (`maxRecursionDepth === 0`): A single agent reviews all files directly with subagent delegation for larger PRs. Subagents can call `get_file_diff` to read diffs on demand but do not see `<diff_metadata>`; the parent agent must provide explicit file paths when delegating work.
+
+**RecursiveStateManager** (`src/sessions/recursiveStateManager.ts`) tracks the agent tree during analysis:
+
+- Registers agents with parent-child relationships and depth tracking
+- Enforces `maxRecursionDepth` via `canSpawnChild()` (total spawn count is guarded by `SubagentSessionManager`)
+- Uses an **independent budget model**: each agent receives `DEFAULT_CHILD_BUDGET` (50 iterations) regardless of other agents' usage. For example, at depth 2 with 3 sub-agents each spawning 2 sub-sub-agents, the system runs up to 9 agents × 50 iterations = 450 total iterations, bounded by `maxSubagentsPerSession` (75)
+- Tracks file coverage across completed agents to avoid redundant analysis (only `get_file_diff` calls count — `read_file` for context does not constitute reviewing a file's diff)
+- Manages agent lifecycle (registered → running → completed/failed/cancelled)
+
+#### Coverage Gap Enforcement
+
+After each `run_subagent` tool call batch completes, the root agent's `afterToolCalls` callback compares files reviewed via `get_file_diff` (aggregated across all agents in the tree) against the full list of changed files. If gaps exist, a programmatic message is injected listing uncovered files and instructing the root to spawn additional subagents. This is system-level enforcement — it does not rely on the LLM's self-assessment.
+
+Key design decisions:
+
+- **Only `get_file_diff` counts as "reviewed"**: Reading a file via `read_file` or `find_symbol` for investigation context does not mark it as covered. An agent must actually view the changed lines.
+- **Root-level tracking is sufficient**: The root aggregates coverage from ALL agents in the tree (all depths). If a depth-2 sub-sub-agent skips a file, the root catches the gap after the batch completes and spawns more agents.
+- **`think_about_completion`** provides complementary LLM-side reflection with `files_analyzed` and `files_in_diff` fields. The afterToolCalls hook is the programmatic safety net.
+
 ### Reset Limits Command
 
-`Lupa: Reset Analysis Limits to Defaults` command available in command palette.
+`Lupa: Reset Settings to Defaults` command available in command palette.
 
 ---
 

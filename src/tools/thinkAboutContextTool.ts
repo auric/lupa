@@ -3,6 +3,10 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import {
+    flexibleStringArray,
+    flexibleStringArrayNonEmpty,
+} from './schemaHelpers';
 
 const ContextDecision = z.enum([
     'need_more_context',
@@ -11,7 +15,7 @@ const ContextDecision = z.enum([
 ]);
 
 /**
- * Self-reflection tool for main agent: evaluates gathered context.
+ * Self-reflection tool for evaluating gathered context.
  *
  * Forces explicit articulation of findings rather than passive checklists.
  * Per prompt engineering best practices: "articulation > checklists" -
@@ -25,22 +29,15 @@ export class ThinkAboutContextTool extends BaseTool {
 
     schema = z
         .object({
-            files_examined: z
-                .array(z.string())
-                .min(1)
-                .describe(
-                    'List of files or symbols you have investigated so far'
-                ),
-            key_findings: z
-                .array(z.string())
-                .describe(
-                    'Key observations from your investigation (can be empty if none yet)'
-                ),
-            remaining_gaps: z
-                .array(z.string())
-                .describe(
-                    'Specific unknowns or areas that still need investigation'
-                ),
+            files_examined: flexibleStringArrayNonEmpty.describe(
+                'List of files or symbols you have investigated so far'
+            ),
+            key_findings: flexibleStringArray.describe(
+                'Key observations from your investigation (can be empty if none yet)'
+            ),
+            remaining_gaps: flexibleStringArray.describe(
+                'Specific unknowns or areas that still need investigation'
+            ),
             decision: ContextDecision.describe(
                 'Your decision: need_more_context (use tools), need_subagent (spawn investigation), or context_sufficient (proceed)'
             ),
@@ -90,11 +87,16 @@ export class ThinkAboutContextTool extends BaseTool {
                 break;
             case 'need_subagent':
                 guidance += `**Next Steps**: Spawn a subagent for deep investigation.\n`;
-                guidance += '- Provide specific code context from the diff\n';
                 guidance +=
-                    '- Ask CURRENT-STATE questions (subagent cannot see diff)\n';
-                guidance +=
-                    '- Consider: security analysis, dependency tracing, or pattern analysis\n';
+                    '- Specify which files the subagent should examine\n';
+                if (context.parsedDiff) {
+                    guidance +=
+                        '- Sub-agents have `get_file_diff` and code exploration tools\n';
+                } else {
+                    guidance +=
+                        '- Sub-agents have code exploration tools (`read_file`, `find_symbol`, `find_usages`)\n';
+                }
+                guidance += '- Ask focused questions about specific concerns\n';
                 break;
             case 'context_sufficient':
                 guidance += `**Next Steps**: Proceed to analysis and synthesis.\n`;

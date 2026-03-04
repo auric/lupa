@@ -1,299 +1,399 @@
-/* Tool Calls Tab Styles */
+/* Tool Calls Tab — Unified Agent Tree View */
 
-.tool-calls-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  background-color: var(--vscode-editor-background);
+/* ── Container ── */
+
+.tc-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: var(--vscode-editor-background);
 }
 
-.tool-calls-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  background-color: var(--vscode-editorWidget-background);
-  border-bottom: 1px solid var(--vscode-panel-border);
+/* ── Stats bar ── */
+
+.tc-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editorWidget-background);
+    flex-shrink: 0;
 }
 
-.tool-calls-copy-button {
-  margin-left: auto;
+.tc-stat {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--vscode-descriptionForeground);
 }
 
-.tool-calls-stat {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius);
-  background-color: var(--vscode-badge-background);
-  font-size: 0.75rem;
-  font-weight: 500;
+.tc-stat svg {
+    opacity: 0.6;
 }
 
-.tool-calls-stat-label {
-  color: var(--vscode-badge-foreground);
-  opacity: 0.8;
+.tc-stat-value {
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    font-variant-numeric: tabular-nums;
 }
 
-.tool-calls-stat-value {
-  color: var(--vscode-badge-foreground);
-  font-weight: 600;
+.tc-stat-label {
+    opacity: 0.8;
 }
 
-.tool-calls-stat--success {
-  background-color: var(--vscode-testing-iconPassed, #73c991);
-  color: var(--vscode-editor-background);
+.tc-stat--failed {
+    color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
-.tool-calls-stat--failed {
-  background-color: var(--vscode-testing-iconFailed, #f14c4c);
-  color: var(--vscode-editor-background);
+.tc-stat--failed .tc-stat-value {
+    color: var(--vscode-testing-iconFailed, #f14c4c);
 }
 
-.tool-calls-stat--error {
-  background-color: var(--vscode-errorForeground);
+.tc-stat--primary .tc-stat-value {
+    color: var(--vscode-foreground);
+    font-weight: 700;
 }
 
-.tool-calls-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem;
-  background-color: var(--vscode-editor-background);
+.tc-stat--primary svg {
+    opacity: 0.8;
 }
 
-.tool-call-item {
-  margin-bottom: 0.5rem;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: var(--radius);
-  background-color: var(--vscode-editor-background);
-  overflow: hidden;
+.tc-stat-info {
+    opacity: 0.4;
+    cursor: help;
 }
 
-.tool-call-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background-color: var(--vscode-editorWidget-background);
-  border-bottom: 1px solid var(--vscode-panel-border);
-  cursor: pointer;
-  user-select: none;
+.tc-stat--warn {
+    color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
-.tool-call-header:hover {
-  background-color: var(--vscode-list-hoverBackground);
+.tc-stat-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--vscode-panel-border);
+    flex-shrink: 0;
 }
 
-.tool-call-chevron {
-  width: 1rem;
-  height: 1rem;
-  transition: transform 0.15s ease;
-  color: var(--vscode-foreground);
+.tc-stats-spacer {
+    flex: 1;
 }
 
-.tool-call-chevron--expanded {
-  transform: rotate(90deg);
+/* ── Error banner ── */
+
+.tc-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0.5rem 0;
+    background: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    border-radius: 4px;
+    color: var(--vscode-errorForeground);
+    font-size: 0.75rem;
 }
 
-.tool-call-status {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  flex-shrink: 0;
+/* ── Scrollable call list ── */
+
+.tc-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.375rem;
 }
 
-.tool-call-status--success {
-  background-color: var(--vscode-testing-iconPassed, #73c991);
+.tc-list::-webkit-scrollbar {
+    width: 8px;
 }
 
-.tool-call-status--failed {
-  background-color: var(--vscode-testing-iconFailed, #f14c4c);
+.tc-list::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-.tool-call-name {
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--vscode-foreground);
-  flex: 1;
+.tc-list::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-background);
+    border-radius: 4px;
 }
 
-.tool-call-duration {
-  font-size: 0.6875rem;
-  color: var(--vscode-descriptionForeground);
-  opacity: 0.7;
+.tc-list::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-hoverBackground);
 }
 
-.tool-call-body {
-  display: none;
-  padding: 0.75rem;
-  background-color: var(--vscode-editor-background);
+/* ── Inline agent (subagent section embedded in the call flow) ── */
+
+.tc-agent {
+    margin-bottom: 2px;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 5px;
+    overflow: hidden;
+    background: var(--vscode-editor-background);
 }
 
-.tool-call-body--expanded {
-  display: block;
+.tc-agent-header {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.4375rem 0.625rem 0.4375rem 0.5rem;
+    background: var(--vscode-editorWidget-background);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.1s;
 }
 
-.tool-call-section {
-  margin-bottom: 0.75rem;
+.tc-agent-header:hover,
+.tc-agent-header:focus-visible {
+    background: var(--vscode-list-hoverBackground);
 }
 
-.tool-call-section:last-child {
-  margin-bottom: 0;
+.tc-agent-icon {
+    color: var(--vscode-symbolIcon-functionForeground, #b180d7);
+    flex-shrink: 0;
 }
 
-.tool-call-section-title {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--vscode-descriptionForeground);
-  margin-bottom: 0.375rem;
+.tc-agent-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.tool-call-json-wrapper {
-  max-height: 300px;
-  overflow: auto;
-  border: 1px solid var(--vscode-panel-border);
-  border-radius: calc(var(--radius) - 2px);
-  background-color: var(--vscode-editor-background);
+.tc-agent-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.6875rem;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.7;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
 }
 
-.tool-call-error-message {
-  padding: 0.5rem;
-  background-color: var(--vscode-inputValidation-errorBackground);
-  border: 1px solid var(--vscode-inputValidation-errorBorder);
-  border-radius: calc(var(--radius) - 2px);
-  color: var(--vscode-errorForeground);
-  font-size: 0.75rem;
+.tc-agent-failed {
+    font-size: 0.625rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 10px;
+    background: var(--vscode-testing-iconFailed, #f14c4c);
+    color: #fff;
+    font-weight: 500;
+    flex-shrink: 0;
 }
 
-.tool-calls-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  min-height: 0;
-  padding: 2rem;
-  text-align: center;
-  color: var(--vscode-descriptionForeground);
+.tc-agent-body {
+    border-top: 1px solid var(--vscode-panel-border);
+    padding-left: 10px;
 }
 
-.tool-calls-empty-icon {
-  width: 3rem;
-  height: 3rem;
-  margin-bottom: 1rem;
-  opacity: 0.5;
+/* ── Tool call row ── */
+
+.tc-row {
+    border-bottom: 1px solid
+        color-mix(in srgb, var(--vscode-panel-border) 50%, transparent);
 }
 
-.tool-calls-empty-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-  color: var(--vscode-foreground);
+.tc-row:last-child {
+    border-bottom: none;
 }
 
-.tool-calls-empty-description {
-  font-size: 0.75rem;
-  opacity: 0.7;
+.tc-row-header {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.625rem 0.3125rem 0.5rem;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.75rem;
+    transition: background 0.1s;
 }
 
-/* Scrollbar styling for tool calls list */
-.tool-calls-list::-webkit-scrollbar {
-  width: 8px;
+.tc-row-header:hover,
+.tc-row-header:focus-visible {
+    background: var(--vscode-list-hoverBackground);
 }
 
-.tool-calls-list::-webkit-scrollbar-track {
-  background: var(--vscode-scrollbarSlider-background);
+/* Meta row (task & result toggle inside agent) */
+.tc-row--meta {
+    background: color-mix(
+        in srgb,
+        var(--vscode-editorWidget-background) 30%,
+        transparent
+    );
 }
 
-.tool-calls-list::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-hoverBackground);
-  border-radius: 4px;
+.tc-row-header--meta {
+    padding: 0.25rem 0.625rem 0.25rem 0.5rem;
+    font-size: 0.6875rem;
 }
 
-.tool-calls-list::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-activeBackground);
+.tc-row-metaLabel {
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.6875rem;
+    font-style: italic;
+    opacity: 0.7;
 }
 
-.tool-call-json-wrapper::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.tc-row-index {
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.5;
+    font-size: 0.6875rem;
+    min-width: 1.25rem;
+    text-align: right;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
 }
 
-.tool-call-json-wrapper::-webkit-scrollbar-track {
-  background: transparent;
+.tc-icon--success {
+    color: var(--vscode-testing-iconPassed, #73c991);
+    flex-shrink: 0;
 }
 
-.tool-call-json-wrapper::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background);
-  border-radius: 3px;
+.tc-icon--failed {
+    color: var(--vscode-testing-iconFailed, #f14c4c);
+    flex-shrink: 0;
 }
 
-.tool-call-json-wrapper::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-hoverBackground);
+.tc-row-name {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-weight: 500;
+    color: var(--vscode-foreground);
+    flex-shrink: 0;
 }
 
-/* Subagent badge showing nested call count */
-.tool-call-subagent-badge {
-  font-size: 0.625rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.75rem;
-  background-color: var(--vscode-badge-background);
-  color: var(--vscode-badge-foreground);
-  font-weight: 500;
-  margin-left: 0.25rem;
+.tc-row-preview {
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.6;
+    font-size: 0.6875rem;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-left: 0.25rem;
 }
 
-/* Nested tool call items (from subagents) */
-.tool-call-item--nested {
-  margin-left: 1rem;
-  border-left: 2px solid var(--vscode-focusBorder);
-  background-color: var(--vscode-editorWidget-background);
+.tc-row-duration {
+    font-size: 0.6875rem;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.6;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
 }
 
-.tool-call-item--nested .tool-call-header {
-  background-color: transparent;
+/* ── Expanded detail ── */
+
+.tc-row-detail {
+    padding: 0.5rem 0.75rem 0.5rem 2.5rem;
+    background: color-mix(
+        in srgb,
+        var(--vscode-editorWidget-background) 50%,
+        var(--vscode-editor-background)
+    );
+    border-top: 1px solid
+        color-mix(in srgb, var(--vscode-panel-border) 40%, transparent);
 }
 
-.tool-call-item--nested .tool-call-header:hover {
-  background-color: var(--vscode-list-hoverBackground);
+.tc-detail-section {
+    margin-bottom: 0.5rem;
 }
 
-/* Nested section container */
-.tool-call-nested-section {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--vscode-panel-border);
+.tc-detail-section:last-child {
+    margin-bottom: 0;
 }
 
-.tool-call-nested-header {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  cursor: pointer;
-  user-select: none;
-  padding: 0.25rem 0;
+.tc-detail-label {
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--vscode-descriptionForeground);
+    margin-bottom: 0.25rem;
+    opacity: 0.75;
 }
 
-.tool-call-nested-header:hover {
-  color: var(--vscode-foreground);
+.tc-detail-content {
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 3px;
+    overflow: hidden;
+    max-height: 200px;
+    overflow-y: auto;
 }
 
-.tool-call-nested-header .tool-call-chevron {
-  width: 0.875rem;
-  height: 0.875rem;
+.tc-detail-content::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
 }
 
-.tool-call-nested-list {
-  display: none;
-  margin-top: 0.5rem;
+.tc-detail-content::-webkit-scrollbar-track {
+    background: transparent;
 }
 
-.tool-call-nested-list--expanded {
-  display: block;
+.tc-detail-content::-webkit-scrollbar-thumb {
+    background: var(--vscode-scrollbarSlider-background);
+    border-radius: 3px;
+}
+
+.tc-result-pre {
+    margin: 0;
+    padding: 0.375rem;
+    font-size: 0.6875rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--vscode-editor-font-family, monospace);
+    color: var(--vscode-editor-foreground);
+}
+
+.tc-error-box {
+    padding: 0.375rem 0.5rem;
+    background: var(--vscode-inputValidation-errorBackground);
+    border: 1px solid var(--vscode-inputValidation-errorBorder);
+    border-radius: 3px;
+    color: var(--vscode-errorForeground);
+    font-size: 0.6875rem;
+}
+
+/* ── Shared ── */
+
+.tc-chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.6;
+}
+
+.tc-chevron--open {
+    transform: rotate(90deg);
+}
+
+/* ── Empty state ── */
+
+.tc-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-height: 0;
+    padding: 2rem;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+}
+
+.tc-empty-icon {
+    margin-bottom: 0.75rem;
+    opacity: 0.35;
+}
+
+.tc-empty-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--vscode-foreground);
+}
+
+.tc-empty-desc {
+    font-size: 0.75rem;
+    opacity: 0.6;
 }

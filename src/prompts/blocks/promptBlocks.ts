@@ -6,7 +6,9 @@ export {
     generatePRReviewerRole,
     generateExplorerRole,
 } from './roleDefinitions';
-export { generateToolInventory } from './toolSection';
+export { generateRecursiveRootRole } from './recursiveRootRole';
+export { generateRecursiveMethodology } from './recursiveMethodology';
+export { generateRecursiveToolGuide } from './recursiveToolGuide';
 export {
     generateToolSelectionGuide,
     generateExplorationToolGuide,
@@ -22,5 +24,7 @@ export {
 } from './outputFormat';
 export {
     generateSelfReflectionGuidance,
+    generateRecursiveSelfReflectionGuidance,
     generateExplorationReflectionGuidance,
 } from './selfReflection';
+export { generateFindingQualityGuidance } from './findingQualityGuidance';

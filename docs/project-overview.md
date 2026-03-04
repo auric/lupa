@@ -7,7 +7,7 @@
 | Property             | Value                      |
 | -------------------- | -------------------------- |
 | **Project Name**     | Lupa                       |
-| **Version**          | 0.1.0                      |
+| **Version**          | 0.2.0                      |
 | **Publisher**        | auric                      |
 | **Repository Type**  | Monolith                   |
 | **Primary Language** | TypeScript                 |
@@ -35,6 +35,13 @@ Lupa provides **AI-powered code review** directly within VS Code using GitHub Co
 - LLM dynamically requests context via tools
 - Finds symbol definitions, usages, and file content
 - Supports subagent delegation for complex investigations
+- **Recursive review**: depth-controlled agent tree for thorough, multi-pass analysis
+
+### 🔄 Recursive Language Model (RLM)
+
+- **Diff-on-demand**: PR diffs are not embedded in the prompt; the LLM receives `<diff_metadata>` and fetches specific file diffs via the `get_file_diff` tool
+- **Recursive agent tree**: root controller decomposes the PR into concern groups, delegates to depth-limited child agents
+- **Budget tracking**: `RecursiveStateManager` enforces depth limits, per-agent iteration budgets, and total agent caps
 
 ### 💬 Chat Integration
 
@@ -108,12 +115,12 @@ Coordinators → Services → Models → Tools
 
 ## Key Commands
 
-| Command                       | Description                  |
-| ----------------------------- | ---------------------------- |
-| `Lupa: Analyze Pull Request`  | Start PR analysis workflow   |
-| `Lupa: Select Language Model` | Choose Copilot model         |
-| `Lupa: Select Git Repository` | Choose repository to analyze |
-| `Lupa: Reset Analysis Limits` | Reset settings to defaults   |
+| Command                            | Description                  |
+| ---------------------------------- | ---------------------------- |
+| `Lupa: Analyze Pull Request`       | Start PR analysis workflow   |
+| `Lupa: Select Language Model`      | Choose Copilot model         |
+| `Lupa: Select Git Repository`      | Choose repository to analyze |
+| `Lupa: Reset Settings to Defaults` | Reset settings to defaults   |
 
 ## Entry Points
 

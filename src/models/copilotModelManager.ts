@@ -4,6 +4,8 @@ import { ToolCallRequest, ToolCallResponse } from '../types/modelTypes';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { ILLMClient } from './ILLMClient';
 import { ModelRequestHandler } from './modelRequestHandler';
+import { AsyncSemaphore } from '../utils/asyncSemaphore';
+import { ANALYSIS_LIMITS } from './workspaceSettingsSchema';
 
 export class CopilotApiError extends Error {
     constructor(
@@ -44,6 +46,9 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
     private readonly DEFAULT_MODEL_ID = 'gpt-4.1';
     private readonly DEFAULT_MODEL_IDENTIFIER = `copilot/${this.DEFAULT_MODEL_ID}`;
     private currentModel: vscode.LanguageModelChat | null = null;
+    private readonly requestSemaphore = new AsyncSemaphore(
+        ANALYSIS_LIMITS.maxConcurrentLLMRequests
+    );
 
     constructor(private readonly settings: WorkspaceSettingsService) {
         // Watch for model changes
@@ -240,11 +245,15 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
         token: vscode.CancellationToken
     ): Promise<ToolCallResponse> {
         const model = await this.getCurrentModel();
-        return ModelRequestHandler.sendRequest(
-            model,
-            request,
-            token,
-            this.requestTimeoutMs
+        return this.requestSemaphore.run(
+            () =>
+                ModelRequestHandler.sendRequest(
+                    model,
+                    request,
+                    token,
+                    this.requestTimeoutMs
+                ),
+            token
         );
     }
 

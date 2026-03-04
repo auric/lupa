@@ -24,7 +24,9 @@ const FILE_SEARCH_TIMEOUT = 60_000; // 60 seconds for file search operations
 export class FindFilesByPatternTool extends BaseTool {
     name = 'find_files_by_pattern';
     description =
-        'Find files matching glob patterns within a directory. Supports wildcards (*.js), recursive search (**/*.ts), multiple extensions (*.{js,ts}). Automatically respects .gitignore rules. Returns relative paths from project root.';
+        'Find files by NAME/PATH pattern (NOT file content). Matches glob patterns against file paths. ' +
+        'Supports wildcards (*.js), recursive search (**/*.ts), multiple extensions (*.{js,ts}). Respects .gitignore. ' +
+        'PREFER search_for_pattern when searching INSIDE file content for a string or regex.';
 
     schema = z.object({
         pattern: z

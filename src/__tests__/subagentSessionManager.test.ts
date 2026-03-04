@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { SUBAGENT_LIMITS } from '../models/workspaceSettingsSchema';
+import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
+import { createMockCancellationTokenSource } from './testUtils/mockFactories';
 
 const createMockSettings = (
-    maxPerSession: number = SUBAGENT_LIMITS.maxPerSession.default
+    maxPerSession: number = ANALYSIS_LIMITS.maxSubagentsPerSession
 ): WorkspaceSettingsService =>
     ({
         getMaxSubagentsPerSession: vi.fn().mockReturnValue(maxPerSession),
@@ -13,7 +14,7 @@ const createMockSettings = (
 describe('SubagentSessionManager', () => {
     let sessionManager: SubagentSessionManager;
     let mockSettings: WorkspaceSettingsService;
-    const defaultMax = SUBAGENT_LIMITS.maxPerSession.default;
+    const defaultMax = ANALYSIS_LIMITS.maxSubagentsPerSession;
 
     beforeEach(() => {
         mockSettings = createMockSettings();
@@ -91,6 +92,46 @@ describe('SubagentSessionManager', () => {
         });
     });
 
+    describe('Rollback', () => {
+        it('should decrement count on rollback', () => {
+            sessionManager.recordSpawn();
+            sessionManager.recordSpawn();
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.getCount()).toBe(1);
+        });
+
+        it('should restore remaining budget on rollback', () => {
+            sessionManager.recordSpawn();
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
+        });
+
+        it('should re-allow spawning after rollback from limit', () => {
+            for (let i = 0; i < defaultMax; i++) {
+                sessionManager.recordSpawn();
+            }
+            expect(sessionManager.canSpawn()).toBe(false);
+
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.canSpawn()).toBe(true);
+        });
+
+        it('should not decrement below zero', () => {
+            sessionManager.rollbackSpawn();
+            expect(sessionManager.getCount()).toBe(0);
+            expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
+        });
+
+        it('should not reuse IDs after rollback', () => {
+            const id1 = sessionManager.recordSpawn();
+            const id2 = sessionManager.recordSpawn();
+            sessionManager.rollbackSpawn();
+            const id3 = sessionManager.recordSpawn();
+            expect(id3).toBeGreaterThan(id2);
+            expect(new Set([id1, id2, id3]).size).toBe(3);
+        });
+    });
+
     describe('Reset', () => {
         it('should reset count to zero', () => {
             sessionManager.recordSpawn();
@@ -115,6 +156,56 @@ describe('SubagentSessionManager', () => {
             sessionManager.reset();
             expect(sessionManager.canSpawn()).toBe(true);
             expect(sessionManager.getRemainingBudget()).toBe(defaultMax);
+        });
+    });
+
+    describe('Cancellation Propagation', () => {
+        it('should return undefined from registerSubagentCancellation when no parent token set', () => {
+            const childSource = createMockCancellationTokenSource();
+            const disposable =
+                sessionManager.registerSubagentCancellation(childSource);
+            expect(disposable).toBeUndefined();
+        });
+
+        it('should cancel child source when parent token fires', () => {
+            const parentSource = createMockCancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentSource.token);
+
+            const childSource = createMockCancellationTokenSource();
+            const disposable =
+                sessionManager.registerSubagentCancellation(childSource);
+
+            expect(disposable).toBeDefined();
+            expect(childSource.cancel).not.toHaveBeenCalled();
+
+            // Fire parent cancellation
+            parentSource.cancel();
+            expect(childSource.cancel).toHaveBeenCalled();
+        });
+
+        it('should propagate to multiple child sources', () => {
+            const parentSource = createMockCancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentSource.token);
+
+            const child1 = createMockCancellationTokenSource();
+            const child2 = createMockCancellationTokenSource();
+            sessionManager.registerSubagentCancellation(child1);
+            sessionManager.registerSubagentCancellation(child2);
+
+            parentSource.cancel();
+            expect(child1.cancel).toHaveBeenCalled();
+            expect(child2.cancel).toHaveBeenCalled();
+        });
+
+        it('should clear parent token on reset', () => {
+            const parentSource = createMockCancellationTokenSource();
+            sessionManager.setParentCancellationToken(parentSource.token);
+            sessionManager.reset();
+
+            const childSource = createMockCancellationTokenSource();
+            const disposable =
+                sessionManager.registerSubagentCancellation(childSource);
+            expect(disposable).toBeUndefined();
         });
     });
 });

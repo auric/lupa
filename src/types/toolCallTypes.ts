@@ -24,24 +24,32 @@ export interface ToolCallRecord {
     timestamp: number;
     /** Nested tool calls from subagent (only for run_subagent tool) */
     nestedCalls?: ToolCallRecord[];
+    /** Actual wall-clock execution time (only for run_subagent — replaces inaccurate batch-averaged durationMs) */
+    executionTimeMs?: number;
+    /** Number of LLM iterations (turns) used (only for run_subagent) */
+    iterationsUsed?: number;
 }
 
 /**
  * Collection of tool calls for an analysis session
  */
 export interface ToolCallsData {
-    /** Array of tool call records */
+    /** Array of tool call records (top-level; nested calls are in ToolCallRecord.nestedCalls) */
     calls: ToolCallRecord[];
-    /** Total number of tool calls made */
+    /** Number of top-level tool calls (excludes nested subagent calls) */
     totalCalls: number;
-    /** Number of successful tool calls */
+    /** Number of successful top-level tool calls */
     successfulCalls: number;
-    /** Number of failed tool calls */
+    /** Number of failed top-level tool calls */
     failedCalls: number;
     /** Whether the analysis was completed or interrupted */
     analysisCompleted: boolean;
     /** Error message if the analysis was interrupted */
     analysisError: string | undefined;
+    /** Number of LLM iterations (turns) used by the main analysis */
+    iterationsUsed?: number;
+    /** Maximum iterations configured for the main analysis */
+    maxIterations?: number;
 }
 
 /**

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
+import { RECURSION_LIMITS } from '../models/workspaceSettingsSchema';
 
 vi.mock('fs', () => ({
     existsSync: vi.fn(),
@@ -309,6 +310,77 @@ describe('WorkspaceSettingsService', () => {
                     'utf-8'
                 );
             });
+        });
+    });
+
+    describe('recursion and analysis getters', () => {
+        it('should return default maxRecursionDepth when no custom config', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue('{}');
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxRecursionDepth()).toBe(
+                RECURSION_LIMITS.maxDepth.default
+            );
+        });
+
+        it('should return custom maxRecursionDepth from settings file', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxRecursionDepth: 0 })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxRecursionDepth()).toBe(0);
+        });
+
+        it('should return max allowed maxRecursionDepth from settings file', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({
+                    maxRecursionDepth: RECURSION_LIMITS.maxDepth.max,
+                })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+
+            expect(service.getMaxRecursionDepth()).toBe(
+                RECURSION_LIMITS.maxDepth.max
+            );
+        });
+    });
+
+    describe('resetSettingsToDefaults', () => {
+        it('should reset maxRecursionDepth to default', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ maxRecursionDepth: 0 })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+            expect(service.getMaxRecursionDepth()).toBe(0);
+
+            service.resetSettingsToDefaults();
+
+            expect(service.getMaxRecursionDepth()).toBe(
+                RECURSION_LIMITS.maxDepth.default
+            );
+        });
+
+        it('should reset logLevel to default', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ logLevel: 'debug' })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+            expect(service.getSetting('logLevel', 'info')).toBe('debug');
+
+            service.resetSettingsToDefaults();
+
+            expect(service.getSetting('logLevel', 'info')).toBe('info');
+        });
+
+        it('should schedule a debounced save after reset', () => {
+            service = new WorkspaceSettingsService(mockContext);
+            vi.mocked(fs.writeFileSync).mockClear();
+
+            service.resetSettingsToDefaults();
+            vi.advanceTimersByTime(1000);
+
+            expect(fs.writeFileSync).toHaveBeenCalled();
         });
     });
 });

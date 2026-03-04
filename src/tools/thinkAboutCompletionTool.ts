@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import { flexibleStringArrayNonEmpty } from './schemaHelpers';
 import { SEVERITY } from '../config/chatEmoji';
 
 const CompletionDecision = z.enum(['needs_work', 'ready_to_submit']);
@@ -25,7 +26,8 @@ export class ThinkAboutCompletionTool extends BaseTool {
     name = 'think_about_completion';
     description =
         'Articulate your review completeness before submitting. ' +
-        'Forces you to draft a summary, count issues, and confirm all files were analyzed.';
+        'Forces you to draft a summary, count issues, and confirm all files were analyzed. ' +
+        'For each finding, ask: would I bet my reputation that this is a real bug? If not, drop it.';
 
     schema = z
         .object({
@@ -45,10 +47,9 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 .int()
                 .min(0)
                 .describe('Number of high-severity issues found'),
-            files_analyzed: z
-                .array(z.string())
-                .min(1)
-                .describe('List of files you analyzed from the diff'),
+            files_analyzed: flexibleStringArrayNonEmpty.describe(
+                'List of files reviewed (directly via get_file_diff or via sub-agent delegation)'
+            ),
             files_in_diff: z
                 .number()
                 .int()
@@ -116,11 +117,25 @@ export class ThinkAboutCompletionTool extends BaseTool {
         if (decision === 'needs_work') {
             guidance += '**Action**: Address gaps before submitting.\n';
             if (coveragePercent < 100) {
-                guidance += `- Analyze remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
+                guidance += `- Spawn additional sub-agents or use \`get_file_diff\` to cover remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
             }
             guidance += '- Ensure all plan items are complete\n';
             guidance += '- Verify all findings have evidence\n';
         } else {
+            guidance +=
+                '**Pre-submit self-challenge** (do this mentally for each finding):\n';
+            guidance +=
+                '1. Is this MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n';
+            guidance +=
+                '2. For intent-based findings: did you search for comments/docs explaining the design? What did you find?\n';
+            guidance +=
+                '3. Can you name the SPECIFIC tool call that confirmed this finding?\n';
+            guidance +=
+                '4. Did you attempt to disprove it? What was the result?\n';
+            guidance +=
+                '5. Would a developer familiar with this codebase agree, or would they say "that\'s by design"?\n';
+            guidance +=
+                '\nDrop any finding where the answer to #5 is likely "by design."\n\n';
             guidance +=
                 '**Action**: Call the `submit_review` tool now with your complete review.\n';
             guidance += '- Use the summary draft as your opening\n';

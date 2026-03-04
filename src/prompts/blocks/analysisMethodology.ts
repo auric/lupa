@@ -36,6 +36,8 @@ For each checklist item:
 - Use \`find_usages\` for changed signatures
 - Spawn subagents for complex areas (4+ files or security-sensitive)
 
+**Documentation files** (.md, README, CHANGELOG, docs/): When the PR changes documentation alongside code, verify that technical claims in the docs match the implementation. Check tool availability claims, API descriptions, configuration defaults, and behavioral descriptions against the actual code. A doc that contradicts the code is a valid finding.
+
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
 ### Step 3: Self-Reflection Checkpoints (Articulation Required)
@@ -50,7 +52,8 @@ At each checkpoint, **explicitly articulate** your current state—don't just ac
 
 **Before conclusions** → \`think_about_task\`:
 - analysis_focus: What are you analyzing?
-- issues_found: List with file, description, severity
+- issues_found: List with file, description, severity — these are HYPOTHESES at this stage
+- finding_audit: For each issue — (1) what tool call CONFIRMED it? (2) what tool call tried to DISPROVE it? (3) can I provide a concrete failing scenario with actual values? If any answer is missing for a MEDIUM+ finding, drop or downgrade it
 - areas_needing_investigation: What's not covered?
 - decision: Are you ready or need more work?
 
@@ -58,7 +61,22 @@ At each checkpoint, **explicitly articulate** your current state—don't just ac
 - summary_draft: Write your 2-3 sentence summary
 - critical_issues_count: How many blockers?
 - files_analyzed vs files_in_diff: Coverage check
+- hypothesis_kill_ratio: "Started with N hypotheses, M survived verification" — if >80% survived, re-examine your disproof rigor
 - recommendation: approve/request_changes/block
+
+### Step 3b: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
+
+The issues you identified are **HYPOTHESES**, not confirmed findings.
+Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` above.
+
+**For each MEDIUM+ hypothesis:**
+1. Ask: "What would make this NOT a problem?"
+2. Call the tool that checks — \`find_usages\`, \`find_symbol\`, or \`search_for_pattern\`
+3. If disproved → **DROP** the finding silently. Do not mention it in your review
+4. If not disproved → It survives. Now assign severity based on evidence
+
+**Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
+If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
 
 ### Step 4: Track Progress (REQUIRED)
 Call \`update_plan\` after completing each checklist item:

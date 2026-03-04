@@ -19,30 +19,17 @@ import { ExecutionContext } from '../types/executionContext';
 export class UpdatePlanTool extends BaseTool {
     name = 'update_plan';
     description =
-        'Create or update your review plan. MANDATORY as your first action after receiving the diff. ' +
-        'Use to structure analysis, track progress, and ensure comprehensive coverage.';
+        'Create or update your review plan. ' +
+        'Call once after reading the diff to decompose the PR into concern groups, then again after each investigation round to track progress and coverage gaps.';
 
     schema = z.object({
         plan: z
             .string()
             .min(50)
             .describe(
-                `Markdown-formatted review plan. Required structure:
-
-## PR Review Plan
-
-### Overview
-[1-2 sentences: What this PR does and initial risk assessment]
-
-### Checklist
-- [ ] [File or area to review]
-- [ ] [Security concerns if applicable]
-- [ ] [Error handling verification]
-- [ ] [Test coverage implications]
-- [ ] Synthesize findings
-
-Use - [ ] for pending items and - [x] for completed items.
-Add notes after items as you complete them (e.g., "- [x] auth.ts - found timing attack risk").`
+                `Markdown-formatted review plan. Must include an Overview section.
+Use Concern Groups with status tracking (pending/complete) and coverage notes.
+Call this tool multiple times: first to create the plan, then to update with findings and coverage status after each investigation round.`
             ),
     });
 
@@ -77,7 +64,10 @@ Add notes after items as you complete them (e.g., "- [x] auth.ts - found timing 
         // Making these schema-level errors would cause retry loops for minor formatting.
         const hasOverview =
             plan.includes('### Overview') || plan.includes('## Overview');
-        const hasChecklist = plan.includes('- [ ]') || plan.includes('- [x]');
+        const hasChecklist =
+            plan.includes('- [ ]') ||
+            plan.includes('- [x]') ||
+            plan.includes('### Concern Groups');
 
         let feedback = '';
         if (!hasOverview) {
@@ -98,10 +88,9 @@ ${plan}
 ---
 
 **Next Steps:**
-- Investigate items marked as pending (- [ ])
-- Use \`find_symbol\` and \`find_usages\` to gather context
-- Call \`update_plan\` after completing each major item
-- Use \`think_about_context\` after gathering information
-- Call \`think_about_completion\` before finalizing your review`);
+- For pending concern groups: spawn \`run_subagent\` to investigate each group
+- For unchecked items: investigate directly or delegate via \`run_subagent\`
+- After sub-agents complete, call \`update_plan\` with findings and coverage status
+- When all areas are covered, call \`think_about_completion\` before \`submit_review\``);
     }
 }

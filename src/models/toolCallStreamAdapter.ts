@@ -116,6 +116,25 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'submit_review':
                 return '🚀 Submitted code review';
 
+            case 'get_file_diff': {
+                const raw = args.file_paths;
+                let paths: unknown[];
+                if (Array.isArray(raw)) {
+                    paths = raw;
+                } else if (typeof raw === 'string') {
+                    paths = raw
+                        .split('\n')
+                        .map((l) => l.trim())
+                        .filter(Boolean);
+                } else {
+                    paths = [];
+                }
+                if (paths.length === 1) {
+                    return `${ACTIVITY.reading} Read diff for \`${sanitizeForMarkdown(paths[0], 'file')}\``;
+                }
+                return `${ACTIVITY.reading} Read diff for ${paths.length} files`;
+            }
+
             // Long-running actions - present continuous
             case 'run_subagent':
                 return '🤖 Running subagent investigation...';

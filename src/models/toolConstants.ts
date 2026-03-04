@@ -35,25 +35,66 @@ export class ToolConstants {
 }
 
 /**
+ * Root-only tools: plan tracking, review submission, and reflection tools
+ * that require PR-level context and should never be given to subagents.
+ * Shared base for all disallowed-tool lists to prevent drift.
+ *
+ * NOTE: think_about_investigation and think_about_context are intentionally
+ * EXCLUDED from this list. They are designed for focused investigations
+ * without needing diff context or PR-level review state that subagents
+ * don't have.
+ */
+const ROOT_ONLY_TOOLS = [
+    'update_plan',
+    'submit_review',
+    'think_about_completion',
+    'think_about_task',
+] as const;
+
+/**
+ * Diff tools that require parsedDiff in ExecutionContext.
+ */
+export const DIFF_TOOLS = ['get_file_diff'] as const;
+
+/**
+ * Investigation tools that should be removed from the recursive root agent
+ * after the orientation phase (first subagent round).
+ * The root is a controller — after it delegates, it should only retain
+ * controller tools (run_subagent, update_plan, think_about_*, submit_review).
+ */
+export const INVESTIGATION_TOOLS = [
+    'get_file_diff',
+    'read_file',
+    'find_symbol',
+    'find_usages',
+    'search_for_pattern',
+    'find_files_by_pattern',
+    'list_directory',
+    'get_symbols_overview',
+] as const;
+
+/**
  * Static limits for subagent execution that don't need user configuration.
  * Dynamic limits (max per session, timeout) come from WorkspaceSettingsService.
  */
 export const SubagentLimits = {
     /** Minimum task length to ensure meaningful instructions */
     MIN_TASK_LENGTH: 30,
-    /** Tools that subagents cannot access */
+    /** Maximum task length to prevent token exhaustion in subagent prompts */
+    MAX_TASK_LENGTH: 20_000,
+    /** Tools that subagents cannot access (flat mode — no recursion) */
     DISALLOWED_TOOLS: [
         'run_subagent', // Prevent sub-subagent recursion
-        'update_plan', // Main agent only - subagents don't track review progress
-        'submit_review', // Main agent only - explicit completion signal
-        'think_about_completion', // Main agent only - for final review verification
-        'think_about_context', // Main agent only - references diff coverage
-        'think_about_task', // Main agent only - references PR review scope
-        // NOTE: think_about_investigation is intentionally ALLOWED for subagents.
-        // It's the only think tool designed for focused investigations without
-        // needing diff context or PR-level review state that subagents don't have.
+        ...ROOT_ONLY_TOOLS,
     ] as const,
 } as const;
+
+/**
+ * Tools disallowed for recursive child agents.
+ * They CAN call run_subagent (enabling recursion) but cannot access
+ * plan-tracking and final-review tools that belong to the root agent.
+ */
+export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
 
 /**
  * Tools that are only available during main analysis mode (not exploration mode).
@@ -61,11 +102,8 @@ export const SubagentLimits = {
  * so these tools would either fail or return nonsensical guidance.
  */
 export const MAIN_ANALYSIS_ONLY_TOOLS = [
-    'update_plan', // Requires planManager from ExecutionContext
-    'submit_review', // Semantically for completing PR analysis
-    'think_about_completion', // References PR analysis completion criteria
-    'think_about_context', // References diff coverage and PR-level context
-    'think_about_task', // References PR review scope and task structure
+    ...ROOT_ONLY_TOOLS,
+    ...DIFF_TOOLS,
 ] as const;
 
 /**
@@ -84,6 +122,10 @@ export const SubagentErrors = {
     maxIterations: (toolCallsMade: number, maxIter: number) =>
         `Subagent reached maximum iterations (${maxIter}) after ${toolCallsMade} tool calls. ` +
         `Investigation may be incomplete. Break the task into smaller, more focused subtasks.`,
+
+    rateLimited: (toolCallsMade: number) =>
+        `Subagent was rate limited after ${toolCallsMade} tool calls. ` +
+        `Wait before spawning more subagents, or use direct tools instead.`,
 
     failed: (error: string) => `Subagent failed: ${error}`,
 } as const;

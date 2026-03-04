@@ -1,7 +1,7 @@
-import { ITool } from '../tools/ITool';
 import {
     createPRReviewPromptBuilder,
     createExplorationPromptBuilder,
+    createRecursiveRootPromptBuilder,
 } from './promptBuilder';
 
 /**
@@ -19,15 +19,23 @@ export class ToolAwareSystemPromptGenerator {
      * Generate system prompt for PR review mode.
      * Uses modular blocks: role, tools, methodology, output format.
      */
-    public generateSystemPrompt(availableTools: ITool[]): string {
-        return createPRReviewPromptBuilder(availableTools).build();
+    public generateSystemPrompt(): string {
+        return createPRReviewPromptBuilder().build();
+    }
+
+    /**
+     * Generate system prompt for recursive PR review mode.
+     * Root agent decomposes the PR and delegates to recursive sub-agents.
+     */
+    public generateRecursiveSystemPrompt(): string {
+        return createRecursiveRootPromptBuilder().build();
     }
 
     /**
      * Generate exploration-focused system prompt for answering questions about the codebase.
      * Reuses tool infrastructure but removes PR/diff-specific language.
      */
-    public generateExplorationPrompt(availableTools: ITool[]): string {
-        return createExplorationPromptBuilder(availableTools).build();
+    public generateExplorationPrompt(): string {
+        return createExplorationPromptBuilder().build();
     }
 }

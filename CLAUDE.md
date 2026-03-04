@@ -53,6 +53,7 @@ The `ServiceManager` initializes services in strict order to resolve dependencie
 - `SubagentSessionManager` - Tracks subagent spawn count and limits
 - `SubagentExecutor` - Executes subagent investigations
 - `PlanSessionManager` - Review plan state
+- `RecursiveStateManager` - Agent tree, budget tracking, deduplication (when `maxRecursionDepth >= 1`)
 - `TokenValidator` instance - Context window tracking
 
 ### Key Entry Points
@@ -289,6 +290,7 @@ Use subagents strategically to preserve context and parallelize work:
 - Provide clear, specific instructions with examples
 - Include relevant context the subagent needs
 - Verify subagent results before trusting them
+- Always use general purpose subagents, don't use `Explore` subagents
 - Always use Claude Opus 4.6 model in subagents for best results
 
 **Consult DeepWiki MCP for external library questions**—when unsure about API usage, mocking patterns, or library-specific behavior (e.g., Vitest, VS Code API), use Deepwiki MCP with the appropriate repo (e.g., `vitest-dev/vitest`, `microsoft/vscode`)
@@ -302,26 +304,3 @@ Before finalizing any implementation:
 - [ ] Are edge cases handled gracefully?
 - [ ] Is there anything that could be removed without losing functionality?
 - [ ] Have type checks passed (`npm run check-types`)?
-
----
-
-## BMAD Method (v6 Alpha)
-
-This project uses BMAD-METHOD for agent-driven development workflows.
-
-### BMAD Agent Detection
-
-**If your mode/persona starts with `bmd-` or `bmad-`, you ARE a BMAD agent.**
-
-### CRITICAL: File Loading Requirements
-
-**Before any BMAD workflow execution, you MUST read and load the required config and workflow files. Do not proceed from memory—always fetch the actual files.**
-
-1. **Activation is mandatory**: Load agent persona file first, then read `{project-root}/_bmad/core/config.yaml` for user settings
-2. **Workflow execution**: Before running any workflow, load `{project-root}/_bmad/core/tasks/workflow.xml` as the core OS
-3. **Stay in character**: Follow agent persona and menu system until explicitly dismissed
-4. **Output discipline**: Save outputs after each workflow step—never batch multiple steps together
-
-### Why This Matters
-
-BMAD agents may not automatically load instruction files. The explicit file-loading step ensures the agent has current configuration and doesn't operate from stale or missing context.

@@ -9,6 +9,7 @@ import { ToolRegistry } from '../models/toolRegistry';
 import { ConversationRunner } from '../models/conversationRunner';
 import { ConversationManager } from '../models/conversationManager';
 import { ChatLLMClient } from '../models/chatLLMClient';
+import type { ILLMClient } from '../models/ILLMClient';
 import { ToolCallStreamAdapter } from '../models/toolCallStreamAdapter';
 import { DebouncedStreamHandler } from '../models/debouncedStreamHandler';
 import { ChatContextManager } from '../models/chatContextManager';
@@ -18,7 +19,12 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
+import {
+    MAIN_ANALYSIS_ONLY_TOOLS,
+    INVESTIGATION_TOOLS,
+} from '../models/toolConstants';
+import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
 import { streamMarkdownWithAnchors } from '../utils/chatMarkdownStreamer';
@@ -30,6 +36,8 @@ import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
+import type { DiffHunk } from '../types/contextTypes';
+import type { ExecutionContext } from '../types/executionContext';
 import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
@@ -257,23 +265,19 @@ export class ChatParticipantService implements vscode.Disposable {
             );
 
             // Create per-request subagent infrastructure with chat handler
-            const { subagentSessionManager, subagentExecutor } =
-                this.createSubagentContext(token, debouncedHandler);
-
-            // Create per-request ToolExecutor with subagent context
-            const toolExecutor = new ToolExecutor(
-                this.deps.toolRegistry,
-                this.deps.workspaceSettings,
-                {
-                    subagentSessionManager,
-                    subagentExecutor,
-                    cancellationToken: token,
-                }
-            );
-
             const timeoutMs =
                 this.deps.workspaceSettings.getRequestTimeoutSeconds() * 1000;
             const client = new ChatLLMClient(request.model, timeoutMs);
+            const { subagentSessionManager, subagentExecutor } =
+                this.createSubagentContext(token, client, debouncedHandler);
+
+            // Create per-request ToolExecutor with subagent context
+            const toolExecutor = new ToolExecutor(this.deps.toolRegistry, {
+                subagentSessionManager,
+                subagentExecutor,
+                cancellationToken: token,
+            });
+
             const runner = new ConversationRunner(client, toolExecutor);
             const conversation = new ConversationManager();
 
@@ -288,9 +292,7 @@ export class ChatParticipantService implements vscode.Disposable {
             );
 
             const systemPrompt =
-                this.deps.promptGenerator.generateExplorationSystemPrompt(
-                    availableTools
-                );
+                this.deps.promptGenerator.generateExplorationSystemPrompt();
 
             const hasHistory = context.history && context.history.length > 0;
             if (hasHistory) {
@@ -512,45 +514,80 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Create per-analysis instances for complete isolation
         const planManager = new PlanSessionManager();
+        const timeoutMs =
+            this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
+        const client = new ChatLLMClient(request.model, timeoutMs);
         const { subagentSessionManager, subagentExecutor } =
-            this.createSubagentContext(token, debouncedHandler);
+            this.createSubagentContext(token, client, debouncedHandler);
+
+        // Determine if recursive review mode is available
+        const maxRecursionDepth =
+            this.deps!.workspaceSettings.getMaxRecursionDepth();
+        const isRecursiveMode = maxRecursionDepth >= 1;
+
+        // Create RecursiveStateManager when in recursive mode
+        const recursiveState = isRecursiveMode
+            ? new RecursiveStateManager(maxRecursionDepth)
+            : undefined;
+
+        if (recursiveState) {
+            recursiveState.registerAgent(
+                undefined,
+                'Root review controller',
+                this.deps!.workspaceSettings.getMaxIterations()
+            );
+            recursiveState.startAgent('root');
+            subagentExecutor.setRecursiveState(recursiveState);
+        }
+
+        // Create execution context as a mutable reference so parsedDiff can be
+        // set after diff processing (RLM approach needs it on the context for tools)
+        const executionContext: ExecutionContext = {
+            planManager,
+            subagentSessionManager,
+            subagentExecutor,
+            cancellationToken: token,
+            recursiveState,
+            currentDepth: 0,
+            currentAgentId: 'root',
+        };
 
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
-            this.deps!.workspaceSettings,
-            {
-                planManager,
-                subagentSessionManager,
-                subagentExecutor,
-                cancellationToken: token,
-            }
+            executionContext
         );
 
         Log.info(`[ChatParticipantService]: Analyzing ${scopeLabel}`);
         stream.progress(`${ACTIVITY.analyzing} Analyzing ${scopeLabel}...`);
 
-        const timeoutMs =
-            this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
-        const client = new ChatLLMClient(request.model, timeoutMs);
         const runner = new ConversationRunner(client, toolExecutor);
         const conversation = new ConversationManager();
         const availableTools = toolExecutor.getAvailableTools();
-        const systemPrompt =
-            this.deps!.promptGenerator.generateToolAwareSystemPrompt(
-                availableTools
-            );
+        const systemPrompt = isRecursiveMode
+            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt()
+            : this.deps!.promptGenerator.generateToolAwareSystemPrompt();
 
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);
             stream.filetree(fileTree, gitRootUri);
         }
 
-        const userPrompt =
-            this.deps!.promptGenerator.generateToolCallingUserPrompt(
-                parsedDiff,
-                request.prompt || undefined
-            );
+        executionContext.parsedDiff = parsedDiff;
+        const userPrompt = this.deps!.promptGenerator.generateUserPrompt(
+            parsedDiff,
+            request.prompt || undefined,
+            isRecursiveMode,
+            this.deps!.workspaceSettings.getMaxSubagentsPerSession()
+        );
         conversation.addUserMessage(userPrompt);
+
+        let analysisCompleted = false;
+        let analysisError: string | undefined;
+
+        // Shared mutable set: the afterToolCalls callback adds investigation
+        // tool names after the first subagent round, and the runner reads it
+        // each iteration to filter the tool list.
+        const disabledToolNames = new Set<string>();
 
         try {
             const analysisResult = await runner.run(
@@ -561,6 +598,13 @@ export class ChatParticipantService implements vscode.Disposable {
                     tools: availableTools,
                     label: `Chat /${scopeLabel}`,
                     requiresExplicitCompletion: true,
+                    afterToolCalls: this.createCoverageGapCallback(
+                        recursiveState,
+                        parsedDiff,
+                        disabledToolNames,
+                        subagentSessionManager
+                    ),
+                    disabledToolNames,
                 },
                 conversation,
                 token,
@@ -573,6 +617,7 @@ export class ChatParticipantService implements vscode.Disposable {
                 return this.handleCancellation(stream);
             }
 
+            analysisCompleted = true;
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
             const contentAnalysis = this.analyzeResultContent(analysisResult);
@@ -590,9 +635,65 @@ export class ChatParticipantService implements vscode.Disposable {
                     analysisTimestamp: Date.now(),
                 } satisfies ChatAnalysisMetadata,
             };
+        } catch (error) {
+            if (isCancellationError(error)) {
+                throw error;
+            }
+            analysisError = getErrorMessage(error);
+            throw error;
         } finally {
             subagentSessionManager.setParentCancellationToken(undefined);
+            if (recursiveState) {
+                if (analysisCompleted) {
+                    recursiveState.completeAgent('root');
+                } else if (analysisError) {
+                    recursiveState.failAgent('root', analysisError);
+                } else {
+                    recursiveState.cancelAgent('root');
+                }
+            }
         }
+    }
+
+    private createCoverageGapCallback(
+        recursiveState: RecursiveStateManager | undefined,
+        parsedDiff: DiffHunk[],
+        disabledToolNames: Set<string>,
+        sessionManager: SubagentSessionManager
+    ): ((toolNames: string[]) => string | undefined) | undefined {
+        if (!recursiveState || parsedDiff.length === 0) {
+            return undefined;
+        }
+
+        const allFiles = parsedDiff.map((d) => d.filePath);
+
+        return (toolNames: string[]) => {
+            if (!toolNames.includes('run_subagent')) {
+                return undefined;
+            }
+
+            // If subagent budget is exhausted, re-enable investigation tools
+            // so the root can directly examine uncovered files.
+            if (!sessionManager.canSpawn()) {
+                for (const tool of INVESTIGATION_TOOLS) {
+                    disabledToolNames.delete(tool);
+                }
+                return recursiveState.getCoverageGapFallbackMessage(allFiles);
+            }
+
+            // After first subagent round, disable investigation tools for the root.
+            // The root is a controller — it delegates, not investigates.
+            if (disabledToolNames.size === 0) {
+                for (const tool of INVESTIGATION_TOOLS) {
+                    disabledToolNames.add(tool);
+                }
+                Log.info(
+                    '[ChatParticipantService] Root agent investigation tools disabled after first subagent round'
+                );
+            }
+
+            return recursiveState.getCoverageGapMessage(allFiles);
+        };
     }
 
     /**
@@ -652,6 +753,7 @@ export class ChatParticipantService implements vscode.Disposable {
      */
     private createSubagentContext(
         token: vscode.CancellationToken,
+        llmClient: ILLMClient,
         chatHandler?: ChatToolCallHandler
     ): {
         subagentSessionManager: SubagentSessionManager;
@@ -661,7 +763,7 @@ export class ChatParticipantService implements vscode.Disposable {
             this.deps!.workspaceSettings
         );
         const subagentExecutor = new SubagentExecutor(
-            this.deps!.copilotModelManager,
+            llmClient,
             this.deps!.toolRegistry,
             new SubagentPromptGenerator(),
             this.deps!.workspaceSettings,

@@ -17,6 +17,34 @@ import { Log } from '../services/loggingService';
 
 const LSP_OPERATION_TIMEOUT = 60000; // 60 seconds for language server operations
 const DEFINITION_CHECK_TIMEOUT = 10000; // 10 seconds per definition check (non-fatal)
+const MAX_DEFINITION_CHECKS = 10; // Cap definition provider calls per symbol to bound accumulated latency
+
+/**
+ * Extract URI from a definition result, handling both Location and LocationLink types.
+ * vscode.executeDefinitionProvider returns (Location | LocationLink)[] — LocationLink uses
+ * targetUri/targetRange instead of uri/range.
+ */
+function getDefinitionUri(
+    def: vscode.Location | vscode.LocationLink
+): vscode.Uri | undefined {
+    if ('targetUri' in def) {
+        return def.targetUri;
+    }
+    return def.uri;
+}
+
+/**
+ * Extract the selection range from a definition result.
+ * LocationLink provides targetSelectionRange (precise) and targetRange (full).
+ */
+function getDefinitionRange(
+    def: vscode.Location | vscode.LocationLink
+): vscode.Range | undefined {
+    if ('targetRange' in def) {
+        return def.targetSelectionRange ?? def.targetRange;
+    }
+    return def.range;
+}
 
 /**
  * Tool that finds all usages of a code symbol using VS Code's reference provider.
@@ -24,13 +52,13 @@ const DEFINITION_CHECK_TIMEOUT = 10000; // 10 seconds per definition check (non-
  */
 export class FindUsagesTool extends BaseTool {
     name = 'find_usages';
-    description = `Find all places where a symbol is used/called across the codebase.
+    description = `Find all places where a symbol is used/called across the codebase via LSP references.
 
 USE THIS to assess impact of changes—who calls this function?
 USE THIS to verify all callers handle new behavior/parameters.
 COMBINE with find_symbol: first understand the definition, then find who uses it.
 
-Requires file_path where the symbol is defined as starting point.`;
+Requires file_path containing the symbol as the starting point for the reference search.`;
 
     private readonly formatter = new UsageFormatter();
 
@@ -42,12 +70,14 @@ Requires file_path where the symbol is defined as starting point.`;
         symbol_name: z
             .string()
             .min(1, 'Symbol name cannot be empty')
-            .describe('The name of the symbol to find usages for'),
+            .describe(
+                'Exact symbol name to find usages for (e.g., "handleClick", "MyClass"). Must match an occurrence in file_path'
+            ),
         file_path: z
             .string()
             .min(1, 'File path cannot be empty')
             .describe(
-                'The file path where the symbol is defined (used as starting point for reference search)'
+                'Relative path to a file where the symbol appears (any usage or definition). Used as the LSP reference search starting point'
             ),
         should_include_declaration: z
             .boolean()
@@ -255,7 +285,10 @@ Requires file_path where the symbol is defined as starting point.`;
         const text = document.getText();
         const lines = text.split('\n');
 
-        // Look for the symbol in the document
+        let definitionChecks = 0;
+        let firstOccurrence: vscode.Position | null = null;
+        let firstResolvableOccurrence: vscode.Position | null = null;
+
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
             if (token.isCancellationRequested) {
                 throw new vscode.CancellationError();
@@ -269,12 +302,26 @@ Requires file_path where the symbol is defined as starting point.`;
 
             if (symbolIndex !== -1) {
                 const position = new vscode.Position(lineIndex, symbolIndex);
+                if (!firstOccurrence) {
+                    firstOccurrence = position;
+                }
 
-                // Verify this is actually a symbol definition by checking if definition provider returns this location
+                if (definitionChecks >= MAX_DEFINITION_CHECKS) {
+                    const fallback =
+                        firstResolvableOccurrence ?? firstOccurrence;
+                    Log.debug(
+                        `Definition check cap (${MAX_DEFINITION_CHECKS}) reached for ${symbolName}, using ${firstResolvableOccurrence ? 'first resolvable' : 'first'} occurrence`
+                    );
+                    return fallback;
+                }
+                definitionChecks++;
+
                 try {
                     const definitions = await withCancellableTimeout(
                         Promise.resolve(
-                            vscode.commands.executeCommand<vscode.Location[]>(
+                            vscode.commands.executeCommand<
+                                (vscode.Location | vscode.LocationLink)[]
+                            >(
                                 'vscode.executeDefinitionProvider',
                                 document.uri,
                                 position
@@ -285,27 +332,34 @@ Requires file_path where the symbol is defined as starting point.`;
                         token
                     );
 
+                    if (definitions && definitions.length > 0) {
+                        if (!firstResolvableOccurrence) {
+                            firstResolvableOccurrence = position;
+                        }
+                    }
+
                     // If we get back the same location, this is likely the definition
                     if (
                         definitions &&
-                        definitions.some(
-                            (def) =>
-                                def.uri.toString() ===
+                        definitions.some((def) => {
+                            const defUri = getDefinitionUri(def);
+                            const defRange = getDefinitionRange(def);
+                            return (
+                                defUri?.toString() ===
                                     document.uri.toString() &&
-                                def.range.contains(position)
-                        )
+                                defRange?.contains(position)
+                            );
+                        })
                     ) {
                         return position;
                     }
                 } catch (error) {
-                    // Log timeout but continue searching (non-fatal for definition check)
                     if (isTimeoutError(error)) {
                         Log.debug(
                             `Definition check timed out for ${symbolName} at line ${lineIndex + 1}, continuing search`
                         );
                         continue;
                     }
-                    // Other errors should bubble up
                     throw error;
                 }
             }
@@ -339,17 +393,17 @@ Requires file_path where the symbol is defined as starting point.`;
     private deduplicateReferences(
         references: vscode.Location[]
     ): vscode.Location[] {
-        return references.filter((ref, index, arr) => {
-            return (
-                arr.findIndex(
-                    (r) =>
-                        r.uri.toString() === ref.uri.toString() &&
-                        r.range.start.line === ref.range.start.line &&
-                        r.range.start.character === ref.range.start.character &&
-                        r.range.end.line === ref.range.end.line &&
-                        r.range.end.character === ref.range.end.character
-                ) === index
-            );
+        const seen = new Set<string>();
+        return references.filter((ref) => {
+            if (!ref?.uri || !ref?.range) {
+                return false;
+            }
+            const key = `${ref.uri.toString()}:${ref.range.start.line}:${ref.range.start.character}:${ref.range.end.line}:${ref.range.end.character}`;
+            if (seen.has(key)) {
+                return false;
+            }
+            seen.add(key);
+            return true;
         });
     }
 }

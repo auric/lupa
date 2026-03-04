@@ -33,6 +33,32 @@ export interface ConversationRunnerConfig {
      * Subagents and exploration modes can complete with direct responses.
      */
     requiresExplicitCompletion?: boolean;
+    /**
+     * Called after each iteration's tool calls complete.
+     * Receives the names of tools that were executed in the current iteration.
+     * Can return a message to inject into the conversation before the next LLM turn
+     * (e.g., coverage gap reports after subagent rounds).
+     */
+    afterToolCalls?: (toolNames: string[]) => string | undefined;
+    /**
+     * Mutable set of tool names to exclude from subsequent iterations.
+     * The afterToolCalls callback can add names to this set via closure
+     * to programmatically restrict which tools the LLM can call.
+     * Used by the recursive root to disable investigation tools after orientation.
+     */
+    disabledToolNames?: Set<string>;
+    /**
+     * Called before accepting a no-tool-call response as final (non-explicit-completion mode).
+     * If it returns a string, that message is injected and the conversation continues.
+     * If it returns undefined, the response is accepted as final.
+     * Receives the set of tool names called so far and the current iteration.
+     * Used by subagents to enforce minimum investigation depth.
+     */
+    beforeAcceptingResponse?: (
+        toolNamesCalled: Set<string>,
+        iteration: number,
+        maxIterations: number
+    ) => string | undefined;
 }
 
 /**
@@ -88,7 +114,17 @@ interface HandleToolCallsResult {
 export class ConversationRunner {
     private tokenValidator: TokenValidator | null = null;
     private _hitMaxIterations = false;
+    private _hitRateLimit = false;
+    private _hitQuotaExhausted = false;
     private _wasCancelled = false;
+    private _iterationsUsed = 0;
+
+    /** Maximum number of consecutive rate-limit retries before giving up */
+    private static readonly MAX_RATE_LIMIT_RETRIES = 5;
+    /** Initial backoff delay in ms for rate-limited requests */
+    private static readonly INITIAL_BACKOFF_MS = 2000;
+    /** Maximum backoff delay in ms */
+    private static readonly MAX_BACKOFF_MS = 60000;
 
     constructor(
         private readonly client: ILLMClient,
@@ -100,9 +136,24 @@ export class ConversationRunner {
         return this._hitMaxIterations;
     }
 
+    /** Whether the last run() exited due to rate-limit retry exhaustion or quota exhaustion. */
+    get hitRateLimit(): boolean {
+        return this._hitRateLimit;
+    }
+
+    /** Whether the last run() exited due to quota exhaustion (non-recoverable). */
+    get hitQuotaExhausted(): boolean {
+        return this._hitQuotaExhausted;
+    }
+
     /** Whether the last run() exited due to cancellation. */
     get wasCancelled(): boolean {
         return this._wasCancelled;
+    }
+
+    /** Number of iterations (LLM turns) used in the last run(). */
+    get iterationsUsed(): number {
+        return this._iterationsUsed;
     }
 
     /**
@@ -117,13 +168,26 @@ export class ConversationRunner {
     ): Promise<string> {
         let iteration = 0;
         let completionNudgeCount = 0;
+        let rateLimitRetries = 0;
+        let lastSubstantiveResponse = '';
+        let windDownInjected = false;
+        let windDownNudged = false;
+        const WIND_DOWN_THRESHOLD = 0.85;
+        const windDownIteration = Math.floor(
+            config.maxIterations * WIND_DOWN_THRESHOLD
+        );
         const MAX_COMPLETION_NUDGES = 2;
         const logPrefix = config.label ? `[${config.label}]` : '[Conversation]';
         this._hitMaxIterations = false;
+        this._hitRateLimit = false;
+        this._hitQuotaExhausted = false;
         this._wasCancelled = false;
+        this._iterationsUsed = 0;
+        const toolNamesCalled = new Set<string>();
 
         while (iteration < config.maxIterations) {
             iteration++;
+            this._iterationsUsed = iteration;
             Log.info(
                 `${logPrefix} Iteration ${iteration}/${config.maxIterations}`
             );
@@ -139,9 +203,49 @@ export class ConversationRunner {
             handler?.onIterationStart?.(iteration, config.maxIterations);
 
             try {
-                const vscodeTools = config.tools.map((tool) =>
-                    tool.getVSCodeTool()
-                );
+                const vscodeTools = config.tools
+                    .filter((tool) => !config.disabledToolNames?.has(tool.name))
+                    .map((tool) => tool.getVSCodeTool());
+
+                // Early wind-down nudge at ~80% of budget for subagents.
+                // Prompt-based budget management doesn't work — LLMs can't count
+                // iterations. This code-injected message gives a concrete signal.
+                if (
+                    !config.requiresExplicitCompletion &&
+                    iteration === windDownIteration &&
+                    !windDownNudged
+                ) {
+                    windDownNudged = true;
+                    const remaining = config.maxIterations - iteration;
+                    conversation.addUserMessage(
+                        `Budget check: You have used ${iteration} of ${config.maxIterations} iterations (${remaining} remaining). ` +
+                            `Continue investigating if needed, but begin consolidating your findings soon.`
+                    );
+                    Log.info(
+                        `${logPrefix} Wind-down nudge injected at iteration ${iteration}/${config.maxIterations}`
+                    );
+                }
+
+                // Wind-down: on the last iteration for non-explicit-completion
+                // conversations (subagents), force text response by removing tools
+                // and injecting a wrap-up message.
+                const isLastIteration = iteration === config.maxIterations;
+                const forceFinalResponse =
+                    isLastIteration &&
+                    !config.requiresExplicitCompletion &&
+                    !windDownInjected;
+
+                if (forceFinalResponse) {
+                    windDownInjected = true;
+                    conversation.addUserMessage(
+                        'This is your final iteration. Please provide your complete findings as a text response. ' +
+                            'Summarize everything you have found so far. A partial answer is better than no answer.'
+                    );
+                }
+
+                const effectiveTools =
+                    forceFinalResponse || windDownInjected ? [] : vscodeTools;
+
                 let messages = this.prepareMessagesForLLM(
                     config.systemPrompt,
                     conversation
@@ -208,10 +312,15 @@ export class ConversationRunner {
                 const response = await this.client.sendRequest(
                     {
                         messages,
-                        tools: vscodeTools,
+                        tools: effectiveTools,
                     },
                     token
                 );
+
+                // Reset rate-limit counter after successful API call.
+                // Without this, a later rate-limit hit would continue from
+                // the old retry count and prematurely exhaust retries.
+                rateLimitRetries = 0;
 
                 if (token.isCancellationRequested) {
                     Log.info(`${logPrefix} Cancelled by user`);
@@ -223,6 +332,19 @@ export class ConversationRunner {
                     response.content || null,
                     response.toolCalls
                 );
+
+                // Track last substantive response for graceful degradation.
+                // Threshold filters trivial LLM responses like "OK." or "Error." so
+                // the fallback message delivered on rate-limit exhaustion or max-iterations
+                // contains actual review content.
+                const MIN_SUBSTANTIVE_RESPONSE_LENGTH = 50;
+                if (
+                    response.content &&
+                    response.content.trim().length >
+                        MIN_SUBSTANTIVE_RESPONSE_LENGTH
+                ) {
+                    lastSubstantiveResponse = response.content;
+                }
 
                 // Re-check cancellation before processing branching logic —
                 // token may have fired during response processing
@@ -238,8 +360,47 @@ export class ConversationRunner {
                     // Reset nudge counter - model is cooperating with tool calls
                     completionNudgeCount = 0;
 
+                    let toolCalls = response.toolCalls;
+
+                    // Defense-in-depth: block tool calls for disabled tools.
+                    // The LLM shouldn't know about disabled tools (they're excluded
+                    // from the tool list), but guard against hallucinated names.
+                    if (config.disabledToolNames?.size) {
+                        const blocked = toolCalls.filter((tc) =>
+                            config.disabledToolNames!.has(tc.function.name)
+                        );
+                        if (blocked.length > 0) {
+                            const names = blocked
+                                .map((tc) => tc.function.name)
+                                .join(', ');
+                            Log.warn(
+                                `${logPrefix} Blocked ${blocked.length} disabled tool call(s): ${names}`
+                            );
+                            for (const tc of blocked) {
+                                conversation.addToolMessage(
+                                    tc.id || `blocked_${tc.function.name}`,
+                                    `Error: Tool '${tc.function.name}' is not available.`
+                                );
+                            }
+                            toolCalls = toolCalls.filter(
+                                (tc) =>
+                                    !config.disabledToolNames!.has(
+                                        tc.function.name
+                                    )
+                            );
+                            if (toolCalls.length === 0) {
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Track tool names for investigation depth checks
+                    for (const tc of toolCalls) {
+                        toolNamesCalled.add(tc.function.name);
+                    }
+
                     const result = await this.handleToolCalls(
-                        response.toolCalls,
+                        toolCalls,
                         conversation,
                         handler,
                         logPrefix
@@ -259,6 +420,21 @@ export class ConversationRunner {
                             `${logPrefix} Completed via submit_review tool`
                         );
                         return result.finalReview;
+                    }
+
+                    // Post-tool-call hook: inject coverage gaps or other messages
+                    if (config.afterToolCalls) {
+                        const toolNames = toolCalls.map(
+                            (tc) => tc.function.name
+                        );
+                        const injectedMessage =
+                            config.afterToolCalls(toolNames);
+                        if (injectedMessage) {
+                            conversation.addUserMessage(injectedMessage);
+                            Log.info(
+                                `${logPrefix} Injected post-tool-call message (${injectedMessage.length} chars)`
+                            );
+                        }
                     }
 
                     continue;
@@ -299,19 +475,50 @@ export class ConversationRunner {
                         response.content && response.content.length > 100
                             ? response.content.slice(-100)
                             : '';
-                    Log.info(
-                        `${logPrefix} No tool calls (nudge ${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
-                            `Content preview: "${contentPreview}...". ` +
-                            `Ending: "...${contentEnding}". Nudging to use submit_review.`
-                    );
-                    conversation.addUserMessage(
-                        'To complete your review, call the `submit_review` tool with your full review content. ' +
-                            'If you still have analysis to do, continue using the available tools.'
-                    );
+
+                    if (completionNudgeCount === 1) {
+                        // First no-tool-call response: the LLM may be synthesizing
+                        // subagent results or reasoning before making more tool calls.
+                        // Use a soft message that encourages continuing investigation.
+                        Log.info(
+                            `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                                `Content preview: "${contentPreview}...". ` +
+                                `Ending: "...${contentEnding}". Soft continue (not nudging submit_review yet).`
+                        );
+                        conversation.addUserMessage(
+                            'Continue investigating. When you have completed a thorough analysis, ' +
+                                'call `submit_review` to deliver your findings.'
+                        );
+                    } else {
+                        Log.info(
+                            `${logPrefix} No tool calls (${completionNudgeCount}/${MAX_COMPLETION_NUDGES}). ` +
+                                `Content preview: "${contentPreview}...". ` +
+                                `Ending: "...${contentEnding}". Nudging to use submit_review.`
+                        );
+                        conversation.addUserMessage(
+                            'To complete your review, call the `submit_review` tool with your full review content. ' +
+                                'If you still have analysis to do, continue using the available tools.'
+                        );
+                    }
                     continue;
                 }
 
-                // For subagents and other contexts, accept the response as final
+                // For subagents and other contexts, check investigation depth before accepting
+                if (config.beforeAcceptingResponse) {
+                    const nudge = config.beforeAcceptingResponse(
+                        toolNamesCalled,
+                        iteration,
+                        config.maxIterations
+                    );
+                    if (nudge) {
+                        Log.info(
+                            `${logPrefix} Investigation depth check: injecting nudge at iteration ${iteration}`
+                        );
+                        conversation.addUserMessage(nudge);
+                        continue;
+                    }
+                }
+
                 Log.info(`${logPrefix} Completed successfully`);
                 return (
                     response.content ||
@@ -337,6 +544,66 @@ export class ConversationRunner {
                     this._wasCancelled = true;
                     return '';
                 }
+
+                // True quota exhaustion (HTTP 402, ChatQuotaExceeded):
+                // Free-user monthly quota depleted — no retry will help until reset.
+                if (this.isQuotaExhaustedError(error)) {
+                    Log.error(
+                        `${logPrefix} Monthly quota exhausted (ChatQuotaExceeded) — stopping immediately`
+                    );
+                    this._hitQuotaExhausted = true;
+                    this._hitRateLimit = true;
+                    return (
+                        lastSubstantiveResponse ||
+                        'Copilot monthly quota exhausted. Please wait for your quota to reset.'
+                    );
+                }
+
+                // Rate limit (HTTP 429): backoff and retry WITHOUT burning an iteration.
+                // VS Code surfaces this as LanguageModelError with name='ChatRateLimited'.
+                // This covers both transient rate limits and quota-flavored throttles
+                // ("exceeded your Copilot token usage") which use the same HTTP 429
+                // and are equally temporary despite the scary wording.
+                if (this.isRateLimitError(error)) {
+                    rateLimitRetries++;
+                    if (
+                        rateLimitRetries >
+                        ConversationRunner.MAX_RATE_LIMIT_RETRIES
+                    ) {
+                        Log.error(
+                            `${logPrefix} Rate limit: exceeded ${ConversationRunner.MAX_RATE_LIMIT_RETRIES} retries, giving up`
+                        );
+                        this._hitRateLimit = true;
+                        return (
+                            lastSubstantiveResponse ||
+                            'Rate limited by the API after multiple retries. Please try again later.'
+                        );
+                    }
+
+                    const backoffMs = Math.min(
+                        ConversationRunner.INITIAL_BACKOFF_MS *
+                            Math.pow(2, rateLimitRetries - 1),
+                        ConversationRunner.MAX_BACKOFF_MS
+                    );
+                    Log.warn(
+                        `${logPrefix} Rate limited (attempt ${rateLimitRetries}/${ConversationRunner.MAX_RATE_LIMIT_RETRIES}), ` +
+                            `waiting ${backoffMs}ms before retry`
+                    );
+
+                    // Don't count rate-limit retries as iterations
+                    iteration--;
+                    this._iterationsUsed = iteration;
+
+                    await this.sleepWithCancellation(backoffMs, token);
+                    if (token.isCancellationRequested) {
+                        this._wasCancelled = true;
+                        return '';
+                    }
+                    continue;
+                }
+
+                // Reset rate limit counter on non-rate-limit errors
+                rateLimitRetries = 0;
 
                 const fatalError = this.detectFatalError(error);
                 if (fatalError) {
@@ -380,7 +647,10 @@ export class ConversationRunner {
             `${logPrefix} Reached maximum iterations (${config.maxIterations})`
         );
         this._hitMaxIterations = true;
-        return 'Conversation reached maximum iterations. The conversation may be incomplete.';
+        return (
+            lastSubstantiveResponse ||
+            'Conversation reached maximum iterations with no findings.'
+        );
     }
 
     private isFatalModelError(error: unknown): boolean {
@@ -458,6 +728,75 @@ export class ConversationRunner {
         } catch {
             return null;
         }
+    }
+
+    /**
+     * Check if an error is a true quota exhaustion error (HTTP 402).
+     * VS Code surfaces this as a LanguageModelError with name='ChatQuotaExceeded'
+     * when the monthly premium request quota is depleted. This is distinct from
+     * ChatRateLimited (HTTP 429) which is always a temporary burst throttle.
+     */
+    private isQuotaExhaustedError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const constructorName = error.constructor?.name ?? '';
+        const name = error.name ?? '';
+        return (
+            constructorName === 'ChatQuotaExceeded' ||
+            constructorName.includes('QuotaExceeded') ||
+            name === 'ChatQuotaExceeded' ||
+            name.includes('QuotaExceeded')
+        );
+    }
+
+    /**
+     * Check if an error is a rate limit error from the VS Code Copilot API.
+     * VS Code surfaces this as a LanguageModelError with name='ChatRateLimited'
+     * (HTTP 429). This covers both transient rate limits and quota-flavored
+     * throttles ("exceeded your Copilot token usage") — both are temporary
+     * despite the scary wording on the latter.
+     */
+    private isRateLimitError(error: unknown): boolean {
+        if (!(error instanceof Error)) {
+            return false;
+        }
+        const constructorName = error.constructor?.name ?? '';
+        const name = error.name ?? '';
+        const message = error.message ?? '';
+        return (
+            constructorName === 'ChatRateLimited' ||
+            constructorName.includes('RateLimited') ||
+            name === 'ChatRateLimited' ||
+            name.includes('RateLimited') ||
+            message.includes('rate limit') ||
+            message.includes('Rate limit') ||
+            message.includes('RateLimited')
+        );
+    }
+
+    /**
+     * Sleep for a specified duration, aborting early if cancellation is requested.
+     */
+    private sleepWithCancellation(
+        ms: number,
+        token: vscode.CancellationToken
+    ): Promise<void> {
+        if (token.isCancellationRequested) {
+            return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+            const timer = setTimeout(resolve, ms);
+            let cleanupTimer: NodeJS.Timeout | undefined;
+            const disposable = token.onCancellationRequested(() => {
+                clearTimeout(timer);
+                clearTimeout(cleanupTimer);
+                disposable.dispose();
+                resolve();
+            });
+            // Clean up listener when timer fires normally
+            cleanupTimer = setTimeout(() => disposable.dispose(), ms + 1);
+        });
     }
 
     /**
@@ -596,6 +935,8 @@ export class ConversationRunner {
     reset(): void {
         this.tokenValidator = null;
         this._hitMaxIterations = false;
+        this._hitRateLimit = false;
+        this._hitQuotaExhausted = false;
         this._wasCancelled = false;
     }
 }

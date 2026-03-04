@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { SubagentExecutor } from '../services/subagentExecutor';
-import { CopilotModelManager } from '../models/copilotModelManager';
+import type { ILLMClient } from '../models/ILLMClient';
 import { ToolRegistry } from '../models/toolRegistry';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
-import { SubagentLimits } from '../models/toolConstants';
+import {
+    SubagentLimits,
+    RECURSIVE_CHILD_DISALLOWED_TOOLS,
+} from '../models/toolConstants';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
 import type { ITool } from '../tools/ITool';
 import {
@@ -30,7 +33,7 @@ const createMockModelManager = (
             maxInputTokens: 100000,
             countTokens: vi.fn().mockResolvedValue(100),
         }),
-    } as unknown as CopilotModelManager;
+    } as unknown as ILLMClient;
 };
 
 const createMockTool = (name: string): ITool =>
@@ -63,7 +66,7 @@ describe('SubagentExecutor', () => {
     });
 
     const createExecutor = (
-        modelManager: CopilotModelManager,
+        modelManager: ILLMClient,
         tools: ITool[] = [createMockTool('read_file')]
     ) => {
         const registry = new ToolRegistry();
@@ -151,10 +154,11 @@ describe('SubagentExecutor', () => {
                 })
             );
 
-            // Use low maxIterations via settings override
-            const lowIterSettings = createMockWorkspaceSettings({
-                maxIterations: 2,
-            });
+            // Use low maxIterations via inline mock
+            const lowIterSettings = {
+                ...createMockWorkspaceSettings(),
+                getMaxIterations: () => 2,
+            } as WorkspaceSettingsService;
             const registry = new ToolRegistry();
             registry.registerTool(createMockTool('read_file'));
             const executor = new SubagentExecutor(
@@ -189,9 +193,10 @@ describe('SubagentExecutor', () => {
                     ],
                 })
             );
-            const lowIterSettings = createMockWorkspaceSettings({
-                maxIterations: 2,
-            });
+            const lowIterSettings = {
+                ...createMockWorkspaceSettings(),
+                getMaxIterations: () => 2,
+            } as WorkspaceSettingsService;
             const registry = new ToolRegistry();
             registry.registerTool(createMockTool('read_file'));
             const executor = new SubagentExecutor(
@@ -248,7 +253,7 @@ describe('SubagentExecutor', () => {
                     maxInputTokens: 100000,
                     countTokens: vi.fn().mockResolvedValue(100),
                 }),
-            } as unknown as CopilotModelManager;
+            } as unknown as ILLMClient;
 
             const executor = createExecutor(modelManager);
 
@@ -317,7 +322,7 @@ describe('SubagentExecutor', () => {
     });
 
     describe('Tool Filtering', () => {
-        it('should filter out disallowed tools', async () => {
+        it('should filter out disallowed tools when canRecurse is false', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
             const allowedTool = createMockTool('read_file');
@@ -327,10 +332,12 @@ describe('SubagentExecutor', () => {
             const allTools = [allowedTool, ...disallowedTools];
 
             const executor = createExecutor(modelManager, allTools);
+            // Pass recursionDepth >= maxRecursionDepth so canRecurse=false (flat behavior)
             const result = await executor.execute(
                 defaultTask,
                 tokenSource.token,
-                1
+                1,
+                { recursionDepth: 3 }
             );
 
             expect(result.success).toBe(true);
@@ -391,6 +398,413 @@ describe('SubagentExecutor', () => {
                 expect.stringContaining('Turn 3/10'),
                 expect.any(Number)
             );
+        });
+    });
+
+    describe('Recursive Tool Filtering', () => {
+        it('should keep run_subagent when canRecurse is true (depth < maxDepth)', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const subagentTool = createMockTool('run_subagent');
+            const planTool = createMockTool('update_plan');
+            const allTools = [readTool, subagentTool, planTool];
+
+            const executor = createExecutor(modelManager, allTools);
+            // depth=0, maxDepth=2, subagentSessionManager+recursiveState present → canRecurse=true
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+                subagentSessionManager: {} as any,
+                recursiveState: {} as any,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).toContain('run_subagent');
+            // update_plan should be filtered (in RECURSIVE_CHILD_DISALLOWED_TOOLS)
+            expect(filteredNames).not.toContain('update_plan');
+        });
+
+        it('should filter run_subagent when canRecurse is false (depth >= maxDepth)', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const subagentTool = createMockTool('run_subagent');
+            const allTools = [readTool, subagentTool];
+
+            // maxRecursionDepth=1 so depth=1 means canRecurse=false
+            const lowDepthSettings = createMockWorkspaceSettings({
+                maxRecursionDepth: 1,
+            });
+            const registry = new ToolRegistry();
+            for (const tool of allTools) {
+                registry.registerTool(tool);
+            }
+            const executor = new SubagentExecutor(
+                modelManager,
+                registry,
+                promptGenerator,
+                lowDepthSettings
+            );
+
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 1,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).not.toContain('run_subagent');
+        });
+
+        it('should use RECURSIVE_CHILD_DISALLOWED_TOOLS when canRecurse is true', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const tools = [
+                ...RECURSIVE_CHILD_DISALLOWED_TOOLS.map((name) =>
+                    createMockTool(name)
+                ),
+                createMockTool('read_file'),
+                createMockTool('run_subagent'),
+            ];
+
+            const executor = createExecutor(modelManager, tools);
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+                subagentSessionManager: {} as any,
+                recursiveState: {} as any,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            // All RECURSIVE_CHILD_DISALLOWED_TOOLS should be filtered
+            for (const disallowed of RECURSIVE_CHILD_DISALLOWED_TOOLS) {
+                expect(filteredNames).not.toContain(disallowed);
+            }
+            // But read_file and run_subagent should pass through
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).toContain('run_subagent');
+        });
+
+        it('should pass canRecurse to prompt generator', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const executor = createExecutor(modelManager);
+
+            // canRecurse=true (depth 0 < maxDepth 2, subagentSessionManager+recursiveState present)
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+                subagentSessionManager: {} as any,
+                recursiveState: {} as any,
+            });
+
+            expect(promptGenerator.generateSystemPrompt).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                true // canRecurse
+            );
+        });
+
+        it('should pass canRecurse=false to prompt generator at max depth', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const lowDepthSettings = createMockWorkspaceSettings({
+                maxRecursionDepth: 1,
+            });
+            const registry = new ToolRegistry();
+            registry.registerTool(createMockTool('read_file'));
+            const executor = new SubagentExecutor(
+                modelManager,
+                registry,
+                promptGenerator,
+                lowDepthSettings
+            );
+
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 1,
+            });
+
+            expect(promptGenerator.generateSystemPrompt).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                false // canRecurse
+            );
+        });
+
+        it('should set canRecurse=false when subagentSessionManager is missing (even at valid depth)', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const subagentTool = createMockTool('run_subagent');
+            const allTools = [readTool, subagentTool];
+
+            const executor = createExecutor(modelManager, allTools);
+            // depth=0, maxDepth=2 BUT no subagentSessionManager → canRecurse=false
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                recursionDepth: 0,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            // run_subagent should be filtered since canRecurse=false
+            expect(filteredNames).not.toContain('run_subagent');
+            expect(filteredNames).toContain('read_file');
+        });
+    });
+
+    describe('Recursive Child Context', () => {
+        it('should include subagentExecutor in child context when canRecurse', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const executor = createExecutor(modelManager);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1,
+                {
+                    recursionDepth: 0,
+                    subagentSessionManager: {} as any,
+                    recursiveState: {} as any,
+                }
+            );
+
+            expect(result.success).toBe(true);
+            // The child context is internal, but we can verify via the log label
+            // and that execution completes successfully with recursive options
+        });
+
+        it('should pass subagentSessionManager to child context when canRecurse', async () => {
+            // Verify the SubagentSessionManager is forwarded through options
+            // by checking that execute receives it in options
+            const interceptedModelManager = createMockModelManager([
+                { content: 'Done' },
+            ]);
+            const registry = new ToolRegistry();
+            registry.registerTool(createMockTool('read_file'));
+            const executor = new SubagentExecutor(
+                interceptedModelManager,
+                registry,
+                promptGenerator,
+                workspaceSettings
+            );
+
+            const mockSessionManager = {
+                canSpawn: vi.fn().mockReturnValue(true),
+                recordSpawn: vi.fn().mockReturnValue(1),
+                getRemainingBudget: vi.fn().mockReturnValue(5),
+                getCount: vi.fn().mockReturnValue(1),
+                registerSubagentCancellation: vi.fn(),
+                setParentCancellationToken: vi.fn(),
+            };
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1,
+                {
+                    recursionDepth: 0,
+                    subagentSessionManager: mockSessionManager as any,
+                    recursiveState: {} as any,
+                }
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('should log with agentId when provided in options', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+            const executor = createExecutor(modelManager);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1,
+                { recursionDepth: 1, agentId: 'child-1' }
+            );
+
+            expect(result.success).toBe(true);
+        });
+    });
+
+    describe('Shallow Investigation Nudge', () => {
+        it('should nudge subagent when only orientation tools are used', async () => {
+            // Flow: call get_file_diff → try to respond → nudge → call find_symbol → respond
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file_path":"auth.ts"}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Based on the diff, looks fine.' }, // triggers nudge
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'find_symbol',
+                                arguments:
+                                    '{"symbol_name":"authenticate","include_body":true}',
+                            },
+                        },
+                    ],
+                },
+                {
+                    content: 'After deeper investigation: found real issue.',
+                },
+            ]);
+
+            const tools = [
+                createMockTool('get_file_diff'),
+                createMockTool('find_symbol'),
+            ];
+            const executor = createExecutor(modelManager, tools);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe(
+                'After deeper investigation: found real issue.'
+            );
+            // Model should have been called 4 times (tool call, nudged content, tool call, final)
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(4);
+        });
+
+        it('should accept response immediately when investigation tools are used', async () => {
+            // Flow: call find_symbol → respond → accepted (no nudge)
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'find_symbol',
+                                arguments:
+                                    '{"symbol_name":"validate","include_body":true}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Found issue in validate function.' },
+            ]);
+
+            const tools = [
+                createMockTool('get_file_diff'),
+                createMockTool('find_symbol'),
+            ];
+            const executor = createExecutor(modelManager, tools);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('Found issue in validate function.');
+            // Only 2 calls: tool call + final response (no nudge)
+            expect(modelManager.sendRequest).toHaveBeenCalledTimes(2);
+        });
+
+        it('should only nudge once even with repeated shallow attempts', async () => {
+            // Flow: get_file_diff → try respond (nudge) → get_file_diff again → respond (accepted, already nudged)
+            const modelManager = createMockModelManager([
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_1',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file_path":"auth.ts"}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Diff looks fine.' }, // triggers nudge (first time)
+                {
+                    content: null,
+                    toolCalls: [
+                        {
+                            id: 'call_2',
+                            function: {
+                                name: 'get_file_diff',
+                                arguments: '{"file_path":"utils.ts"}',
+                            },
+                        },
+                    ],
+                },
+                { content: 'Still only reading diffs...' }, // no nudge (already nudged once)
+            ]);
+
+            const tools = [createMockTool('get_file_diff')];
+            const executor = createExecutor(modelManager, tools);
+
+            const result = await executor.execute(
+                defaultTask,
+                tokenSource.token,
+                1
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.response).toBe('Still only reading diffs...');
+        });
+    });
+
+    describe('Diff Tool Filtering', () => {
+        it('should keep diff tools when parsedDiff is provided', async () => {
+            const modelManager = createMockModelManager([{ content: 'Done' }]);
+
+            const readTool = createMockTool('read_file');
+            const getFileDiffTool = createMockTool('get_file_diff');
+            const allTools = [readTool, getFileDiffTool];
+
+            const executor = createExecutor(modelManager, allTools);
+
+            // With parsedDiff → RLM mode
+            await executor.execute(defaultTask, tokenSource.token, 1, {
+                parsedDiff: [
+                    {
+                        filePath: 'test.ts',
+                        hunks: [],
+                        isNewFile: false,
+                        isDeletedFile: false,
+                    },
+                ] as any,
+            });
+
+            const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
+                .mock.calls[0]!;
+            const toolsPassedToPrompt = promptCall[1] as ITool[];
+            const filteredNames = toolsPassedToPrompt.map((t) => t.name);
+
+            expect(filteredNames).toContain('read_file');
+            expect(filteredNames).toContain('get_file_diff');
         });
     });
 });

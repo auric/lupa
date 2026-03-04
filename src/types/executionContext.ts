@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { PlanSessionManager } from '../services/planSessionManager';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
+import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import type { DiffHunk } from './contextTypes';
 
 /**
  * Context passed to tools during execution.
@@ -44,4 +46,30 @@ export interface ExecutionContext {
      * provides a non-cancelled token by default.
      */
     cancellationToken: vscode.CancellationToken;
+
+    /**
+     * Recursive state manager for the current analysis.
+     * Tracks the agent tree, enforces depth/budget limits, and tracks file coverage.
+     * Present when recursive review mode is enabled (maxRecursionDepth >= 1).
+     */
+    recursiveState?: RecursiveStateManager;
+
+    /**
+     * Current recursion depth of this agent.
+     * 0 = root agent, 1 = first-level child, 2 = grandchild, etc.
+     */
+    currentDepth?: number;
+
+    /**
+     * Hierarchical identifier for this agent in the recursive tree.
+     * Examples: "root", "child-1", "child-1.1"
+     */
+    currentAgentId?: string;
+
+    /**
+     * Parsed diff data for on-demand access via diff tools.
+     * The get_file_diff tool reads from this to return diffs on demand.
+     * Present only during analysis mode (not exploration mode).
+     */
+    parsedDiff?: DiffHunk[];
 }

@@ -31,7 +31,7 @@ export function generateToolSelectionGuide(): string {
 4. **Parallelize**: Call independent tools in one turn
 5. **Scope searches**: Provide \`relative_path\` when you know the area
 6. **Track progress**: Update your plan as you complete checklist items
-7. **Delegate complexity**: Spawn subagent for 3+ file investigations
+7. **Delegate complexity**: Spawn subagent for 4+ file investigations
 
 ### Anti-Patterns
 

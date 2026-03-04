@@ -415,9 +415,9 @@ describe('Tool-Calling Integration Tests', () => {
             );
 
             expect(result.analysis).toContain('maximum iterations');
-            // Uses configured max iterations from WorkspaceSettingsService
+            // Uses configured max iterations from ANALYSIS_LIMITS constant
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
-                ANALYSIS_LIMITS.maxIterations.default
+                ANALYSIS_LIMITS.maxIterations
             );
         });
     });

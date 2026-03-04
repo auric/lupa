@@ -343,6 +343,124 @@ describe('FindUsagesTool', () => {
             expect(result.data).toBeDefined();
         });
 
+        it('should handle malformed LSP definitions with undefined uri', async () => {
+            const mockDocument = {
+                getText: () => 'class MyClass {}',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // Malformed response: definition with undefined uri
+                        return Promise.resolve([
+                            { uri: undefined, range: undefined },
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: {
+                                    start: { line: 0, character: 6 },
+                                    end: { line: 0, character: 13 },
+                                },
+                            },
+                        ]);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
+
+            // Should not crash, should find the valid definition
+            expect(result.success).toBe(true);
+        });
+
+        it('should filter out references with undefined uri during deduplication', async () => {
+            const mockDocument = {
+                getText: () => 'class MyClass {}',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                },
+                                range: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        // Include a malformed reference with no uri
+                        return Promise.resolve([
+                            { uri: undefined, range: undefined },
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                range: {
+                                    start: { line: 0, character: 6 },
+                                    end: { line: 0, character: 13 },
+                                },
+                            },
+                        ]);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
+
+            // Should not crash, should return the valid reference
+            expect(result.success).toBe(true);
+        });
+
         it('should handle includeDeclaration parameter', async () => {
             const mockDocument = {
                 getText: () => 'class MyClass {}',
@@ -694,6 +812,161 @@ describe('FindUsagesTool', () => {
             // Tool should find usages using fallback to first text occurrence
             expect(result.success).toBe(true);
             expect(result.data).toContain('MyClass');
+        });
+
+        it('should prefer first resolvable occurrence over first textual match when cap is hit', async () => {
+            // Simulate a file where the symbol appears 12+ times:
+            // - first occurrence is in a comment (definition provider returns empty)
+            // - second occurrence resolves to a definition in another file (resolvable but not local def)
+            // - remaining occurrences also don't match the local definition
+            // When the cap (10) is hit, should return the 2nd occurrence (first resolvable), not the 1st (comment)
+            const lines = [
+                '// MyClass is used here', // line 0: comment, first textual match
+                'import { MyClass } from "./x";', // line 1: resolvable (import)
+                'const a = new MyClass();', // line 2
+                'const b = new MyClass();', // line 3
+                'const c = new MyClass();', // line 4
+                'const d = new MyClass();', // line 5
+                'const e = new MyClass();', // line 6
+                'const f = new MyClass();', // line 7
+                'const g = new MyClass();', // line 8
+                'const h = new MyClass();', // line 9
+                'const i = new MyClass();', // line 10: 11th occurrence, cap already hit
+                'class MyClass {}', // line 11: actual definition (never reached)
+            ];
+
+            const mockDocument = {
+                getText: () => lines.join('\n'),
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            const mockReferences = [
+                {
+                    uri: {
+                        toString: () => 'file:///test/workspace/src/other.ts',
+                        fsPath: '/test/workspace/src/other.ts',
+                    },
+                    range: {
+                        start: { line: 5, character: 0 },
+                        end: { line: 5, character: 7 },
+                    },
+                },
+            ];
+
+            (vscode.workspace.openTextDocument as any).mockResolvedValue(
+                mockDocument
+            );
+
+            let definitionCallCount = 0;
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        definitionCallCount++;
+                        if (definitionCallCount === 1) {
+                            // First occurrence (comment) — not resolvable
+                            return Promise.resolve([]);
+                        }
+                        // Subsequent occurrences — resolvable but definition in another file
+                        return Promise.resolve([
+                            {
+                                uri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/other.ts',
+                                },
+                                range: {
+                                    start: { line: 0, character: 0 },
+                                    end: { line: 0, character: 7 },
+                                    contains: () => false,
+                                },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve(mockReferences);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'MyClass',
+                    file_path: 'src/test.ts',
+                },
+                createMockExecutionContext()
+            );
+
+            // Should succeed: the cap is hit, but the first resolvable occurrence (line 1)
+            // is used instead of the first textual match (line 0, a comment)
+            expect(result.success).toBe(true);
+            // The definition provider was called exactly 10 times (the cap)
+            expect(definitionCallCount).toBe(10);
+        });
+    });
+
+    describe('LocationLink handling', () => {
+        it('should handle LocationLink responses from executeDefinitionProvider', async () => {
+            const mockDocument = {
+                getText: () => 'export function myFunc() { return 1; }',
+                uri: {
+                    toString: () => 'file:///test/workspace/src/test.ts',
+                    fsPath: '/test/workspace/src/test.ts',
+                },
+            };
+
+            const mockReferences = [
+                {
+                    uri: {
+                        toString: () => 'file:///test/workspace/src/caller.ts',
+                        fsPath: '/test/workspace/src/caller.ts',
+                    },
+                    range: {
+                        start: { line: 5, character: 0 },
+                        end: { line: 5, character: 6 },
+                    },
+                },
+            ];
+
+            (vscode.workspace.openTextDocument as any)
+                .mockResolvedValueOnce(mockDocument)
+                .mockResolvedValueOnce(mockDocument);
+
+            (vscode.commands.executeCommand as any).mockImplementation(
+                (command: string) => {
+                    if (command === 'vscode.executeDefinitionProvider') {
+                        // Return LocationLink format (targetUri/targetRange instead of uri/range)
+                        return Promise.resolve([
+                            {
+                                targetUri: {
+                                    toString: () =>
+                                        'file:///test/workspace/src/test.ts',
+                                    fsPath: '/test/workspace/src/test.ts',
+                                },
+                                targetRange: { contains: () => true },
+                                targetSelectionRange: { contains: () => true },
+                            },
+                        ]);
+                    }
+                    if (command === 'vscode.executeReferenceProvider') {
+                        return Promise.resolve(mockReferences);
+                    }
+                    return Promise.resolve([]);
+                }
+            );
+
+            const result = await findUsagesTool.execute(
+                {
+                    symbol_name: 'myFunc',
+                    file_path: 'src/test.ts',
+                    context_line_count: 1,
+                },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
         });
     });
 

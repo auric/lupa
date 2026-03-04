@@ -41,7 +41,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
     };
     let mockPromptGenerator: {
         generateToolAwareSystemPrompt: Mock;
-        generateToolCallingUserPrompt: Mock;
+        generateUserPrompt: Mock;
     };
     let mockModel: {
         countTokens: Mock;
@@ -68,10 +68,12 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
 
         mockPromptGenerator = {
             generateToolAwareSystemPrompt: vi.fn(() => 'System prompt'),
-            generateToolCallingUserPrompt: vi.fn(() => 'User message'),
+            generateUserPrompt: vi.fn(() => 'RLM user message'),
         };
 
-        const mockWorkspaceSettings = createMockWorkspaceSettings();
+        const mockWorkspaceSettings = createMockWorkspaceSettings({
+            maxRecursionDepth: 0,
+        });
         analysisProvider = new ToolCallingAnalysisProvider(
             mockToolRegistry as any,
             mockCopilotModelManager as any,
@@ -286,128 +288,6 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
         });
     });
 
-    describe('Diff size processing and tool availability', () => {
-        it('should disable tools when diff is too large', async () => {
-            // Mock high token count for the diff
-            mockModel.countTokens.mockImplementation(async (text: string) => {
-                if (text.includes('System')) {
-                    return 100;
-                }
-                if (text.includes('User message')) {
-                    return 5700;
-                } // user message is where the diff is included
-                return 50;
-            });
-
-            // Register SubmitReviewTool for final submission (even when tools are disabled for analysis)
-            const submitReviewTool = new SubmitReviewTool();
-            mockToolRegistry.getTool.mockImplementation((name: string) => {
-                if (name === 'submit_review') {
-                    return submitReviewTool;
-                }
-                return undefined;
-            });
-
-            mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: null,
-                toolCalls: [
-                    {
-                        id: 'call_final',
-                        function: {
-                            name: 'submit_review',
-                            arguments: JSON.stringify({
-                                review_content:
-                                    'Analysis of truncated diff without tools. Adding padding to ensure minimum 100 character requirement for review_content field.',
-                            }),
-                        },
-                    },
-                ],
-            });
-
-            const doesntMatterDiff =
-                'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
-            const result = await analysisProvider.analyze(
-                doesntMatterDiff,
-                tokenSource.token
-            );
-
-            expect(result.analysis).toBe(
-                'Analysis of truncated diff without tools. Adding padding to ensure minimum 100 character requirement for review_content field.'
-            );
-
-            // Should generate system prompt with no tools
-            expect(
-                mockPromptGenerator.generateToolAwareSystemPrompt
-            ).toHaveBeenCalledWith([]);
-
-            // Should add tools disabled message to user prompt
-            expect(
-                mockPromptGenerator.generateToolCallingUserPrompt
-            ).toHaveBeenCalledWith(expect.any(Object));
-        });
-
-        it('should keep tools available when diff is reasonably sized', async () => {
-            const reasonableDiff =
-                'diff --git a/file.ts b/file.ts\nindex abc..def\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,3 @@\n-old line\n+new line';
-
-            const submitReviewTool = new SubmitReviewTool();
-            const mockTools = [
-                { name: 'read_file', getVSCodeTool: () => ({}) },
-                { name: 'find_symbol', getVSCodeTool: () => ({}) },
-                submitReviewTool,
-            ];
-
-            mockToolRegistry.getAllTools.mockReturnValue(mockTools);
-            mockToolRegistry.getTool.mockImplementation((name: string) => {
-                if (name === 'submit_review') {
-                    return submitReviewTool;
-                }
-                return mockTools.find((t) => t.name === name);
-            });
-
-            // Mock reasonable token counts
-            mockModel.countTokens.mockImplementation(async (text: string) => {
-                if (text.includes('System')) {
-                    return 100;
-                }
-                if (text === reasonableDiff) {
-                    return 200;
-                } // Small diff
-                return 50;
-            });
-
-            mockCopilotModelManager.sendRequest.mockResolvedValue({
-                content: null,
-                toolCalls: [
-                    {
-                        id: 'call_final',
-                        function: {
-                            name: 'submit_review',
-                            arguments: JSON.stringify({
-                                review_content:
-                                    'Analysis with tools available. Adding padding to ensure minimum 100 character requirement for review_content field.',
-                            }),
-                        },
-                    },
-                ],
-            });
-
-            const result = await analysisProvider.analyze(
-                reasonableDiff,
-                tokenSource.token
-            );
-
-            expect(result.analysis).toBe(
-                'Analysis with tools available. Adding padding to ensure minimum 100 character requirement for review_content field.'
-            );
-
-            // Should generate system prompt with tools available
-            expect(
-                mockPromptGenerator.generateToolAwareSystemPrompt
-            ).toHaveBeenCalledWith(mockTools);
-        });
-    });
-
     describe('Complete workflow integration', () => {
         it('should handle full analysis workflow with tool calls and context management', async () => {
             const diff =
@@ -570,7 +450,7 @@ describe('ToolCallingAnalysisProvider Enhanced Integration', () => {
             );
 
             expect(result.analysis).toBe(
-                'Conversation reached maximum iterations. The conversation may be incomplete.'
+                'Conversation reached maximum iterations with no findings.'
             );
         });
     });

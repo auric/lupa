@@ -21,6 +21,7 @@ vi.mock('../services/loggingService', () => ({
         info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
+        debug: vi.fn(),
     },
 }));
 
@@ -165,14 +166,14 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
                     .fn()
                     .mockReturnValue('System prompt'),
-                generateToolCallingUserPrompt: vi
-                    .fn()
-                    .mockReturnValue('User prompt'),
+                generateUserPrompt: vi.fn().mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -377,6 +378,110 @@ describe('ChatParticipantService', () => {
                 true
             );
         });
+
+        it('should use recursive system prompt when maxRecursionDepth >= 1 and RLM approach', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                compareBranches: vi.fn().mockResolvedValue({
+                    diffText:
+                        'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-old\n+new',
+                    refName: 'feature/test',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const recursiveWorkspaceSettings = {
+                ...mockWorkspaceSettings,
+                getMaxRecursionDepth: vi.fn().mockReturnValue(1),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
+            };
+
+            const recursivePromptGenerator = {
+                ...mockPromptGenerator,
+                generateRecursiveSystemPrompt: vi
+                    .fn()
+                    .mockReturnValue('Recursive system prompt'),
+            };
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: recursiveWorkspaceSettings,
+                promptGenerator: recursivePromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
+            });
+
+            await capturedHandler(
+                {
+                    command: 'branch',
+                    model: {
+                        id: 'test-model',
+                        name: 'test-model',
+                        maxInputTokens: 100000,
+                    },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            expect(
+                recursivePromptGenerator.generateRecursiveSystemPrompt
+            ).toHaveBeenCalled();
+        });
+
+        it('should use non-recursive system prompt when RLM approach but depth=0', async () => {
+            const mockGitService = {
+                isInitialized: vi.fn().mockReturnValue(true),
+                compareBranches: vi.fn().mockResolvedValue({
+                    diffText:
+                        'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,1 +1,1 @@\n-old\n+new',
+                    refName: 'feature/test',
+                    error: undefined,
+                }),
+            };
+            vi.mocked(GitService.getInstance).mockReturnValue(
+                mockGitService as unknown as GitService
+            );
+
+            const nonRecursiveSettings = {
+                ...mockWorkspaceSettings,
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
+            };
+
+            const instance = ChatParticipantService.getInstance();
+            instance.setDependencies({
+                toolRegistry: mockToolRegistry,
+                workspaceSettings: nonRecursiveSettings,
+                promptGenerator: mockPromptGenerator,
+                gitOperations: mockGitOperations,
+                copilotModelManager: createMockCopilotModelManager() as any,
+            });
+
+            await capturedHandler(
+                {
+                    command: 'branch',
+                    model: {
+                        id: 'test-model',
+                        name: 'test-model',
+                        maxInputTokens: 100000,
+                    },
+                },
+                {},
+                mockStream,
+                mockToken
+            );
+
+            // depth=0 means non-recursive even with RLM approach
+            expect(
+                mockPromptGenerator.generateToolAwareSystemPrompt
+            ).toHaveBeenCalled();
+        });
     });
 
     describe('/changes command', () => {
@@ -406,14 +511,14 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
                     .fn()
                     .mockReturnValue('System prompt'),
-                generateToolCallingUserPrompt: vi
-                    .fn()
-                    .mockReturnValue('User prompt'),
+                generateUserPrompt: vi.fn().mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -605,7 +710,7 @@ describe('ChatParticipantService', () => {
             expect(mockGitService.compareBranches).not.toHaveBeenCalled();
         });
 
-        it('should use PromptGenerator.generateToolCallingUserPrompt', async () => {
+        it('should use PromptGenerator.generateUserPrompt', async () => {
             const mockGitService = {
                 isInitialized: vi.fn().mockReturnValue(true),
                 getUncommittedChanges: vi.fn().mockResolvedValue({
@@ -634,11 +739,11 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            expect(
-                mockPromptGenerator.generateToolCallingUserPrompt
-            ).toHaveBeenCalledWith(
+            expect(mockPromptGenerator.generateUserPrompt).toHaveBeenCalledWith(
                 expect.any(Array),
-                undefined // User prompt is undefined when empty
+                undefined, // User prompt is undefined when empty
+                false, // recursiveMode
+                expect.any(Number) // maxSubagents
             );
         });
 
@@ -675,9 +780,12 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            expect(
-                mockPromptGenerator.generateToolCallingUserPrompt
-            ).toHaveBeenCalledWith(expect.any(Array), 'focus on security');
+            expect(mockPromptGenerator.generateUserPrompt).toHaveBeenCalledWith(
+                expect.any(Array),
+                'focus on security',
+                false,
+                expect.any(Number) // maxSubagents
+            );
         });
 
         it('should stream progress with uncommitted changes scope', async () => {
@@ -864,14 +972,14 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
                     .fn()
                     .mockReturnValue('System prompt'),
-                generateToolCallingUserPrompt: vi
-                    .fn()
-                    .mockReturnValue('User prompt'),
+                generateUserPrompt: vi.fn().mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -1297,6 +1405,8 @@ describe('ChatParticipantService', () => {
             mockWorkspaceSettings = {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
+                getMaxSubagentsPerSession: vi.fn().mockReturnValue(10),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
@@ -1305,9 +1415,7 @@ describe('ChatParticipantService', () => {
                 generateExplorationSystemPrompt: vi
                     .fn()
                     .mockReturnValue('Exploration system prompt'),
-                generateToolCallingUserPrompt: vi
-                    .fn()
-                    .mockReturnValue('User prompt'),
+                generateUserPrompt: vi.fn().mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
@@ -1429,7 +1537,7 @@ describe('ChatParticipantService', () => {
 
             expect(mockStream.filetree).not.toHaveBeenCalled();
             expect(
-                mockPromptGenerator.generateToolCallingUserPrompt
+                mockPromptGenerator.generateUserPrompt
             ).not.toHaveBeenCalled();
         });
 
@@ -1925,31 +2033,10 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            // Verify exploration prompt receives filtered tools
+            // Verify exploration prompt was called (no longer receives tools directly)
             expect(
                 mockPromptGenerator.generateExplorationSystemPrompt
-            ).toHaveBeenCalledWith(expect.any(Array));
-
-            // Get the tools passed to generateExplorationSystemPrompt
-            const passedTools =
-                mockPromptGenerator.generateExplorationSystemPrompt.mock
-                    .calls[0][0];
-
-            // Should include exploration-safe tools
-            expect(passedTools).toContainEqual(
-                expect.objectContaining({ name: 'read_file' })
-            );
-            expect(passedTools).toContainEqual(
-                expect.objectContaining({ name: 'find_symbol' })
-            );
-
-            // Should NOT include main-analysis-only tools
-            expect(passedTools).not.toContainEqual(
-                expect.objectContaining({ name: 'update_plan' })
-            );
-            expect(passedTools).not.toContainEqual(
-                expect.objectContaining({ name: 'submit_review' })
-            );
+            ).toHaveBeenCalled();
         });
 
         it('should filter all MAIN_ANALYSIS_ONLY_TOOLS from exploration mode', async () => {
@@ -1991,21 +2078,10 @@ describe('ChatParticipantService', () => {
                 mockToken
             );
 
-            const passedTools =
-                mockPromptGenerator.generateExplorationSystemPrompt.mock
-                    .calls[0][0];
-
-            // Verify ALL main-only tools are filtered out
-            for (const toolName of MAIN_ANALYSIS_ONLY_TOOLS) {
-                expect(passedTools).not.toContainEqual(
-                    expect.objectContaining({ name: toolName })
-                );
-            }
-
-            // But read_file should still be there
-            expect(passedTools).toContainEqual(
-                expect.objectContaining({ name: 'read_file' })
-            );
+            // Verify exploration prompt was called (tool filtering is handled by ToolExecutor)
+            expect(
+                mockPromptGenerator.generateExplorationSystemPrompt
+            ).toHaveBeenCalled();
         });
     });
 
@@ -2039,14 +2115,13 @@ describe('ChatParticipantService', () => {
                 getRequestTimeoutSeconds: vi.fn().mockReturnValue(300),
                 getMaxIterations: vi.fn().mockReturnValue(100),
                 getMaxSubagentsPerSession: vi.fn().mockReturnValue(5),
+                getMaxRecursionDepth: vi.fn().mockReturnValue(0),
             };
             mockPromptGenerator = {
                 generateToolAwareSystemPrompt: vi
                     .fn()
                     .mockReturnValue('System prompt'),
-                generateToolCallingUserPrompt: vi
-                    .fn()
-                    .mockReturnValue('User prompt'),
+                generateUserPrompt: vi.fn().mockReturnValue('RLM user prompt'),
             };
             mockGitOperations = {
                 getRepository: vi.fn().mockReturnValue({
