@@ -28,6 +28,17 @@ ONLY report issues that are:
 Pre-existing code quality issues, tech debt, and architectural preferences are NOT findings.
 The PR author is not responsible for fixing problems that existed before their change.
 
+### Finding Classification
+
+Classify every finding before reporting:
+
+| Type | Definition | Evidence Bar |
+|---|---|---|
+| **MECHANICAL** | Code duplication, API contract violation, type error, wrong constant, missing import, dead code | Standard — cite the tool call that found it |
+| **INTENT-BASED** | Design decision seems wrong, threshold choice questionable, architecture concern | **Elevated** — MUST search for comments, docs, constants, or commit history explaining the rationale. If ANY plausible documented intent exists, **DROP IT** |
+
+Most high-confidence findings are MECHANICAL. Intent-based findings have the highest false positive rate because the reviewer lacks the author's full context. When reporting an intent-based finding, explicitly state what documentation you searched and why the documented rationale is insufficient.
+
 ### Verification Gates
 
 Before reporting a finding, complete the verification for its claim type:
@@ -88,6 +99,14 @@ SPECULATIVE findings are **EXCLUDED** from the review entirely. If you cannot ci
 
 ### False Positive Patterns — Avoid These
 
+**Design Intent Blindness** — the #1 source of false positives:
+- ❌ Claiming "inconsistent behavior" without checking for comments or docs explaining why — search for \`// Note:\`, \`// Intentional\`, \`// Why:\`, design docs, and the function's JSDoc BEFORE reporting
+- ❌ Reporting that a function "only handles X" when it was DESIGNED to only handle X — check the function's name, docstring, and callers to understand its intended scope
+- ❌ Claiming a counter/metric "miscounts" without understanding what it's tracking — "completed" may mean "finished" (including failures), not "succeeded". Read the callers and UI that consumes the value
+- ❌ Flagging standard CS primitives as "risky" (e.g., semaphores deadlock on reentrant acquire, hash maps don't preserve insertion order) — these are known properties of the data structure, not bugs
+- ❌ Fabricating examples that don't match the actual code — if a log says \`#5 spawned (5/10, 5 remaining)\`, don't claim it shows \`#5 spawned (2/10)\`
+
+**Other common false positives:**
 - ❌ "Can go negative" without proving a concrete input exists that causes it
 - ❌ "No tests for X" without searching the test directory first
 - ❌ "Inconsistent thresholds" for intentionally asymmetric designs — different roles may have different thresholds by design (e.g., coordinator delegates at 3+ files, workers decompose at 4+). Verify the ROLE before claiming inconsistency

@@ -111,6 +111,8 @@ export class ThinkAboutInvestigationTool extends BaseTool {
                 guidance +=
                     '- Prioritize questions most relevant to the parent task\n';
                 guidance += '- Be efficient with remaining iterations\n';
+                guidance +=
+                    '- If you have hypotheses about potential issues, search for comments/docs explaining the design before investigating further\n';
                 break;
             case 'wrap_up_partial':
                 guidance +=
@@ -121,6 +123,7 @@ export class ThinkAboutInvestigationTool extends BaseTool {
                     '- Report any truncated diffs that need re-review by the parent\n';
                 guidance +=
                     '- Provide clear recommendations based on available evidence\n';
+                guidance += this.getQualityCheckGuidance();
                 break;
             case 'investigation_complete':
                 guidance +=
@@ -128,9 +131,21 @@ export class ThinkAboutInvestigationTool extends BaseTool {
                 guidance += '- Include findings with markdown file links\n';
                 guidance += '- Provide specific recommendations\n';
                 guidance += '- Summarize evidence clearly\n';
+                guidance += this.getQualityCheckGuidance();
                 break;
         }
 
         return toolSuccess(guidance);
+    }
+
+    private getQualityCheckGuidance(): string {
+        return (
+            '\n**Before reporting findings, challenge each one:**\n' +
+            '- Is it MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n' +
+            '- For intent-based: did you find comments/docs explaining the design? If yes → DROP IT\n' +
+            '- Can you cite the specific tool output that confirms it?\n' +
+            '- Revert Test: would reverting this PR fix this issue? If NO → DROP IT\n' +
+            '- Zero findings is a valid outcome — do not invent issues to justify your investigation\n'
+        );
     }
 }

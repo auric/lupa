@@ -123,6 +123,20 @@ export class ThinkAboutCompletionTool extends BaseTool {
             guidance += '- Verify all findings have evidence\n';
         } else {
             guidance +=
+                '**Pre-submit self-challenge** (do this mentally for each finding):\n';
+            guidance +=
+                '1. Is this MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n';
+            guidance +=
+                '2. For intent-based findings: did you search for comments/docs explaining the design? What did you find?\n';
+            guidance +=
+                '3. Can you name the SPECIFIC tool call that confirmed this finding?\n';
+            guidance +=
+                '4. Did you attempt to disprove it? What was the result?\n';
+            guidance +=
+                '5. Would a developer familiar with this codebase agree, or would they say "that\'s by design"?\n';
+            guidance +=
+                '\nDrop any finding where the answer to #5 is likely "by design."\n\n';
+            guidance +=
                 '**Action**: Call the `submit_review` tool now with your complete review.\n';
             guidance += '- Use the summary draft as your opening\n';
             guidance += '- Organize findings by severity\n';
