@@ -4,6 +4,7 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { TokenConstants } from '../models/tokenConstants';
+import { coerceToStringArray } from './schemaHelpers';
 
 /**
  * Tool that returns the actual diff content for one or more specific files.
@@ -21,13 +22,7 @@ export class GetFileDiffTool extends BaseTool {
     schema = z.object({
         file_paths: z
             .preprocess(
-                (val) =>
-                    typeof val === 'string'
-                        ? val
-                              .split('\n')
-                              .map((l) => l.replace(/^[-•*]\s*/, '').trim())
-                              .filter(Boolean)
-                        : val,
+                coerceToStringArray,
                 z
                     .array(z.string().trim().min(1))
                     .min(1, 'At least one file path is required')

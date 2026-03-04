@@ -6,7 +6,7 @@ import * as z from 'zod';
  * - array: pass through (Zod validates items)
  * - null/undefined/other: coerce to empty array
  */
-function coerceToStringArray(val: unknown): unknown {
+export function coerceToStringArray(val: unknown): unknown {
     if (typeof val === 'string') {
         return val
             .split('\n')
