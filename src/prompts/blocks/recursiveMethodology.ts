@@ -77,7 +77,7 @@ After sub-agents return, the system automatically reports which files have been 
 
 4a. Call \`update_plan\` to record: which concern groups completed, key findings summary, and coverage status.
 4b. If a coverage gap is reported, delegate ALL uncovered files to sub-agents — group trivial files (version bumps, config tweaks, formatting) together into a single sub-agent if needed, and group substantive changes by concern with **specific investigation questions** informed by Phase 1 findings.
-4c. If any sub-agent reported truncated diffs (file too large for one call): spawn a focused sub-agent for the truncated file with instructions to call \`get_file_diff\` with \`context_lines: false\` or request specific file sections.
+4c. If any sub-agent reported truncated diffs (file too large for one call): spawn a focused sub-agent for the truncated file with instructions to call \`get_file_diff\` with \`include_context: false\` or request specific file sections.
 4d. Repeat 4a–4c until all files have been reviewed.
 
 ### Step 5: Aggregate Findings

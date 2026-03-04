@@ -36,11 +36,11 @@ export class GetFileDiffTool extends BaseTool {
                     'Pass ALL paths you need at once — do NOT make separate calls per file. ' +
                     'Paths must match those shown in <diff_metadata>.'
             ),
-        context_lines: z
+        include_context: z
             .boolean()
             .optional()
             .describe(
-                'Include unchanged context lines around changes. Defaults to true.'
+                'Whether to include unchanged context lines around changes. Defaults to true.'
             ),
     });
 
@@ -55,8 +55,8 @@ export class GetFileDiffTool extends BaseTool {
             );
         }
 
-        const { file_paths, context_lines } = args;
-        const includeContext = context_lines !== false;
+        const { file_paths, include_context } = args;
+        const includeContext = include_context !== false;
 
         const results: Array<{ path: string; text: string }> = [];
         const notFound: string[] = [];
@@ -128,7 +128,7 @@ export class GetFileDiffTool extends BaseTool {
                 return toolSuccess(
                     truncated +
                         `\n\n[TRUNCATED — diff for ${filePath} exceeds size limit. ` +
-                        'Try with context_lines: false or request fewer files.]'
+                        'Try with include_context: false or request fewer files.]'
                 );
             }
             if (

@@ -47,7 +47,7 @@ ${task.context.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'
 You have \`get_file_diff\` to read the actual diff for your assigned files.
 Your parent agent already identified which files belong to your investigation — call \`get_file_diff\` with those paths directly.
 
-**Truncated diffs**: If \`get_file_diff\` returns a TRUNCATED result for a large file, retry with \`context_lines: false\` or request fewer files per call. If the diff is still truncated, report which files were truncated in your findings summary so the parent agent can arrange additional coverage.`
+**Truncated diffs**: If \`get_file_diff\` returns a TRUNCATED result for a large file, retry with \`include_context: false\` or request fewer files per call. If the diff is still truncated, report which files were truncated in your findings summary so the parent agent can arrange additional coverage.`
             : '';
 
         // When canRecurse, the investigation approach defers to decomposition for large scopes

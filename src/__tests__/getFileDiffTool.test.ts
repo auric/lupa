@@ -361,12 +361,12 @@ describe('GetFileDiffTool', () => {
         );
     });
 
-    it('excludes context lines when context_lines is false', async () => {
+    it('excludes context lines when include_context is false', async () => {
         const context = createMockExecutionContext({
             parsedDiff: createTestDiff(),
         });
         const result = await tool.execute(
-            { file_paths: ['src/services/auth.ts'], context_lines: false },
+            { file_paths: ['src/services/auth.ts'], include_context: false },
             context
         );
 
@@ -685,6 +685,6 @@ describe('GetFileDiffTool', () => {
 
         expect(result.success).toBe(true);
         expect(result.data).toContain('TRUNCATED');
-        expect(result.data).toContain('context_lines: false');
+        expect(result.data).toContain('include_context: false');
     });
 });
