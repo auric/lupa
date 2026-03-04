@@ -235,6 +235,13 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                         [],
                         filesExamined
                     );
+                } else if (result.error === 'quota_exhausted') {
+                    // Agent did real work before monthly quota ran out — mark completed with partial data
+                    recursiveState.completeAgent(
+                        childAgentId,
+                        [],
+                        filesExamined
+                    );
                 } else {
                     recursiveState.failAgent(
                         childAgentId,
@@ -284,6 +291,17 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     partialFindings
                         ? `${rateLimitMsg}\n\nPartial findings:\n${partialFindings}`
                         : rateLimitMsg
+                );
+            }
+
+            if (!result.success && result.error === 'quota_exhausted') {
+                // No rollback: subagent did real work before monthly quota exhaustion
+                const quotaMsg = `Subagent #${subagentId} stopped: monthly Copilot quota exhausted after ${result.toolCallsMade} tool calls.`;
+                const partialFindings = result.response?.trim();
+                return toolError(
+                    partialFindings
+                        ? `${quotaMsg}\n\nPartial findings:\n${partialFindings}`
+                        : quotaMsg
                 );
             }
 

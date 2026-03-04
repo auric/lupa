@@ -136,7 +136,7 @@ export class ConversationRunner {
         return this._hitMaxIterations;
     }
 
-    /** Whether the last run() exited due to rate-limit retry exhaustion. */
+    /** Whether the last run() exited due to rate-limit retry exhaustion or quota exhaustion. */
     get hitRateLimit(): boolean {
         return this._hitRateLimit;
     }
