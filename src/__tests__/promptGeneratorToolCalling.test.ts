@@ -79,7 +79,8 @@ describe('PromptGenerator - Tool Calling Features', () => {
             const systemPrompt =
                 promptGenerator.generateToolAwareSystemPrompt();
 
-            expect(systemPrompt).toBeDefined();
+            expect(systemPrompt).toContain('Revert Test');
+            expect(systemPrompt).toContain('finding_quality');
         });
     });
 
@@ -164,7 +165,8 @@ describe('PromptGenerator - Tool Calling Features', () => {
             const systemPrompt =
                 promptGenerator.generateRecursiveSystemPrompt();
 
-            expect(systemPrompt).toBeDefined();
+            expect(systemPrompt).toContain('run_subagent');
+            expect(systemPrompt).toContain('submit_review');
         });
 
         it('should handle empty tools array', () => {

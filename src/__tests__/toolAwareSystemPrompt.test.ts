@@ -82,13 +82,15 @@ describe('ToolAwareSystemPromptGenerator', () => {
         it('should extract parameter descriptions from tool schemas', () => {
             const prompt = generator.generateSystemPrompt();
 
-            expect(prompt).toBeDefined();
+            expect(prompt).toContain('Revert Test');
+            expect(prompt).toContain('finding_quality');
         });
 
         it('should handle tools with complex schemas', () => {
             const prompt = generator.generateSystemPrompt();
 
-            expect(prompt).toBeDefined();
+            expect(prompt).toContain('analysis_methodology');
+            expect(prompt).toContain('submit_review');
         });
 
         it('should maintain consistent structure and formatting', () => {
@@ -113,7 +115,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
 
         it('should handle tools with no parameter descriptions', () => {
             const prompt = generator.generateSystemPrompt();
-            expect(prompt).toBeDefined();
+            expect(prompt).toContain('output_format');
         });
     });
 

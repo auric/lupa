@@ -297,6 +297,53 @@ describe('ToolCallStreamAdapter', () => {
                 `${ACTIVITY.searching} Searched for \`console'log\``
             );
         });
+
+        it('should format get_file_diff with array of single file', () => {
+            adapter.onToolCallStart(
+                'get_file_diff',
+                { file_paths: ['src/index.ts'] },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read diff for \`src/index.ts\``
+            );
+        });
+
+        it('should format get_file_diff with multiple files', () => {
+            adapter.onToolCallStart(
+                'get_file_diff',
+                { file_paths: ['src/a.ts', 'src/b.ts', 'src/c.ts'] },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read diff for 3 files`
+            );
+        });
+
+        it('should format get_file_diff with newline-separated string', () => {
+            adapter.onToolCallStart(
+                'get_file_diff',
+                { file_paths: 'src/a.ts\nsrc/b.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read diff for 2 files`
+            );
+        });
+
+        it('should format get_file_diff with empty/missing file_paths', () => {
+            adapter.onToolCallStart('get_file_diff', {}, 0, 1);
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                `${ACTIVITY.reading} Read diff for 0 files`
+            );
+        });
     });
 
     describe('onToolCallComplete', () => {
