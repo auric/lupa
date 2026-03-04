@@ -97,7 +97,7 @@ These components are created fresh for each analysis session, not managed by Ser
 | `GetSymbolsOverviewTool` | `getSymbolsOverviewTool.ts` | `get_symbols_overview` | Hierarchical symbol structure       |
 | `SearchForPatternTool`   | `searchForPatternTool.ts`   | `search_for_pattern`   | Text/regex search via ripgrep       |
 
-### Diff Tools (RLM)
+### Diff Tools (RLM - Recursive Language Model approach)
 
 | Tool              | File                 | Name            | Description                        |
 | ----------------- | -------------------- | --------------- | ---------------------------------- |
