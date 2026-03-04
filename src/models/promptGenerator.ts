@@ -168,7 +168,7 @@ export class PromptGenerator {
             reminder +=
                 `**Agent Budget**: You can spawn up to **${agentLimit}** sub-agents total across all depths. ` +
                 `Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours). ` +
-                'Target **2\u20133 files per sub-agent** for thorough review.\n\n';
+                'Target **2\u20134 files per sub-agent** for thorough review.\n\n';
         } else if (agentLimit !== undefined) {
             reminder +=
                 '**Agent Budget**: All sub-agent slots have been used. ' +
