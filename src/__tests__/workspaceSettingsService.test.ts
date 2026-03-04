@@ -361,6 +361,18 @@ describe('WorkspaceSettingsService', () => {
             );
         });
 
+        it('should reset logLevel to default', () => {
+            vi.mocked(fs.readFileSync).mockReturnValue(
+                JSON.stringify({ logLevel: 'debug' })
+            );
+            service = new WorkspaceSettingsService(mockContext);
+            expect(service.getSetting('logLevel', 'info')).toBe('debug');
+
+            service.resetSettingsToDefaults();
+
+            expect(service.getSetting('logLevel', 'info')).toBe('info');
+        });
+
         it('should schedule a debounced save after reset', () => {
             service = new WorkspaceSettingsService(mockContext);
             vi.mocked(fs.writeFileSync).mockClear();
