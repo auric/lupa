@@ -54,7 +54,10 @@ function countAllIterations(
 ): number {
     let count = rootIterations ?? 0;
     for (const call of calls) {
-        if (call.toolName === 'run_subagent' && call.iterationsUsed) {
+        if (
+            call.toolName === 'run_subagent' &&
+            call.iterationsUsed !== undefined
+        ) {
             count += call.iterationsUsed;
         }
         if (call.nestedCalls?.length) {

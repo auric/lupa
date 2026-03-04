@@ -34,6 +34,7 @@ export class ListDirTool extends BaseTool {
             ),
         recursive: z
             .boolean()
+            .default(false)
             .describe('Whether to scan subdirectories recursively'),
     });
 

@@ -19,7 +19,7 @@ import type {
 } from '../types/toolCallTypes';
 import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
-import type { ToolResultMetadata } from '@/types/toolResultTypes';
+import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';

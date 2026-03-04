@@ -41,7 +41,7 @@ Focus on: [key functions/classes]"
 
 RULES:
 - Include specific file paths — sub-agents examine the files you assign
-- Target 2-4 files per sub-agent for thorough review
+- Target 2-3 files per sub-agent for thorough review
 - Sub-agents CANNOT run tests or execute code
 - ALWAYS spawn ALL sub-agents in the same response (parallel execution)
 

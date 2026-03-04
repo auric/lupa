@@ -168,7 +168,7 @@ export class PromptGenerator {
             reminder +=
                 `**Agent Budget**: You can spawn up to **${agentLimit}** sub-agents total across all depths. ` +
                 `Each sub-agent gets its own **${RecursionConstants.DEFAULT_CHILD_BUDGET}** iteration budget (independent of yours). ` +
-                'Target **2\u20134 files per sub-agent** for thorough review.\n\n';
+                'Target **2\u20133 files per sub-agent** for thorough review.\n\n';
         } else if (agentLimit !== undefined) {
             reminder +=
                 '**Agent Budget**: All sub-agent slots have been used. ' +
@@ -201,59 +201,6 @@ export class PromptGenerator {
         reminder +=
             'Quality matters more than quantity — a thorough review that finds zero issues is better than a review padded with speculative concerns.\n';
         reminder += '</analysis_task>';
-
-        return reminder;
-    }
-
-    /**
-     * Generate a concise analysis reminder based on PR size and mode.
-     * Full methodology is in system prompt - this just provides context-specific nudges.
-     */
-    private generateAnalysisReminder(
-        fileCount: number,
-        recursiveMode: boolean = false
-    ): string {
-        if (recursiveMode) {
-            return this.generateRecursiveAnalysisReminder(fileCount);
-        }
-
-        const spawnSubagents = fileCount >= 4;
-
-        let reminder = '<analysis_task>\n';
-        reminder += `Review the ${fileCount} file(s) above.\n\n`;
-
-        if (spawnSubagents) {
-            reminder += `**Note**: This PR has ${fileCount} files. Per your methodology, spawn at least 2 subagents for parallel analysis.\n\n`;
-        }
-
-        reminder += `**Workflow Reminder**:
-1. Create a plan with \`update_plan\` to track progress
-2. Use tools to investigate unfamiliar code
-3. Call reflection tools before concluding
-4. Deliver structured Markdown review
-</analysis_task>`;
-
-        return reminder;
-    }
-
-    /**
-     * Generate analysis reminder for recursive review mode.
-     * Emphasizes decomposition and delegation workflow.
-     */
-    private generateRecursiveAnalysisReminder(fileCount: number): string {
-        let reminder = '<analysis_task>\n';
-        reminder += `Review the ${fileCount} file(s) above.\n\n`;
-
-        reminder += `**Recursive Review Mode**: You MUST decompose this PR into logical concern groups and spawn focused sub-agents for each via \`run_subagent\`. Do NOT review files directly — delegate.\n\n`;
-
-        reminder += `**Workflow**:
-1. Scan the diff structure and classify changes
-2. Call \`update_plan\` with your decomposition plan
-3. **Make multiple \`run_subagent\` calls in one response** — one per concern group (parallel execution)
-4. After all agents return, aggregate findings
-5. Check for cross-concern issues
-6. Call \`think_about_completion\`, then \`submit_review\`
-</analysis_task>`;
 
         return reminder;
     }

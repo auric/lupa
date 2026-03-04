@@ -404,6 +404,144 @@ describe('RunSubagentTool', () => {
         });
     });
 
+    describe('Rate Limited Handling', () => {
+        it('should report rate_limited as failed tool call with tool count', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'rate_limited',
+                toolCallsMade: 8,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('rate limited');
+            expect(result.error).toContain('8');
+        });
+
+        it('should include partial findings in rate_limited error', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Found issues in auth module',
+                error: 'rate_limited',
+                toolCallsMade: 15,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Partial findings');
+            expect(result.error).toContain('Found issues in auth module');
+        });
+
+        it('should NOT rollback spawn count on rate_limited', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Partial data',
+                error: 'rate_limited',
+                toolCallsMade: 10,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(sessionManager.getCount()).toBe(1);
+        });
+    });
+
+    describe('Quota Exhausted Handling', () => {
+        it('should report quota_exhausted as failed tool call', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: '',
+                error: 'quota_exhausted',
+                toolCallsMade: 20,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('quota exhausted');
+            expect(result.error).toContain('20');
+        });
+
+        it('should include partial findings in quota_exhausted error', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Reviewed 3 files before quota hit',
+                error: 'quota_exhausted',
+                toolCallsMade: 25,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            const result = await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Partial findings');
+            expect(result.error).toContain('Reviewed 3 files before quota hit');
+        });
+
+        it('should NOT rollback spawn count on quota_exhausted', async () => {
+            const mockExecutor = createMockExecutor({
+                success: false,
+                response: 'Some work done',
+                error: 'quota_exhausted',
+                toolCallsMade: 5,
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createSubagentExecutionContext(
+                mockExecutor,
+                sessionManager
+            );
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            expect(sessionManager.getCount()).toBe(1);
+        });
+    });
+
     describe('Error Handling', () => {
         it('should return internal error when subagentExecutor and subagentSessionManager are missing', async () => {
             const tool = new RunSubagentTool(workspaceSettings);
@@ -1118,6 +1256,62 @@ describe('RunSubagentTool', () => {
                 error: 'max_iterations',
                 toolCallsMade: 30,
                 response: 'Some partial findings',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should mark child agent as completed on rate_limited', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'rate_limited',
+                toolCallsMade: 15,
+                response: 'Partial rate-limited findings',
+            });
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                recursiveState,
+                currentDepth: 0,
+                currentAgentId: rootId,
+            });
+
+            await tool.execute(
+                { task: 'Investigate the authentication flow thoroughly' },
+                context
+            );
+
+            const rootNode = recursiveState.getNode(rootId)!;
+            const childNode = recursiveState.getNode(rootNode.childIds[0]!)!;
+            expect(childNode.status).toBe('completed');
+        });
+
+        it('should mark child agent as completed on quota_exhausted', async () => {
+            const { recursiveState, rootId } = createTestRecursiveState();
+
+            const mockExecutor = createMockExecutor({
+                success: false,
+                error: 'quota_exhausted',
+                toolCallsMade: 20,
+                response: 'Partial quota findings',
             });
             const tool = new RunSubagentTool(workspaceSettings);
             const context = createMockExecutionContext({

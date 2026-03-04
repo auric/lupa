@@ -19,10 +19,8 @@ import { SubagentSessionManager } from './subagentSessionManager';
 import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { CopilotModelManager } from '../models/copilotModelManager';
-import {
-    INVESTIGATION_TOOLS,
-    MAIN_ANALYSIS_ONLY_TOOLS,
-} from '../models/toolConstants';
+import { MAIN_ANALYSIS_ONLY_TOOLS } from '../models/toolConstants';
+import { createCoverageGapCallback } from '../models/coverageGapCallbackFactory';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 
 import { DiffUtils } from '../utils/diffUtils';
@@ -36,7 +34,6 @@ import type {
     ChatToolCallHandler,
     ChatAnalysisMetadata,
 } from '../types/chatTypes';
-import type { DiffHunk } from '../types/contextTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import { createFollowupProvider } from './chatFollowupProvider';
 
@@ -598,7 +595,7 @@ export class ChatParticipantService implements vscode.Disposable {
                     tools: availableTools,
                     label: `Chat /${scopeLabel}`,
                     requiresExplicitCompletion: true,
-                    afterToolCalls: this.createCoverageGapCallback(
+                    afterToolCalls: createCoverageGapCallback(
                         recursiveState,
                         parsedDiff,
                         disabledToolNames,
@@ -653,47 +650,6 @@ export class ChatParticipantService implements vscode.Disposable {
                 }
             }
         }
-    }
-
-    private createCoverageGapCallback(
-        recursiveState: RecursiveStateManager | undefined,
-        parsedDiff: DiffHunk[],
-        disabledToolNames: Set<string>,
-        sessionManager: SubagentSessionManager
-    ): ((toolNames: string[]) => string | undefined) | undefined {
-        if (!recursiveState || parsedDiff.length === 0) {
-            return undefined;
-        }
-
-        const allFiles = parsedDiff.map((d) => d.filePath);
-
-        return (toolNames: string[]) => {
-            if (!toolNames.includes('run_subagent')) {
-                return undefined;
-            }
-
-            // If subagent budget is exhausted, re-enable investigation tools
-            // so the root can directly examine uncovered files.
-            if (!sessionManager.canSpawn()) {
-                for (const tool of INVESTIGATION_TOOLS) {
-                    disabledToolNames.delete(tool);
-                }
-                return recursiveState.getCoverageGapFallbackMessage(allFiles);
-            }
-
-            // After first subagent round, disable investigation tools for the root.
-            // The root is a controller — it delegates, not investigates.
-            if (disabledToolNames.size === 0) {
-                for (const tool of INVESTIGATION_TOOLS) {
-                    disabledToolNames.add(tool);
-                }
-                Log.info(
-                    '[ChatParticipantService] Root agent investigation tools disabled after first subagent round'
-                );
-            }
-
-            return recursiveState.getCoverageGapMessage(allFiles);
-        };
     }
 
     /**
