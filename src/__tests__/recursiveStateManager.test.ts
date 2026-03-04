@@ -96,6 +96,10 @@ describe('RecursiveStateManager', () => {
             // But the root's childIds does NOT contain it (parent was not found)
             const rootNode = manager.getNode('root')!;
             expect(rootNode.childIds).not.toContain(childId);
+
+            expect(Log.warn).toHaveBeenCalledWith(
+                expect.stringContaining('nonexistent')
+            );
         });
     });
 
@@ -641,6 +645,7 @@ describe('RecursiveStateManager', () => {
         });
 
         it('should include error reason for failed agents', () => {
+            manager.registerAgent(undefined, 'Root', 25);
             manager.startAgent('root');
             manager.registerAgent('root', 'Child task', 10);
             manager.startAgent('child-1');

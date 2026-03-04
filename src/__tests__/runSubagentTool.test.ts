@@ -1551,5 +1551,57 @@ describe('RunSubagentTool', () => {
             // Ambiguous — "Button.tsx" matches both; excluded from coverage
             expect(result).toEqual([]);
         });
+
+        it('should handle newline-delimited string file_paths (pre-Zod args)', () => {
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: 'src/auth.ts\nsrc/service.ts',
+                    },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(toolCalls);
+            expect(result).toEqual(['src/auth.ts', 'src/service.ts']);
+        });
+
+        it('should resolve newline-delimited string paths against parsedDiff', () => {
+            const parsedDiff = [
+                {
+                    filePath: 'src/components/Button.tsx',
+                    hunks: [],
+                    isNewFile: false,
+                    isDeletedFile: false,
+                    originalHeader: '',
+                },
+            ];
+            const toolCalls = [
+                {
+                    id: '1',
+                    toolName: 'get_file_diff',
+                    arguments: {
+                        file_paths: 'Button.tsx\nMissing.ts',
+                    },
+                    result: '',
+                    success: true,
+                    error: undefined,
+                    durationMs: 10,
+                    timestamp: Date.now(),
+                },
+            ];
+
+            const result = RunSubagentTool.extractFilesExamined(
+                toolCalls,
+                parsedDiff
+            );
+            expect(result).toEqual(['src/components/Button.tsx']);
+        });
     });
 });

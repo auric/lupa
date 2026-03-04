@@ -388,19 +388,27 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                 continue;
             }
             const args = call.arguments;
-            // get_file_diff uses file_paths array
-            const filePaths = args['file_paths'];
-            if (Array.isArray(filePaths)) {
-                for (const fp of filePaths) {
-                    if (typeof fp !== 'string') {
-                        continue;
-                    }
-                    const resolved = parsedDiff
-                        ? RunSubagentTool.resolveToCanonicalPath(fp, parsedDiff)
-                        : fp;
-                    if (resolved) {
-                        files.add(resolved);
-                    }
+            // get_file_diff uses file_paths array — but ToolCallRecord stores
+            // pre-Zod args, so the value may be a newline-delimited string
+            // (coerceToStringArray handles this at schema level, but we see raw args)
+            const raw = args['file_paths'];
+            const filePaths = Array.isArray(raw)
+                ? raw
+                : typeof raw === 'string'
+                  ? raw
+                        .split('\n')
+                        .map((l) => l.trim())
+                        .filter(Boolean)
+                  : [];
+            for (const fp of filePaths) {
+                if (typeof fp !== 'string') {
+                    continue;
+                }
+                const resolved = parsedDiff
+                    ? RunSubagentTool.resolveToCanonicalPath(fp, parsedDiff)
+                    : fp;
+                if (resolved) {
+                    files.add(resolved);
                 }
             }
         }

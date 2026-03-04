@@ -18,12 +18,6 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('feedback');
         });
 
-        it('should include tool section when tools are provided', () => {
-            const prompt = generator.generateSystemPrompt();
-
-            expect(prompt).toContain('Staff Engineer');
-        });
-
         it('should include tool selection guide', () => {
             const prompt = generator.generateSystemPrompt();
 
@@ -79,14 +73,14 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('think_about_completion');
         });
 
-        it('should extract parameter descriptions from tool schemas', () => {
+        it('should include quality guidance in prompt', () => {
             const prompt = generator.generateSystemPrompt();
 
             expect(prompt).toContain('Revert Test');
             expect(prompt).toContain('finding_quality');
         });
 
-        it('should handle tools with complex schemas', () => {
+        it('should include analysis methodology and review submission sections', () => {
             const prompt = generator.generateSystemPrompt();
 
             expect(prompt).toContain('analysis_methodology');

@@ -590,47 +590,54 @@ describe('ConversationRunner', () => {
 
         it('should reset hitRateLimit flag on reset()', async () => {
             vi.useFakeTimers();
-            class ChatRateLimited extends Error {
-                constructor() {
-                    super('Rate limited');
-                    this.name = 'ChatRateLimited';
+            try {
+                class ChatRateLimited extends Error {
+                    constructor() {
+                        super('Rate limited');
+                        this.name = 'ChatRateLimited';
+                    }
                 }
+                const modelManager = {
+                    sendRequest: vi.fn().mockImplementation(() => {
+                        return Promise.reject(new ChatRateLimited());
+                    }),
+                    getCurrentModel: vi.fn().mockResolvedValue({
+                        id: 'test-model',
+                        maxInputTokens: 100000,
+                        countTokens: vi.fn().mockResolvedValue(100),
+                    }),
+                } as unknown as CopilotModelManager;
+                const toolExecutor = createMockToolExecutor();
+                const runner = new ConversationRunner(
+                    modelManager,
+                    toolExecutor
+                );
+
+                const config: ConversationRunnerConfig = {
+                    systemPrompt: 'Test prompt',
+                    maxIterations: 10,
+                    tools: [],
+                };
+
+                conversation.addUserMessage('Test');
+                const resultPromise = runner.run(
+                    config,
+                    conversation,
+                    createCancellationToken()
+                );
+
+                for (let i = 0; i < 10; i++) {
+                    await vi.advanceTimersByTimeAsync(60000);
+                }
+
+                await resultPromise;
+                expect(runner.hitRateLimit).toBe(true);
+
+                runner.reset();
+                expect(runner.hitRateLimit).toBe(false);
+            } finally {
+                vi.useRealTimers();
             }
-            const modelManager = {
-                sendRequest: vi.fn().mockImplementation(() => {
-                    return Promise.reject(new ChatRateLimited());
-                }),
-                getCurrentModel: vi.fn().mockResolvedValue({
-                    id: 'test-model',
-                    maxInputTokens: 100000,
-                    countTokens: vi.fn().mockResolvedValue(100),
-                }),
-            } as unknown as CopilotModelManager;
-            const toolExecutor = createMockToolExecutor();
-            const runner = new ConversationRunner(modelManager, toolExecutor);
-
-            const config: ConversationRunnerConfig = {
-                systemPrompt: 'Test prompt',
-                maxIterations: 10,
-                tools: [],
-            };
-
-            conversation.addUserMessage('Test');
-            const resultPromise = runner.run(
-                config,
-                conversation,
-                createCancellationToken()
-            );
-
-            for (let i = 0; i < 10; i++) {
-                await vi.advanceTimersByTimeAsync(60000);
-            }
-
-            await resultPromise;
-            expect(runner.hitRateLimit).toBe(true);
-
-            runner.reset();
-            expect(runner.hitRateLimit).toBe(false);
         });
     });
 
