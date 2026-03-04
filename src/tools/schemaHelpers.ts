@@ -1,8 +1,10 @@
 import * as z from 'zod';
 
 /**
- * Coerce a multi-line string into a string array by splitting on newlines
- * and stripping leading bullet markers.
+ * Coerce a value into a string array for flexible LLM input handling.
+ * - string: split on newlines, strip bullet markers, drop empty lines
+ * - array: pass through (Zod validates items)
+ * - null/undefined/other: coerce to empty array
  */
 function coerceToStringArray(val: unknown): unknown {
     if (typeof val === 'string') {
@@ -11,7 +13,10 @@ function coerceToStringArray(val: unknown): unknown {
             .map((l) => l.replace(/^[-•*]\s*/, '').trim())
             .filter(Boolean);
     }
-    return val;
+    if (Array.isArray(val)) {
+        return val;
+    }
+    return [];
 }
 
 /**

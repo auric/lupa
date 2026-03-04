@@ -117,9 +117,18 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
                 return '🚀 Submitted code review';
 
             case 'get_file_diff': {
-                const paths = Array.isArray(args.file_paths)
-                    ? args.file_paths
-                    : [];
+                const raw = args.file_paths;
+                let paths: unknown[];
+                if (Array.isArray(raw)) {
+                    paths = raw;
+                } else if (typeof raw === 'string') {
+                    paths = raw
+                        .split('\n')
+                        .map((l) => l.trim())
+                        .filter(Boolean);
+                } else {
+                    paths = [];
+                }
                 if (paths.length === 1) {
                     return `${ACTIVITY.reading} Read diff for \`${sanitizeForMarkdown(paths[0], 'file')}\``;
                 }
