@@ -1,7 +1,7 @@
 # Review Quality Improvement: Reducing False Positives in AI Code Review
 
-**Date:** June 2025
-**Based on:** Empirical triage of 40 findings across 3 review rounds + industry research
+**Date:** June 2025 (updated March 2026)
+**Based on:** Empirical triage of 40 findings across 3 review rounds + extensive industry research
 
 ---
 
@@ -9,7 +9,7 @@
 
 AI code review tools produce **60–85% false positive rates** on complex codebases without targeted mitigation. Lupa's current prompt-based quality architecture provides ~20 prompt-level gates, 5 tool-level checkpoints, and ~14 programmatic validations, but FPs still slip through because **prompt-only quality control plateaus around 60–70% accuracy**.
 
-The highest-ROI improvements shift verification from self-judgment (LLM evaluating its own claims) to external checks (programmatic validation, tool-based re-verification, structured output schemas). This document catalogs root causes, maps the current architecture, and provides a prioritized roadmap.
+The highest-ROI improvements shift verification from self-judgment (LLM evaluating its own claims) to external checks (programmatic validation, tool-based re-verification, structured output schemas). All recommended approaches are **language-agnostic** — they work across TypeScript, Python, Java, Go, C#, Rust, and any other language without per-language tooling. This document catalogs root causes, maps the current architecture, and provides a prioritized roadmap.
 
 ---
 
@@ -28,12 +28,14 @@ _Range depends on whether debatable findings are counted as FP._
 
 ### Industry Benchmarks (Approximate)
 
-| Tool                   | Reported FP Rate | Notes                                              |
-| ---------------------- | ---------------- | -------------------------------------------------- |
-| cubic                  | ~11%             | Structured output, verification agents, multi-pass |
-| CodeRabbit             | ~15%             | Static analysis integration, user feedback loops   |
-| First-gen AI reviewers | 40–50%+          | Single-pass prompt-only approaches                 |
-| BugBot (Microsoft)     | Not published    | Uses Roslyn analyzers + LLM for C#/.NET            |
+| Tool                   | Reported FP Rate | Notes                                                               |
+| ---------------------- | ---------------- | ------------------------------------------------------------------- |
+| cubic                  | ~11%             | Structured output, verification agents, multi-pass                  |
+| CodeRabbit             | ~15%             | Evidence verification scripts, AST analysis, user feedback loops    |
+| Qodo 2.0               | ~11% better      | Multi-agent system, context engineering across repos and prior PRs  |
+| BitsAI-CR (ByteDance)  | 25% (75% prec.)  | Two-stage pipeline: RuleChecker + ReviewFilter, 12K+ WAU            |
+| diffray                | Not published    | Layered defense: RAG + multi-agent verification + structured output |
+| First-gen AI reviewers | 40–50%+          | Single-pass prompt-only approaches                                  |
 
 _Sources: published blog posts and marketing materials, not independent benchmarks. Actual rates depend on codebase complexity and measurement methodology._
 
@@ -97,7 +99,7 @@ Derived from manually triaging 40 findings. Each category includes the percentag
 
 **Root cause**: LLM applies generic security/safety patterns without checking whether the concern is reachable in this specific codebase.
 
-**Fix targets**: Counterexample requirement (existing), call-site verification (implemented), reachability analysis prompts (partial), static analysis integration (gap).
+**Fix targets**: Counterexample requirement (existing), call-site verification (implemented), reachability analysis prompts (partial), tool-based reachability verification via CoVe (gap).
 
 ### 2.5 Complementary Block Misunderstanding (~10% of FPs)
 
@@ -190,7 +192,7 @@ Where FPs slip through despite the current architecture.
 | 4   | **No verification agent / second opinion**                 | Single model judges its own work; self-assessment is unreliable                          | All categories                          | High     |
 | 5   | **No feedback loop from FP → prompt refinement**           | Known FP patterns require manual prompt editing                                          | All categories                          | Medium   |
 | 6   | **Root agent trusts subagent severity without re-scoring** | Subagents tend to inflate severity; root passes it through                               | Severity inflation                      | Medium   |
-| 7   | **No static analysis integration for fact-checking**       | LLM can't verify type correctness, reachability, or runtime behavior                     | Theoretical-Only, Wrong Factual Premise | High     |
+| 7   | **No tool-based verification phase (CoVe-style)**          | Findings are never re-verified with independent tool calls after generation              | Theoretical-Only, Wrong Factual Premise | High     |
 | 8   | **Single-model, single-pass for initial review**           | No diversity of perspective; one model's blind spots dominate                            | Design Intent Blindness                 | Medium   |
 | 9   | **No confidence scoring on individual findings**           | Binary include/exclude decision; no graduated confidence                                 | All categories                          | Low      |
 
@@ -198,52 +200,131 @@ Where FPs slip through despite the current architecture.
 
 ## 5. Industry Approaches to FP Reduction
 
-Based on research of published architectures and blog posts.
+Based on extensive research of published papers, architectures, and blog posts. All approaches below are **language-agnostic** — they don't require per-language static analyzers or AST parsers.
 
-### 5.1 Verification Agent (Augment, Cursor)
+### 5.1 Chain-of-Verification (CoVe) — Post-Generation Fact-Checking
 
-A dedicated agent reviews the initial findings and challenges each one. Acts as "devil's advocate."
+**Source**: Meta AI (ICLR 2024), widely adopted across domains. ConVerTest (2026) applied it to code generation.
 
-- **How it works**: After initial review generates findings, a second pass with a different prompt (or model) attempts to _refute_ each finding. Findings that survive are higher confidence.
-- **FP reduction**: 40–60% estimated for CRITICAL/HIGH findings
-- **Complexity**: Medium — requires second model call per review, roughly doubles cost
-- **Applicable to Lupa**: High fit. Could be implemented as a post-aggregation phase where root agent verifies subagent findings with tools.
+After generating findings, the LLM re-verifies its own claims through a structured 4-stage pipeline:
 
-### 5.2 Multi-Model Voting (Qodo, academic research)
+1. **Draft** initial findings
+2. **Plan verification questions** for each finding ("Does this file path exist?", "Can this function actually receive null?", "Is there a comment explaining this design?")
+3. **Answer questions independently** using tool calls, isolated from the initial finding's context to avoid confirmation bias
+4. **Revise or drop** findings based on verification results
 
-Multiple models independently review the same code, and only findings reported by ≥2 models are kept.
+- **FP reduction**: 28% improvement in FACTSCORE; up to 96% hallucination reduction when combined with other techniques (diffray). ConVerTest showed CoVe improves test validity and reduces subtle logical flaws.
+- **Complexity**: Low-Medium — purely prompt engineering + structured tool usage
+- **Language-agnostic**: YES — verification uses `read_file`, `search_for_pattern`, `find_usages` — tools that work on any language
+- **Key insight**: "LLMs are often more truthful when asked to verify a particular fact than when asked to use it in their own answer" (Meta AI). Isolated verification questions break the coherence bias that sustains FPs.
+- **Applicable to Lupa**: Very high fit. Directly implementable with existing tools. The verification phase replaces static analysis for fact-checking.
 
-- **How it works**: Same diff sent to 2–3 different models (or same model with different temperatures). Intersection of findings is the final output.
-- **FP reduction**: 30–50% estimated
-- **Complexity**: High — multiplies cost linearly with model count, requires aggregation logic
-- **Applicable to Lupa**: Medium fit. Expensive but effective. Could use majority voting for high-severity findings only.
+### 5.2 Two-Stage Pipeline: Generate + Filter (BitsAI-CR / ByteDance)
 
-### 5.3 Static Analysis Integration (CodeRabbit, BugBot)
+**Source**: BitsAI-CR (ByteDance, FSE 2025) — production system with 12,000+ Weekly Active Users.
 
-Pair LLM findings with static analyzer output. LLM focuses on intent/design; static analyzer handles correctness.
+A dedicated filtering pass validates findings from the initial generation:
 
-- **How it works**: Run linters, type checkers, or Roslyn analyzers alongside LLM. Cross-reference: findings confirmed by both are high-confidence; LLM-only findings are flagged for review.
-- **FP reduction**: 20–30% estimated (eliminates Wrong Factual Premise and Theoretical-Only categories)
-- **Complexity**: Low to medium — VS Code has built-in diagnostics API
-- **Applicable to Lupa**: High fit. Could leverage `vscode.languages.getDiagnostics()` to ground findings in compiler/linter output.
+- **Stage 1 (RuleChecker)**: Taxonomy-guided LLM generates findings
+- **Stage 2 (ReviewFilter)**: A separate LLM pass that ONLY validates/filters findings from Stage 1
+- **Result**: Precision improved from 60% → 75% (+25% relative improvement)
 
-### 5.4 Structured Output + Programmatic Validation
+- **FP reduction**: 15–25% precision improvement (production-measured at ByteDance)
+- **Complexity**: Medium — requires a second LLM pass, but it's cheaper than generation (filter is simpler than investigation)
+- **Language-agnostic**: YES — the filter evaluates finding quality, not language syntax
+- **Key insight from paper**: "While LLMs can identify potential issues, their tendency to produce false positives and hallucinations necessitates a robust validation mechanism." The taxonomy-guided version achieved 57% precision vs 17% for generic — a 3.4x improvement from taxonomy alone.
+- **Applicable to Lupa**: High fit. Could be implemented as a "ReviewFilter" subagent that receives findings + tool audit trail.
+
+### 5.3 Multi-Agent Debate / Devil's Advocate
+
+**Source**: DEBATE framework (ICLR), Microsoft CORE framework, academic multi-agent research (2024–2026).
+
+Multiple agents with different roles challenge and refine findings:
+
+- **Reviewer Agent**: Proposes findings
+- **Critic/Devil's Advocate**: "Here are 3 reasons this finding is wrong" — attacks each finding
+- **Judge**: Resolves the debate, keeps survivors
+
+- **FP reduction**: 10–16% improved correlation with human judgments; Microsoft CORE reduced FPs by 25.8%; multi-agent architectures showed 85.5% consistency improvement (diffray)
+- **Complexity**: Medium-High — 2–3 model passes per review
+- **Language-agnostic**: YES — debate is purely reasoning-based
+- **Key insight**: "LLMs are yes-men. They rarely correct themselves once they start writing. You need a designated hater" (Alex Ewerlöf). Self-verification is limited because the same blind spots that produced the FP also limit the model's ability to catch it.
+- **Applicable to Lupa**: High fit. Could spawn a "Devil's Advocate" subagent that receives findings and tries to refute each one.
+
+### 5.4 Evidence Chain Enforcement (CodeRabbit-style)
+
+**Source**: CodeRabbit production architecture.
+
+Before posting any comment, generate verification scripts to confirm assumptions:
+
+- CodeRabbit "generates shell/Python checks (think grep, ast-grep) to confirm an assumption or extract proof from the codebase before posting the comment."
+- "Comments come with receipts. That translates into less noise."
+
+- **FP reduction**: Significant — every finding is grounded in verifiable evidence
+- **Complexity**: Low — Lupa already has `search_for_pattern`, `read_file`, `find_usages` tools
+- **Language-agnostic**: YES — grep and search are language-agnostic
+- **Key insight**: The "evidence chain" approach doesn't need AST parsing or type checking — it uses the same search/read tools that work on any language. The key is requiring that the evidence is _cited_ and _verifiable_.
+- **Applicable to Lupa**: Very high fit. Require tool_call_id references in findings, programmatically verify they exist in the audit trail.
+
+### 5.5 Self-Consistency Sampling / Majority Voting
+
+**Source**: Wang et al. (2022), extensively studied. Applied to code review by Qodo 2.0's multi-agent system.
+
+Run the same review multiple times, keep only findings that appear consistently:
+
+- Same diff with different temperatures or prompt variations
+- Only findings reported by ≥2/3 runs survive
+- "If a response is factual, then repeated queries should give consistent responses, whereas hallucinated content would give responses with high variability" (SelfCheckGPT)
+
+- **FP reduction**: +17–18% accuracy on reasoning tasks (GSM8K); up to +27.6% in some benchmarks
+- **Complexity**: High — 2–3x inference cost; latency-insensitive for PR reviews (CodeRabbit embraces this: "trades a bit of extra compute time for thoroughness")
+- **Language-agnostic**: YES — just re-run the same review
+- **Key insight**: Could be applied selectively — only to CRITICAL/HIGH findings to keep costs manageable
+- **Applicable to Lupa**: Medium fit. Expensive but effective for high-stakes findings.
+
+### 5.6 Structured Output + Programmatic Validation
 
 Force JSON-schema output with required evidence fields, then validate programmatically.
 
 - **How it works**: Each finding must include `file_path`, `line_range`, `evidence_tool_call_id`, `disproof_attempted`. Programmatic checks verify: file exists, line range valid, referenced tool call exists in audit trail.
 - **FP reduction**: 10–20% estimated (catches Wrong Factual Premise cheaply)
 - **Complexity**: Low — schema already partially exists in `submit_review`
+- **Key insight**: BitsAI-CR's "Outdated Rate" metric (% of flagged lines later modified by developers) enables continuous automated evaluation. Structured output makes this measurable.
 - **Applicable to Lupa**: Very high fit. Lowest-cost, highest-certainty improvement.
 
-### 5.5 User Feedback Loops (cubic, Greptile, CodeRabbit)
+### 5.7 Taxonomy-Guided Generation (BitsAI-CR)
+
+Instead of reviewing generically, provide a structured taxonomy of what to look for.
+
+- **How it works**: BitsAI-CR uses 219 categorized review rules. The taxonomy-guided version achieved **57% precision vs 17% for generic** — a 3.4x improvement from taxonomy alone.
+- **FP reduction**: Up to 3.4x precision improvement vs unstructured prompts
+- **Complexity**: Low — purely prompt engineering (Lupa already does this partially)
+- **Key insight**: Specific, categorized instructions dramatically outperform "review this code for issues." The taxonomy constrains the model's attention to known-valuable issue types.
+- **Applicable to Lupa**: Partially implemented. Could enhance by making finding categories more explicit and mapping each to required verification steps.
+
+### 5.8 User Feedback Loops (cubic, Greptile, CodeRabbit)
 
 Track which findings users dismiss as FP. Use this data to tune prompts or train classifiers.
 
-- **How it works**: Users mark findings as "not helpful." Over time, a classifier learns which patterns to suppress, or findings matching dismissed patterns are auto-downgraded.
+- **How it works**: Users mark findings as "not helpful." Over time, findings matching dismissed patterns are auto-downgraded. Greptile reports: "After 2–3 weeks of team feedback via 👍/👎 reactions, noise reduces significantly while ensuring high bug detection."
 - **FP reduction**: 15–25% estimated over multiple review cycles
 - **Complexity**: Medium — requires telemetry, storage, and analysis pipeline
 - **Applicable to Lupa**: Medium fit long-term. Requires adoption volume for statistical significance.
+
+### 5.9 Why Not Static Analysis?
+
+Multiple tools (CodeRabbit, BugBot, IRIS) pair LLMs with static analyzers for impressive results (IRIS: 89.5% precision, 55 vulnerabilities vs CodeQL's 27). However, this approach requires **per-language maintenance**:
+
+- TypeScript needs TSC + ESLint
+- Python needs mypy + pylint/ruff
+- Java needs PMD + SpotBugs
+- Go needs go vet + staticcheck
+- C# needs Roslyn analyzers
+- Rust needs clippy
+
+For a multi-language tool like Lupa, maintaining and integrating analyzers for every supported language is a significant ongoing burden. The language-agnostic approaches above (CoVe, evidence chains, multi-agent debate) provide **comparable FP reduction without per-language tooling** — they work by verifying claims through tool-based investigation rather than compiler-specific checks.
+
+**When static analysis IS warranted**: If Lupa eventually specializes in 1–2 languages, or if VS Code's built-in diagnostics (`vscode.languages.getDiagnostics()`) become comprehensive enough to serve as a universal interface.
 
 ---
 
@@ -303,56 +384,84 @@ Prioritized by ROI (FP reduction per unit of implementation effort).
 
 **Key insight**: This catches Wrong Factual Premise FPs that prompt-level gates miss, because the check is _external_ — the LLM can't confabulate its way past a file existence check.
 
-### Phase 3: Root Verification Phase
+### Phase 3: CoVe-Style Verification Phase (Tool-Based Fact-Checking)
 
 **Effort**: Medium (3–5 days)
 **Expected impact**: 20–30% FP reduction
+**Research basis**: Chain-of-Verification (Meta AI, ICLR 2024) — 28% FACTSCORE improvement; ConVerTest (2026); up to 96% hallucination reduction in layered approaches (diffray)
+
+After subagent aggregation, before final output, the root agent enters a structured verification phase inspired by CoVe:
 
 **Implementation plan**:
 
-1. After subagent aggregation, before final output, add a verification phase:
-    - For each CRITICAL/HIGH finding, the root agent runs 2–3 targeted tool calls:
-        - `read_file` on the cited location to verify the claim
-        - `find_usages` on the reported symbol to check call-site context
-        - `search_for_pattern` for design comments ("intentional", "by design", etc.)
-    - Findings that don't survive verification are downgraded or dropped
+1. **Plan verification questions** for each CRITICAL/HIGH finding:
+    - "Does the cited file and line range contain the code described in this finding?"
+    - "Are there comments, JSDoc, or documentation explaining this as intentional?"
+    - "Do the call sites actually pass the values this finding claims are problematic?"
+    - "Is the concern reachable given the runtime constraints (single-threaded, bounded input, etc.)?"
 
-2. Track verification results as metadata on each finding
+2. **Answer questions with independent tool calls** (key CoVe insight: answer in isolation to avoid confirmation bias):
+    - `read_file` on the cited location to verify the claim
+    - `find_usages` on the reported symbol to check call-site context
+    - `search_for_pattern` for design comments ("intentional", "by design", "not user-configurable")
 
-3. Budget: Allocate ~20% of root agent iterations to verification (after aggregation, before output)
+3. **Revise findings** based on verification:
+    - Findings where verification contradicts the claim → DROP
+    - Findings where verification is inconclusive → downgrade one severity level
+    - Findings where verification confirms → mark as TOOL_VERIFIED
 
-**Key insight**: This converts the "treat as UNVERIFIED CLAIMS" prompt instruction (Phase 1) into an enforced architectural step. The root agent _must_ verify, not just _should_ verify.
+4. Budget: Allocate ~20% of root agent iterations to verification (after aggregation, before output)
 
-### Phase 4: Verification Agent (Second Opinion)
+**Why this replaces static analysis**: CoVe-style verification catches the same FP categories (Wrong Factual Premise, Theoretical-Only) by using the existing tools (`read_file`, `find_usages`, `search_for_pattern`) that work on ANY language. No per-language analyzer needed.
+
+**Key insight**: This converts the "treat as UNVERIFIED CLAIMS" prompt instruction (Phase 1) into an enforced architectural step. The root agent _must_ verify, not just _should_ verify. Meta AI demonstrated that LLMs are "more truthful when asked to verify a particular fact than when asked to use it in their own answer."
+
+### Phase 4: ReviewFilter Agent (Devil's Advocate)
 
 **Effort**: Medium-High (5–8 days)
 **Expected impact**: 20–40% FP reduction
+**Research basis**: BitsAI-CR two-stage pipeline (60% → 75% precision); DEBATE framework (10–16% human correlation improvement); Microsoft CORE (25.8% FP reduction); multi-agent debate research (85.5% consistency improvement)
+
+A dedicated adversarial filtering agent that challenges each finding:
 
 **Implementation plan**:
 
-1. After the primary review, run a second model pass with a "verification-only" persona:
-    - Input: the findings (not the full diff), plus the tool audit trail
-    - Task: "For each finding, use tools to verify the claim. Mark as CONFIRMED, REFUTED, or UNCERTAIN."
-    - Constraint: The verification agent can only read files and search — no new findings
+1. After the primary review, spawn a "ReviewFilter" subagent with a Devil's Advocate persona:
+    - Input: the findings (structured JSON), the tool audit trail, and the diff
+    - Task: "For each finding, construct the STRONGEST counterargument. Use tools to verify your counterargument. Mark each finding as CONFIRMED, REFUTED, or UNCERTAIN."
+    - Constraint: Can only read files and search — cannot generate new findings
+    - Key prompt: "Your job is to find reasons why each finding is WRONG. If you cannot construct a strong counterargument with tool-based evidence, the finding survives."
 
-2. Findings marked REFUTED are dropped; UNCERTAIN findings are downgraded one severity level
+2. Finding resolution:
+    - REFUTED with tool evidence → DROP
+    - UNCERTAIN → downgrade one severity level
+    - CONFIRMED (counterargument failed) → high-confidence, keep at current severity
 
-3. Alternative: Use the same model with a different system prompt emphasizing skepticism. This costs less than a separate model but provides less diversity.
+3. Implementation options (choose based on cost tolerance):
+    - **Same model, different persona** (cheapest): Use existing model with skeptical system prompt
+    - **Same model, different temperature**: Generate at temp=0 for deterministic challenge
+    - **Different model** (best diversity): Use a different model family for maximum blind-spot coverage
 
-**Key insight**: Self-verification (the LLM checking its own work) is inherently limited by the same blind spots that created the FP. An architecturally separate verification step with fresh context avoids this.
+**Why this is better than self-verification**: "LLMs are yes-men. They rarely correct themselves once they start writing. You need a designated hater" (Alex Ewerlöf). A fresh context with an adversarial mandate breaks the coherence bias inherent in self-review.
 
-### Phase 5: Static Analysis Integration + Feedback Loops
+### Phase 5: Selective Self-Consistency + Feedback Loops
 
-**Effort**: High (ongoing)
+**Effort**: Medium-High (ongoing)
 **Expected impact**: 15–30% additional FP reduction
+**Research basis**: Self-consistency sampling (+17–18% accuracy, Wang et al.); SelfCheckGPT; Greptile feedback loops; CodeRabbit user reactions
 
 **Implementation plan**:
 
-1. **Static analysis**: Query `vscode.languages.getDiagnostics()` for compiler/linter errors and warnings. Cross-reference with LLM findings:
-    - LLM findings confirmed by diagnostics → high confidence
-    - LLM findings contradicted by diagnostics (e.g., "type could be null" but TS strict mode prevents it) → drop or downgrade
+1. **Self-consistency for critical findings**: For CRITICAL-severity findings only (highest cost of FP), re-run verification with different prompt framing. If the finding is inconsistent across runs, downgrade or drop.
+    - Budget: Only apply to findings that survive Phase 3+4 AND are CRITICAL
+    - "If a response is factual, repeated queries should give consistent responses; hallucinated content shows high variability" (SelfCheckGPT)
 
-2. **Feedback loops**: If Lupa is used via PR comments or chat, track which findings users dismiss. After N dismissals of a pattern, add it to the FP Pattern Catalog programmatically.
+2. **Feedback loops**: Track which findings users dismiss as FP via UI reactions.
+    - After N dismissals of a pattern, add it to the FP Pattern Catalog automatically
+    - Track "Outdated Rate" (BitsAI-CR metric): % of flagged code lines later modified by developers. This measures real-world adoption.
+    - Greptile reports: "After 2–3 weeks of team feedback via 👍/👎 reactions, noise reduces significantly"
+
+3. **Taxonomy refinement**: Use FP patterns from feedback to refine the finding taxonomy (Section 5.7), creating a data flywheel that improves quality with each review.
 
 ---
 
@@ -393,6 +502,14 @@ A single model with a single prompt has consistent blind spots. Introducing dive
 
 Subagents are useful for parallelization but introduce the same risks as any untrusted data source: they may confabulate, inflate severity, or report findings based on incomplete context. Root agents should treat subagent findings like user input — validate before trusting.
 
+### Principle 7: Language-Agnostic Scales; Per-Language Doesn't
+
+Static analysis (linters, type checkers, AST parsers) provides high-precision fact-checking but requires per-language maintenance. For multi-language tools, this creates unbounded maintenance cost. Language-agnostic approaches — CoVe verification questions, evidence chain enforcement, adversarial debate — provide comparable FP reduction through tool-based investigation (grep, read, search) that works identically on TypeScript, Python, Java, Go, Rust, or any language.
+
+### Principle 8: Adversarial Review Beats Self-Review
+
+A model checking its own work inherits the same blind spots that produced errors. Research consistently shows that adversarial/debate approaches (DEBATE framework: +10–16% human correlation, Microsoft CORE: -25.8% FP) outperform self-review. The architectural separation — fresh context, different persona, explicit mandate to refute — breaks the coherence bias that sustains false positives.
+
 ---
 
 ## 8. Measurement Framework
@@ -424,7 +541,7 @@ To track improvement, measure these metrics across reviews:
 
 | Finding                            | Why It's FP                               | What Would Have Caught It                   |
 | ---------------------------------- | ----------------------------------------- | ------------------------------------------- |
-| "Uses 8K context window"           | Model has 128K+; reviewer confused models | Programmatic fact-check (Phase 2)           |
+| "Uses 8K context window"           | Model has 128K+; reviewer confused models | CoVe verification phase (Phase 3)           |
 | "Function missing from tool table" | Listed under different name               | Structured output cross-reference (Phase 2) |
 
 ### Mode/Context Confusion
@@ -436,10 +553,10 @@ To track improvement, measure these metrics across reviews:
 
 ### Theoretical-Only Concerns
 
-| Finding                            | Why It's FP                       | What Would Have Caught It              |
-| ---------------------------------- | --------------------------------- | -------------------------------------- |
-| "Quadratic complexity in markdown" | Input bounded by LLM token limits | Reachability check, call-site analysis |
-| "Race condition in semaphore"      | Node.js single-threaded           | Language-aware review gate (existing)  |
+| Finding                            | Why It's FP                       | What Would Have Caught It                |
+| ---------------------------------- | --------------------------------- | ---------------------------------------- |
+| "Quadratic complexity in markdown" | Input bounded by LLM token limits | CoVe reachability verification (Phase 3) |
+| "Race condition in semaphore"      | Node.js single-threaded           | Language-aware review gate (existing)    |
 
 ### Complementary Block Misunderstanding
 
@@ -447,3 +564,21 @@ To track improvement, measure these metrics across reviews:
 | ------------------------------------- | ------------------------------------------------ | ----------------------------------- |
 | "Standard guide missing tool details" | `tool_selection_guide` has comprehensive docs    | Full prompt visibility for reviewer |
 | "No quality guidance for subagents"   | `thinkAboutInvestigation` injects quality checks | Cross-reference documentation       |
+
+---
+
+## Appendix B: Key Research References
+
+| Paper / Source                         | Year        | Key Contribution                                                                |
+| -------------------------------------- | ----------- | ------------------------------------------------------------------------------- |
+| Chain-of-Verification (CoVe), Meta AI  | 2024 (ICLR) | 4-stage self-verification reduces hallucinations 28%+                           |
+| BitsAI-CR, ByteDance (FSE)             | 2025        | Two-stage pipeline (RuleChecker + ReviewFilter) achieves 75% precision at scale |
+| DEBATE Framework                       | 2024        | Devil's Advocate agent improves evaluation quality 10-16% over single-agent     |
+| Microsoft CORE Framework               | 2024        | Multi-agent code review reduces FPs by 25.8%                                    |
+| ConVerTest                             | 2026        | Combines self-consistency + CoVe for test generation validation                 |
+| SelfCheckGPT (Manakul et al.)          | 2023        | Inconsistency across samples indicates hallucination                            |
+| Self-Consistency (Wang et al.)         | 2022        | Majority voting over reasoning paths: +17-18% accuracy                          |
+| diffray Layered Defense                | 2025        | RAG + multi-agent + structured output = up to 96% hallucination reduction       |
+| Qodo 2.0                               | 2026        | Multi-agent system with context engineering across repos and prior PRs          |
+| CodeRabbit Evidence Verification       | 2025-2026   | Generates shell/grep checks to confirm assumptions before posting comments      |
+| A Roadmap for Modern Code Review (ACM) | 2025        | Survey: RAG + prompt engineering as cost-efficient alternative to fine-tuning   |
