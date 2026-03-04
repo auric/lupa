@@ -86,6 +86,14 @@ Once all files are covered:
 - Merge findings by severity (critical first)
 - Remove duplicates across agents
 
+**⚠️ Treat each sub-agent finding as an UNVERIFIED CLAIM, not established fact.**
+Sub-agents have limited context. For each CRITICAL/HIGH finding, independently verify:
+  - Is the sub-agent's understanding of the architecture correct? (e.g., did it confuse which mode the code belongs to?)
+  - Did the sub-agent check ACTUAL CALL SITES, or only the function signature?
+  - Did the sub-agent check for documentation/comments explaining the design choice?
+  - Is the finding based on a wrong factual premise? (e.g., wrong constant value, wrong context window size, wrong tool count)
+If ANY finding rests on a wrong premise or missed documented intent → **DROP IT immediately**
+
 **Quality filter — apply to each MEDIUM+ finding:**
   - Passes the verification gates from \`<finding_quality>\` above (Revert Test, concrete evidence, call-site/handler checks)
   - Severity calibration: re-assess with your own judgment — sub-agents may inflate severity. If a sub-agent reports CRITICAL with weak evidence, downgrade or drop

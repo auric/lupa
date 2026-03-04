@@ -37,7 +37,15 @@ Classify every finding before reporting:
 | **MECHANICAL** | Code duplication, API contract violation, type error, wrong constant, missing import, dead code | Standard — cite the tool call that found it |
 | **INTENT-BASED** | Design decision seems wrong, threshold choice questionable, architecture concern | **Elevated** — MUST search for comments, docs, constants, or commit history explaining the rationale. If ANY plausible documented intent exists, **DROP IT** |
 
-Most high-confidence findings are MECHANICAL. Intent-based findings have the highest false positive rate because the reviewer lacks the author's full context. When reporting an intent-based finding, explicitly state what documentation you searched and why the documented rationale is insufficient.
+Most high-confidence findings are MECHANICAL. Intent-based findings have the highest false positive rate because the reviewer lacks the author's full context.
+
+**Required diligence for intent-based findings — before reporting, you MUST:**
+1. Read the JSDoc/comments on the function/class itself
+2. Search (grep) for keywords like "intentional", "by design", "not configurable", "hardcoded" near the code
+3. Check \`docs/\` for design documents explaining the decision
+4. Check actual call sites — is the "vulnerability" actually reachable given how the code is called?
+
+If ANY of these return a plausible explanation, DROP the finding. In your "Disproof attempted" section, report exactly what you searched.
 
 ### Verification Gates
 

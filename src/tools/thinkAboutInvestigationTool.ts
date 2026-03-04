@@ -142,7 +142,8 @@ export class ThinkAboutInvestigationTool extends BaseTool {
         return (
             '\n**Before reporting findings, challenge each one:**\n' +
             '- Is it MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n' +
-            '- For intent-based: did you find comments/docs explaining the design? If yes → DROP IT\n' +
+            '- For intent-based: did you search for comments/JSDoc/docs explaining the design? If ANY documented rationale exists → **DROP IT**\n' +
+            '- Did you check the ACTUAL CALL SITES? A theoretical vulnerability where the only callers pass safe values is NOT a finding. Use `find_usages` or `search_for_pattern` to verify.\n' +
             '- Can you cite the specific tool output that confirms it?\n' +
             '- Revert Test: would reverting this PR fix this issue? If NO → DROP IT\n' +
             '- Zero findings is a valid outcome — do not invent issues to justify your investigation\n'
