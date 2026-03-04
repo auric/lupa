@@ -245,13 +245,15 @@ export class CopilotModelManager implements vscode.Disposable, ILLMClient {
         token: vscode.CancellationToken
     ): Promise<ToolCallResponse> {
         const model = await this.getCurrentModel();
-        return this.requestSemaphore.run(() =>
-            ModelRequestHandler.sendRequest(
-                model,
-                request,
-                token,
-                this.requestTimeoutMs
-            )
+        return this.requestSemaphore.run(
+            () =>
+                ModelRequestHandler.sendRequest(
+                    model,
+                    request,
+                    token,
+                    this.requestTimeoutMs
+                ),
+            token
         );
     }
 
