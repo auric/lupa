@@ -2,6 +2,7 @@
 
 **Date:** June 2025 (updated March 2026)
 **Based on:** Empirical triage of 58 findings across 4+ review rounds + extensive industry research
+**Companion document:** [quality-architecture-design.md](quality-architecture-design.md) — concrete architecture for the next quality improvement PR
 
 ---
 
@@ -12,6 +13,8 @@ AI code review tools produce **60–85% false positive rates** on complex codeba
 The highest-ROI improvements shift verification from self-judgment (LLM evaluating its own claims) to external checks (programmatic validation, tool-based re-verification, structured output schemas). All recommended approaches are **language-agnostic** — they work across TypeScript, Python, Java, Go, C#, Rust, and any other language without per-language tooling. This document catalogs root causes, maps the current architecture, and provides a prioritized roadmap.
 
 **Key blind spot discovered**: Beyond FP reduction, Lupa's own review consistently _misses_ real bugs that competitors find — particularly **context-conditional correctness** issues where code behaves correctly in one execution mode but incorrectly in another. Reducing FPs and improving true positive recall are complementary goals requiring different techniques (see Section 2.6 and Appendix C).
+
+**Next step**: Seven novel architectural approaches were brainstormed and evaluated (see Appendix D). Six survived; the full design is in [quality-architecture-design.md](quality-architecture-design.md). The core innovation is **LSP-grounded verification** — using VS Code's live type checker to provide compiler-grade ground truth for LLM claims, a capability architecturally impossible for cloud-based competitors.
 
 ---
 
@@ -661,3 +664,41 @@ FP reduction techniques (Phases 2–5) won't improve recall because they filter 
 - **Taxonomy-guided investigation**: BitsAI-CR's 3.4x precision improvement from taxonomy suggests that **category-specific investigation checklists** would also improve recall. Instead of generic "review this code," provide: "For tool code, check: (1) all ExecutionContext paths, (2) guidance text accuracy per mode, (3) schema coercion boundaries."
 
 These patterns should be added to the review prompt taxonomy (Phase 2 enhancement) and to the CoVe verification questions (Phase 3 enhancement).
+
+---
+
+## Appendix D: Novel Approaches Brainstorming Evaluation (March 2026)
+
+Seven architectural improvements were brainstormed to address the gaps identified in Sections 2 and 4. Each was evaluated against the current RLM architecture, existing capabilities, competitor approaches, and implementation cost. The full design is in [quality-architecture-design.md](quality-architecture-design.md).
+
+### Evaluation Summary
+
+| #   | Approach                    | Effort | Verdict             | Rationale                                                                                          |
+| --- | --------------------------- | ------ | ------------------- | -------------------------------------------------------------------------------------------------- |
+| 1   | Provenance-Enriched Results | 2 days | **KEEP (merge)**    | Data already exists in `ToolCallRecord[]`, just discarded at `formatResult` boundary               |
+| 2   | Investigation Depth Scoring | 2 days | **KEEP (merge)**    | Mechanical computation from tool calls; merged with #1 as "Investigation Audit"                    |
+| 3   | Evidence Ledger             | 4 days | **KEEP (redesign)** | User's original idea; most valuable in deep RLM trees where evidence degrades at each level        |
+| 4   | LSP-Grounded Validation     | 7 days | **KEEP (core)**     | THE technical moat — compiler-grade ground truth, architecturally impossible for cloud competitors |
+| 5   | Adversarial Verification    | 3 days | **KEEP (scoped)**   | Only for CRITICAL findings; merged with CoVe for HIGH/MEDIUM                                       |
+| 6   | Semantic Diff Enrichment    | 4 days | **KEEP**            | Pre-computed LSP context; reduces tool call waste, improves severity assessment                    |
+| 7   | MapReduce Aggregation       | 7 days | **ABANDON**         | RLM recursive tree already provides hierarchical aggregation; adds cost without information gain   |
+
+### Key Insights
+
+1. **LSP validation is the moat.** Cloud-based competitors (CodeRabbit, Qodo, Greptile, cubic) cannot validate LLM claims against a live type checker. This single capability addresses ~75% of FP root cause categories (Design Intent: check references; Factual Premise: check types; Theoretical-Only: check reachability).
+
+2. **Evidence infrastructure is the foundation.** Without structured evidence flow, every quality improvement operates on unstructured prose. Investigation Audit + Evidence Ledger convert opaque agent outputs into queryable, auditable data.
+
+3. **Adversarial verification merges with CoVe.** A standalone adversarial agent per finding is expensive. For CRITICAL findings, spawn a lightweight adversary. For HIGH/MEDIUM, enforce CoVe verification questions with LSP queries. Same outcome, lower cost.
+
+4. **MapReduce doesn't pull its weight.** The RLM tree IS the hierarchy. Adding reducer agents adds LLM call latency without adding information. The problem is evidence quality at each level, not fan-in structure.
+
+### Architecture: Three Pillars
+
+The six surviving approaches compose into three pillars:
+
+- **Pillar 1 — Evidence Infrastructure**: Investigation Audit (#1+#2), Evidence Ledger (#3)
+- **Pillar 2 — LSP-Grounded Verification**: Semantic Diff Enrichment (#6), LSP Validation (#4)
+- **Pillar 3 — Architectural Quality Enforcement**: Structured Output, CoVe+LSP verification, Adversarial verification for CRITICAL (#5)
+
+See [quality-architecture-design.md](quality-architecture-design.md) for the complete design, implementation phases, and acceptance criteria.
