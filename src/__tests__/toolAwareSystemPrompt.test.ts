@@ -68,8 +68,7 @@ describe('ToolAwareSystemPromptGenerator', () => {
             const prompt = generator.generateSystemPrompt();
 
             expect(prompt).toContain('<self_reflection>');
-            expect(prompt).toContain('think_about_context');
-            expect(prompt).toContain('think_about_task');
+            expect(prompt).toContain('think');
             expect(prompt).toContain('think_about_completion');
         });
 

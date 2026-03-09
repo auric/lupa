@@ -14,15 +14,12 @@ vi.mock('../services/loggingService', () => ({
 
 const BASE_FINDING_ARGS = {
     severity: 'HIGH' as const,
-    category: 'error-handling',
     title: 'Missing error handler',
     file: 'src/api.ts',
-    line_range: [10, 20] as [number, number],
+    line: 15,
     description: 'The catch block is empty and swallows errors silently.',
-    supporting_tool_calls: ['read_file', 'find_symbol'],
-    disproof_attempted: true,
-    disproof_method: 'Checked if error is logged elsewhere',
-    disproof_result: 'No other error handling found',
+    disproof_note:
+        'Checked if error is logged elsewhere — no other error handling found',
 };
 
 describe('RecordFindingTool', () => {
@@ -65,7 +62,7 @@ describe('RecordFindingTool', () => {
         expect(result.error).toContain('Finding store not available');
     });
 
-    it('passes correct arguments to store', async () => {
+    it('passes correct arguments to store with defaults', async () => {
         const store = new FindingStore();
         const recordSpy = vi.spyOn(store, 'record');
         const ctx = createMockExecutionContext({
@@ -78,23 +75,23 @@ describe('RecordFindingTool', () => {
         expect(recordSpy).toHaveBeenCalledWith({
             agentId: 'child-1',
             severity: 'HIGH',
-            category: 'error-handling',
+            category: 'general',
             title: 'Missing error handler',
             file: 'src/api.ts',
-            lineRange: [10, 20],
+            lineRange: [15, 15],
             description:
                 'The catch block is empty and swallows errors silently.',
-            supportingToolCalls: ['read_file', 'find_symbol'],
+            supportingToolCalls: [],
             disproof: {
                 attempted: true,
-                method: 'Checked if error is logged elsewhere',
-                result: 'No other error handling found',
+                method: 'Checked if error is logged elsewhere — no other error handling found',
+                result: 'Checked if error is logged elsewhere — no other error handling found',
             },
             verifiableClaims: [],
         });
     });
 
-    it('maps verifiable claims correctly', async () => {
+    it('sets disproof.attempted=false for empty disproof_note', async () => {
         const store = new FindingStore();
         const recordSpy = vi.spyOn(store, 'record');
         const ctx = createMockExecutionContext({
@@ -102,69 +99,13 @@ describe('RecordFindingTool', () => {
             currentAgentId: 'root',
         });
 
-        await tool.execute(
-            {
-                ...BASE_FINDING_ARGS,
-                verifiable_claims: [
-                    {
-                        claim_type: 'symbol_unused',
-                        file: 'src/utils.ts',
-                        line: 5,
-                        symbol: 'helperFn',
-                        assertion: 'helperFn has no callers',
-                    },
-                ],
-            },
-            ctx
-        );
+        await tool.execute({ ...BASE_FINDING_ARGS, disproof_note: '' }, ctx);
 
         expect(recordSpy).toHaveBeenCalledWith(
             expect.objectContaining({
-                verifiableClaims: [
-                    {
-                        claimType: 'symbol_unused',
-                        file: 'src/utils.ts',
-                        line: 5,
-                        symbol: 'helperFn',
-                        assertion: 'helperFn has no callers',
-                    },
-                ],
+                disproof: { attempted: false, method: '', result: '' },
             })
         );
-    });
-
-    it('includes verifiable claim count in response', async () => {
-        const store = new FindingStore();
-        const ctx = createMockExecutionContext({
-            findingStore: store,
-            currentAgentId: 'root',
-        });
-
-        const result = await tool.execute(
-            {
-                ...BASE_FINDING_ARGS,
-                verifiable_claims: [
-                    {
-                        claim_type: 'no_callers',
-                        file: 'src/a.ts',
-                        line: 1,
-                        symbol: 'fn',
-                        assertion: 'fn has no callers',
-                    },
-                    {
-                        claim_type: 'symbol_unused',
-                        file: 'src/b.ts',
-                        line: 2,
-                        symbol: 'val',
-                        assertion: 'val is unused',
-                    },
-                ],
-            },
-            ctx
-        );
-
-        expect(result.data).toContain('2 verifiable claims');
-        expect(result.data).toContain('LSP validation pending');
     });
 
     it('uses "unknown" agentId when currentAgentId is not set', async () => {

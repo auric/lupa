@@ -21,7 +21,7 @@ export function generateToolSelectionGuide(): string {
 | Find files | \`find_files_by_pattern\` |
 | Read config/docs | \`read_file\` |
 | Track progress | \`update_plan\` |
-| Think about code change | \`think_about_code_change\` |
+| Think through analysis | \`think\` |
 | Deep investigation | \`run_subagent\` |
 
 ### Principles
@@ -33,8 +33,7 @@ export function generateToolSelectionGuide(): string {
 5. **Scope searches**: Provide \`relative_path\` when you know the area
 6. **Track progress**: Update your plan as you complete checklist items
 7. **Delegate complexity**: Spawn subagent for 4+ file investigations
-8. **Record evidence**: Use \`record_evidence\` to share facts across agents
-9. **Validate critical claims**: Use \`validate_claim\` for factual claims about symbols before reporting
+8. **Validate critical claims**: Use \`validate_claim\` for factual claims about symbols before reporting
 
 ### Anti-Patterns
 

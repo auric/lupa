@@ -4,9 +4,6 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
-import { SEVERITY } from '../config/chatEmoji';
-
-const CompletionDecision = z.enum(['needs_work', 'ready_to_submit']);
 
 const Recommendation = z.enum([
     'approve',
@@ -16,18 +13,17 @@ const Recommendation = z.enum([
 ]);
 
 /**
- * Self-reflection tool for main agent: verifies analysis completeness.
+ * Pre-submit checkpoint tool. Forces the LLM to draft a summary, verify
+ * file coverage, and declare a recommendation before calling submit_review.
  *
- * Forces explicit articulation of the review state rather than passive checklists.
- * Per prompt engineering best practices: "articulation > checklists" -
- * writing explicit statements is more rigorous than checking boxes.
+ * Simplified to 5 flat fields for maximum adoption by all models.
  */
 export class ThinkAboutCompletionTool extends BaseTool {
     name = 'think_about_completion';
     description =
-        'Articulate your review completeness before submitting. ' +
-        'Forces you to draft a summary, count issues, and confirm all files were analyzed. ' +
-        'For each finding, ask: would I bet my reputation that this is a real bug? If not, drop it.';
+        'Pre-submit checkpoint. Draft your summary, verify file coverage, and declare your recommendation. ' +
+        'For each finding, ask: would I bet my reputation this is a real bug? If not, drop it. ' +
+        'CALL THIS before submit_review.';
 
     schema = z
         .object({
@@ -37,18 +33,13 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 .describe(
                     'Draft 2-3 sentence summary of what this PR does and your overall assessment'
                 ),
-            critical_issues_count: z
+            issues_count: z
                 .number()
                 .int()
                 .min(0)
-                .describe('Number of critical/blocking issues found'),
-            high_issues_count: z
-                .number()
-                .int()
-                .min(0)
-                .describe('Number of high-severity issues found'),
+                .describe('Total number of issues found across all severities'),
             files_analyzed: flexibleStringArrayNonEmpty.describe(
-                'List of files reviewed (directly via get_file_diff or via sub-agent delegation)'
+                'List of files reviewed (directly or via sub-agent delegation)'
             ),
             files_in_diff: z
                 .number()
@@ -56,10 +47,7 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 .min(1)
                 .describe('Total number of files in the diff'),
             recommendation: Recommendation.describe(
-                'Your recommendation: approve, approve_with_suggestions, request_changes, or block_merge'
-            ),
-            decision: CompletionDecision.describe(
-                'Your decision: needs_work (address gaps first) or ready_to_submit'
+                'approve, approve_with_suggestions, request_changes, or block_merge'
             ),
         })
         .strict();
@@ -74,27 +62,20 @@ export class ThinkAboutCompletionTool extends BaseTool {
 
         const {
             summary_draft,
-            critical_issues_count,
-            high_issues_count,
+            issues_count,
             files_analyzed,
             files_in_diff,
             recommendation,
-            decision,
         } = args;
 
         const coveragePercent = Math.round(
             (files_analyzed.length / files_in_diff) * 100
         );
-        const hasCritical = critical_issues_count > 0;
-        const hasHigh = high_issues_count > 0;
 
         let guidance = '## Completion Reflection\n\n';
 
         guidance += `### Summary Draft\n> ${summary_draft}\n\n`;
-
-        guidance += `### Issue Count\n`;
-        guidance += `- ${SEVERITY.critical} Critical: ${critical_issues_count}\n`;
-        guidance += `- ${SEVERITY.high} High: ${high_issues_count}\n\n`;
+        guidance += `### Issues Found: ${issues_count}\n\n`;
 
         guidance += `### Coverage\n`;
         guidance += `- Files analyzed: ${files_analyzed.length}/${files_in_diff} (${coveragePercent}%)\n`;
@@ -103,46 +84,26 @@ export class ThinkAboutCompletionTool extends BaseTool {
         }
         guidance += '\n';
 
-        guidance += `### Recommendation: ${recommendation.replace(/_/g, ' ').toUpperCase()}\n`;
-        if (hasCritical) {
-            guidance += `⚠️ Critical issues found - recommend \`block_merge\` or \`request_changes\`\n`;
-        } else if (hasHigh) {
-            guidance += `⚠️ High-severity issues found - consider \`request_changes\`\n`;
-        }
-        guidance += '\n';
+        guidance += `### Recommendation: ${recommendation.replace(/_/g, ' ').toUpperCase()}\n\n`;
 
-        guidance += `### Decision: ${decision.replace(/_/g, ' ').toUpperCase()}\n\n`;
-
-        // Provide guidance based on decision
-        if (decision === 'needs_work') {
-            guidance += '**Action**: Address gaps before submitting.\n';
-            if (coveragePercent < 100) {
-                guidance += `- Spawn additional sub-agents or use \`get_file_diff\` to cover remaining ${files_in_diff - files_analyzed.length} file(s)\n`;
-            }
-            guidance += '- Ensure all plan items are complete\n';
-            guidance += '- Verify all findings have evidence\n';
-        } else {
-            guidance +=
-                '**Pre-submit self-challenge** (do this mentally for each finding):\n';
-            guidance +=
-                '1. Is this MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n';
-            guidance +=
-                '2. For intent-based findings: did you search for comments/docs explaining the design? What did you find?\n';
-            guidance +=
-                '3. Can you name the SPECIFIC tool call that confirmed this finding?\n';
-            guidance +=
-                '4. Did you attempt to disprove it? What was the result?\n';
-            guidance +=
-                '5. Would a developer familiar with this codebase agree, or would they say "that\'s by design"?\n';
-            guidance +=
-                '\nDrop any finding where the answer to #5 is likely "by design."\n\n';
-            guidance +=
-                '**Action**: Call the `submit_review` tool now with your complete review.\n';
-            guidance += '- Use the summary draft as your opening\n';
-            guidance += '- Organize findings by severity\n';
-            guidance += '- Include positive observations\n';
-            guidance += '- Ensure proper Markdown formatting with file links\n';
+        if (coveragePercent < 100) {
+            guidance += `**Action**: Spawn additional sub-agents or use \`get_file_diff\` to cover remaining ${files_in_diff - files_analyzed.length} file(s) before submitting.\n\n`;
         }
+
+        guidance +=
+            '**Pre-submit self-challenge** (do this mentally for each finding):\n';
+        guidance +=
+            '1. Is this MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n';
+        guidance +=
+            '2. For intent-based findings: did you search for comments/docs explaining the design?\n';
+        guidance +=
+            '3. Can you name the SPECIFIC tool call that confirmed this finding?\n';
+        guidance += '4. Did you attempt to disprove it? What was the result?\n';
+        guidance += '5. Would a developer familiar with this codebase agree?\n';
+        guidance +=
+            '\nDrop any finding where the answer to #5 is likely "by design."\n\n';
+        guidance +=
+            '**Action**: Call `submit_review` now with your complete review.\n';
 
         return toolSuccess(guidance);
     }

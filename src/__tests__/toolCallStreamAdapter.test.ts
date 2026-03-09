@@ -164,27 +164,16 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
-        it('should format think_about_context message (present continuous - long-running)', () => {
-            adapter.onToolCallStart('think_about_context', {}, 0, 1);
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Analyzing context...'
+        it('should format think message with topic (present continuous - long-running)', () => {
+            adapter.onToolCallStart(
+                'think',
+                { topic: 'auth changes in login.ts' },
+                0,
+                1
             );
-        });
-
-        it('should format think_about_investigation message (present continuous - long-running)', () => {
-            adapter.onToolCallStart('think_about_investigation', {}, 0, 1);
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Reviewing investigation progress...'
-            );
-        });
-
-        it('should format think_about_task message (present continuous - long-running)', () => {
-            adapter.onToolCallStart('think_about_task', {}, 0, 1);
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Verifying task alignment...'
+                '🧠 Thinking about `auth changes in login.ts`...'
             );
         });
 
@@ -193,19 +182,6 @@ describe('ToolCallStreamAdapter', () => {
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 '🧠 Verifying analysis completeness...'
-            );
-        });
-
-        it('should format think_about_code_change message with file', () => {
-            adapter.onToolCallStart(
-                'think_about_code_change',
-                { file: 'src/auth.ts' },
-                0,
-                1
-            );
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🧠 Reasoning about `src/auth.ts`...'
             );
         });
 
@@ -232,27 +208,6 @@ describe('ToolCallStreamAdapter', () => {
 
             expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
                 '↩️ Retracted finding `finding-001`'
-            );
-        });
-
-        it('should format record_evidence message with description', () => {
-            adapter.onToolCallStart(
-                'record_evidence',
-                { description: 'Function has 3 callers' },
-                0,
-                1
-            );
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '📝 Recorded evidence: Function has 3 callers'
-            );
-        });
-
-        it('should format query_evidence message', () => {
-            adapter.onToolCallStart('query_evidence', {}, 0, 1);
-
-            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
-                '🔎 Queried evidence ledger'
             );
         });
 

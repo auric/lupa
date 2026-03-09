@@ -272,6 +272,8 @@ export class ModelRequestHandler {
                     },
                 });
             }
+            // LanguageModelThinkingPart (proposed API) — silently skip.
+            // When the API stabilizes, we can surface reasoning tokens.
         }
 
         return {

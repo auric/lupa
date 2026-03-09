@@ -287,9 +287,9 @@ describe('ToolAwareSystemPromptGenerator', () => {
             expect(prompt).toContain('Verification Gates');
         });
 
-        it('should include finding audit in self-reflection think_about_task', () => {
+        it('should include disproof guidance in self-reflection', () => {
             const prompt = generator.generateSystemPrompt();
-            expect(prompt).toContain('finding_audit');
+            expect(prompt).toContain('disproof');
         });
     });
 });

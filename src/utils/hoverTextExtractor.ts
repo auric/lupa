@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 /**
  * Extracts text content from VS Code hover results.
- * Handles all hover content types: plain strings, MarkdownString, and objects with `value`.
+ * Handles MarkdownString, plain strings, and legacy { language, value } objects.
  */
 export function extractHoverText(hovers: vscode.Hover[]): string {
     return hovers
@@ -14,10 +14,9 @@ export function extractHoverText(hovers: vscode.Hover[]): string {
             if (c instanceof vscode.MarkdownString) {
                 return c.value;
             }
-            if (typeof c === 'object' && 'value' in c) {
-                return String(c.value);
-            }
-            return '';
+            // Legacy MarkedString: { language: string; value: string }
+            const legacy = c as { language?: string; value?: string };
+            return legacy.value ? String(legacy.value) : '';
         })
         .filter(Boolean)
         .join('\n');

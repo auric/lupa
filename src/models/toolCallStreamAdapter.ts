@@ -139,20 +139,11 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'run_subagent':
                 return '🤖 Running subagent investigation...';
 
-            case 'think_about_context':
-                return '🧠 Analyzing context...';
-
-            case 'think_about_investigation':
-                return '🧠 Reviewing investigation progress...';
-
-            case 'think_about_task':
-                return '🧠 Verifying task alignment...';
+            case 'think':
+                return `🧠 Thinking about \`${sanitizeForMarkdown(args.topic, 'analysis')}\`...`;
 
             case 'think_about_completion':
                 return '🧠 Verifying analysis completeness...';
-
-            case 'think_about_code_change':
-                return `🧠 Reasoning about \`${sanitizeForMarkdown(args.file, 'code change')}\`...`;
 
             // Quality architecture tools
             case 'record_finding':
@@ -160,12 +151,6 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
 
             case 'retract_finding':
                 return `↩️ Retracted finding \`${sanitizeForMarkdown(args.finding_id, 'finding')}\``;
-
-            case 'record_evidence':
-                return `📝 Recorded evidence: ${sanitizeForMarkdown(args.description, 'fact')}`;
-
-            case 'query_evidence':
-                return '🔎 Queried evidence ledger';
 
             case 'validate_claim':
                 return `✅ Validating claim about \`${sanitizeForMarkdown(args.symbol, 'symbol')}\`...`;

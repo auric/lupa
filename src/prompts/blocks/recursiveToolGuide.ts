@@ -15,11 +15,10 @@ export function generateRecursiveToolGuide(): string {
 | \`run_subagent\` | **PRIMARY TOOL** — make multiple calls in one response (parallel execution) |
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
+| \`think\` | Think through code changes, context, or progress |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
-| \`think_about_code_change\` | Think through a code change after reading its diff |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 | \`record_finding\` | Commit findings as discovered — survives timeout |
-| \`query_evidence\` | Read evidence from sub-agents for aggregation |
 | \`validate_claim\` | LSP-verify critical claims before including in final review |
 
 ⚠️ **Read at most 1 diff for orientation.** Do NOT call \`get_file_diff\` more than once or use \`read_file\`. Sub-agents read all remaining diffs.

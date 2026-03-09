@@ -47,42 +47,34 @@ For each checklist item:
 
 **Documentation files** (.md, README, CHANGELOG, docs/): When the PR changes documentation alongside code, verify that technical claims in the docs match the implementation. Check tool availability claims, API descriptions, configuration defaults, and behavioral descriptions against the actual code. A doc that contradicts the code is a valid finding.
 
-**Evidence sharing**: When you discover important facts about code behavior (caller patterns, type constraints, API contracts), call \`record_evidence\` so other agents can benefit without re-investigating.
-
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
-### Step 3: Think Through Each Code Change
+### Step 3: Think Through Each Change
 
-After reading each file's diff, call \`think_about_code_change\` to structure your thinking:
-- Write your analysis of what changed and what could go wrong
-- List any risks you identified
-- Decide: no_issues (move on), needs_investigation (use tools), or likely_issue (verify then record)
+After reading each file's diff, call \`think\` to structure your thinking:
+- topic: The file or area you are analyzing
+- analysis: What changed, what could go wrong, what looks correct
+- identified_risks: Specific risks found (empty if none)
+- next_action: What to do next (investigate, move on, record finding)
 
 This prevents jumping to conclusions. Think first, then investigate, then record.
-**Call \`think_about_code_change\` after reading each diff — before investigating or recording findings.**
+**Call \`think\` after reading each diff — before investigating or recording findings.**
 
-### Step 4: Self-Reflection Checkpoints (Articulation Required)
+### Step 4: Self-Reflection Checkpoints
 
-At each checkpoint, **explicitly articulate** your current state—don't just acknowledge.
+At key points, call \`think\` to explicitly articulate your state:
 
-**After gathering context** → \`think_about_context\`:
-- files_examined: List what you investigated
-- key_findings: State what you learned
-- remaining_gaps: Identify specific unknowns
-- decision: Declare next action
+**After gathering context** → \`think\` with topic "context review":
+- What you examined, what you found, what gaps remain, what to do next
 
-**Before conclusions** → \`think_about_task\`:
-- analysis_focus: What are you analyzing?
-- issues_found: List with file, description, severity — these are HYPOTHESES at this stage
-- finding_audit: For each issue — (1) what tool call CONFIRMED it? (2) what tool call tried to DISPROVE it? (3) can I provide a concrete failing scenario with actual values? If any answer is missing for a MEDIUM+ finding, drop or downgrade it
-- areas_needing_investigation: What's not covered?
-- decision: Are you ready or need more work?
+**Before conclusions** → \`think\` with topic "task alignment":
+- What you're analyzing, issues found (these are HYPOTHESES), areas needing investigation
+- For each issue — (1) what tool call CONFIRMED it? (2) what tool call tried to DISPROVE it? (3) can you provide a concrete failing scenario? If any answer is missing for MEDIUM+, drop or downgrade it
 
 **Before final response** → \`think_about_completion\`:
 - summary_draft: Write your 2-3 sentence summary
-- critical_issues_count: How many blockers?
+- issues_count: Total issues found
 - files_analyzed vs files_in_diff: Coverage check
-- hypothesis_kill_ratio: "Started with N hypotheses, M survived verification" — if >80% survived, re-examine your disproof rigor
 - recommendation: approve/request_changes/block
 
 ### Step 5: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)

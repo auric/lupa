@@ -66,9 +66,9 @@ Your parent agent already identified which files belong to your investigation �
 
 Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
 
-5. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts (caller patterns, type constraints) with other agents.
+5. **Record findings progressively**: Call \`record_finding\` for each confirmed finding.
 
-**Think before acting**: After reading each diff, call \`think_about_code_change\` to structure your analysis before investigating further or recording findings.
+**Think before acting**: After reading each diff, call \`think\` to structure your analysis before investigating further or recording findings.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
@@ -81,12 +81,12 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+5. **Self-Reflect**: Use \`think\` to evaluate your progress midway through.
 
-6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts with other agents.
+6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding.
 
 Diff reading is orientation, not investigation. You must call tools from steps 2-5 before writing findings.
-**Think before acting**: After reading each diff, call \`think_about_code_change\` to structure your analysis.
+**Think before acting**: After reading each diff, call \`think\` to structure your analysis.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
@@ -98,11 +98,11 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+5. **Self-Reflect**: Use \`think\` to evaluate your progress midway through.
 
-6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts with other agents.
+6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding.
 
-**Think before acting**: After reading each diff, call \`think_about_code_change\` to structure your analysis.`;
+**Think before acting**: After reading each diff, call \`think\` to structure your analysis.`;
 
         const recursionSection = canRecurse
             ? `
@@ -227,8 +227,8 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-- Use \`think_about_investigation\` to check if you're staying focused
-- Use \`think_about_code_change\` after reading each diff to structure your analysis
+- Use \`think\` to check if you're staying focused
+- Use \`think\` after reading each diff to structure your analysis
 - Return partial findings if running low on iterations - partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;

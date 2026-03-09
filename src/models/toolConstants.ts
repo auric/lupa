@@ -35,20 +35,14 @@ export class ToolConstants {
 }
 
 /**
- * Root-only tools: plan tracking, review submission, and reflection tools
- * that require PR-level context and should never be given to subagents.
- * Shared base for all disallowed-tool lists to prevent drift.
- *
- * NOTE: think_about_investigation and think_about_context are intentionally
- * EXCLUDED from this list. They are designed for focused investigations
- * without needing diff context or PR-level review state that subagents
- * don't have.
+ * Root-only tools: plan tracking, review submission, and the completion
+ * reflection tool that requires PR-level context.
+ * Subagents get the unified `think` tool instead.
  */
 const ROOT_ONLY_TOOLS = [
     'update_plan',
     'submit_review',
     'think_about_completion',
-    'think_about_task',
 ] as const;
 
 /**

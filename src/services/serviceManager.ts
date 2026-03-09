@@ -33,20 +33,15 @@ import { FindFilesByPatternTool } from '../tools/findFilesByPatternTool';
 import { ReadFileTool } from '../tools/readFileTool';
 import { GetSymbolsOverviewTool } from '../tools/getSymbolsOverviewTool';
 import { SearchForPatternTool } from '../tools/searchForPatternTool';
-import { ThinkAboutContextTool } from '../tools/thinkAboutContextTool';
-import { ThinkAboutTaskTool } from '../tools/thinkAboutTaskTool';
+import { ThinkTool } from '../tools/thinkTool';
 import { ThinkAboutCompletionTool } from '../tools/thinkAboutCompletionTool';
-import { ThinkAboutInvestigationTool } from '../tools/thinkAboutInvestigationTool';
 import { RunSubagentTool } from '../tools/runSubagentTool';
 import { UpdatePlanTool } from '../tools/updatePlanTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { GetFileDiffTool } from '../tools/getFileDiffTool';
-import { RecordEvidenceTool } from '../tools/recordEvidenceTool';
-import { QueryEvidenceTool } from '../tools/queryEvidenceTool';
 import { RecordFindingTool } from '../tools/recordFindingTool';
 import { RetractFindingTool } from '../tools/retractFindingTool';
 import { ValidateClaimTool } from '../tools/validateClaimTool';
-import { ThinkAboutCodeChangeTool } from '../tools/thinkAboutCodeChangeTool';
 
 import { Log } from './loggingService';
 
@@ -317,15 +312,9 @@ export class ServiceManager implements vscode.Disposable {
             );
             this.services.toolRegistry!.registerTool(searchForPatternTool);
 
-            this.services.toolRegistry!.registerTool(
-                new ThinkAboutContextTool()
-            );
-            this.services.toolRegistry!.registerTool(new ThinkAboutTaskTool());
+            this.services.toolRegistry!.registerTool(new ThinkTool());
             this.services.toolRegistry!.registerTool(
                 new ThinkAboutCompletionTool()
-            );
-            this.services.toolRegistry!.registerTool(
-                new ThinkAboutInvestigationTool()
             );
 
             // Register the UpdatePlanTool for tracking review progress
@@ -340,14 +329,9 @@ export class ServiceManager implements vscode.Disposable {
             );
             this.services.toolRegistry!.registerTool(runSubagentTool);
 
-            // Register evidence ledger tools for cross-agent knowledge sharing
-            this.services.toolRegistry!.registerTool(new RecordEvidenceTool());
-            this.services.toolRegistry!.registerTool(new QueryEvidenceTool());
+            // Register finding management tools
             this.services.toolRegistry!.registerTool(new RecordFindingTool());
             this.services.toolRegistry!.registerTool(new RetractFindingTool());
-            this.services.toolRegistry!.registerTool(
-                new ThinkAboutCodeChangeTool()
-            );
 
             // Register LSP-based claim validation tool
             const validateClaimTool = new ValidateClaimTool(
@@ -396,7 +380,10 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry,
             this.services.copilotModelManager,
             this.services.chatParticipantService,
+            this.services.lspValidation,
+            this.services.diffEnricher,
             this.services.gitOperations,
+            this.services.workspaceSettings,
             this.services.statusBar,
             this.services.logging,
         ];
