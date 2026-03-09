@@ -28,6 +28,7 @@ import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { EvidenceLedger } from '../sessions/evidenceLedger';
 import { FindingStore } from '../sessions/findingStore';
+import type { DiffEnricher } from './diffEnricher';
 
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
@@ -44,7 +45,8 @@ export class ToolCallingAnalysisProvider {
         private toolRegistry: ToolRegistry,
         private copilotModelManager: CopilotModelManager,
         private promptGenerator: PromptGenerator,
-        private workspaceSettings: WorkspaceSettingsService
+        private workspaceSettings: WorkspaceSettingsService,
+        private diffEnricher: DiffEnricher
     ) {}
 
     private get maxIterations(): number {
@@ -162,6 +164,16 @@ export class ToolCallingAnalysisProvider {
                 `Tools always enabled, ${parsedDiff.length} files via diff tools`
             );
 
+            // Enrich changed symbols with LSP metadata for the Code Intelligence Brief
+            progressCallback?.('Building code intelligence brief...', 0.5);
+            const codeIntelBrief = await this.diffEnricher.enrich(
+                parsedDiff,
+                token
+            );
+            Log.info(
+                `Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
+            );
+
             // Get available tools and generate system prompt
             const availableTools = toolExecutor.getAvailableTools();
             const systemPrompt = isRecursiveMode
@@ -174,7 +186,8 @@ export class ToolCallingAnalysisProvider {
                 parsedDiff,
                 undefined,
                 isRecursiveMode,
-                this.workspaceSettings.getMaxSubagentsPerSession()
+                this.workspaceSettings.getMaxSubagentsPerSession(),
+                codeIntelBrief
             );
 
             conversationManager.addUserMessage(userMessage);

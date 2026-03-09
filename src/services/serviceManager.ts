@@ -16,6 +16,7 @@ import { LanguageModelToolProvider } from './languageModelToolProvider';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { PromptGenerator } from '../models/promptGenerator';
 import { LspValidationService } from './lspValidationService';
+import { DiffEnricher } from './diffEnricher';
 
 // Tool-calling services
 import { ToolRegistry } from '../models/toolRegistry';
@@ -68,6 +69,7 @@ export interface IServiceRegistry {
     // Utility services
     symbolExtractor: SymbolExtractor;
     lspValidation: LspValidationService;
+    diffEnricher: DiffEnricher;
 
     // Tool-calling services
     toolRegistry: ToolRegistry;
@@ -178,6 +180,10 @@ export class ServiceManager implements vscode.Disposable {
         this.services.lspValidation = new LspValidationService(
             this.services.gitOperations!
         );
+        this.services.diffEnricher = new DiffEnricher(
+            this.services.symbolExtractor!,
+            this.services.gitOperations!
+        );
     }
 
     /**
@@ -214,7 +220,8 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.toolRegistry,
                 this.services.copilotModelManager!,
                 this.services.promptGenerator!,
-                this.services.workspaceSettings!
+                this.services.workspaceSettings!,
+                this.services.diffEnricher!
             );
 
         // Register available tools

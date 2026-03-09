@@ -1,4 +1,5 @@
 import { DiffHunk } from '../types/contextTypes';
+import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 
@@ -47,9 +48,14 @@ export class PromptGenerator {
         parsedDiff: DiffHunk[],
         userInstructions?: string,
         recursiveMode: boolean = false,
-        maxSubagents?: number
+        maxSubagents?: number,
+        codeIntelBrief?: CodeIntelligenceBrief
     ): string {
         const metadataSection = this.generateDiffMetadataSection(parsedDiff);
+        const briefSection =
+            codeIntelBrief && codeIntelBrief.enrichedSymbols.length > 0
+                ? this.formatCodeIntelligenceBrief(codeIntelBrief)
+                : '';
         const sanitizedInstructions = userInstructions
             ?.trim()
             .replace(/[<>]/g, '');
@@ -62,7 +68,7 @@ export class PromptGenerator {
             maxSubagents
         );
 
-        return `${metadataSection}${userFocusSection}${reminder}`;
+        return `${metadataSection}${briefSection}${userFocusSection}${reminder}`;
     }
 
     /**
@@ -108,6 +114,27 @@ export class PromptGenerator {
         section += '\nUse `get_file_diff` to examine specific file changes.\n';
         section += '</diff_metadata>\n\n';
 
+        return section;
+    }
+
+    private formatCodeIntelligenceBrief(brief: CodeIntelligenceBrief): string {
+        let section = '<code_intelligence_brief>\n';
+        section +=
+            'LSP-verified metadata for symbols in changed regions. Use this to prioritize investigation.\n\n';
+
+        for (const sym of brief.enrichedSymbols) {
+            const exported = sym.isExported ? 'exported' : 'internal';
+            const type = sym.typeSignature ?? 'unknown type';
+            section += `- ${sym.file}:${sym.line} \`${sym.name}\` (${sym.kind}, ${exported})\n`;
+            section += `  Type: ${type}\n`;
+            section += `  Refs: ${sym.totalReferences} total, ${sym.externalCallers} external, ${sym.testFileReferences} in tests\n`;
+        }
+
+        if (brief.timeoutCount > 0) {
+            section += `\nNote: ${brief.timeoutCount} symbol(s) could not be enriched (LSP timeout).\n`;
+        }
+
+        section += '</code_intelligence_brief>\n\n';
         return section;
     }
 
