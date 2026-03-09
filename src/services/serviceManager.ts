@@ -40,6 +40,7 @@ import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { GetFileDiffTool } from '../tools/getFileDiffTool';
 import { RecordEvidenceTool } from '../tools/recordEvidenceTool';
 import { QueryEvidenceTool } from '../tools/queryEvidenceTool';
+import { RecordFindingTool } from '../tools/recordFindingTool';
 
 import { Log } from './loggingService';
 
@@ -319,6 +320,7 @@ export class ServiceManager implements vscode.Disposable {
             // Register evidence ledger tools for cross-agent knowledge sharing
             this.services.toolRegistry!.registerTool(new RecordEvidenceTool());
             this.services.toolRegistry!.registerTool(new QueryEvidenceTool());
+            this.services.toolRegistry!.registerTool(new RecordFindingTool());
 
             // Register the SubmitReviewTool for explicit completion signaling
             this.services.toolRegistry!.registerTool(new SubmitReviewTool());

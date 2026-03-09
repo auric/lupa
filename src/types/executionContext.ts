@@ -4,6 +4,7 @@ import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { EvidenceLedger } from '../sessions/evidenceLedger';
+import type { FindingStore } from '../sessions/findingStore';
 import type { DiffHunk } from './contextTypes';
 
 /**
@@ -79,4 +80,10 @@ export interface ExecutionContext {
      * Agents record and query structured evidence entries.
      */
     evidenceLedger?: EvidenceLedger;
+
+    /**
+     * Per-analysis finding store for incremental finding recording.
+     * Findings survive timeout/cancellation and are structured from the start.
+     */
+    findingStore?: FindingStore;
 }
