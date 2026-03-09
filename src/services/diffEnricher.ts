@@ -6,6 +6,7 @@ import type {
     EnrichedSymbol,
 } from '../types/enrichedDiffTypes';
 import type { SymbolExtractor } from '../utils/symbolExtractor';
+import { SymbolFormatter } from '../utils/symbolFormatter';
 import type { GitOperationsManager } from './gitOperationsManager';
 import {
     withCancellableTimeout,
@@ -178,7 +179,7 @@ export class DiffEnricher implements vscode.Disposable {
 
         const position = range.start;
         const name = symbol.name;
-        const kind = this.symbolKindName(symbol.kind);
+        const kind = SymbolFormatter.getSymbolKindName(symbol.kind);
 
         let typeSignature: string | undefined;
         let isExported = false;
@@ -309,29 +310,31 @@ export class DiffEnricher implements vscode.Disposable {
             .join('\n');
     }
 
-    private symbolKindName(kind: vscode.SymbolKind): string {
-        const names: Record<number, string> = {
-            [vscode.SymbolKind.Function]: 'function',
-            [vscode.SymbolKind.Method]: 'method',
-            [vscode.SymbolKind.Class]: 'class',
-            [vscode.SymbolKind.Interface]: 'interface',
-            [vscode.SymbolKind.Variable]: 'variable',
-            [vscode.SymbolKind.Property]: 'property',
-            [vscode.SymbolKind.Enum]: 'enum',
-            [vscode.SymbolKind.Constant]: 'constant',
-            [vscode.SymbolKind.Namespace]: 'namespace',
-            [vscode.SymbolKind.TypeParameter]: 'typeParameter',
-            [vscode.SymbolKind.Constructor]: 'constructor',
-        };
-        return names[kind] ?? 'symbol';
-    }
-
     private isTestFile(filePath: string): boolean {
-        const lower = filePath.toLowerCase();
+        const normalized = filePath.toLowerCase().replace(/\\/g, '/');
+        const segments = normalized.split('/');
+        const fileName = segments[segments.length - 1] ?? '';
+
+        // Directory-based: common test directories across languages
+        const testDirs = new Set([
+            'test',
+            'tests',
+            'testing',
+            '__tests__',
+            '__test__',
+            'spec',
+            'specs',
+        ]);
+        if (segments.some((s) => testDirs.has(s))) {
+            return true;
+        }
+
+        // File name patterns across languages:
+        // Go: _test.go, JS/TS: *.test.* / *.spec.*, Python: test_* / *_test.py,
+        // Java/C#: *Test.java / *Tests.cs, Ruby: *_spec.rb / *_test.rb
         return (
-            lower.includes('test') ||
-            lower.includes('spec') ||
-            lower.includes('__tests__')
+            /[._-](test|spec|tests)s?\b/.test(fileName) ||
+            fileName.startsWith('test_')
         );
     }
 

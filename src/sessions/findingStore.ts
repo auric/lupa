@@ -64,4 +64,8 @@ export class FindingStore {
     getById(id: string): RecordedFinding | undefined {
         return this.findings.get(id);
     }
+
+    remove(id: string): boolean {
+        return this.findings.delete(id);
+    }
 }

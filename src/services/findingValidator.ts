@@ -40,17 +40,11 @@ const SEVERITY_REQUIRING_DISPROOF = new Set([
     'HIGH',
 ] as FindingSeverity[]);
 
+const SEVERITY_ORDER: FindingSeverity[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
 function downgradeSeverity(severity: FindingSeverity): FindingSeverity {
-    switch (severity) {
-        case 'CRITICAL':
-            return 'HIGH';
-        case 'HIGH':
-            return 'MEDIUM';
-        case 'MEDIUM':
-            return 'LOW';
-        case 'LOW':
-            return 'LOW';
-    }
+    const idx = SEVERITY_ORDER.indexOf(severity);
+    return SEVERITY_ORDER[Math.max(0, idx - 1)]!;
 }
 
 export class FindingValidator {

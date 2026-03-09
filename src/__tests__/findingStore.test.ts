@@ -165,4 +165,23 @@ describe('FindingStore', () => {
         ).toHaveLength(2);
         expect(store.getBySeverity('LOW')).toHaveLength(1);
     });
+
+    it('remove deletes a finding and returns true', () => {
+        const store = new FindingStore();
+        const f1 = store.record(makeFinding({ title: 'to-remove' }));
+        store.record(makeFinding({ title: 'to-keep' }));
+
+        expect(store.remove(f1.id)).toBe(true);
+        expect(store.size).toBe(1);
+        expect(store.getById(f1.id)).toBeUndefined();
+        expect(store.getAll()[0]!.title).toBe('to-keep');
+    });
+
+    it('remove returns false for non-existent id', () => {
+        const store = new FindingStore();
+        store.record(makeFinding());
+
+        expect(store.remove('nonexistent')).toBe(false);
+        expect(store.size).toBe(1);
+    });
 });

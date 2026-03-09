@@ -24,6 +24,10 @@ import {
     INVESTIGATION_TOOLS,
 } from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import { EvidenceLedger } from '../sessions/evidenceLedger';
+import { FindingStore } from '../sessions/findingStore';
+import type { DiffEnricher } from './diffEnricher';
+import type { FindingValidator } from './findingValidator';
 
 import { DiffUtils } from '../utils/diffUtils';
 import { buildFileTree } from '../utils/fileTreeBuilder';
@@ -50,6 +54,8 @@ export interface ChatParticipantDependencies {
     promptGenerator: PromptGenerator;
     gitOperations: GitOperationsManager;
     copilotModelManager: CopilotModelManager;
+    diffEnricher: DiffEnricher;
+    findingValidator: FindingValidator;
 }
 
 /**
@@ -540,6 +546,9 @@ export class ChatParticipantService implements vscode.Disposable {
             subagentExecutor.setRecursiveState(recursiveState);
         }
 
+        const evidenceLedger = new EvidenceLedger();
+        const findingStore = new FindingStore();
+
         // Create execution context as a mutable reference so parsedDiff can be
         // set after diff processing (RLM approach needs it on the context for tools)
         const executionContext: ExecutionContext = {
@@ -550,6 +559,8 @@ export class ChatParticipantService implements vscode.Disposable {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
+            evidenceLedger,
+            findingStore,
         };
 
         const toolExecutor = new ToolExecutor(
@@ -572,12 +583,25 @@ export class ChatParticipantService implements vscode.Disposable {
             stream.filetree(fileTree, gitRootUri);
         }
 
+        // Enrich changed symbols with LSP metadata for the Code Intelligence Brief
+        stream.progress(
+            `${ACTIVITY.analyzing} Building code intelligence brief...`
+        );
+        const codeIntelBrief = await this.deps!.diffEnricher.enrich(
+            parsedDiff,
+            token
+        );
+        Log.info(
+            `[ChatParticipantService]: Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
+        );
+
         executionContext.parsedDiff = parsedDiff;
         const userPrompt = this.deps!.promptGenerator.generateUserPrompt(
             parsedDiff,
             request.prompt || undefined,
             isRecursiveMode,
-            this.deps!.workspaceSettings.getMaxSubagentsPerSession()
+            this.deps!.workspaceSettings.getMaxSubagentsPerSession(),
+            codeIntelBrief
         );
         conversation.addUserMessage(userPrompt);
 
@@ -618,6 +642,22 @@ export class ChatParticipantService implements vscode.Disposable {
             }
 
             analysisCompleted = true;
+
+            // Post-analysis: validate findings programmatically
+            const findings = findingStore.getAll();
+            if (findings.length > 0) {
+                const validation = await this.deps!.findingValidator.validate(
+                    findings,
+                    parsedDiff,
+                    token
+                );
+                if (validation.dropped > 0 || validation.downgraded > 0) {
+                    Log.info(
+                        `[ChatParticipantService]: FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`
+                    );
+                }
+            }
+
             streamMarkdownWithAnchors(stream, analysisResult, gitRootUri);
 
             const contentAnalysis = this.analyzeResultContent(analysisResult);

@@ -24,7 +24,9 @@ export class RecordFindingTool extends BaseTool {
             title: z.string().describe('Brief finding title'),
             file: z.string().describe('Primary file path affected'),
             line_range: z
-                .tuple([z.number(), z.number()])
+                .array(z.number())
+                .min(2)
+                .max(2)
                 .describe('Start and end line numbers [start, end]'),
             description: z
                 .string()
@@ -82,7 +84,7 @@ export class RecordFindingTool extends BaseTool {
             category: args.category,
             title: args.title,
             file: args.file,
-            lineRange: args.line_range,
+            lineRange: args.line_range as [number, number],
             description: args.description,
             supportingToolCalls: args.supporting_tool_calls,
             disproof: {

@@ -1,0 +1,49 @@
+import * as z from 'zod';
+import { BaseTool } from './baseTool';
+import { toolSuccess, toolError } from '../types/toolResultTypes';
+import type { ToolResult } from '../types/toolResultTypes';
+import type { ExecutionContext } from '../types/executionContext';
+
+export class RetractFindingTool extends BaseTool {
+    name = 'retract_finding';
+    description =
+        'Remove a previously recorded finding that you determined was incorrect after further investigation. ' +
+        'Provide the finding ID and a brief reason for retraction. ' +
+        'This is preferred over leaving wrong findings in the store.';
+
+    schema = z
+        .object({
+            finding_id: z
+                .string()
+                .describe('ID of the finding to retract (e.g., "finding-3")'),
+            reason: z
+                .string()
+                .describe(
+                    'Brief explanation of why this finding is being retracted'
+                ),
+        })
+        .strict();
+
+    async execute(
+        args: z.infer<typeof this.schema>,
+        context: ExecutionContext
+    ): Promise<ToolResult> {
+        const store = context.findingStore;
+        if (!store) {
+            return toolError('Finding store not available in this context');
+        }
+
+        const existing = store.getById(args.finding_id);
+        if (!existing) {
+            return toolError(
+                `Finding "${args.finding_id}" not found. Use query or check finding IDs from previous record_finding calls.`
+            );
+        }
+
+        store.remove(args.finding_id);
+
+        return toolSuccess(
+            `Retracted finding "${args.finding_id}" (${existing.title}). Reason: ${args.reason}. Remaining findings: ${store.size}.`
+        );
+    }
+}
