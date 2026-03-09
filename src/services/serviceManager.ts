@@ -15,6 +15,7 @@ import { LanguageModelToolProvider } from './languageModelToolProvider';
 // Utility services
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { PromptGenerator } from '../models/promptGenerator';
+import { LspValidationService } from './lspValidationService';
 
 // Tool-calling services
 import { ToolRegistry } from '../models/toolRegistry';
@@ -65,6 +66,7 @@ export interface IServiceRegistry {
 
     // Utility services
     symbolExtractor: SymbolExtractor;
+    lspValidation: LspValidationService;
 
     // Tool-calling services
     toolRegistry: ToolRegistry;
@@ -170,6 +172,9 @@ export class ServiceManager implements vscode.Disposable {
 
         // Utility services (depend on gitOperations)
         this.services.symbolExtractor = new SymbolExtractor(
+            this.services.gitOperations!
+        );
+        this.services.lspValidation = new LspValidationService(
             this.services.gitOperations!
         );
     }
