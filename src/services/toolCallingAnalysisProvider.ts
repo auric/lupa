@@ -26,6 +26,7 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import { EvidenceLedger } from '../sessions/evidenceLedger';
 
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
@@ -101,6 +102,8 @@ export class ToolCallingAnalysisProvider {
             ? new RecursiveStateManager(maxRecursionDepth)
             : undefined;
 
+        const evidenceLedger = new EvidenceLedger();
+
         // Wire recursive state to SubagentExecutor for aggregate progress reporting
         if (recursiveState) {
             subagentExecutor.setRecursiveState(recursiveState);
@@ -126,6 +129,7 @@ export class ToolCallingAnalysisProvider {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
+            evidenceLedger,
         };
 
         const toolExecutor = new ToolExecutor(
