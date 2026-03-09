@@ -21,6 +21,7 @@ export function generateToolSelectionGuide(): string {
 | Find files | \`find_files_by_pattern\` | \`pattern\` |
 | Read config/docs | \`read_file\` | \`path\`, \`start_line\`, \`end_line\` |
 | Track progress | \`update_plan\` | \`plan\` (markdown checklist) |
+| Analyze code change | \`reason_about_code\` | \`file\`, \`dimensions\`, \`observations\` |
 | Deep investigation | \`run_subagent\` | \`task\`, \`context\` |
 
 ### Principles

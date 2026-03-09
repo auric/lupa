@@ -68,4 +68,11 @@ export class FindingStore {
     remove(id: string): boolean {
         return this.findings.delete(id);
     }
+
+    updateSeverity(id: string, severity: FindingSeverity): void {
+        const finding = this.findings.get(id);
+        if (finding) {
+            finding.severity = severity;
+        }
+    }
 }

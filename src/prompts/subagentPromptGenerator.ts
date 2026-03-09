@@ -68,6 +68,8 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 5. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts (caller patterns, type constraints) with other agents.
 
+**Explicit reasoning**: Before recording any MEDIUM+ finding, call \`reason_about_code\` to structure your analysis through specific dimensions and identify what needs verification.
+
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
                   ? `
@@ -84,6 +86,7 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts with other agents.
 
 Diff reading is orientation, not investigation. You must call tools from steps 2-5 before writing findings.
+**Explicit reasoning**: Before recording any MEDIUM+ finding, call \`reason_about_code\` to structure your analysis.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
@@ -97,7 +100,9 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
 
-6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts with other agents.`;
+6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts with other agents.
+
+**Explicit reasoning**: Before recording any MEDIUM+ finding, call \`reason_about_code\` to structure your analysis.`;
 
         const recursionSection = canRecurse
             ? `
@@ -223,6 +228,7 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 
 **Self-Reflection:**
 - Use \`think_about_investigation\` to check if you're staying focused
+- Use \`reason_about_code\` before recording any MEDIUM+ finding
 - Return partial findings if running low on iterations - partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;

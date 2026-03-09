@@ -16,6 +16,7 @@ export function generateRecursiveToolGuide(): string {
 | \`list_directory\` | Orient yourself — understand project structure |
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
+| \`reason_about_code\` | Structure analysis of a code change before recording findings |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
 | \`record_finding\` | Commit findings as discovered — survives timeout |
 | \`query_evidence\` | Read evidence from sub-agents for aggregation |

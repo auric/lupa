@@ -184,4 +184,23 @@ describe('FindingStore', () => {
         expect(store.remove('nonexistent')).toBe(false);
         expect(store.size).toBe(1);
     });
+
+    it('updateSeverity changes severity of an existing finding', () => {
+        const store = new FindingStore();
+        const finding = store.record(makeFinding({ severity: 'CRITICAL' }));
+
+        store.updateSeverity(finding.id, 'HIGH');
+
+        expect(store.getById(finding.id)!.severity).toBe('HIGH');
+        expect(store.getBySeverity('CRITICAL')).toHaveLength(0);
+        expect(store.getBySeverity('HIGH')).toHaveLength(1);
+    });
+
+    it('updateSeverity is no-op for unknown id', () => {
+        const store = new FindingStore();
+        store.record(makeFinding({ severity: 'HIGH' }));
+
+        store.updateSeverity('nonexistent', 'LOW');
+        expect(store.getAll()[0]!.severity).toBe('HIGH');
+    });
 });

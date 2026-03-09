@@ -28,8 +28,10 @@ import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { EvidenceLedger } from '../sessions/evidenceLedger';
 import { FindingStore } from '../sessions/findingStore';
+import { AdversarialPromptGenerator } from '../prompts/adversarialPromptGenerator';
 import type { DiffEnricher } from './diffEnricher';
-import type { FindingValidator } from './findingValidator';
+import type { FindingValidator, ValidatedFinding } from './findingValidator';
+import type { RecordedFinding } from '../types/findingTypes';
 
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
@@ -312,10 +314,46 @@ export class ToolCallingAnalysisProvider {
                         executionContext.parsedDiff,
                         token
                     );
+
+                    // Apply validation results to FindingStore
+                    this.applyValidationResults(
+                        validation.validated,
+                        findingStore
+                    );
+
                     if (validation.dropped > 0 || validation.downgraded > 0) {
                         Log.info(
                             `FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`
                         );
+
+                        // Append validation summary to analysis text
+                        analysisText += this.formatValidationSummary(
+                            validation.validated
+                        );
+                    }
+
+                    // Adversarial verification for CRITICAL findings
+                    const criticalFindings =
+                        findingStore.getBySeverity('CRITICAL');
+                    if (
+                        criticalFindings.length > 0 &&
+                        !token.isCancellationRequested
+                    ) {
+                        progressCallback?.(
+                            'Adversarial verification of CRITICAL findings...',
+                            0.5
+                        );
+                        const adversarialResults =
+                            await this.runAdversarialVerification(
+                                criticalFindings,
+                                executionContext,
+                                subagentExecutor,
+                                findingStore,
+                                token
+                            );
+                        if (adversarialResults.refuted > 0) {
+                            analysisText += `\n*Adversarial verification: ${adversarialResults.refuted} CRITICAL finding(s) refuted and removed*`;
+                        }
                     }
                 }
 
@@ -426,6 +464,143 @@ export class ToolCallingAnalysisProvider {
             },
             wasCancelled,
         };
+    }
+
+    private async runAdversarialVerification(
+        criticalFindings: RecordedFinding[],
+        executionContext: ExecutionContext,
+        subagentExecutor: SubagentExecutor,
+        findingStore: FindingStore,
+        token: vscode.CancellationToken
+    ): Promise<{ refuted: number; confirmed: number; uncertain: number }> {
+        const adversarialPromptGen = new AdversarialPromptGenerator();
+        const ADVERSARIAL_BUDGET = 7;
+        let refuted = 0;
+        let confirmed = 0;
+        let uncertain = 0;
+
+        for (const finding of criticalFindings) {
+            if (token.isCancellationRequested) {
+                break;
+            }
+
+            try {
+                const adversarialTask =
+                    adversarialPromptGen.generateSystemPrompt(finding);
+
+                Log.info(
+                    `Adversarial verification for CRITICAL finding: ${finding.title} in ${finding.file}`
+                );
+
+                const result = await subagentExecutor.execute(
+                    {
+                        task: adversarialTask,
+                        context: `Finding to verify: "${finding.title}" in ${finding.file}:${finding.lineRange[0]}-${finding.lineRange[1]}`,
+                    },
+                    token,
+                    -1, // negative ID to distinguish adversarial from regular subagents
+                    { childBudget: ADVERSARIAL_BUDGET }
+                );
+
+                const verdict = this.parseAdversarialVerdict(result.response);
+
+                if (verdict === 'REFUTED') {
+                    findingStore.remove(finding.id);
+                    refuted++;
+                    Log.info(
+                        `Adversarial REFUTED: ${finding.title} — removed from findings`
+                    );
+                } else if (verdict === 'CONFIRMED') {
+                    confirmed++;
+                    Log.info(
+                        `Adversarial CONFIRMED: ${finding.title} — keeping`
+                    );
+                } else {
+                    uncertain++;
+                    Log.info(
+                        `Adversarial UNCERTAIN: ${finding.title} — keeping (benefit of doubt)`
+                    );
+                }
+            } catch (error) {
+                if (isCancellationError(error)) {
+                    throw error;
+                }
+                Log.warn(
+                    `Adversarial verification failed for ${finding.title}: ${getErrorMessage(error)}`
+                );
+                uncertain++;
+            }
+        }
+
+        return { refuted, confirmed, uncertain };
+    }
+
+    private parseAdversarialVerdict(
+        response: string
+    ): 'REFUTED' | 'CONFIRMED' | 'UNCERTAIN' {
+        const upper = response.toUpperCase();
+        // Look for explicit verdict markers
+        if (
+            upper.includes('VERDICT: REFUTED') ||
+            upper.includes('VERDICT:REFUTED')
+        ) {
+            return 'REFUTED';
+        }
+        if (
+            upper.includes('VERDICT: CONFIRMED') ||
+            upper.includes('VERDICT:CONFIRMED')
+        ) {
+            return 'CONFIRMED';
+        }
+        if (
+            upper.includes('VERDICT: UNCERTAIN') ||
+            upper.includes('VERDICT:UNCERTAIN')
+        ) {
+            return 'UNCERTAIN';
+        }
+        // Fallback: check for standalone keywords at word boundaries
+        if (/\bREFUTED\b/.test(upper) && !/\bCONFIRMED\b/.test(upper)) {
+            return 'REFUTED';
+        }
+        if (/\bCONFIRMED\b/.test(upper) && !/\bREFUTED\b/.test(upper)) {
+            return 'CONFIRMED';
+        }
+        return 'UNCERTAIN';
+    }
+
+    private applyValidationResults(
+        validated: ValidatedFinding[],
+        findingStore: FindingStore
+    ): void {
+        for (const v of validated) {
+            if (v.verdict === 'drop') {
+                findingStore.remove(v.finding.id);
+            } else if (v.verdict === 'downgrade' && v.downgradedSeverity) {
+                findingStore.updateSeverity(v.finding.id, v.downgradedSeverity);
+            }
+        }
+    }
+
+    private formatValidationSummary(validated: ValidatedFinding[]): string {
+        const dropped = validated.filter((v) => v.verdict === 'drop');
+        const downgraded = validated.filter((v) => v.verdict === 'downgrade');
+
+        if (dropped.length === 0 && downgraded.length === 0) {
+            return '';
+        }
+
+        let summary = '\n\n---\n*Post-analysis validation:';
+        if (dropped.length > 0) {
+            summary += ` ${dropped.length} finding(s) removed (${dropped.map((d) => d.violations[0]).join('; ')})`;
+        }
+        if (downgraded.length > 0) {
+            if (dropped.length > 0) {
+                summary += ',';
+            }
+            summary += ` ${downgraded.length} finding(s) downgraded`;
+        }
+        summary += '*';
+        return summary;
     }
 
     dispose(): void {

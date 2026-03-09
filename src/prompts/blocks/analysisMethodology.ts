@@ -1,6 +1,7 @@
 /**
  * Analysis methodology for PR review mode.
  * Step-by-step process with plan tool integration.
+ * Includes explicit reasoning mandate for non-reasoning models (GPT-4.1).
  */
 
 /**
@@ -10,6 +11,14 @@
 export function generateAnalysisMethodology(): string {
     return `<analysis_methodology>
 ## Analysis Process
+
+### IMPORTANT: Explicit Reasoning Required
+
+You MUST think out loud between tool calls. Before EVERY tool call, write a brief text message explaining:
+1. What you learned from the previous result
+2. What you plan to do next and why
+
+Do NOT chain tool calls silently. Always reflect on results before proceeding.
 
 ### Step 1: Create Your Plan (MANDATORY - FIRST ACTION)
 ⚠️ **Your first tool call MUST be \`update_plan\`.** Do not investigate before planning.
@@ -42,7 +51,18 @@ For each checklist item:
 
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
-### Step 3: Self-Reflection Checkpoints (Articulation Required)
+### Step 3: Structured Code Reasoning (MANDATORY for each changed file)
+
+For each changed file, call \`reason_about_code\` to structure your analysis:
+- Pick 1-4 relevant dimensions (correctness, error_handling, security, api_contract, etc.)
+- Write your observations for each dimension
+- Identify which observations need tool-backed verification
+- Plan your next verification steps
+
+This tool externalizes your reasoning into a structured, verifiable format.
+**You MUST call \`reason_about_code\` before calling \`record_finding\` for any MEDIUM+ finding.**
+
+### Step 4: Self-Reflection Checkpoints (Articulation Required)
 
 At each checkpoint, **explicitly articulate** your current state—don't just acknowledge.
 
@@ -66,7 +86,7 @@ At each checkpoint, **explicitly articulate** your current state—don't just ac
 - hypothesis_kill_ratio: "Started with N hypotheses, M survived verification" — if >80% survived, re-examine your disproof rigor
 - recommendation: approve/request_changes/block
 
-### Step 3b: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
+### Step 5: Verify Your Hypotheses (MANDATORY for MEDIUM+ Findings)
 
 The issues you identified are **HYPOTHESES**, not confirmed findings.
 Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using the verification gates from \`<finding_quality>\` above.
@@ -81,7 +101,7 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 **Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
 If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
 
-### Step 4: Track Progress (REQUIRED)
+### Step 6: Track Progress (REQUIRED)
 Call \`update_plan\` after completing each checklist item:
 \`\`\`markdown
 - [x] Reviewed auth changes - found timing attack risk
@@ -89,7 +109,7 @@ Call \`update_plan\` after completing each checklist item:
 - [ ] Check test coverage
 \`\`\`
 
-### Step 5: Synthesize
+### Step 7: Synthesize
 Combine findings into structured review. Ensure:
 - All checklist items marked complete
 - All files analyzed
@@ -97,7 +117,7 @@ Combine findings into structured review. Ensure:
 - Call \`record_finding\` for each confirmed finding (ensures findings survive timeout)
 - Critical issues clearly highlighted
 
-### Step 6: Submit Review (REQUIRED - FINAL ACTION)
+### Step 8: Submit Review (REQUIRED - FINAL ACTION)
 ⚠️ **You MUST call \`submit_review\` to deliver your findings.** Do not respond without tool calls.
 
 Call \`submit_review\` with your complete review following the output format.

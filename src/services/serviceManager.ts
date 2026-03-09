@@ -46,6 +46,7 @@ import { QueryEvidenceTool } from '../tools/queryEvidenceTool';
 import { RecordFindingTool } from '../tools/recordFindingTool';
 import { RetractFindingTool } from '../tools/retractFindingTool';
 import { ValidateClaimTool } from '../tools/validateClaimTool';
+import { ReasonAboutCodeTool } from '../tools/reasonAboutCodeTool';
 
 import { Log } from './loggingService';
 
@@ -344,6 +345,7 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(new QueryEvidenceTool());
             this.services.toolRegistry!.registerTool(new RecordFindingTool());
             this.services.toolRegistry!.registerTool(new RetractFindingTool());
+            this.services.toolRegistry!.registerTool(new ReasonAboutCodeTool());
 
             // Register LSP-based claim validation tool
             const validateClaimTool = new ValidateClaimTool(
