@@ -7,7 +7,6 @@ import { FindSymbolTool } from '../tools/findSymbolTool';
 import { SubmitReviewTool } from '../tools/submitReviewTool';
 import { SymbolExtractor } from '../utils/symbolExtractor';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
-import { ANALYSIS_LIMITS } from '../models/workspaceSettingsSchema';
 import {
     createMockWorkspaceSettings,
     createMockCancellationTokenSource,
@@ -411,6 +410,11 @@ describe('Tool-Calling Integration Tests', () => {
         });
 
         it('should prevent infinite loops with max iterations', async () => {
+            // Use a small maxIterations to keep the test fast
+            const testMaxIterations = 5;
+            (mockWorkspaceSettings as any).getMaxIterations = () =>
+                testMaxIterations;
+
             // Mock LLM that always wants to call tools
             mockCopilotModelManager.sendRequest.mockResolvedValue({
                 content: 'Let me call a tool again.',
@@ -435,11 +439,10 @@ describe('Tool-Calling Integration Tests', () => {
             );
 
             expect(result.analysis).toContain('maximum iterations');
-            // Uses configured max iterations from ANALYSIS_LIMITS constant
             expect(mockCopilotModelManager.sendRequest).toHaveBeenCalledTimes(
-                ANALYSIS_LIMITS.maxIterations
+                testMaxIterations
             );
-        });
+        }, 15_000);
     });
 
     describe('System Integration', () => {

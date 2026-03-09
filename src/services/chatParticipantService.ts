@@ -24,7 +24,6 @@ import {
     INVESTIGATION_TOOLS,
 } from '../models/toolConstants';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import { EvidenceLedger } from '../sessions/evidenceLedger';
 import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
 import type { FindingValidator } from './findingValidator';
@@ -546,7 +545,6 @@ export class ChatParticipantService implements vscode.Disposable {
             subagentExecutor.setRecursiveState(recursiveState);
         }
 
-        const evidenceLedger = new EvidenceLedger();
         const findingStore = new FindingStore();
 
         // Create execution context as a mutable reference so parsedDiff can be
@@ -559,7 +557,6 @@ export class ChatParticipantService implements vscode.Disposable {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
-            evidenceLedger,
             findingStore,
         };
 

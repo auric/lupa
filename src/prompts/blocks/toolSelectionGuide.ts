@@ -22,6 +22,8 @@ export function generateToolSelectionGuide(): string {
 | Read config/docs | \`read_file\` |
 | Track progress | \`update_plan\` |
 | Think through analysis | \`think\` |
+| Record confirmed issue | \`record_finding\` |
+| Verify factual claim | \`validate_claim\` |
 | Deep investigation | \`run_subagent\` |
 
 ### Principles

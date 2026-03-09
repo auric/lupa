@@ -49,20 +49,26 @@ For each checklist item:
 
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
-### Step 3: Think Through Each Change
+### Step 3: Think Through Each Change (MANDATORY)
+⚠️ After EVERY \`get_file_diff\` result, your NEXT tool call MUST be \`think\`. Do NOT call \`find_symbol\`, \`find_usages\`, or any investigation tool before calling \`think\`.
 
-After reading each file's diff, call \`think\` to structure your thinking:
-- topic: The file or area you are analyzing
+\`think\` arguments:
+- topic: The file you just read (e.g., "changes in src/auth.ts")
 - analysis: What changed, what could go wrong, what looks correct
-- identified_risks: Specific risks found (empty if none)
-- next_action: What to do next (investigate, move on, record finding)
+- identified_risks: Specific risks found (empty array if none)
+- next_action: What to do next ("investigate with find_usages", "move to next file", "record finding")
 
-This prevents jumping to conclusions. Think first, then investigate, then record.
-**Call \`think\` after reading each diff — before investigating or recording findings.**
+### Mandatory Tool Call Sequences
+These sequences are REQUIRED. Do NOT skip steps.
 
-### Step 4: Self-Reflection Checkpoints
+\`get_file_diff\` → MUST call \`think\` → then investigate or move on
+After confirming a finding → MUST call \`record_finding\` immediately
+After all files reviewed → MUST call \`think_about_completion\`
+After \`think_about_completion\` → MUST call \`submit_review\`
 
-At key points, call \`think\` to explicitly articulate your state:
+### Step 4: Self-Reflection Checkpoints (MANDATORY)
+
+You MUST call \`think\` at these checkpoints — skipping them degrades review quality:
 
 **After gathering context** → \`think\` with topic "context review":
 - What you examined, what you found, what gaps remain, what to do next
@@ -100,12 +106,14 @@ Call \`update_plan\` after completing each checklist item:
 - [ ] Check test coverage
 \`\`\`
 
-### Step 7: Synthesize
+### Step 7: Record and Synthesize
+⚠️ For EVERY confirmed finding, you MUST call \`record_finding\` IMMEDIATELY after verification — do NOT wait until synthesis. Unrecorded findings are LOST on timeout.
+
 Combine findings into structured review. Ensure:
 - All checklist items marked complete
 - All files analyzed
 - Findings have evidence with file links
-- Call \`record_finding\` for each confirmed finding (ensures findings survive timeout)
+- Every MEDIUM+ finding has been recorded via \`record_finding\`
 - Critical issues clearly highlighted
 
 ### Step 8: Submit Review (REQUIRED - FINAL ACTION)

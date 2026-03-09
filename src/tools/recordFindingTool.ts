@@ -7,8 +7,9 @@ import type { ExecutionContext } from '../types/executionContext';
 export class RecordFindingTool extends BaseTool {
     name = 'record_finding';
     description =
-        'Record a code review finding. Findings survive timeout/cancellation. ' +
-        'CALL THIS for each confirmed issue after tool-backed verification and disproof attempt.';
+        'MANDATORY: Record each confirmed finding IMMEDIATELY after verification. ' +
+        'Findings recorded here survive timeout — unrecorded findings are LOST. ' +
+        'Call this for every issue that survives disproof.';
 
     schema = z
         .object({

@@ -3,7 +3,6 @@ import { PlanSessionManager } from '../services/planSessionManager';
 import { SubagentSessionManager } from '../services/subagentSessionManager';
 import { SubagentExecutor } from '../services/subagentExecutor';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import type { EvidenceLedger } from '../sessions/evidenceLedger';
 import type { FindingStore } from '../sessions/findingStore';
 import type { DiffHunk } from './contextTypes';
 
@@ -74,12 +73,6 @@ export interface ExecutionContext {
      * Present only during analysis mode (not exploration mode).
      */
     parsedDiff?: DiffHunk[];
-
-    /**
-     * Per-analysis evidence ledger for cross-agent knowledge sharing.
-     * Agents record and query structured evidence entries.
-     */
-    evidenceLedger?: EvidenceLedger;
 
     /**
      * Per-analysis finding store for incremental finding recording.

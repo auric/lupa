@@ -26,7 +26,6 @@ import { SubagentExecutor } from './subagentExecutor';
 import { SubagentPromptGenerator } from '../prompts/subagentPromptGenerator';
 import { PlanSessionManager } from './planSessionManager';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
-import { EvidenceLedger } from '../sessions/evidenceLedger';
 import { FindingStore } from '../sessions/findingStore';
 import { AdversarialPromptGenerator } from '../prompts/adversarialPromptGenerator';
 import type { DiffEnricher } from './diffEnricher';
@@ -109,7 +108,6 @@ export class ToolCallingAnalysisProvider {
             ? new RecursiveStateManager(maxRecursionDepth)
             : undefined;
 
-        const evidenceLedger = new EvidenceLedger();
         const findingStore = new FindingStore();
 
         // Wire recursive state to SubagentExecutor for aggregate progress reporting
@@ -137,7 +135,6 @@ export class ToolCallingAnalysisProvider {
             recursiveState,
             currentDepth: 0,
             currentAgentId: 'root',
-            evidenceLedger,
             findingStore,
         };
 

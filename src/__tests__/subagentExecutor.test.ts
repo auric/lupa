@@ -354,19 +354,17 @@ describe('SubagentExecutor', () => {
             }
         });
 
-        it('should keep think_about_investigation tool', async () => {
+        it('should keep think tool for subagents', async () => {
             const modelManager = createMockModelManager([{ content: 'Done' }]);
 
-            const thinkTool = createMockTool('think_about_investigation');
+            const thinkTool = createMockTool('think');
             const executor = createExecutor(modelManager, [thinkTool]);
             await executor.execute(defaultTask, tokenSource.token, 1);
 
             const promptCall = vi.mocked(promptGenerator.generateSystemPrompt)
                 .mock.calls[0]!;
             const toolsPassedToPrompt = promptCall[1] as ITool[];
-            expect(toolsPassedToPrompt.map((t) => t.name)).toContain(
-                'think_about_investigation'
-            );
+            expect(toolsPassedToPrompt.map((t) => t.name)).toContain('think');
         });
     });
 

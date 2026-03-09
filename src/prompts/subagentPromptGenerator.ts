@@ -66,9 +66,9 @@ Your parent agent already identified which files belong to your investigation �
 
 Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
 
-5. **Record findings progressively**: Call \`record_finding\` for each confirmed finding.
+5. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
 
-**Think before acting**: After reading each diff, call \`think\` to structure your analysis before investigating further or recording findings.
+⚠️ **MANDATORY**: After EVERY \`get_file_diff\` result, your NEXT call MUST be \`think\`. After confirming a finding, IMMEDIATELY call \`record_finding\`. Do NOT skip these steps.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
@@ -83,10 +83,10 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 5. **Self-Reflect**: Use \`think\` to evaluate your progress midway through.
 
-6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding.
+6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
 
 Diff reading is orientation, not investigation. You must call tools from steps 2-5 before writing findings.
-**Think before acting**: After reading each diff, call \`think\` to structure your analysis.
+⚠️ **MANDATORY**: After EVERY \`get_file_diff\` result, your NEXT call MUST be \`think\`. After confirming a finding, IMMEDIATELY call \`record_finding\`. Do NOT skip these steps.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
@@ -100,9 +100,9 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 5. **Self-Reflect**: Use \`think\` to evaluate your progress midway through.
 
-6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding.
+6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
 
-**Think before acting**: After reading each diff, call \`think\` to structure your analysis.`;
+⚠️ **MANDATORY**: After reviewing context, call \`think\` before investigating. After confirming a finding, IMMEDIATELY call \`record_finding\`. Do NOT skip these steps.`;
 
         const recursionSection = canRecurse
             ? `
@@ -227,8 +227,8 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-- Use \`think\` to check if you're staying focused
-- Use \`think\` after reading each diff to structure your analysis
+${hasDiffTools ? '- You MUST call \\`think\\` after EVERY \\`get_file_diff\\` result — no exceptions' : '- You MUST call \\`think\\` after reviewing context — no exceptions'}
+- You MUST call \`record_finding\` for EVERY confirmed finding immediately
 - Return partial findings if running low on iterations - partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;

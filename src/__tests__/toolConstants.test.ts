@@ -42,11 +42,9 @@ describe('toolConstants', () => {
             ).toBe(true);
         });
 
-        it('should allow think_about_investigation for subagents', () => {
+        it('should allow think tool for subagents', () => {
             expect(
-                SubagentLimits.DISALLOWED_TOOLS.includes(
-                    'think_about_investigation' as any
-                )
+                SubagentLimits.DISALLOWED_TOOLS.includes('think' as any)
             ).toBe(false);
         });
     });
@@ -155,7 +153,6 @@ describe('toolConstants', () => {
                 'run_subagent',
                 'update_plan',
                 'submit_review',
-                'think_about_task',
                 'think_about_completion',
             ];
             for (const tool of controllerTools) {

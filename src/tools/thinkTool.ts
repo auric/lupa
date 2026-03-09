@@ -17,10 +17,9 @@ import { flexibleStringArray } from './schemaHelpers';
 export class ThinkTool extends BaseTool {
     name = 'think';
     description =
-        'Think out loud about anything during your analysis. ' +
-        'CALL THIS after reading diffs, after gathering context, before drawing conclusions, ' +
-        'or when checking investigation progress. Write your reasoning, list risks, ' +
-        'and decide what to do next. Prevents jumping to conclusions.';
+        'MANDATORY: Think out loud after EVERY diff read and before conclusions. ' +
+        'Your NEXT call after get_file_diff MUST be this tool. ' +
+        'Write your reasoning, list risks, decide what to do next.';
 
     schema = z
         .object({

@@ -12,7 +12,7 @@ export function generateSelfReflectionGuidance(): string {
     return `<self_reflection>
 ## Self-Reflection Tools
 
-Use these to improve analysis quality. Each requires **structured articulation**, not passive acknowledgment.
+These tools are MANDATORY at specific workflow points. Skipping them is NOT allowed — they enforce the structured reasoning that prevents false positives.
 
 | Tool | When | What to Articulate |
 |------|------|-------------------|

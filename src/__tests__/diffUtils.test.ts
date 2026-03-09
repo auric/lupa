@@ -165,6 +165,37 @@ index 1234567..0000000
             ).toBe(true);
         });
 
+        it('should detect deleted file from deleted file mode line', () => {
+            // Real git diff format: header has same path in both positions,
+            // /dev/null only appears in the +++ line
+            const diff = `diff --git a/src/oldfile.js b/src/oldfile.js
+deleted file mode 100644
+index 1234567..0000000
+--- a/src/oldfile.js
++++ /dev/null
+@@ -1,3 +0,0 @@
+-function oldFunction() {
+-    return 'old';
+-}`;
+
+            const result = DiffUtils.parseDiff(diff);
+
+            expect(result).toHaveLength(1);
+            expect(result[0].filePath).toBe('src/oldfile.js');
+            expect(result[0].isNewFile).toBe(false);
+            expect(result[0].isDeletedFile).toBe(true);
+
+            const hunk = result[0].hunks[0];
+            expect(hunk.oldStart).toBe(1);
+            expect(hunk.oldLines).toBe(3);
+            expect(hunk.newStart).toBe(0);
+            expect(hunk.newLines).toBe(0);
+
+            expect(
+                hunk.parsedLines.every((line) => line.type === 'removed')
+            ).toBe(true);
+        });
+
         it('should handle multiple files in one diff', () => {
             const diff = `diff --git a/src/file1.js b/src/file1.js
 index 1234567..abcdefg 100644

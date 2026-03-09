@@ -46,6 +46,14 @@ export class DiffUtils {
                 continue;
             }
 
+            // Detect file mode metadata before skipping
+            if (currentFile && line.startsWith('deleted file mode')) {
+                currentFile.isDeletedFile = true;
+            }
+            if (currentFile && line.startsWith('new file mode')) {
+                currentFile.isNewFile = true;
+            }
+
             // Skip file metadata lines (---, +++, index, etc.)
             if (
                 line.startsWith('---') ||
