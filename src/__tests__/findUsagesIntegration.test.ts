@@ -72,11 +72,31 @@ describe('FindUsages Integration Tests', () => {
 
         promptGenerator = new PromptGenerator();
 
+        const mockDiffEnricher = {
+            enrich: vi.fn().mockResolvedValue({
+                enrichedSymbols: [],
+                generatedAt: Date.now(),
+                timeoutCount: 0,
+            }),
+            dispose: vi.fn(),
+        } as any;
+
+        const mockFindingValidator = {
+            validate: vi.fn().mockResolvedValue({
+                validated: [],
+                dropped: 0,
+                downgraded: 0,
+                kept: 0,
+            }),
+        } as any;
+
         toolCallingAnalyzer = new ToolCallingAnalysisProvider(
             toolRegistry,
             mockCopilotModelManager as any,
             promptGenerator,
-            mockWorkspaceSettings
+            mockWorkspaceSettings,
+            mockDiffEnricher,
+            mockFindingValidator
         );
 
         // Clear all mocks

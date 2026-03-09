@@ -75,7 +75,7 @@ export class SubmitReviewTool extends BaseTool {
 
         let appendix =
             '---\n\n<details>\n<summary>Structured Findings (FindingStore)</summary>\n\n';
-        const severityOrder = ['critical', 'high', 'medium', 'low', 'info'];
+        const severityOrder = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
         for (const severity of severityOrder) {
             const group = bySeverity.get(severity);
@@ -83,7 +83,7 @@ export class SubmitReviewTool extends BaseTool {
                 continue;
             }
 
-            appendix += `### ${severity.charAt(0).toUpperCase() + severity.slice(1)} (${group.length})\n\n`;
+            appendix += `### ${severity.charAt(0) + severity.slice(1).toLowerCase()} (${group.length})\n\n`;
             for (const f of group) {
                 const location = f.lineRange
                     ? `${f.file}:${f.lineRange[0]}-${f.lineRange[1]}`

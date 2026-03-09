@@ -385,7 +385,7 @@ describe('SubagentPromptGenerator', () => {
                     'Diff reading is orientation, not investigation'
                 );
                 expect(prompt).toContain(
-                    'must call tools from steps 2-4 before writing findings'
+                    'must call tools from steps 2-5 before writing findings'
                 );
             });
         });
