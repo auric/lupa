@@ -17,6 +17,9 @@ export function generateRecursiveToolGuide(): string {
 | \`get_symbols_overview\` | Quick scan of a file's exports to classify concern areas |
 | \`think_about_completion\` | Before final submission — verify all concerns were covered |
 | \`submit_review\` | **FINAL ACTION** — deliver aggregated, structured review |
+| \`record_finding\` | Commit findings as discovered — survives timeout |
+| \`query_evidence\` | Read evidence from sub-agents for aggregation |
+| \`validate_claim\` | LSP-verify critical claims before including in final review |
 
 ⚠️ **Read at most 1 diff for orientation.** Do NOT call \`get_file_diff\` more than once or use \`read_file\`. Sub-agents read all remaining diffs.
 

@@ -38,6 +38,8 @@ For each checklist item:
 
 **Documentation files** (.md, README, CHANGELOG, docs/): When the PR changes documentation alongside code, verify that technical claims in the docs match the implementation. Check tool availability claims, API descriptions, configuration defaults, and behavioral descriptions against the actual code. A doc that contradicts the code is a valid finding.
 
+**Evidence sharing**: When you discover important facts about code behavior (caller patterns, type constraints, API contracts), call \`record_evidence\` so other agents can benefit without re-investigating.
+
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
 ### Step 3: Self-Reflection Checkpoints (Articulation Required)
@@ -74,6 +76,7 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 2. Call the tool that checks — \`find_usages\`, \`find_symbol\`, or \`search_for_pattern\`
 3. If disproved → **DROP** the finding silently. Do not mention it in your review
 4. If not disproved → It survives. Now assign severity based on evidence
+5. For factual claims (symbol unused, type mismatch, missing callers): call \`validate_claim\` for definitive LSP verification
 
 **Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
 If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
@@ -91,6 +94,7 @@ Combine findings into structured review. Ensure:
 - All checklist items marked complete
 - All files analyzed
 - Findings have evidence with file links
+- Call \`record_finding\` for each confirmed finding (ensures findings survive timeout)
 - Critical issues clearly highlighted
 
 ### Step 6: Submit Review (REQUIRED - FINAL ACTION)

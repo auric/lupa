@@ -65,6 +65,7 @@ Before reporting a finding, complete the verification for its claim type:
 | "Unused / incorrect public method" | Before reporting an issue about a public method's behavior, verify it has **production callers** (not just test consumers). Methods with zero production callers are NOT findings — they are future API surface or test infrastructure |
 | "Missing cleanup/disposal" | Check framework config (vitest.config, jest.config) for global settings |
 | "Design flaw / should refactor" | Search for comments, docs, tests, or commit history explaining the design. If ANY plausible rationale exists, drop the finding |
+| "Symbol unused/no callers/type wrong" | Call \`validate_claim\` for LSP-grounded verification — the result is compiler-grade and overrides LLM reasoning |
 | "Documentation claims X" | Verify the claim against the actual code — search for the referenced constants, tool lists, settings, API behavior. If the documentation contradicts the implementation, this IS a valid finding |
 | "Should add X feature" | This is a suggestion, not a bug. Only report as 🟢 LOW if directly relevant to changed code |
 | "Race condition" | Verify (1) shared mutable state exists, (2) a yield point (e.g., \`await\`, thread switch, \`yield\`) separates the read and write of that state, and (3) the runtime's concurrency model allows interleaving at that point. In single-threaded runtimes, two synchronous operations without a yield point between them CANNOT race — drop it |
@@ -98,7 +99,7 @@ If no caller can produce the problematic input, the path is unreachable — drop
 
 | Level | Definition | Max Severity Allowed |
 |---|---|---|
-| 🟢 VERIFIED | Tool-confirmed with cited evidence | CRITICAL |
+| 🟢 VERIFIED | Tool-confirmed with cited evidence. Use \`validate_claim\` for compiler-grade verification | CRITICAL |
 | 🟡 LIKELY | Strong reasoning, partial tool confirmation | HIGH |
 | 🔴 SPECULATIVE | Pattern-match without tool verification | ❌ EXCLUDED |
 

@@ -66,6 +66,8 @@ Your parent agent already identified which files belong to your investigation �
 
 Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
 
+5. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts (caller patterns, type constraints) with other agents.
+
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
                   ? `
@@ -79,7 +81,9 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
 
-Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
+6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts with other agents.
+
+Diff reading is orientation, not investigation. You must call tools from steps 2-5 before writing findings.
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
@@ -91,7 +95,9 @@ Diff reading is orientation, not investigation. You must call tools from steps 2
 
 4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.`;
+5. **Self-Reflect**: Use \`think_about_investigation\` to evaluate your progress midway through.
+
+6. **Record findings progressively**: Call \`record_finding\` for each confirmed finding and \`record_evidence\` to share discovered facts with other agents.`;
 
         const recursionSection = canRecurse
             ? `
