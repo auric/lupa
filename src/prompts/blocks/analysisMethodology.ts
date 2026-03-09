@@ -51,16 +51,15 @@ For each checklist item:
 
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
-### Step 3: Structured Code Reasoning (MANDATORY for each changed file)
+### Step 3: Think Through Each Code Change
 
-For each changed file, call \`reason_about_code\` to structure your analysis:
-- Pick 1-4 relevant dimensions (correctness, error_handling, security, api_contract, etc.)
-- Write your observations for each dimension
-- Identify which observations need tool-backed verification
-- Plan your next verification steps
+After reading each file's diff, call \`think_about_code_change\` to structure your thinking:
+- Write your analysis of what changed and what could go wrong
+- List any risks you identified
+- Decide: no_issues (move on), needs_investigation (use tools), or likely_issue (verify then record)
 
-This tool externalizes your reasoning into a structured, verifiable format.
-**You MUST call \`reason_about_code\` before calling \`record_finding\` for any MEDIUM+ finding.**
+This prevents jumping to conclusions. Think first, then investigate, then record.
+**Call \`think_about_code_change\` after reading each diff — before investigating or recording findings.**
 
 ### Step 4: Self-Reflection Checkpoints (Articulation Required)
 

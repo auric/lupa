@@ -151,6 +151,25 @@ export class ToolCallStreamAdapter implements ToolCallHandler {
             case 'think_about_completion':
                 return '🧠 Verifying analysis completeness...';
 
+            case 'think_about_code_change':
+                return `🧠 Reasoning about \`${sanitizeForMarkdown(args.file, 'code change')}\`...`;
+
+            // Quality architecture tools
+            case 'record_finding':
+                return `📋 Recorded finding: ${sanitizeForMarkdown(args.title, 'issue')}`;
+
+            case 'retract_finding':
+                return `↩️ Retracted finding \`${sanitizeForMarkdown(args.finding_id, 'finding')}\``;
+
+            case 'record_evidence':
+                return `📝 Recorded evidence: ${sanitizeForMarkdown(args.description, 'fact')}`;
+
+            case 'query_evidence':
+                return '🔎 Queried evidence ledger';
+
+            case 'validate_claim':
+                return `✅ Validating claim about \`${sanitizeForMarkdown(args.symbol, 'symbol')}\`...`;
+
             default:
                 return `🔧 Ran \`${sanitizeForMarkdown(toolName, 'tool')}\``;
         }

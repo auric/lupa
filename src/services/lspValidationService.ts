@@ -11,6 +11,7 @@ import {
     isCancellationError,
 } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { extractHoverText } from '../utils/hoverTextExtractor';
 import { Log } from './loggingService';
 import type { GitOperationsManager } from './gitOperationsManager';
 
@@ -276,13 +277,10 @@ export class LspValidationService implements vscode.Disposable {
             token
         );
         if (!position) {
-            return {
-                claimType: request.claimType,
-                verified: true,
-                confidence: 'probable',
-                evidence: `Symbol text "${request.symbol}" not found near line ${request.line}`,
-                groundTruth: 'Symbol text not found in file',
-            };
+            return this.inconclusive(
+                request.claimType,
+                `Could not locate symbol "${request.symbol}" near line ${request.line} — cannot confirm or deny existence`
+            );
         }
 
         const definitions = await withCancellableTimeout(
@@ -428,21 +426,7 @@ export class LspValidationService implements vscode.Disposable {
     }
 
     private extractHoverText(hovers: vscode.Hover[]): string {
-        return hovers
-            .flatMap((h) => h.contents)
-            .map((c) => {
-                if (typeof c === 'string') {
-                    return c;
-                }
-                if (c instanceof vscode.MarkdownString) {
-                    return c.value;
-                }
-                if (typeof c === 'object' && 'value' in c) {
-                    return String(c.value);
-                }
-                return '';
-            })
-            .join('\n');
+        return extractHoverText(hovers);
     }
 
     private inconclusive(

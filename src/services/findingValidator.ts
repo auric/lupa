@@ -179,7 +179,10 @@ export class FindingValidator {
                     file: claim.file,
                     line: claim.line,
                     symbol: claim.symbol,
-                    expectedValue: undefined,
+                    expectedValue:
+                        claim.claimType === 'type_mismatch'
+                            ? claim.assertion
+                            : undefined,
                 };
                 const result = await this.lspValidation.validate(
                     request,

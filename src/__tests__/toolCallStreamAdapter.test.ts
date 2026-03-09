@@ -196,6 +196,79 @@ describe('ToolCallStreamAdapter', () => {
             );
         });
 
+        it('should format think_about_code_change message with file', () => {
+            adapter.onToolCallStart(
+                'think_about_code_change',
+                { file: 'src/auth.ts' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '🧠 Reasoning about `src/auth.ts`...'
+            );
+        });
+
+        it('should format record_finding message with title', () => {
+            adapter.onToolCallStart(
+                'record_finding',
+                { title: 'SQL injection risk' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '📋 Recorded finding: SQL injection risk'
+            );
+        });
+
+        it('should format retract_finding message with finding_id', () => {
+            adapter.onToolCallStart(
+                'retract_finding',
+                { finding_id: 'finding-001' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '↩️ Retracted finding `finding-001`'
+            );
+        });
+
+        it('should format record_evidence message with description', () => {
+            adapter.onToolCallStart(
+                'record_evidence',
+                { description: 'Function has 3 callers' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '📝 Recorded evidence: Function has 3 callers'
+            );
+        });
+
+        it('should format query_evidence message', () => {
+            adapter.onToolCallStart('query_evidence', {}, 0, 1);
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '🔎 Queried evidence ledger'
+            );
+        });
+
+        it('should format validate_claim message with symbol', () => {
+            adapter.onToolCallStart(
+                'validate_claim',
+                { symbol: 'processData' },
+                0,
+                1
+            );
+
+            expect(mockChatHandler.onProgress).toHaveBeenCalledWith(
+                '✅ Validating claim about `processData`...'
+            );
+        });
+
         it('should use default format for unknown tools', () => {
             adapter.onToolCallStart('custom_tool', { foo: 'bar' }, 0, 1);
 

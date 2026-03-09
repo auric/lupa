@@ -11,18 +11,18 @@ export function generateToolSelectionGuide(): string {
     return `<tool_selection_guide>
 ## Tool Selection
 
-| Need | Tool | Key Parameters |
-|------|------|----------------|
-| Understand function/class | \`find_symbol\` | \`name_path\`, \`include_body: true\` |
-| Find all callers | \`find_usages\` | \`symbol_name\`, \`file_path\` |
-| Search patterns | \`search_for_pattern\` | \`pattern\`, \`search_path\` |
-| File structure | \`get_symbols_overview\` | \`path\` |
-| List directory | \`list_directory\` | \`path\` |
-| Find files | \`find_files_by_pattern\` | \`pattern\` |
-| Read config/docs | \`read_file\` | \`path\`, \`start_line\`, \`end_line\` |
-| Track progress | \`update_plan\` | \`plan\` (markdown checklist) |
-| Analyze code change | \`reason_about_code\` | \`file\`, \`dimensions\`, \`observations\` |
-| Deep investigation | \`run_subagent\` | \`task\`, \`context\` |
+| Need | Tool |
+|------|------|
+| Understand function/class | \`find_symbol\` |
+| Find all callers | \`find_usages\` |
+| Search patterns | \`search_for_pattern\` |
+| File structure | \`get_symbols_overview\` |
+| List directory | \`list_directory\` |
+| Find files | \`find_files_by_pattern\` |
+| Read config/docs | \`read_file\` |
+| Track progress | \`update_plan\` |
+| Think about code change | \`think_about_code_change\` |
+| Deep investigation | \`run_subagent\` |
 
 ### Principles
 
@@ -54,16 +54,16 @@ export function generateExplorationToolGuide(): string {
     return `<tool_selection_guide>
 ## Tool Selection
 
-| Need | Tool | Key Parameters |
-|------|------|----------------|
-| Understand function/class | \`find_symbol\` | \`name_path\`, \`include_body: true\` |
-| Find all callers | \`find_usages\` | \`symbol_name\`, \`file_path\` |
-| Search patterns | \`search_for_pattern\` | \`pattern\`, \`search_path\` |
-| File structure | \`get_symbols_overview\` | \`path\` |
-| List directory | \`list_directory\` | \`path\` |
-| Find files | \`find_files_by_pattern\` | \`pattern\` |
-| Read config/docs | \`read_file\` | \`path\`, \`start_line\`, \`end_line\` |
-| Deep investigation | \`run_subagent\` | \`task\`, \`context\` |
+| Need | Tool |
+|------|------|
+| Understand function/class | \`find_symbol\` |
+| Find all callers | \`find_usages\` |
+| Search patterns | \`search_for_pattern\` |
+| File structure | \`get_symbols_overview\` |
+| List directory | \`list_directory\` |
+| Find files | \`find_files_by_pattern\` |
+| Read config/docs | \`read_file\` |
+| Deep investigation | \`run_subagent\` |
 
 ### Principles
 

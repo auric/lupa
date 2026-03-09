@@ -13,6 +13,7 @@ import {
     isCancellationError,
 } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
+import { extractHoverText } from '../utils/hoverTextExtractor';
 import { Log } from './loggingService';
 
 const ENRICHMENT_TIMEOUT = 15_000;
@@ -301,13 +302,7 @@ export class DiffEnricher implements vscode.Disposable {
     }
 
     private extractHoverText(hovers: vscode.Hover[]): string {
-        return hovers
-            .flatMap((h) => h.contents)
-            .map((c) =>
-                typeof c === 'string' ? c : 'value' in c ? c.value : ''
-            )
-            .filter(Boolean)
-            .join('\n');
+        return extractHoverText(hovers);
     }
 
     private isTestFile(filePath: string): boolean {
