@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
+import type { RecordedFinding } from '../types/findingTypes';
 
 /**
  * Explicit completion signal for PR review analysis.
@@ -15,8 +16,9 @@ import { ExecutionContext } from '../types/executionContext';
  * - When called, it extracts the review content and terminates the loop
  * - The review content becomes the final output (no additional formatting)
  *
- * The review content should follow the output format specification which
- * already includes summary, risk level, and recommendation.
+ * When a FindingStore is present, its structured findings are appended
+ * as an appendix. This ensures findings survive even if the LLM's prose
+ * misses some, and provides a structured data section for programmatic use.
  */
 export class SubmitReviewTool extends BaseTool {
     name = 'submit_review';
@@ -52,7 +54,53 @@ export class SubmitReviewTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        // Return review content as-is - the output format prompt already defines structure
-        return toolSuccess(args.review_content, { isCompletion: true });
+        let content = args.review_content;
+
+        // Append structured findings from FindingStore if available
+        const findings = context.findingStore?.getAll();
+        if (findings && findings.length > 0) {
+            content += '\n\n' + this.formatFindingAppendix(findings);
+        }
+
+        return toolSuccess(content, { isCompletion: true });
+    }
+
+    private formatFindingAppendix(findings: RecordedFinding[]): string {
+        const bySeverity = new Map<string, RecordedFinding[]>();
+        for (const f of findings) {
+            const list = bySeverity.get(f.severity) ?? [];
+            list.push(f);
+            bySeverity.set(f.severity, list);
+        }
+
+        let appendix =
+            '---\n\n<details>\n<summary>Structured Findings (FindingStore)</summary>\n\n';
+        const severityOrder = ['critical', 'high', 'medium', 'low', 'info'];
+
+        for (const severity of severityOrder) {
+            const group = bySeverity.get(severity);
+            if (!group || group.length === 0) {
+                continue;
+            }
+
+            appendix += `### ${severity.charAt(0).toUpperCase() + severity.slice(1)} (${group.length})\n\n`;
+            for (const f of group) {
+                const location = f.lineRange
+                    ? `${f.file}:${f.lineRange[0]}-${f.lineRange[1]}`
+                    : f.file;
+                const lspTag =
+                    f.lspValidation?.status === 'verified'
+                        ? ' ✅ LSP-verified'
+                        : f.lspValidation?.status === 'refuted'
+                          ? ' ❌ LSP-refuted'
+                          : '';
+                appendix += `- **${f.title}** (${location})${lspTag}\n`;
+                appendix += `  ${f.description}\n`;
+            }
+            appendix += '\n';
+        }
+
+        appendix += '</details>';
+        return appendix;
     }
 }
