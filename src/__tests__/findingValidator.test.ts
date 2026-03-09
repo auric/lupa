@@ -307,4 +307,112 @@ describe('FindingValidator', () => {
         expect(result.downgraded).toBe(0);
         expect(result.validated).toHaveLength(0);
     });
+
+    it('skips LSP call when lspValidation is already refuted', async () => {
+        const findings = [
+            createTestFinding({
+                verifiableClaims: [
+                    {
+                        claimType: 'symbol_unused',
+                        file: 'src/foo.ts',
+                        line: 15,
+                        symbol: 'myFunc',
+                        assertion: 'myFunc is unused',
+                    },
+                ],
+                lspValidation: {
+                    status: 'refuted',
+                    details: '0 verified, 1 refuted, 0 inconclusive',
+                    claimResults: [
+                        {
+                            claimType: 'symbol_unused',
+                            verified: false,
+                            confidence: 'definitive',
+                            evidence: 'Symbol is used in 5 files',
+                            groundTruth: 'has references',
+                        },
+                    ],
+                },
+            }),
+        ];
+        const diff = [createTestDiffHunk('src/foo.ts')];
+
+        const result = await validator.validate(findings, diff, token);
+
+        expect(mockLspValidation.validate).not.toHaveBeenCalled();
+        expect(result.dropped).toBe(1);
+        expect(result.validated[0]!.verdict).toBe('drop');
+    });
+
+    it('skips LSP call when lspValidation is already verified', async () => {
+        const findings = [
+            createTestFinding({
+                verifiableClaims: [
+                    {
+                        claimType: 'symbol_unused',
+                        file: 'src/foo.ts',
+                        line: 15,
+                        symbol: 'myFunc',
+                        assertion: 'myFunc is unused',
+                    },
+                ],
+                lspValidation: {
+                    status: 'verified',
+                    details: '1 verified, 0 refuted, 0 inconclusive',
+                    claimResults: [
+                        {
+                            claimType: 'symbol_unused',
+                            verified: true,
+                            confidence: 'definitive',
+                            evidence: 'No references found',
+                            groundTruth: 'no references',
+                        },
+                    ],
+                },
+            }),
+        ];
+        const diff = [createTestDiffHunk('src/foo.ts')];
+
+        const result = await validator.validate(findings, diff, token);
+
+        expect(mockLspValidation.validate).not.toHaveBeenCalled();
+        expect(result.kept).toBe(1);
+        expect(result.validated[0]!.verdict).toBe('keep');
+    });
+
+    it('skips LSP call when lspValidation is already inconclusive', async () => {
+        const findings = [
+            createTestFinding({
+                verifiableClaims: [
+                    {
+                        claimType: 'type_mismatch',
+                        file: 'src/foo.ts',
+                        line: 15,
+                        symbol: 'myVar',
+                        assertion: 'type mismatch',
+                    },
+                ],
+                lspValidation: {
+                    status: 'inconclusive',
+                    details: '0 verified, 0 refuted, 1 inconclusive',
+                    claimResults: [
+                        {
+                            claimType: 'type_mismatch',
+                            verified: false,
+                            confidence: 'inconclusive',
+                            evidence: 'Could not determine',
+                            groundTruth: 'unknown',
+                        },
+                    ],
+                },
+            }),
+        ];
+        const diff = [createTestDiffHunk('src/foo.ts')];
+
+        const result = await validator.validate(findings, diff, token);
+
+        expect(mockLspValidation.validate).not.toHaveBeenCalled();
+        expect(result.kept).toBe(1);
+        expect(result.validated[0]!.verdict).toBe('keep');
+    });
 });

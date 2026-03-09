@@ -272,6 +272,10 @@ export class ServiceManager implements vscode.Disposable {
      */
     private initializeTools(): void {
         try {
+            // Register quality/reasoning tools first — GPT-4.1 is more likely to use tools
+            // that appear early in the tool list
+            this.services.toolRegistry!.registerTool(new ThinkTool());
+
             // Register the FindSymbolTool (Get Definition functionality)
             const findSymbolTool = new FindSymbolTool(
                 this.services.gitOperations!,
@@ -312,7 +316,6 @@ export class ServiceManager implements vscode.Disposable {
             );
             this.services.toolRegistry!.registerTool(searchForPatternTool);
 
-            this.services.toolRegistry!.registerTool(new ThinkTool());
             this.services.toolRegistry!.registerTool(
                 new ThinkAboutCompletionTool()
             );

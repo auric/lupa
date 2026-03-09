@@ -12,7 +12,7 @@ export function generateSelfReflectionGuidance(): string {
     return `<self_reflection>
 ## Self-Reflection Tools
 
-These tools are MANDATORY at specific workflow points. Skipping them is NOT allowed — they enforce the structured reasoning that prevents false positives.
+These tools structure your reasoning at key workflow points, preventing rushed conclusions and false positives.
 
 | Tool | When | What to Articulate |
 |------|------|-------------------|

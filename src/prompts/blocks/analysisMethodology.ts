@@ -12,13 +12,9 @@ export function generateAnalysisMethodology(): string {
     return `<analysis_methodology>
 ## Analysis Process
 
-### IMPORTANT: Explicit Reasoning Required
+### Reasoning Between Tool Calls
 
-You MUST think out loud between tool calls. Before EVERY tool call, write a brief text message explaining:
-1. What you learned from the previous result
-2. What you plan to do next and why
-
-Do NOT chain tool calls silently. Always reflect on results before proceeding.
+Before each tool call, briefly explain what you learned from the previous result and what you plan to do next. This keeps your analysis grounded in evidence.
 
 ### Step 1: Create Your Plan (MANDATORY - FIRST ACTION)
 ⚠️ **Your first tool call MUST be \`update_plan\`.** Do not investigate before planning.
@@ -49,26 +45,30 @@ For each checklist item:
 
 **After each file or area reviewed**: Call \`update_plan\` to mark progress with notes.
 
-### Step 3: Think Through Each Change (MANDATORY)
-⚠️ After EVERY \`get_file_diff\` result, your NEXT tool call MUST be \`think\`. Do NOT call \`find_symbol\`, \`find_usages\`, or any investigation tool before calling \`think\`.
+### Step 3: Think Through Each Change
+After reading a diff, call \`think\` to organize your analysis before investigating further.
 
-\`think\` arguments:
-- topic: The file you just read (e.g., "changes in src/auth.ts")
-- analysis: What changed, what could go wrong, what looks correct
-- identified_risks: Specific risks found (empty array if none)
-- next_action: What to do next ("investigate with find_usages", "move to next file", "record finding")
+### Example: Reviewing a File Change
 
-### Mandatory Tool Call Sequences
-These sequences are REQUIRED. Do NOT skip steps.
+1. Call \`get_file_diff({file_paths: ["src/auth.ts"]})\`
+2. Call \`think\`:
+   - topic: "changes in src/auth.ts"
+   - analysis: "The login function now accepts a plain string password instead of a hashed one. The comparison uses === which is not constant-time."
+   - identified_risks: ["Timing attack on password comparison", "Plain text password in memory"]
+   - next_action: "Call find_usages for login() to check all callers"
+3. Investigate based on next_action: \`find_usages({symbol: "login", file: "src/auth.ts"})\`
+4. If concern confirmed → \`record_finding\` immediately
+5. If concern disproved → move to next file
 
-\`get_file_diff\` → MUST call \`think\` → then investigate or move on
-After confirming a finding → MUST call \`record_finding\` immediately
-After all files reviewed → MUST call \`think_about_completion\`
-After \`think_about_completion\` → MUST call \`submit_review\`
+### Tool Call Workflow
+The standard analysis flow follows this pattern:
 
-### Step 4: Self-Reflection Checkpoints (MANDATORY)
+\`get_file_diff\` → \`think\` → investigate → \`record_finding\` (if issue confirmed)
+After all files → \`think_about_completion\` → \`submit_review\`
 
-You MUST call \`think\` at these checkpoints — skipping them degrades review quality:
+### Step 4: Self-Reflection Checkpoints
+
+Call \`think\` at these checkpoints to maintain analysis quality:
 
 **After gathering context** → \`think\` with topic "context review":
 - What you examined, what you found, what gaps remain, what to do next

@@ -10,7 +10,7 @@ describe('ThinkTool', () => {
 
     it('should have correct name and description', () => {
         expect(tool.name).toBe('think');
-        expect(tool.description).toContain('Think out loud');
+        expect(tool.description).toContain('step-by-step reasoning');
     });
 
     it('should return analysis guidance with topic heading', async () => {
@@ -99,7 +99,7 @@ describe('ThinkTool', () => {
         expect(vsTool.inputSchema).toBeDefined();
     });
 
-    it('should reject unexpected parameters in strict mode', () => {
+    it('should strip unexpected parameters (non-strict mode)', () => {
         const parsed = tool.schema.safeParse({
             topic: 'test',
             analysis: 'test analysis',
@@ -107,7 +107,7 @@ describe('ThinkTool', () => {
             next_action: 'continue',
             extra_field: 'not allowed',
         });
-        expect(parsed.success).toBe(false);
+        expect(parsed.success).toBe(true);
     });
 
     it('should accept valid input with all required fields', () => {

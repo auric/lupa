@@ -124,8 +124,13 @@ export class PromptGenerator {
 
         for (const sym of brief.enrichedSymbols) {
             const exported = sym.isExported ? 'exported' : 'internal';
-            const type = sym.typeSignature ?? 'unknown type';
-            section += `- ${sym.file}:${sym.line} \`${sym.name}\` (${sym.kind}, ${exported})\n`;
+            const safeName = sym.name
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            const type = (sym.typeSignature ?? 'unknown type')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            section += `- ${sym.file}:${sym.line} \`${safeName}\` (${sym.kind}, ${exported})\n`;
             section += `  Type: ${type}\n`;
             section += `  Refs: ${sym.totalReferences} total, ${sym.externalCallers} external, ${sym.testFileReferences} in tests\n`;
         }
