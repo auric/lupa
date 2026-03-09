@@ -8,6 +8,10 @@ import type { SubagentResult } from '../types/modelTypes';
 import type { ToolCallRecord } from '../types/toolCallTypes';
 import type { DiffHunk } from '../types/contextTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
+import {
+    buildInvestigationAudit,
+    formatAuditSection,
+} from '../utils/investigationAudit';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
 import { WorkspaceSettingsService } from '../services/workspaceSettingsService';
@@ -360,10 +364,13 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
      * Format successful subagent result for parent LLM consumption.
      */
     private formatResult(result: SubagentResult, subagentId: number): string {
+        const audit = buildInvestigationAudit(result.toolCalls);
+        const auditSection = formatAuditSection(audit);
         return (
             `## Subagent #${subagentId} Investigation Complete\n\n` +
             `**Tool calls made:** ${result.toolCallsMade}\n\n` +
-            `---\n\n${result.response}`
+            `---\n\n${result.response}` +
+            auditSection
         );
     }
 
