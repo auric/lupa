@@ -42,6 +42,7 @@ import { GetFileDiffTool } from '../tools/getFileDiffTool';
 import { RecordEvidenceTool } from '../tools/recordEvidenceTool';
 import { QueryEvidenceTool } from '../tools/queryEvidenceTool';
 import { RecordFindingTool } from '../tools/recordFindingTool';
+import { ValidateClaimTool } from '../tools/validateClaimTool';
 
 import { Log } from './loggingService';
 
@@ -326,6 +327,12 @@ export class ServiceManager implements vscode.Disposable {
             this.services.toolRegistry!.registerTool(new RecordEvidenceTool());
             this.services.toolRegistry!.registerTool(new QueryEvidenceTool());
             this.services.toolRegistry!.registerTool(new RecordFindingTool());
+
+            // Register LSP-based claim validation tool
+            const validateClaimTool = new ValidateClaimTool(
+                this.services.lspValidation!
+            );
+            this.services.toolRegistry!.registerTool(validateClaimTool);
 
             // Register the SubmitReviewTool for explicit completion signaling
             this.services.toolRegistry!.registerTool(new SubmitReviewTool());
