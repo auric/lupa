@@ -17,6 +17,7 @@ import { SymbolExtractor } from '../utils/symbolExtractor';
 import { PromptGenerator } from '../models/promptGenerator';
 import { LspValidationService } from './lspValidationService';
 import { DiffEnricher } from './diffEnricher';
+import { FindingValidator } from './findingValidator';
 
 // Tool-calling services
 import { ToolRegistry } from '../models/toolRegistry';
@@ -70,6 +71,7 @@ export interface IServiceRegistry {
     symbolExtractor: SymbolExtractor;
     lspValidation: LspValidationService;
     diffEnricher: DiffEnricher;
+    findingValidator: FindingValidator;
 
     // Tool-calling services
     toolRegistry: ToolRegistry;
@@ -184,6 +186,9 @@ export class ServiceManager implements vscode.Disposable {
             this.services.symbolExtractor!,
             this.services.gitOperations!
         );
+        this.services.findingValidator = new FindingValidator(
+            this.services.lspValidation!
+        );
     }
 
     /**
@@ -221,7 +226,8 @@ export class ServiceManager implements vscode.Disposable {
                 this.services.copilotModelManager!,
                 this.services.promptGenerator!,
                 this.services.workspaceSettings!,
-                this.services.diffEnricher!
+                this.services.diffEnricher!,
+                this.services.findingValidator!
             );
 
         // Register available tools

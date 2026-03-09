@@ -29,6 +29,7 @@ import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import { EvidenceLedger } from '../sessions/evidenceLedger';
 import { FindingStore } from '../sessions/findingStore';
 import type { DiffEnricher } from './diffEnricher';
+import type { FindingValidator } from './findingValidator';
 
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
@@ -46,7 +47,8 @@ export class ToolCallingAnalysisProvider {
         private copilotModelManager: CopilotModelManager,
         private promptGenerator: PromptGenerator,
         private workspaceSettings: WorkspaceSettingsService,
-        private diffEnricher: DiffEnricher
+        private diffEnricher: DiffEnricher,
+        private findingValidator: FindingValidator
     ) {}
 
     private get maxIterations(): number {
@@ -301,6 +303,22 @@ export class ToolCallingAnalysisProvider {
             analysisCompleted = !conversationRunner.wasCancelled;
 
             if (analysisCompleted) {
+                // Post-analysis: validate findings programmatically
+                const findings = findingStore.getAll();
+                if (findings.length > 0 && executionContext.parsedDiff) {
+                    progressCallback?.('Validating findings...', 0.5);
+                    const validation = await this.findingValidator.validate(
+                        findings,
+                        executionContext.parsedDiff,
+                        token
+                    );
+                    if (validation.dropped > 0 || validation.downgraded > 0) {
+                        Log.info(
+                            `FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`
+                        );
+                    }
+                }
+
                 progressCallback?.(
                     `Analysis complete (${toolCallCount} tool calls)`,
                     2
