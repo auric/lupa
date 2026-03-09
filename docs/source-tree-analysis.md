@@ -101,7 +101,7 @@ src/
 │   ├── baseTool.ts               # 🔑 Base class for all tools
 │   ├── ITool.ts                  # Tool interface
 │   │
-│   │ # Core Investigation Tools
+│   │ # Context Tools
 │   ├── findSymbolTool.ts         # Find symbol definitions
 │   ├── findUsagesTool.ts         # Find symbol usages
 │   ├── readFileTool.ts           # Read file content
@@ -109,21 +109,19 @@ src/
 │   ├── findFilesByPatternTool.ts # Glob file search
 │   ├── getSymbolsOverviewTool.ts # Hierarchical symbols
 │   ├── searchForPatternTool.ts   # Text/regex search
+│   ├── getFileDiffTool.ts        # Get diff for a specific file
 │   │
-│   │ # Planning Tool
+│   │ # Quality Tools
+│   ├── thinkTool.ts              # Unified structured reasoning
+│   ├── thinkAboutCompletionTool.ts # Completion readiness check
+│   ├── recordFindingTool.ts      # Record a review finding
+│   ├── retractFindingTool.ts     # Retract a finding
+│   ├── validateClaimTool.ts      # Validate a claim
+│   │
+│   │ # Workflow Tools
 │   ├── updatePlanTool.ts         # Create and track review plan
-│   │
-│   │ # Structured Thinking Tools
-│   ├── thinkAboutContextTool.ts  # Context reasoning
-│   ├── thinkAboutTaskTool.ts     # Task decomposition
-│   ├── thinkAboutCompletionTool.ts # Completion check
-│   ├── thinkAboutInvestigationTool.ts # Investigation planning
-│   │
-│   │ # Subagent Tool
-│   ├── runSubagentTool.ts        # Delegate investigations
-│   │
-│   │ # Completion Tool
 │   ├── submitReviewTool.ts       # Explicit completion signal
+│   ├── runSubagentTool.ts        # Delegate investigations
 │   │
 │   │ # Utilities
 │   ├── definitionFormatter.ts    # Format symbol definitions
@@ -182,7 +180,9 @@ src/
 ├── 📁 components/                 # shadcn/ui components
 │   └── ui/                       # Generated UI components
 │
-├── 📁 sessions/                   # Session management (if used)
+├── 📁 sessions/                   # Session management
+│   ├── findingStore.ts           # Finding storage for review
+│   └── recursiveStateManager.ts  # Agent tree, budget tracking
 │
 ├── 📁 webview/                    # React webview UI
 │   ├── main.tsx                  # 🚀 Webview entry point

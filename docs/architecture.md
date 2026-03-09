@@ -151,6 +151,8 @@ Token management, conversation state, and tool execution infrastructure.
 
 LLM-callable tools extending `BaseTool` with Zod schemas.
 
+**Context Tools** (8):
+
 | Tool                     | Purpose                                       |
 | ------------------------ | --------------------------------------------- |
 | `FindSymbolTool`         | Find code symbol definitions with full source |
@@ -160,10 +162,25 @@ LLM-callable tools extending `BaseTool` with Zod schemas.
 | `FindFilesByPatternTool` | Glob-based file search                        |
 | `GetSymbolsOverviewTool` | Hierarchical symbol structure                 |
 | `SearchForPatternTool`   | Ripgrep-based text search                     |
-| `UpdatePlanTool`         | Create and track review plan with checklist   |
-| `RunSubagentTool`        | Delegate investigations to subagents          |
-| `SubmitReviewTool`       | Explicit completion signal for PR review      |
-| `ThinkAbout*Tools`       | Structured reasoning tools                    |
+| `GetFileDiffTool`        | Get diff for a specific file                  |
+
+**Quality Tools** (5):
+
+| Tool                       | Purpose                                                        |
+| -------------------------- | -------------------------------------------------------------- |
+| `ThinkTool`                | Unified structured reasoning (replaces 4 separate think tools) |
+| `ThinkAboutCompletionTool` | Completion readiness check                                     |
+| `RecordFindingTool`        | Record a review finding with evidence                          |
+| `RetractFindingTool`       | Retract a previously recorded finding                          |
+| `ValidateClaimTool`        | Validate a claim before recording                              |
+
+**Workflow Tools** (3):
+
+| Tool               | Purpose                                     |
+| ------------------ | ------------------------------------------- |
+| `UpdatePlanTool`   | Create and track review plan with checklist |
+| `SubmitReviewTool` | Explicit completion signal for PR review    |
+| `RunSubagentTool`  | Delegate investigations to subagents        |
 
 ### Layer 5: Prompts (`src/prompts/`)
 
