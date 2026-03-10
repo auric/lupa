@@ -41,7 +41,7 @@ import type {
 } from '../types/chatTypes';
 import type { DiffHunk } from '../types/contextTypes';
 import type { ExecutionContext } from '../types/executionContext';
-import { DEFAULT_PROFILE } from '../models/modelCalibration';
+import { getCalibrationProfile } from '../models/modelCalibration';
 import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
@@ -278,11 +278,15 @@ export class ChatParticipantService implements vscode.Disposable {
                 this.createSubagentContext(token, client, debouncedHandler);
 
             // Create per-request ToolExecutor with subagent context
+            const explorationProfile = getCalibrationProfile(
+                request.model.family,
+                request.model.id
+            );
             const toolExecutor = new ToolExecutor(this.deps.toolRegistry, {
                 subagentSessionManager,
                 subagentExecutor,
                 cancellationToken: token,
-                calibrationProfile: DEFAULT_PROFILE,
+                calibrationProfile: explorationProfile,
                 toolCallCounts: new Map(),
             });
 
@@ -525,6 +529,16 @@ export class ChatParticipantService implements vscode.Disposable {
         const timeoutMs =
             this.deps!.workspaceSettings.getRequestTimeoutSeconds() * 1000;
         const client = new ChatLLMClient(request.model, timeoutMs);
+
+        // Resolve model-specific calibration profile from model family/id
+        const calibrationProfile = getCalibrationProfile(
+            request.model.family,
+            request.model.id
+        );
+        Log.info(
+            `[ChatParticipantService]: Model calibration: '${calibrationProfile.name}' profile (bias: ${calibrationProfile.findingBias})`
+        );
+
         const { subagentSessionManager, subagentExecutor } =
             this.createSubagentContext(token, client, debouncedHandler);
 
@@ -561,7 +575,7 @@ export class ChatParticipantService implements vscode.Disposable {
             currentDepth: 0,
             currentAgentId: 'root',
             findingStore,
-            calibrationProfile: DEFAULT_PROFILE,
+            calibrationProfile,
             toolCallCounts: new Map<string, number>(),
         } as ExecutionContext;
 
@@ -578,10 +592,10 @@ export class ChatParticipantService implements vscode.Disposable {
         const availableTools = toolExecutor.getAvailableTools();
         const systemPrompt = isRecursiveMode
             ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
-                  DEFAULT_PROFILE
+                  calibrationProfile
               )
             : this.deps!.promptGenerator.generateToolAwareSystemPrompt(
-                  DEFAULT_PROFILE
+                  calibrationProfile
               );
 
         if (gitRootUri && parsedDiff.length > 0) {
