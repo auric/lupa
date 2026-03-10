@@ -54,29 +54,17 @@ export class ThinkTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        const { topic, analysis, identified_risks, next_action } = args;
+        const { topic, identified_risks, next_action } = args;
 
-        let guidance = `## Thinking: ${topic}\n\n`;
-        guidance += `### Analysis\n${analysis}\n\n`;
+        const riskCount = identified_risks?.length ?? 0;
+        const riskNote =
+            riskCount > 0
+                ? `${riskCount} risk(s) to verify — use find_usages/find_symbol/search_for_pattern to attempt disproof before recording.`
+                : 'No risks identified.';
+        const actionNote = next_action ? ` Next: ${next_action}` : '';
 
-        if (identified_risks && identified_risks.length > 0) {
-            guidance += `### Identified Risks (${identified_risks.length})\n`;
-            guidance += identified_risks.map((r) => `- ⚠️ ${r}`).join('\n');
-            guidance += '\n\n';
-            guidance += `### Verification Required\n`;
-            guidance += `Before recording any risk as a finding, call a tool to attempt disproof:\n`;
-            guidance += `- find_usages: Check if callers already handle the risk\n`;
-            guidance += `- find_symbol (include_body: true): Read full implementation for mitigations\n`;
-            guidance += `- search_for_pattern: Look for existing guards or checks\n`;
-            guidance += `Drop any risk you cannot verify with tool evidence.\n\n`;
-        } else {
-            guidance += `No risks identified — proceed to next area.\n\n`;
-        }
-
-        if (next_action) {
-            guidance += `### Next Action\n${next_action}\n`;
-        }
-
-        return toolSuccess(guidance);
+        return toolSuccess(
+            `✅ Thinking recorded: "${topic}". ${riskNote}${actionNote}`
+        );
     }
 }

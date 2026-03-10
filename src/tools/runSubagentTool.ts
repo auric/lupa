@@ -10,7 +10,7 @@ import type { DiffHunk } from '../types/contextTypes';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import {
     buildInvestigationAudit,
-    formatAuditSection,
+    formatCompactAudit,
 } from '../utils/investigationAudit';
 import { ExecutionContext } from '../types/executionContext';
 import { Log } from '../services/loggingService';
@@ -207,6 +207,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     parsedDiff: context.parsedDiff,
                     subagentSessionManager: sessionManager,
                     childBudget,
+                    findingStore: context.findingStore,
                 }
             );
 
@@ -365,12 +366,12 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
      */
     private formatResult(result: SubagentResult, subagentId: number): string {
         const audit = buildInvestigationAudit(result.toolCalls);
-        const auditSection = formatAuditSection(audit);
+        const auditLine = formatCompactAudit(audit);
         return (
             `## Subagent #${subagentId} Investigation Complete\n\n` +
             `**Tool calls made:** ${result.toolCallsMade}\n\n` +
             `---\n\n${result.response}` +
-            auditSection
+            auditLine
         );
     }
 

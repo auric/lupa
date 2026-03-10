@@ -33,8 +33,7 @@ describe('ThinkTool', () => {
 
         expect(result.success).toBe(true);
         expect(result.data).toContain('auth changes in login.ts');
-        expect(result.data).toContain('Token validation could be bypassed');
-        expect(result.data).toContain('Error path not tested');
+        expect(result.data).toContain('2 risk(s) to verify');
         expect(result.data).toContain(
             'Use find_usages to check callers of validateToken'
         );
@@ -73,8 +72,7 @@ describe('ThinkTool', () => {
         );
 
         expect(result.success).toBe(true);
-        expect(result.data).toContain('Identified Risks (1)');
-        expect(result.data).toContain('⚠️');
+        expect(result.data).toContain('1 risk(s) to verify');
     });
 
     it('should throw CancellationError when cancelled', async () => {

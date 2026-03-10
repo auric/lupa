@@ -71,15 +71,18 @@ Your parent agent already identified which files belong to your investigation �
 
 5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-Diff reading is orientation, not investigation. You must call tools from steps 3-5 before writing findings.
+6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
-6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
+Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
+
+7. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
 
 ### Example Investigation Flow
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
-→ think({topic: "auth.ts changes", analysis: "Login now accepts plain string password. Comparison uses === which is not constant-time.", identified_risks: ["Timing attack on password comparison"], next_action: "find_usages for login() to check callers"})
+→ think({topic: "auth.ts changes", ...risks: ["Timing attack on password comparison"], next_action: "find_usages for login()"})
 → find_usages({symbol: "login", file: "src/auth.ts"})
+→ validate_claim({claim: "login() has no constant-time comparison", symbol: "login", file: "src/auth.ts"})
 → If confirmed: record_finding(...)  |  If disproved: move to next file
 \`\`\`
 
@@ -101,15 +104,18 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 
 5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
+6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
-Diff reading is orientation, not investigation. You must call tools from steps 3-5 before writing findings.
+7. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
+
+Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
 
 ### Example Investigation Flow
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
-→ think({topic: "auth.ts changes", analysis: "Login now accepts plain string password. Comparison uses === which is not constant-time.", identified_risks: ["Timing attack on password comparison"], next_action: "find_usages for login() to check callers"})
+→ think({topic: "auth.ts changes", ...risks: ["Timing attack on password comparison"], next_action: "find_usages for login()"})
 → find_usages({symbol: "login", file: "src/auth.ts"})
+→ validate_claim({claim: "login() has no constant-time comparison", symbol: "login", file: "src/auth.ts"})
 → If confirmed: record_finding(...)  |  If disproved: move to next file
 \`\`\`
 
@@ -130,7 +136,9 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 
 5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.`;
+6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
+
+7. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.`;
 
         const recursionSection = canRecurse
             ? `
@@ -257,6 +265,7 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 **Self-Reflection:**
 ${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` after reading diffs — this organizes your analysis and prevents false positives' : '- ⚠️ You MUST call \\`think\\` after reviewing context — this organizes your analysis and prevents false positives'}
 - ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
+- For factual claims ("unused symbol", "wrong type", "no callers"): call \`validate_claim\` — its LSP result overrides your reasoning
 - Return partial findings if running low on iterations - partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;

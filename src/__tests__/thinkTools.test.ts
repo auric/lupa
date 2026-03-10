@@ -136,10 +136,8 @@ describe('ThinkAboutCompletionTool', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('Summary Draft');
-            expect(result.data).toContain(
-                'This PR refactors the authentication module'
-            );
+            expect(result.data).toContain('Reflection recorded');
+            expect(result.data).toContain('0 issue(s)');
         });
 
         it('should show issue count', async () => {
@@ -156,7 +154,7 @@ describe('ThinkAboutCompletionTool', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('Issues Found: 5');
+            expect(result.data).toContain('5 issue(s)');
         });
 
         it('should calculate and show coverage percentage', async () => {
@@ -173,10 +171,8 @@ describe('ThinkAboutCompletionTool', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('Coverage');
-            expect(result.data).toContain('2/4');
-            expect(result.data).toContain('50%');
-            expect(result.data).toContain('Not all files analyzed');
+            expect(result.data).toContain('2/4 files (50%)');
+            expect(result.data).toContain('uncovered');
         });
 
         it('should suggest covering remaining files when coverage < 100%', async () => {
@@ -212,7 +208,7 @@ describe('ThinkAboutCompletionTool', () => {
 
             expect(result.success).toBe(true);
             expect(result.data).toContain(
-                'Recommendation: APPROVE WITH SUGGESTIONS'
+                'recommendation: approve_with_suggestions'
             );
         });
     });

@@ -40,8 +40,7 @@ describe('UpdatePlanTool', () => {
             const result = await tool.execute({ plan }, executionContext);
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('Review plan created');
-            expect(result.data).toContain(plan);
+            expect(result.data).toContain('plan created');
         });
 
         it('should report update when plan already exists', async () => {
@@ -57,8 +56,7 @@ describe('UpdatePlanTool', () => {
             );
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('Plan updated successfully');
-            expect(result.data).toContain('- [x] First task');
+            expect(result.data).toContain('Plan updated');
         });
 
         it('should store plan in manager', async () => {
@@ -78,8 +76,8 @@ describe('UpdatePlanTool', () => {
             const result = await tool.execute({ plan }, executionContext);
 
             expect(result.success).toBe(true);
-            expect(result.data).toContain('Next Steps');
-            expect(result.data).toContain('think_about_completion');
+            expect(result.data).toContain('plan created');
+            expect(result.data).not.toContain('Next Steps');
         });
 
         it('should return error when no active analysis session', async () => {

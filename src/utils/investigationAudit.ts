@@ -331,3 +331,34 @@ export function formatAuditSection(audit: InvestigationAudit): string {
         `**Patterns searched:** ${audit.patternsSearched.length}`
     );
 }
+
+/**
+ * Return a one-line audit summary without per-file breakdown.
+ * Used for subagent results where the parent already knows which files were assigned.
+ */
+export function formatCompactAudit(audit: InvestigationAudit): string {
+    const fileCount = new Set([
+        ...audit.filesRead.map((f) => f.path),
+        ...audit.diffsExamined,
+    ]).size;
+
+    if (fileCount === 0) {
+        return '';
+    }
+
+    const scores = [...audit.depthScores.entries()];
+    const avgDepth =
+        scores.length > 0
+            ? (
+                  scores.reduce((sum, [, d]) => sum + d.score, 0) /
+                  scores.length
+              ).toFixed(1)
+            : '0.0';
+
+    return (
+        `\nAudit: ${fileCount} files, avg depth ${avgDepth}/${MAX_DEPTH}. ` +
+        `Symbols: ${audit.symbolsResolved.length}, ` +
+        `Usages: ${audit.usagesChecked.length}, ` +
+        `Patterns: ${audit.patternsSearched.length}`
+    );
+}

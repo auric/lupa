@@ -21,6 +21,7 @@ import type { ChatToolCallHandler } from '../types/chatTypes';
 import type { ITool } from '../tools/ITool';
 import type { ToolResultMetadata } from '../types/toolResultTypes';
 import type { RecursiveStateManager } from '../sessions/recursiveStateManager';
+import type { FindingStore } from '../sessions/findingStore';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
 import type { SubagentSessionManager } from './subagentSessionManager';
@@ -45,6 +46,8 @@ export interface SubagentExecuteOptions {
     subagentSessionManager?: SubagentSessionManager;
     /** Allocated iteration budget for this child (used as maxIterations). */
     childBudget?: number;
+    /** Shared finding store for the analysis — enables subagents to record findings. */
+    findingStore?: FindingStore;
 }
 
 /**
@@ -184,6 +187,7 @@ export class SubagentExecutor {
                 currentDepth: depth,
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,
+                findingStore: options?.findingStore,
             };
 
             const toolExecutor = new ToolExecutor(

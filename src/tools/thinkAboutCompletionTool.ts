@@ -60,51 +60,23 @@ export class ThinkAboutCompletionTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        const {
-            summary_draft,
-            issues_count,
-            files_analyzed,
-            files_in_diff,
-            recommendation,
-        } = args;
+        const { issues_count, files_analyzed, files_in_diff, recommendation } =
+            args;
 
         const coveragePercent = Math.round(
             (files_analyzed.length / files_in_diff) * 100
         );
 
-        let guidance = '## Completion Reflection\n\n';
+        const coverageNote =
+            coveragePercent < 100
+                ? ` ⚠️ ${files_in_diff - files_analyzed.length} file(s) uncovered — investigate before submitting.`
+                : '';
 
-        guidance += `### Summary Draft\n> ${summary_draft}\n\n`;
-        guidance += `### Issues Found: ${issues_count}\n\n`;
-
-        guidance += `### Coverage\n`;
-        guidance += `- Files analyzed: ${files_analyzed.length}/${files_in_diff} (${coveragePercent}%)\n`;
-        if (coveragePercent < 100) {
-            guidance += `- ⚠️ Not all files analyzed\n`;
-        }
-        guidance += '\n';
-
-        guidance += `### Recommendation: ${recommendation.replace(/_/g, ' ').toUpperCase()}\n\n`;
-
-        if (coveragePercent < 100) {
-            guidance += `**Action**: Spawn additional sub-agents or use \`get_file_diff\` to cover remaining ${files_in_diff - files_analyzed.length} file(s) before submitting.\n\n`;
-        }
-
-        guidance +=
-            '**Pre-submit self-challenge** (do this mentally for each finding):\n';
-        guidance +=
-            '1. Is this MECHANICAL (duplication, API misuse, type error) or INTENT-BASED (design disagreement)?\n';
-        guidance +=
-            '2. For intent-based findings: did you search for comments/docs explaining the design?\n';
-        guidance +=
-            '3. Can you name the SPECIFIC tool call that confirmed this finding?\n';
-        guidance += '4. Did you attempt to disprove it? What was the result?\n';
-        guidance += '5. Would a developer familiar with this codebase agree?\n';
-        guidance +=
-            '\nDrop any finding where the answer to #5 is likely "by design."\n\n';
-        guidance +=
-            '**Action**: Call `submit_review` now with your complete review.\n';
-
-        return toolSuccess(guidance);
+        return toolSuccess(
+            `✅ Reflection recorded. ${files_analyzed.length}/${files_in_diff} files (${coveragePercent}%), ` +
+                `${issues_count} issue(s), recommendation: ${recommendation}.${coverageNote} ` +
+                `Pre-submit: for each finding, verify it's MECHANICAL (not intent-based), name the confirming tool call, ` +
+                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.`
+        );
     }
 }
