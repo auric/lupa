@@ -243,12 +243,35 @@ export class ToolCallingAnalysisProvider {
                         (validation.maxTokens - validation.totalTokens) / 1000
                     );
 
+                    let suffix = '';
                     if (usagePercent >= 90) {
-                        return `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
+                        suffix = `\n\n⚠️ [ctx: ${usagePercent}% | ${remainingK}k remaining — wrap up NOW]`;
                     } else if (usagePercent >= 70) {
-                        return `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
+                        suffix = `\n\n[ctx: ${usagePercent}% | ${remainingK}k remaining]`;
                     }
-                    return '';
+
+                    // Periodic FindingStore reminder for dismissive models at parent level.
+                    // GPT-4.1 loses prosecution instructions after many subagent results;
+                    // re-inject a reminder of recorded findings every 5 iterations.
+                    if (
+                        calibrationProfile.findingBias === 'dismissive' &&
+                        currentIteration > 0 &&
+                        currentIteration % 5 === 0 &&
+                        findingStore.size > 0
+                    ) {
+                        const findings = findingStore.getAll();
+                        const findingSummary = findings
+                            .map(
+                                (f) =>
+                                    `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                            )
+                            .join('; ');
+                        suffix +=
+                            `\n\n📋 REMINDER: ${findingStore.size} finding(s) recorded so far: ${findingSummary}. ` +
+                            'These MUST appear in your final review or be explicitly retracted.';
+                    }
+
+                    return suffix;
                 } catch (error) {
                     Log.error('Error calculating context status:', error);
                     return '';

@@ -164,5 +164,19 @@ For each change, ask:
 - What could go wrong?
 - How might this affect other parts?
 - What testing is needed?
+${
+    calibration.findingBias === 'dismissive'
+        ? `
+### ⚠️ REMINDER — Rules for Bug Hunters (re-stated for emphasis)
+
+These rules were stated above but are critical. Re-read them before submitting:
+
+1. **Every hypothesis must be investigated with tools.** Do NOT dismiss risks based on reasoning alone — call \\\`find_usages\\\`, \\\`validate_claim\\\`, or \\\`search_for_pattern\\\` to verify.
+2. **Zero risks at checkpoint #1 is almost never correct.** If you generated 0 risks after reading a diff, go back and try harder.
+3. **Findings recorded by your sub-agents are binding.** If \\\`record_finding\\\` was called, that finding must appear in your final review OR be explicitly retracted with \\\`retract_finding\\\`.
+4. **Do NOT use \\\`validate_claim\\\` to disprove findings recorded by your team.** validate_claim verifies factual claims — it is not a tool for dismissing investigation results.
+5. **When in doubt, investigate more.** A finding that MIGHT be real deserves investigation, not dismissal.`
+        : ''
+}
 </analysis_methodology>`;
 }

@@ -332,6 +332,19 @@ export class SubagentExecutor {
                         }
 
                         if (currentIteration >= 3) {
+                            // Periodic prosecution reminder for dismissive models
+                            // GPT-4.1 suffers instruction amnesia after long tool sequences
+                            const calibration = childContext.calibrationProfile;
+                            if (
+                                calibration.findingBias === 'dismissive' &&
+                                currentIteration % 3 === 0
+                            ) {
+                                return (
+                                    `\n\n[Iteration ${currentIteration}/${maxIterations}] ` +
+                                    'REMINDER: You are a bug hunter. If all your hypotheses were dismissed without recording any findings, ' +
+                                    'you may be too agreeable. Re-examine your evidence — when tool output is ambiguous, investigate further rather than clearing the hypothesis.'
+                                );
+                            }
                             return `\n\n[Iteration ${currentIteration}/${maxIterations}]`;
                         }
 

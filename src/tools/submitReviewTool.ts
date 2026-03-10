@@ -50,9 +50,18 @@ export class SubmitReviewTool extends BaseTool {
             throw new vscode.CancellationError();
         }
 
-        // Calibration gate: dismissive models must call validate_claim before submitting
+        // Calibration gate: dismissive models must call validate_claim before submitting.
+        // EXCEPTION: If subagents already recorded findings in FindingStore, they performed
+        // their own validation — waive the gate to prevent the parent from using forced
+        // validate_claim calls to disprove subagent findings.
         const profile = context.calibrationProfile;
-        if (profile.minValidateClaimBeforeSubmit > 0) {
+        const store = context.findingStore;
+        const subagentsRecordedFindings = store && store.size > 0;
+
+        if (
+            profile.minValidateClaimBeforeSubmit > 0 &&
+            !subagentsRecordedFindings
+        ) {
             const validateClaimCalls =
                 context.toolCallCounts.get('validate_claim') ?? 0;
             if (validateClaimCalls < profile.minValidateClaimBeforeSubmit) {
@@ -60,6 +69,41 @@ export class SubmitReviewTool extends BaseTool {
                     `Review rejected: you have not called validate_claim yet (${validateClaimCalls} calls, minimum ${profile.minValidateClaimBeforeSubmit} required). ` +
                         'Go back and use validate_claim to verify at least one hypothesis with LSP ground truth before submitting. ' +
                         'If all hypotheses were disproved by validate_claim, you may then submit an approval.'
+                );
+            }
+        }
+
+        // FindingStore gate: if subagents recorded findings, the review must address them
+        if (subagentsRecordedFindings) {
+            const findings = store.getAll();
+            const reviewLower = args.review_content.toLowerCase();
+
+            // Check if any recorded finding is completely absent from review text
+            const missingFindings = findings.filter((f) => {
+                // Check if the finding's title or file is mentioned in the review
+                const titleWords = f.title
+                    .toLowerCase()
+                    .split(/\s+/)
+                    .filter((w) => w.length > 3);
+                const titleMentioned = titleWords.some((word) =>
+                    reviewLower.includes(word)
+                );
+                const fileMentioned = reviewLower.includes(
+                    f.file.toLowerCase()
+                );
+                return !titleMentioned && !fileMentioned;
+            });
+
+            if (missingFindings.length > 0) {
+                const missing = missingFindings
+                    .map(
+                        (f) => `[${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                    )
+                    .join('\n  ');
+                return toolError(
+                    `Review rejected: your investigation team recorded ${store.size} finding(s), but ${missingFindings.length} are missing from your review:\n  ${missing}\n\n` +
+                        'You MUST either include each finding in your review OR explicitly call retract_finding with a reason. ' +
+                        'Do NOT silently drop findings that were recorded with tool evidence.'
                 );
             }
         }

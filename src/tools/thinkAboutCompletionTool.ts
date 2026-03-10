@@ -72,11 +72,28 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 ? ` ⚠️ ${files_in_diff - files_analyzed.length} file(s) uncovered — investigate before submitting.`
                 : '';
 
+        // Inject FindingStore summary so the model can't silently drop findings
+        const store = context.findingStore;
+        let findingStoreNote = '';
+        if (store && store.size > 0) {
+            const findings = store.getAll();
+            const summary = findings
+                .map(
+                    (f) => `  - [${f.id}] ${f.severity}: ${f.title} (${f.file})`
+                )
+                .join('\n');
+            findingStoreNote =
+                `\n\n📋 Your investigation team recorded ${store.size} finding(s) in the finding store:\n${summary}\n` +
+                `These findings were recorded by your sub-agents based on tool evidence. ` +
+                `You MUST include each in your review OR explicitly retract it with retract_finding if you have NEW counter-evidence. ` +
+                `Do NOT silently drop findings that your team recorded.`;
+        }
+
         return toolSuccess(
             `✅ Reflection recorded. ${files_analyzed.length}/${files_in_diff} files (${coveragePercent}%), ` +
                 `${issues_count} issue(s), recommendation: ${recommendation}.${coverageNote} ` +
                 `Pre-submit: for each finding, verify it's MECHANICAL (not intent-based), name the confirming tool call, ` +
-                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.`
+                `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}`
         );
     }
 }

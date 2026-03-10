@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
-import { ToolResult, toolSuccess } from '../types/toolResultTypes';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArray } from './schemaHelpers';
 
@@ -66,6 +66,19 @@ export class ThinkTool extends BaseTool {
 
         const profile = context.calibrationProfile;
         const isDismissive = profile.findingBias === 'dismissive';
+
+        // Hard gate for dismissive models: reject empty identified_risks at early checkpoints.
+        // Dismissive models tend to generate empty risks and proceed without investigating.
+        // This forces them to generate hypotheses before moving on.
+        if (isDismissive && isEarlyCheckpoint && riskCount === 0) {
+            return toolError(
+                `Checkpoint rejected: you identified 0 risks for "${topic}". ` +
+                    'This is not credible for a code change checkpoint. Real code changes have edge cases. ' +
+                    'Call think again with at least 2-3 items in identified_risks: ' +
+                    'error handling gaps, type safety issues, missing validation, caller inconsistencies, race conditions. ' +
+                    'These are HYPOTHESES to investigate — they may be fine, but you must generate them before dismissing.'
+            );
+        }
 
         const riskNote =
             riskCount > 0
