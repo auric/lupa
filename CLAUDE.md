@@ -121,23 +121,39 @@ Never produce: excessive comments on obvious code, over-abstraction for hypothet
 
 ## Commit Discipline
 
-**Commit after each meaningful chunk of work — not at the end of the session.**
+**You MUST run `git add` and `git commit` yourself after each meaningful chunk of work.** Do not wait until the end of the session. Do not just suggest a commit message. Actually execute the commit.
 
-Good commits:
+### The Commit Loop
 
-- Complete a logical unit: a new feature, a refactor, a bug fix, a test suite
-- Have clear, descriptive messages explaining WHAT changed and WHY
-- Leave the codebase in a working state (types check, tests pass)
+This is a mandatory part of your workflow for any multi-step task:
 
-Bad commits:
+1. Implement a logical chunk of work
+2. Run `npm run check-types` — must pass
+3. Run relevant tests if you changed behavior
+4. Run `git add -A && git commit -m "descriptive message"` — **do this yourself, right now**
+5. Move to the next chunk — repeat from step 1
 
-- Dump all session changes into one massive commit
-- Leave broken types or failing tests
-- Have vague messages like "updates" or "changes"
+### What Makes a Good Commit Boundary
 
-**Before committing**: Run `npm run check-types`. Run relevant tests if you changed behavior. Only commit when things are green.
+- A new feature or component is working
+- A refactor is complete and types pass
+- A bug fix with its test
+- A batch of related file changes (e.g., "update all tools to new API")
 
-**Workflow**: Implement chunk → verify → commit → next chunk. This protects against context loss and gives clean git history for rollbacks.
+### Commit Messages
+
+Write clear messages that explain WHAT changed and WHY. Examples:
+
+- `feat: add subagent session limits to prevent runaway spawning`
+- `refactor: extract timeout logic into withCancellableTimeout helper`
+- `fix: prevent CancellationTokenSource leak in RunSubagentTool`
+
+### What NOT to Do
+
+- **Never** accumulate all session changes into one giant commit
+- **Never** just suggest a commit message without executing it
+- **Never** commit broken code (types must check, tests must pass)
+- **Never** use vague messages like "updates" or "changes"
 
 ---
 
