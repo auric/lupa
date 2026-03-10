@@ -145,6 +145,41 @@ describe('DiffEnricher', () => {
         expect(mockSymbolExtractor.getFileSymbols).not.toHaveBeenCalled();
     });
 
+    it('skips non-code files (.md, .json, .yaml, etc.)', async () => {
+        const diff = [
+            createTestDiffHunk('docs/README.md'),
+            createTestDiffHunk('package.json'),
+            createTestDiffHunk('config.yaml'),
+        ];
+        const result = await enricher.enrich(diff, token);
+
+        expect(result.enrichedSymbols).toHaveLength(0);
+        expect(mockSymbolExtractor.getFileSymbols).not.toHaveBeenCalled();
+    });
+
+    it('processes code files alongside non-code files', async () => {
+        vi.mocked(mockSymbolExtractor.getFileSymbols).mockResolvedValue([
+            createMockDocumentSymbol(
+                'handler',
+                vscode.SymbolKind.Function,
+                5,
+                10
+            ),
+        ]);
+
+        const diff = [
+            createTestDiffHunk('README.md'),
+            createTestDiffHunk('src/handler.ts'),
+            createTestDiffHunk('CHANGELOG.md'),
+        ];
+        const result = await enricher.enrich(diff, token);
+
+        expect(result.enrichedSymbols).toHaveLength(1);
+        expect(result.enrichedSymbols[0]!.name).toBe('handler');
+        // Only called once — for the .ts file
+        expect(mockSymbolExtractor.getFileSymbols).toHaveBeenCalledTimes(1);
+    });
+
     it('returns empty brief when git repo not available', async () => {
         vi.mocked(mockGitOps.getRepository).mockReturnValue(undefined as any);
 

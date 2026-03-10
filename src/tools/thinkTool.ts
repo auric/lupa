@@ -19,6 +19,7 @@ export class ThinkTool extends BaseTool {
     name = 'think';
     description =
         'Record your step-by-step reasoning about code changes, investigation progress, or context gaps. ' +
+        'Call after reading each file diff and before investigating further — this is how you organize analysis and catch issues. ' +
         'Captures your analysis, identified risks, and planned next action in a structured format.';
 
     schema = z.object({

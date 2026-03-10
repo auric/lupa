@@ -21,6 +21,37 @@ const PER_SYMBOL_TIMEOUT = 2_000;
 const CONCURRENCY_LIMIT = 5;
 const MAX_SYMBOLS = 50;
 
+/** File extensions where LSP symbol enrichment (hover, references) is not useful. */
+const NON_CODE_EXTENSIONS = new Set([
+    '.md',
+    '.markdown',
+    '.txt',
+    '.rst',
+    '.json',
+    '.jsonc',
+    '.json5',
+    '.yaml',
+    '.yml',
+    '.toml',
+    '.ini',
+    '.cfg',
+    '.lock',
+    '.csv',
+    '.tsv',
+    '.svg',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.ico',
+    '.webp',
+    '.woff',
+    '.woff2',
+    '.ttf',
+    '.eot',
+    '.log',
+]);
+
 interface SymbolCandidate {
     symbol: vscode.DocumentSymbol | vscode.SymbolInformation;
     fileUri: vscode.Uri;
@@ -125,6 +156,10 @@ export class DiffEnricher implements vscode.Disposable {
 
         for (const file of parsedDiff) {
             if (file.isDeletedFile) {
+                continue;
+            }
+            const ext = path.extname(file.filePath).toLowerCase();
+            if (NON_CODE_EXTENSIONS.has(ext)) {
                 continue;
             }
             if (token.isCancellationRequested) {
