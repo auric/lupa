@@ -30,11 +30,6 @@ export interface ValidationResult {
     kept: number;
 }
 
-const SEVERITY_REQUIRING_EVIDENCE = new Set([
-    'CRITICAL',
-    'HIGH',
-    'MEDIUM',
-] as FindingSeverity[]);
 const SEVERITY_REQUIRING_DISPROOF = new Set([
     'CRITICAL',
     'HIGH',
@@ -75,14 +70,6 @@ export class FindingValidator {
             if (!this.checkLineRange(finding)) {
                 violations.push('Invalid line range');
                 verdict = 'drop';
-            }
-
-            if (!this.checkEvidence(finding)) {
-                violations.push('No supporting tool calls for MEDIUM+ finding');
-                if (verdict !== 'drop') {
-                    verdict = 'downgrade';
-                    downgradedSeverity = 'LOW';
-                }
             }
 
             if (!this.checkDisproof(finding)) {
@@ -137,13 +124,6 @@ export class FindingValidator {
     private checkLineRange(finding: RecordedFinding): boolean {
         const [start, end] = finding.lineRange;
         return start > 0 && start <= end;
-    }
-
-    private checkEvidence(finding: RecordedFinding): boolean {
-        if (!SEVERITY_REQUIRING_EVIDENCE.has(finding.severity)) {
-            return true;
-        }
-        return finding.supportingToolCalls.length > 0;
     }
 
     private checkDisproof(finding: RecordedFinding): boolean {

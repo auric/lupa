@@ -640,7 +640,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
             analysisCompleted = true;
 
-            // Post-analysis: validate findings programmatically
+            // Post-analysis: validate findings and apply results
             const findings = findingStore.getAll();
             if (findings.length > 0) {
                 const validation = await this.deps!.findingValidator.validate(
@@ -648,6 +648,22 @@ export class ChatParticipantService implements vscode.Disposable {
                     parsedDiff,
                     token
                 );
+
+                // Apply validation results to FindingStore (drop/downgrade)
+                for (const v of validation.validated) {
+                    if (v.verdict === 'drop') {
+                        findingStore.remove(v.finding.id);
+                    } else if (
+                        v.verdict === 'downgrade' &&
+                        v.downgradedSeverity
+                    ) {
+                        findingStore.updateSeverity(
+                            v.finding.id,
+                            v.downgradedSeverity
+                        );
+                    }
+                }
+
                 if (validation.dropped > 0 || validation.downgraded > 0) {
                     Log.info(
                         `[ChatParticipantService]: FindingValidator: ${validation.kept} kept, ${validation.downgraded} downgraded, ${validation.dropped} dropped`

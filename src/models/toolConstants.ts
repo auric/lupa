@@ -95,9 +95,12 @@ export const RECURSIVE_CHILD_DISALLOWED_TOOLS = [...ROOT_ONLY_TOOLS] as const;
  * Exploration mode (no slash command) doesn't have PR context or a review plan,
  * so these tools would either fail or return nonsensical guidance.
  */
+export const QUALITY_TOOLS = ['record_finding', 'retract_finding'] as const;
+
 export const MAIN_ANALYSIS_ONLY_TOOLS = [
     ...ROOT_ONLY_TOOLS,
     ...DIFF_TOOLS,
+    ...QUALITY_TOOLS,
 ] as const;
 
 /**

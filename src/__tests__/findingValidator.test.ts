@@ -110,7 +110,7 @@ describe('FindingValidator', () => {
         expect(result.validated[0]!.violations).toContain('Invalid line range');
     });
 
-    it('downgrades MEDIUM+ finding with empty supportingToolCalls', async () => {
+    it('keeps MEDIUM finding with empty supportingToolCalls (evidence check removed)', async () => {
         const findings = [
             createTestFinding({
                 severity: 'MEDIUM',
@@ -121,12 +121,8 @@ describe('FindingValidator', () => {
 
         const result = await validator.validate(findings, diff, token);
 
-        expect(result.downgraded).toBe(1);
-        expect(result.validated[0]!.verdict).toBe('downgrade');
-        expect(result.validated[0]!.downgradedSeverity).toBe('LOW');
-        expect(result.validated[0]!.violations).toContain(
-            'No supporting tool calls for MEDIUM+ finding'
-        );
+        expect(result.kept).toBe(1);
+        expect(result.validated[0]!.verdict).toBe('keep');
     });
 
     it('does not downgrade LOW finding with empty supportingToolCalls', async () => {
@@ -261,11 +257,10 @@ describe('FindingValidator', () => {
     });
 
     it('multiple violations — strictest verdict wins (drop > downgrade)', async () => {
-        // File not in diff (drop) + no evidence (downgrade)
+        // File not in diff (drop)
         const findings = [
             createTestFinding({
                 file: 'src/missing.ts',
-                supportingToolCalls: [],
             }),
         ];
         const diff = [createTestDiffHunk('src/foo.ts')];
@@ -275,7 +270,7 @@ describe('FindingValidator', () => {
         expect(result.dropped).toBe(1);
         expect(result.validated[0]!.verdict).toBe('drop');
         expect(result.validated[0]!.violations.length).toBeGreaterThanOrEqual(
-            2
+            1
         );
     });
 
@@ -285,8 +280,8 @@ describe('FindingValidator', () => {
             createTestFinding({ id: 'dropped', file: 'src/missing.ts' }),
             createTestFinding({
                 id: 'downgraded',
-                severity: 'MEDIUM',
-                supportingToolCalls: [],
+                severity: 'HIGH',
+                disproof: { attempted: false, method: '', result: '' },
             }),
         ];
         const diff = [createTestDiffHunk('src/foo.ts')];

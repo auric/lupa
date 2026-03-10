@@ -6,6 +6,7 @@ import {
     RECURSIVE_CHILD_DISALLOWED_TOOLS,
     DIFF_TOOLS,
     INVESTIGATION_TOOLS,
+    QUALITY_TOOLS,
 } from '../models/toolConstants';
 import { TokenConstants } from '../models/tokenConstants';
 
@@ -13,7 +14,10 @@ describe('toolConstants', () => {
     describe('SubagentLimits.DISALLOWED_TOOLS', () => {
         // get_file_diff is analysis-only but intentionally
         // ALLOWED for subagents so they can access diff on demand (RLM approach).
-        const SUBAGENT_ALLOWED_ANALYSIS_TOOLS = ['get_file_diff'];
+        const SUBAGENT_ALLOWED_ANALYSIS_TOOLS = [
+            'get_file_diff',
+            ...QUALITY_TOOLS,
+        ];
 
         it('should include non-diff MAIN_ANALYSIS_ONLY_TOOLS to prevent subagent access', () => {
             for (const tool of MAIN_ANALYSIS_ONLY_TOOLS) {
