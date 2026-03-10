@@ -2,8 +2,9 @@ import { Log } from '../services/loggingService';
 
 /**
  * Severity levels for review findings, ordered by impact.
+ * Matches the canonical FindingSeverity in findingTypes.ts.
  */
-export type FindingSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type FindingSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 /**
  * Confidence that the finding is a real issue, not a false positive.

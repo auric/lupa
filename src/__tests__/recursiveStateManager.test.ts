@@ -123,7 +123,7 @@ describe('RecursiveStateManager', () => {
             manager.startAgent('root');
             const findings = [
                 {
-                    severity: 'high' as const,
+                    severity: 'HIGH' as const,
                     category: 'security',
                     file: 'auth.ts',
                     line: 42,
@@ -162,7 +162,7 @@ describe('RecursiveStateManager', () => {
                 'root',
                 [
                     {
-                        severity: 'high',
+                        severity: 'HIGH',
                         category: 'bug',
                         file: 'a.ts',
                         line: 1,
@@ -566,7 +566,7 @@ describe('RecursiveStateManager', () => {
 
             const rootFindings = [
                 {
-                    severity: 'high' as const,
+                    severity: 'HIGH' as const,
                     category: 'security',
                     file: 'auth.ts',
                     line: 10,
@@ -582,7 +582,7 @@ describe('RecursiveStateManager', () => {
             manager.startAgent('child-1');
             const childFindings = [
                 {
-                    severity: 'medium' as const,
+                    severity: 'MEDIUM' as const,
                     category: 'logic',
                     file: 'service.ts',
                     line: 20,
