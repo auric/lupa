@@ -73,6 +73,25 @@ function filterCallTree(
     return result;
 }
 
+/** Pre-compute original 1-based index for every call in the unfiltered tree (per-level). */
+function computeOriginalIndices(
+    calls: ToolCallRecord[],
+    startIndex: number = 1
+): Map<string, number> {
+    const map = new Map<string, number>();
+    let idx = startIndex;
+    for (const call of calls) {
+        map.set(call.id, idx++);
+        if (call.nestedCalls?.length) {
+            const nested = computeOriginalIndices(call.nestedCalls, 1);
+            for (const [id, num] of nested) {
+                map.set(id, num);
+            }
+        }
+    }
+    return map;
+}
+
 function countAllFailed(calls: ToolCallRecord[]): number {
     let count = 0;
     for (const call of calls) {
@@ -246,10 +265,13 @@ function formatToolCallsAsMarkdown(toolCalls: ToolCallsData): string {
 const ToolCallRow = ({
     call,
     index,
+    originalIndices,
 }: {
     call: ToolCallRecord;
     index: number;
+    originalIndices?: Map<string, number>;
 }) => {
+    const displayIndex = originalIndices?.get(call.id) ?? index;
     const [expanded, setExpanded] = useState(false);
     const preview = getArgPreview(call);
 
@@ -270,7 +292,7 @@ const ToolCallRow = ({
                     size={14}
                     className={`tc-chevron ${expanded ? 'tc-chevron--open' : ''}`}
                 />
-                <span className="tc-row-index">{index}</span>
+                <span className="tc-row-index">{displayIndex}</span>
                 {call.success ? (
                     <CheckCircle2 size={14} className="tc-icon--success" />
                 ) : (
@@ -336,11 +358,14 @@ const InlineAgent = ({
     call,
     index,
     depth,
+    originalIndices,
 }: {
     call: ToolCallRecord;
     index: number;
     depth: number;
+    originalIndices?: Map<string, number>;
 }) => {
+    const displayIndex = originalIndices?.get(call.id) ?? index;
     const [expanded, setExpanded] = useState(false);
     const [detailExpanded, setDetailExpanded] = useState(false);
 
@@ -367,7 +392,7 @@ const InlineAgent = ({
                     size={14}
                     className={`tc-chevron ${expanded ? 'tc-chevron--open' : ''}`}
                 />
-                <span className="tc-row-index">{index}</span>
+                <span className="tc-row-index">{displayIndex}</span>
                 {call.success ? (
                     <CheckCircle2 size={14} className="tc-icon--success" />
                 ) : (
@@ -466,7 +491,11 @@ const InlineAgent = ({
                         )}
                     </div>
                     {/* Nested tool calls rendered as a tree */}
-                    <CallList calls={nestedCalls} depth={depth + 1} />
+                    <CallList
+                        calls={nestedCalls}
+                        depth={depth + 1}
+                        originalIndices={originalIndices}
+                    />
                 </div>
             )}
         </div>
@@ -482,10 +511,12 @@ const CallList = ({
     calls,
     depth,
     startIndex = 1,
+    originalIndices,
 }: {
     calls: ToolCallRecord[];
     depth: number;
     startIndex?: number;
+    originalIndices?: Map<string, number>;
 }) => {
     let idx = startIndex;
     return (
@@ -499,11 +530,17 @@ const CallList = ({
                             call={call}
                             index={currentIdx}
                             depth={depth}
+                            originalIndices={originalIndices}
                         />
                     );
                 }
                 return (
-                    <ToolCallRow key={call.id} call={call} index={currentIdx} />
+                    <ToolCallRow
+                        key={call.id}
+                        call={call}
+                        index={currentIdx}
+                        originalIndices={originalIndices}
+                    />
                 );
             })}
         </>
@@ -558,6 +595,11 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
     const markdownText = useMemo(
         () => formatToolCallsAsMarkdown(toolCalls),
         [toolCalls]
+    );
+
+    const originalIndices = useMemo(
+        () => computeOriginalIndices(toolCalls.calls),
+        [toolCalls.calls]
     );
 
     const toolNameCounts = useMemo(
@@ -717,7 +759,11 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                 {isFiltering && filteredCalls.length === 0 ? (
                     <FilterEmptyState />
                 ) : (
-                    <CallList calls={filteredCalls} depth={0} />
+                    <CallList
+                        calls={filteredCalls}
+                        depth={0}
+                        originalIndices={originalIndices}
+                    />
                 )}
             </div>
         </div>
