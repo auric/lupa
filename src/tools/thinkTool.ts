@@ -59,10 +59,16 @@ export class ThinkTool extends BaseTool {
         const { topic, identified_risks, next_action } = args;
 
         const riskCount = identified_risks?.length ?? 0;
+        const topicLower = topic.toLowerCase();
+        const isEarlyCheckpoint = !topicLower.match(
+            /devil|advocate|synthesis|completion|final|alignment|progress/
+        );
         const riskNote =
             riskCount > 0
                 ? `${riskCount} risk(s) to verify with tools.`
-                : 'No risks identified.';
+                : isEarlyCheckpoint
+                  ? 'No risks identified yet. Before moving on — consider: edge cases in error handling, type safety gaps, missing validation on inputs, inconsistency with callers, or concurrency issues. Generate at least 2 hypotheses to investigate, even if they turn out to be fine.'
+                  : 'No risks identified.';
         const actionNote = next_action ? ` Next: ${next_action}.` : '';
 
         return toolSuccess(

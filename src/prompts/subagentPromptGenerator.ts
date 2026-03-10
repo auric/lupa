@@ -58,12 +58,12 @@ Your parent agent already identified which files belong to your investigation �
    - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-5 below.
    - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
-2. ⚠️ **Reasoning Checkpoint #1**: Call \`think\` to plan your investigation:
+2. ⚠️ **Reasoning Checkpoint #1 — Hypothesis Generation**: Call \`think\` to plan your investigation:
    - topic: "[filename] changes"
    - analysis: what changed, what looks risky, what looks correct
-   - identified_risks: specific concerns to verify with tools
+   - identified_risks: **REQUIRED — generate 2-3 specific hypotheses** about what could go wrong. Examples: missing error handling for edge case X, type narrowing gap when Y is null, inconsistency between this change and callers of Z, off-by-one in boundary logic. These are hypotheses to INVESTIGATE with tools — most may turn out fine, but generating them prevents premature "looks good".
    - next_action: which tool to call next and why
-   Skipping this step leads to unfocused investigation and false positives.
+   ⚠️ Empty identified_risks here means you skipped hypothesis generation — go back and think harder about edge cases.
 
 3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both to identify real issues.
 
@@ -101,12 +101,12 @@ get_file_diff({file_paths: ["src/auth.ts"]})
                   ? `
 1. **Read the Diff**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This gives you orientation — what changed and where.
 
-2. ⚠️ **Reasoning Checkpoint #1**: Call \`think\` to plan your investigation:
+2. ⚠️ **Reasoning Checkpoint #1 — Hypothesis Generation**: Call \`think\` to plan your investigation:
    - topic: "[filename] changes"
    - analysis: what changed, what looks risky, what looks correct
-   - identified_risks: specific concerns to verify with tools
+   - identified_risks: **REQUIRED — generate 2-3 specific hypotheses** about what could go wrong. Examples: missing error handling for edge case X, type narrowing gap when Y is null, inconsistency between this change and callers of Z, off-by-one in boundary logic. These are hypotheses to INVESTIGATE with tools — most may turn out fine, but generating them prevents premature "looks good".
    - next_action: which tool to call next and why
-   Skipping this step leads to unfocused investigation and false positives.
+   ⚠️ Empty identified_risks here means you skipped hypothesis generation — go back and think harder about edge cases.
 
 3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both.
 
@@ -142,12 +142,12 @@ get_file_diff({file_paths: ["src/auth.ts"]})
                   : `
 1. **Review Parent Context**: Study the code and information the parent agent provided in context above — this is your primary input.
 
-2. ⚠️ **Reasoning Checkpoint #1**: Call \`think\` to plan your investigation:
+2. ⚠️ **Reasoning Checkpoint #1 — Hypothesis Generation**: Call \`think\` to plan your investigation:
    - topic: "[area] review"
    - analysis: what you see in the context, what looks risky, what looks correct
-   - identified_risks: specific concerns to verify with tools
+   - identified_risks: **REQUIRED — generate 2-3 specific hypotheses** about what could go wrong. Examples: missing error handling for edge case X, type narrowing gap when Y is null, inconsistency between this change and callers of Z, off-by-one in boundary logic. These are hypotheses to INVESTIGATE with tools — most may turn out fine, but generating them prevents premature "looks good".
    - next_action: which tool to call next and why
-   Skipping this step leads to unfocused investigation and false positives.
+   ⚠️ Empty identified_risks here means you skipped hypothesis generation — go back and think harder about edge cases.
 
 3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
 
@@ -289,7 +289,7 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-${hasDiffTools ? "- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs, after gathering evidence, and as devil's advocate before recording" : "- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context, after gathering evidence, and as devil's advocate before recording"}
+${hasDiffTools ? "- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs (with 2-3 hypotheses in identified_risks), after gathering evidence, and as devil's advocate before recording" : "- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context (with 2-3 hypotheses in identified_risks), after gathering evidence, and as devil's advocate before recording"}
 - ⚠️ You MUST call \`validate_claim\` before EVERY \`record_finding\` — findings without LSP verification are untrustworthy
 - ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
 - For factual claims ("unused symbol", "wrong type", "no callers"): \`validate_claim\` LSP result overrides your reasoning

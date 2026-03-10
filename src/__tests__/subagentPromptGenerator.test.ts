@@ -461,5 +461,52 @@ describe('SubagentPromptGenerator', () => {
                 expect(prompt).toContain('centralized error handlers');
             });
         });
+
+        describe('hypothesis generation requirements', () => {
+            it('should require hypothesis generation at checkpoint #1 with diff tools', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool(
+                        'get_file_diff',
+                        'Get diff for specific files'
+                    ),
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+                expect(prompt).toContain('Hypothesis Generation');
+                expect(prompt).toContain('generate 2-3 specific hypotheses');
+                expect(prompt).toContain(
+                    'Empty identified_risks here means you skipped hypothesis generation'
+                );
+            });
+
+            it('should require hypothesis generation at checkpoint #1 without diff tools', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+                expect(prompt).toContain('Hypothesis Generation');
+                expect(prompt).toContain('generate 2-3 specific hypotheses');
+            });
+
+            it('should mention hypothesis generation in self-reflection constraints', () => {
+                const task: SubagentTask = { task: 'Test task' };
+                const tools = [
+                    createMockTool(
+                        'get_file_diff',
+                        'Get diff for specific files'
+                    ),
+                    createMockTool('find_symbol', 'Finds symbols in code'),
+                ];
+                const prompt = generator.generateSystemPrompt(task, tools, 10);
+
+                expect(prompt).toContain(
+                    'with 2-3 hypotheses in identified_risks'
+                );
+            });
+        });
     });
 });

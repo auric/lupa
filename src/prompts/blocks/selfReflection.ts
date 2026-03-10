@@ -30,7 +30,7 @@ Static checklists ("Did I do X?") are less effective than explicit articulation:
 - Prevents rushing through reflection steps
 
 ### Workflow
-1. Read diff → \`think\` with topic="[filename] changes", analysis of what changed, risks, next_action
+1. Read diff → \`think\` with topic="[filename] changes", analysis of what changed, identified_risks with 2-3 hypotheses (REQUIRED — never empty on first checkpoint), next_action
 2. Gather context → \`think\` with topic="context review", what you found, remaining gaps, next_action
 3. Before conclusions → \`think\` with topic="task alignment", what issues you found (HYPOTHESES), what needs investigation
    - For each issue: state (1) which tool output supports it, (2) what disproof you attempted, (3) why disproof failed. Drop issues where you cannot answer all three

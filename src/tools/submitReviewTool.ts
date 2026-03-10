@@ -24,9 +24,10 @@ export class SubmitReviewTool extends BaseTool {
     name = 'submit_review';
     description =
         'Submit your final PR review. Call this as the FINAL step when all analysis is complete. ' +
-        'BEFORE calling: for EACH finding verify (1) you can name the tool call that confirmed it, ' +
-        '(2) you attempted to disprove it and the disproof failed, (3) the file is in the changed files list. ' +
-        'Remove any finding that fails these checks. A review with zero findings is normal for well-written PRs.';
+        'BEFORE calling: (1) verify you generated hypotheses at checkpoint #1 and investigated each with tools, ' +
+        '(2) for EACH finding verify you can name the tool call that confirmed it and attempted disproof, ' +
+        '(3) verify all files in the changed files list were examined. ' +
+        'Zero findings IS valid — but only after genuine investigation with hypothesis generation and at least one validate_claim call.';
 
     /**
      * Minimum 20 chars is intentionally lower than reviewExtractionUtils' 50-char

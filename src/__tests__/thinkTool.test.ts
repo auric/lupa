@@ -39,7 +39,7 @@ describe('ThinkTool', () => {
         );
     });
 
-    it('should omit risks section when no risks identified', async () => {
+    it('should nudge hypothesis generation when no risks on early checkpoint', async () => {
         const context = createMockExecutionContext();
 
         const result = await tool.execute(
@@ -54,8 +54,28 @@ describe('ThinkTool', () => {
         );
 
         expect(result.success).toBe(true);
-        expect(result.data).not.toContain('Identified Risks');
+        expect(result.data).toContain('No risks identified yet');
+        expect(result.data).toContain('Generate at least 2 hypotheses');
         expect(result.data).toContain('Move to the next file');
+    });
+
+    it('should not nudge on synthesis/devil-advocate checkpoints with no risks', async () => {
+        const context = createMockExecutionContext();
+
+        const result = await tool.execute(
+            {
+                topic: "devil's advocate — is this really a bug?",
+                analysis:
+                    'Argued against the finding. The counter-argument wins.',
+                identified_risks: [],
+                next_action: 'Drop the finding',
+            },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('No risks identified.');
+        expect(result.data).not.toContain('Generate at least 2 hypotheses');
     });
 
     it('should include risk count when risks present', async () => {
