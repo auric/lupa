@@ -61,13 +61,21 @@ export class ThinkTool extends BaseTool {
         const riskCount = identified_risks?.length ?? 0;
         const topicLower = topic.toLowerCase();
         const isEarlyCheckpoint = !topicLower.match(
-            /devil|advocate|synthesis|completion|final|alignment|progress/
+            /devil|advocate|synthesis|completion|final|alignment|progress|prosecution/
         );
+
+        const profile = context.calibrationProfile;
+        const isDismissive = profile?.findingBias === 'dismissive';
+
         const riskNote =
             riskCount > 0
-                ? `${riskCount} risk(s) to verify with tools.`
+                ? isDismissive
+                    ? `${riskCount} risk(s) identified. Investigate each with tools — call validate_claim, find_usages, or search_for_pattern. Do NOT dismiss any hypothesis without concrete tool output proving it safe.`
+                    : `${riskCount} risk(s) to verify with tools.`
                 : isEarlyCheckpoint
-                  ? 'No risks identified yet. Before moving on — consider: edge cases in error handling, type safety gaps, missing validation on inputs, inconsistency with callers, or concurrency issues. Generate at least 2 hypotheses to investigate, even if they turn out to be fine.'
+                  ? isDismissive
+                      ? 'No risks identified yet. This is almost certainly wrong — real code changes have edge cases. Generate at least 2-3 hypotheses: error handling gaps, type safety issues, missing validation, caller inconsistencies, off-by-one errors. Hypotheses are free — investigate them with tools.'
+                      : 'No risks identified yet. Before moving on — consider: edge cases in error handling, type safety gaps, missing validation on inputs, inconsistency with callers, or concurrency issues. Generate at least 2 hypotheses to investigate, even if they turn out to be fine.'
                   : 'No risks identified.';
         const actionNote = next_action ? ` Next: ${next_action}.` : '';
 

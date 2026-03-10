@@ -188,4 +188,92 @@ const x = 1;
             ).rejects.toThrow(vscode.CancellationError);
         });
     });
+
+    describe('calibration gate', () => {
+        it('should reject submit when validate_claim not called and profile requires it', async () => {
+            const ctx = createMockExecutionContext({
+                calibrationProfile: {
+                    name: 'gpt-4.1',
+                    findingBias: 'dismissive',
+                    challengeMode: 'prosecution',
+                    includeFalsePositiveGuide: false,
+                    includeRevertTest: false,
+                    minValidateClaimBeforeSubmit: 1,
+                    includeAgenticPreamble: true,
+                    evidenceThreshold: 'low',
+                },
+                toolCallCounts: new Map(),
+            });
+
+            const result = await tool.execute(
+                {
+                    review_content:
+                        'LGTM. No issues found after thorough review.',
+                },
+                ctx
+            );
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('validate_claim');
+        });
+
+        it('should accept submit when validate_claim was called and profile requires it', async () => {
+            const counts = new Map([['validate_claim', 2]]);
+            const ctx = createMockExecutionContext({
+                calibrationProfile: {
+                    name: 'gpt-4.1',
+                    findingBias: 'dismissive',
+                    challengeMode: 'prosecution',
+                    includeFalsePositiveGuide: false,
+                    includeRevertTest: false,
+                    minValidateClaimBeforeSubmit: 1,
+                    includeAgenticPreamble: true,
+                    evidenceThreshold: 'low',
+                },
+                toolCallCounts: counts,
+            });
+
+            const result = await tool.execute(
+                { review_content: 'LGTM after checking with validate_claim.' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.metadata).toEqual({ isCompletion: true });
+        });
+
+        it('should not gate when profile has minValidateClaimBeforeSubmit=0', async () => {
+            const ctx = createMockExecutionContext({
+                calibrationProfile: {
+                    name: 'claude',
+                    findingBias: 'balanced',
+                    challengeMode: 'devils-advocate',
+                    includeFalsePositiveGuide: true,
+                    includeRevertTest: true,
+                    minValidateClaimBeforeSubmit: 0,
+                    includeAgenticPreamble: false,
+                    evidenceThreshold: 'medium',
+                },
+                toolCallCounts: new Map(),
+            });
+
+            const result = await tool.execute(
+                { review_content: 'LGTM. No issues found after review.' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+
+        it('should not gate when no calibration profile is set', async () => {
+            const ctx = createMockExecutionContext();
+
+            const result = await tool.execute(
+                { review_content: 'LGTM. No issues found after review.' },
+                ctx
+            );
+
+            expect(result.success).toBe(true);
+        });
+    });
 });

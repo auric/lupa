@@ -41,7 +41,7 @@ export class PromptBuilder {
      * Add role definition for PR reviewer.
      */
     addPRReviewerRole(): this {
-        this.sections.push(generatePRReviewerRole());
+        this.sections.push(generatePRReviewerRole(this._calibration));
         return this;
     }
 
@@ -97,7 +97,7 @@ export class PromptBuilder {
      * Add analysis methodology for PR review.
      */
     addAnalysisMethodology(): this {
-        this.sections.push(generateAnalysisMethodology());
+        this.sections.push(generateAnalysisMethodology(this._calibration));
         return this;
     }
 
@@ -121,7 +121,7 @@ export class PromptBuilder {
      * Add self-reflection guidance for PR review.
      */
     addSelfReflection(): this {
-        this.sections.push(generateSelfReflectionGuidance());
+        this.sections.push(generateSelfReflectionGuidance(this._calibration));
         return this;
     }
 
@@ -167,7 +167,7 @@ export class PromptBuilder {
     }
 
     addFindingQualityGuidance(): this {
-        this.sections.push(generateFindingQualityGuidance());
+        this.sections.push(generateFindingQualityGuidance(this._calibration));
         return this;
     }
 

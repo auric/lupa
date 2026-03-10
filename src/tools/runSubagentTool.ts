@@ -225,6 +225,7 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
                     subagentSessionManager: sessionManager,
                     childBudget,
                     findingStore: context.findingStore,
+                    calibrationProfile: context.calibrationProfile,
                 }
             );
 

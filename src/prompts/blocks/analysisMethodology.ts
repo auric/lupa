@@ -2,13 +2,20 @@
  * Analysis methodology for PR review mode.
  * Step-by-step process with plan tool integration.
  * Includes explicit reasoning mandate for non-reasoning models (GPT-4.1).
+ * Calibration-aware: adjusts skepticism and verification emphasis per model.
  */
+
+import type { ModelCalibrationProfile } from '../../models/modelCalibration';
 
 /**
  * Generate the analysis methodology block for PR review.
- * Emphasizes creating a plan early and tracking progress.
+ * Adjusts verification emphasis based on model calibration:
+ * - Dismissive models: removes kill ratio, strengthens persistence
+ * - Aggressive models: emphasizes kill ratio and evidence bar
  */
-export function generateAnalysisMethodology(): string {
+export function generateAnalysisMethodology(
+    calibration?: ModelCalibrationProfile
+): string {
     return `<analysis_methodology>
 ## Analysis Process
 
@@ -52,11 +59,20 @@ After reading a diff, call \`think\` to organize your analysis before investigat
 
 ### Productive Skepticism
 
-You are a senior reviewer, not a rubber stamp. Your job is to find issues the developer missed.
+${
+    calibration?.findingBias === 'dismissive'
+        ? `You are a senior reviewer and bug hunter. Your job is to find issues the developer missed.
+- If you review multiple files and identify zero risks at checkpoint #1, you are being too agreeable — go back and hypothesize harder. Zero risks at checkpoint #1 is almost never correct
+- Real code changes almost always have edge cases, error handling gaps, or subtle type issues worth investigating
+- Generating hypotheses costs nothing — investigate them with tools. You must call \\\`validate_claim\\\` at least once per review
+- A review that says "everything looks good" without any \\\`validate_claim\\\` calls is incomplete — submit_review will reject it
+- When a hypothesis COULD be an issue, investigate further. Do NOT dismiss it based on reasoning alone — use tools to verify`
+        : `You are a senior reviewer, not a rubber stamp. Your job is to find issues the developer missed.
 - If you review multiple files and identify zero risks at checkpoint #1, you are likely being too agreeable — go back and hypothesize harder
 - Real code changes almost always have edge cases, error handling gaps, or subtle type issues worth at least investigating
 - Generating hypotheses costs nothing — disprove them with tools if they're wrong
-- A review that says "everything looks good" without any \`validate_claim\` calls is incomplete, not thorough
+- A review that says "everything looks good" without any \\\`validate_claim\\\` calls is incomplete, not thorough`
+}
 
 ### Example: Reviewing a File Change
 
@@ -104,9 +120,18 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 3. If disproved → **DROP** the finding silently. Do not mention it in your review
 4. If not disproved → It survives. Now assign severity based on evidence
 5. For factual claims (symbol unused, type mismatch, missing callers): call \`validate_claim\` for definitive LSP verification
-
+${
+    calibration?.findingBias === 'dismissive'
+        ? `
+**Retention bias**: When tool output is ambiguous or inconclusive, retain the hypothesis and investigate further rather than dropping it. A finding that MIGHT be real deserves more investigation, not dismissal. Only drop a hypothesis when you have concrete tool output proving it safe.`
+        : calibration?.findingBias === 'aggressive'
+          ? `
+**Target kill ratio**: Drop 50-70% of your initial hypotheses through verification.
+If you're keeping >70% of hypotheses, you are not trying hard enough to disprove them. Every finding must survive rigorous challenge.`
+          : `
 **Target kill ratio**: Drop 40-60% of your initial hypotheses through verification.
-If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.
+If you're keeping >80% of hypotheses, you are not trying hard enough to disprove them.`
+}
 
 ### Step 6: Track Progress (REQUIRED)
 Call \`update_plan\` after completing each checklist item:

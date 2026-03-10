@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import * as vscode from 'vscode';
 import { BaseTool } from './baseTool';
-import { ToolResult, toolSuccess } from '../types/toolResultTypes';
+import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 
 /**
@@ -48,6 +48,20 @@ export class SubmitReviewTool extends BaseTool {
     ): Promise<ToolResult> {
         if (context.cancellationToken.isCancellationRequested) {
             throw new vscode.CancellationError();
+        }
+
+        // Calibration gate: dismissive models must call validate_claim before submitting
+        const profile = context.calibrationProfile;
+        if (profile && profile.minValidateClaimBeforeSubmit > 0) {
+            const validateClaimCalls =
+                context.toolCallCounts?.get('validate_claim') ?? 0;
+            if (validateClaimCalls < profile.minValidateClaimBeforeSubmit) {
+                return toolError(
+                    `Review rejected: you have not called validate_claim yet (${validateClaimCalls} calls, minimum ${profile.minValidateClaimBeforeSubmit} required). ` +
+                        'Go back and use validate_claim to verify at least one hypothesis with LSP ground truth before submitting. ' +
+                        'If all hypotheses were disproved by validate_claim, you may then submit an approval.'
+                );
+            }
         }
 
         return toolSuccess(args.review_content, { isCompletion: true });

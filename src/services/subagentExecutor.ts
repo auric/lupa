@@ -25,6 +25,7 @@ import type { FindingStore } from '../sessions/findingStore';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
 import type { SubagentSessionManager } from './subagentSessionManager';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -48,6 +49,8 @@ export interface SubagentExecuteOptions {
     childBudget?: number;
     /** Shared finding store for the analysis — enables subagents to record findings. */
     findingStore?: FindingStore;
+    /** Model calibration profile inherited from parent — adjusts prompt behavior. */
+    calibrationProfile?: ModelCalibrationProfile;
 }
 
 /**
@@ -188,6 +191,7 @@ export class SubagentExecutor {
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,
                 findingStore: options?.findingStore,
+                calibrationProfile: options?.calibrationProfile,
             };
 
             const toolExecutor = new ToolExecutor(
@@ -204,7 +208,8 @@ export class SubagentExecutor {
                 task,
                 filteredTools,
                 maxIterations,
-                canRecurse
+                canRecurse,
+                childContext.calibrationProfile
             );
 
             conversation.addUserMessage(`Please investigate: ${task.task}`);

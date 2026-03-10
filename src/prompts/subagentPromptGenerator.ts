@@ -1,5 +1,6 @@
 import type { SubagentTask } from '../types/modelTypes';
 import type { ITool } from '../tools/ITool';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
 
 import { generateFindingQualityGuidance } from './blocks/findingQualityGuidance';
@@ -27,7 +28,8 @@ export class SubagentPromptGenerator {
         task: SubagentTask,
         tools: ITool[],
         maxIterations: number,
-        canRecurse: boolean = false
+        canRecurse: boolean = false,
+        calibration?: ModelCalibrationProfile
     ): string {
         const hasDiffTools = tools.some((t) => t.name === 'get_file_diff');
         const contextSection = task.context
@@ -215,7 +217,25 @@ Focus on the highest-risk items first. If you can't fully investigate all areas,
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
 
+        // Calibration-specific behavioral override for subagents
+        const calibrationSection =
+            calibration?.findingBias === 'dismissive'
+                ? `
+<calibration_override>
+## Investigation Stance: Prosecution Mode
+
+Your challenge checkpoint (step 8c) operates in **prosecution mode**: instead of arguing AGAINST your finding, construct the **strongest argument that this IS a real bug**. Gather supporting evidence.
+
+- When evidence is ambiguous, investigate further with tools — do NOT dismiss based on reasoning alone
+- When validate_claim returns inconclusive, try additional tools (find_usages, search_for_pattern) before dropping
+- Retain hypotheses that are plausible until you have concrete proof they are safe
+- Missing a real bug is costlier than investigating a false lead
+</calibration_override>
+`
+                : '';
+
         return `You are a focused investigation subagent. A senior engineer reviewing a pull request has delegated a specific investigation to you.
+${calibrationSection}
 
 <your_task>
 ## Your Assigned Task
@@ -226,7 +246,7 @@ ${sanitizedTask}
 ${contextSection}
 
 <quality_standards>
-${generateFindingQualityGuidance()}
+${generateFindingQualityGuidance(calibration)}
 
 ### Language Awareness
 
@@ -289,11 +309,11 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-${hasDiffTools ? "- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs (with 2-3 hypotheses in identified_risks), after gathering evidence, and as devil's advocate before recording" : "- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context (with 2-3 hypotheses in identified_risks), after gathering evidence, and as devil's advocate before recording"}
+${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs (with 2-3 hypotheses in identified_risks), after gathering evidence, and as ' + (calibration?.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording' : '- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context (with 2-3 hypotheses in identified_risks), after gathering evidence, and as ' + (calibration?.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording'}
 - ⚠️ You MUST call \`validate_claim\` before EVERY \`record_finding\` — findings without LSP verification are untrustworthy
 - ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
 - For factual claims ("unused symbol", "wrong type", "no callers"): \`validate_claim\` LSP result overrides your reasoning
-- **Devil's advocate**: Before recording, use \`think\` to argue AGAINST your finding. If you can't defeat the counter-argument, record it. If the counter-argument wins, drop it
+${calibration?.challengeMode === 'prosecution' ? '- **Prosecution**: Before recording, use `think` to argue FOR your finding — construct the strongest case that this IS a bug. If the prosecution case is strong, record it. Only drop if you have concrete tool output proving it safe' : "- **Devil's advocate**: Before recording, use `think` to argue AGAINST your finding. If you can't defeat the counter-argument, record it. If the counter-argument wins, drop it"}
 - Return partial findings if running low on iterations — partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;

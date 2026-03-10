@@ -3,12 +3,28 @@
  *
  * These tools require ARTICULATION, not just acknowledgment.
  * The LLM must provide structured input that forces explicit reasoning.
+ * Calibration-aware: switches between prosecution and devil's advocate modes.
  */
+
+import type { ModelCalibrationProfile } from '../../models/modelCalibration';
 
 /**
  * Generate guidance for using self-reflection tools during PR review.
+ * Prosecution mode (dismissive models): argues FOR findings to counter dismissal.
+ * Devil's advocate mode (balanced/aggressive): argues AGAINST findings to filter noise.
  */
-export function generateSelfReflectionGuidance(): string {
+export function generateSelfReflectionGuidance(
+    calibration?: ModelCalibrationProfile
+): string {
+    const challengeMode = calibration?.challengeMode ?? 'devils-advocate';
+
+    const challengeCheckpoint =
+        challengeMode === 'prosecution'
+            ? `3. Before conclusions → \`think\` with topic="prosecution checkpoint", what evidence supports each hypothesis
+   - For each issue: state (1) which tool output supports it, (2) construct the strongest argument that this IS a real bug, (3) what additional evidence would strengthen it. Retain issues where the prosecution case is plausible — only drop when you have concrete proof it is safe`
+            : `3. Before conclusions → \`think\` with topic="task alignment", what issues you found (HYPOTHESES), what needs investigation
+   - For each issue: state (1) which tool output supports it, (2) what disproof you attempted, (3) why disproof failed. Drop issues where you cannot answer all three`;
+
     return `<self_reflection>
 ## Self-Reflection Tools
 
@@ -32,8 +48,7 @@ Static checklists ("Did I do X?") are less effective than explicit articulation:
 ### Workflow
 1. Read diff → \`think\` with topic="[filename] changes", analysis of what changed, identified_risks with 2-3 hypotheses (REQUIRED — never empty on first checkpoint), next_action
 2. Gather context → \`think\` with topic="context review", what you found, remaining gaps, next_action
-3. Before conclusions → \`think\` with topic="task alignment", what issues you found (HYPOTHESES), what needs investigation
-   - For each issue: state (1) which tool output supports it, (2) what disproof you attempted, (3) why disproof failed. Drop issues where you cannot answer all three
+${challengeCheckpoint}
 4. Synthesize → \`think_about_completion\` with summary_draft, issues_count, recommendation
 5. **Finalize** → \`submit_review\` with the complete review output
 </self_reflection>`;

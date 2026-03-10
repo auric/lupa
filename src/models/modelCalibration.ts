@@ -147,8 +147,8 @@ export function getCalibrationProfile(
     family: string,
     id: string
 ): ModelCalibrationProfile {
-    const familyLower = family.toLowerCase();
-    const idLower = id.toLowerCase();
+    const familyLower = (family ?? '').toLowerCase();
+    const idLower = (id ?? '').toLowerCase();
 
     for (const matcher of MODEL_MATCHERS) {
         if (matcher.test(familyLower, idLower)) {

@@ -1,0 +1,202 @@
+import { describe, it, expect } from 'vitest';
+import { generatePRReviewerRole } from '../prompts/blocks/roleDefinitions';
+import { generateAnalysisMethodology } from '../prompts/blocks/analysisMethodology';
+import { generateSelfReflectionGuidance } from '../prompts/blocks/selfReflection';
+import { generateFindingQualityGuidance } from '../prompts/blocks/findingQualityGuidance';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
+
+const DISMISSIVE_PROFILE: ModelCalibrationProfile = {
+    name: 'gpt-4.1',
+    findingBias: 'dismissive',
+    challengeMode: 'prosecution',
+    includeFalsePositiveGuide: false,
+    includeRevertTest: false,
+    minValidateClaimBeforeSubmit: 1,
+    includeAgenticPreamble: true,
+    evidenceThreshold: 'low',
+};
+
+const AGGRESSIVE_PROFILE: ModelCalibrationProfile = {
+    name: 'gpt-5-mini',
+    findingBias: 'aggressive',
+    challengeMode: 'devils-advocate',
+    includeFalsePositiveGuide: true,
+    includeRevertTest: true,
+    minValidateClaimBeforeSubmit: 0,
+    includeAgenticPreamble: true,
+    evidenceThreshold: 'high',
+};
+
+const BALANCED_PROFILE: ModelCalibrationProfile = {
+    name: 'claude',
+    findingBias: 'balanced',
+    challengeMode: 'devils-advocate',
+    includeFalsePositiveGuide: true,
+    includeRevertTest: true,
+    minValidateClaimBeforeSubmit: 0,
+    includeAgenticPreamble: false,
+    evidenceThreshold: 'medium',
+};
+
+describe('Calibration-aware prompt blocks', () => {
+    describe('generatePRReviewerRole', () => {
+        it('should include agentic preamble for dismissive models', () => {
+            const role = generatePRReviewerRole(DISMISSIVE_PROFILE);
+            expect(role).toContain('autonomous agent');
+            expect(role).toContain('Persist until');
+        });
+
+        it('should not include agentic preamble for balanced models', () => {
+            const role = generatePRReviewerRole(BALANCED_PROFILE);
+            expect(role).not.toContain('autonomous agent');
+        });
+
+        it('should emphasize persistence for dismissive models', () => {
+            const role = generatePRReviewerRole(DISMISSIVE_PROFILE);
+            expect(role).toContain('Persistence');
+            expect(role).toContain('bug hunter');
+        });
+
+        it('should not mention "zero findings" for dismissive models', () => {
+            const role = generatePRReviewerRole(DISMISSIVE_PROFILE);
+            expect(role).not.toContain('zero actionable findings');
+        });
+
+        it('should mention "zero findings" for aggressive models', () => {
+            const role = generatePRReviewerRole(AGGRESSIVE_PROFILE);
+            expect(role).toContain('zero actionable findings');
+        });
+
+        it('should emphasize precision for aggressive models', () => {
+            const role = generatePRReviewerRole(AGGRESSIVE_PROFILE);
+            expect(role).toContain('precision over volume');
+            expect(role).toContain('False positives erode');
+        });
+
+        it('should work without calibration (backward compat)', () => {
+            const role = generatePRReviewerRole();
+            expect(role).toContain('Staff Engineer');
+            expect(role).toContain('update_plan');
+        });
+    });
+
+    describe('generateAnalysisMethodology', () => {
+        it('should remove kill ratio for dismissive models', () => {
+            const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
+            expect(methodology).not.toContain('Target kill ratio');
+            expect(methodology).toContain('Retention bias');
+        });
+
+        it('should include stricter kill ratio for aggressive models', () => {
+            const methodology = generateAnalysisMethodology(AGGRESSIVE_PROFILE);
+            expect(methodology).toContain('Target kill ratio');
+            expect(methodology).toContain('50-70%');
+        });
+
+        it('should include standard kill ratio for balanced models', () => {
+            const methodology = generateAnalysisMethodology(BALANCED_PROFILE);
+            expect(methodology).toContain('Target kill ratio');
+            expect(methodology).toContain('40-60%');
+        });
+
+        it('should strengthen skepticism for dismissive models', () => {
+            const methodology = generateAnalysisMethodology(DISMISSIVE_PROFILE);
+            expect(methodology).toContain('submit_review will reject');
+            expect(methodology).toContain('almost never correct');
+        });
+
+        it('should work without calibration (backward compat)', () => {
+            const methodology = generateAnalysisMethodology();
+            expect(methodology).toContain('Analysis Process');
+            expect(methodology).toContain('update_plan');
+        });
+    });
+
+    describe('generateSelfReflectionGuidance', () => {
+        it('should use prosecution mode for dismissive models', () => {
+            const reflection =
+                generateSelfReflectionGuidance(DISMISSIVE_PROFILE);
+            expect(reflection).toContain('prosecution checkpoint');
+            expect(reflection).toContain(
+                'strongest argument that this IS a real bug'
+            );
+        });
+
+        it("should use devil's advocate for balanced models", () => {
+            const reflection = generateSelfReflectionGuidance(BALANCED_PROFILE);
+            expect(reflection).toContain('task alignment');
+            expect(reflection).toContain('disproof you attempted');
+        });
+
+        it("should use devil's advocate for aggressive models", () => {
+            const reflection =
+                generateSelfReflectionGuidance(AGGRESSIVE_PROFILE);
+            expect(reflection).toContain('task alignment');
+            expect(reflection).toContain('disproof you attempted');
+        });
+
+        it('should work without calibration (backward compat)', () => {
+            const reflection = generateSelfReflectionGuidance();
+            expect(reflection).toContain('Self-Reflection');
+            expect(reflection).toContain('submit_review');
+        });
+    });
+
+    describe('generateFindingQualityGuidance', () => {
+        it('should omit revert test for dismissive models', () => {
+            const guidance = generateFindingQualityGuidance(DISMISSIVE_PROFILE);
+            expect(guidance).not.toContain('Revert Test');
+            expect(guidance).toContain('Scope: Changed Code Only');
+        });
+
+        it('should include revert test for balanced models', () => {
+            const guidance = generateFindingQualityGuidance(BALANCED_PROFILE);
+            expect(guidance).toContain('Revert Test');
+        });
+
+        it('should omit FP anti-patterns for dismissive models', () => {
+            const guidance = generateFindingQualityGuidance(DISMISSIVE_PROFILE);
+            expect(guidance).not.toContain(
+                'False Positive Patterns — Avoid These'
+            );
+            expect(guidance).not.toContain('Design Intent Blindness');
+        });
+
+        it('should include FP anti-patterns for aggressive models', () => {
+            const guidance = generateFindingQualityGuidance(AGGRESSIVE_PROFILE);
+            expect(guidance).toContain('False Positive Patterns — Avoid These');
+            expect(guidance).toContain('Design Intent Blindness');
+        });
+
+        it('should include investigation thoroughness for dismissive models', () => {
+            const guidance = generateFindingQualityGuidance(DISMISSIVE_PROFILE);
+            expect(guidance).toContain('Investigation Thoroughness');
+            expect(guidance).toContain('Missing a real bug is costlier');
+        });
+
+        it('should include false positive cost for balanced models', () => {
+            const guidance = generateFindingQualityGuidance(BALANCED_PROFILE);
+            expect(guidance).toContain('False Positive Cost');
+            expect(guidance).toContain('erode developer trust');
+        });
+
+        it('should use low evidence bar for dismissive models', () => {
+            const guidance = generateFindingQualityGuidance(DISMISSIVE_PROFILE);
+            expect(guidance).toContain('suggests a potential issue');
+        });
+
+        it('should use high evidence bar for aggressive models', () => {
+            const guidance = generateFindingQualityGuidance(AGGRESSIVE_PROFILE);
+            expect(guidance).toContain('strong, concrete evidence');
+        });
+
+        it('should work without calibration (backward compat)', () => {
+            const guidance = generateFindingQualityGuidance();
+            expect(guidance).toContain('Finding Quality Standards');
+            expect(guidance).toContain('Verification Gates');
+            // Default includes revert test and FP patterns
+            expect(guidance).toContain('Revert Test');
+            expect(guidance).toContain('False Positive Patterns');
+        });
+    });
+});
