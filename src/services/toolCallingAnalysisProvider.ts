@@ -34,6 +34,7 @@ import type { RecordedFinding } from '../types/findingTypes';
 
 import { INVESTIGATION_TOOLS } from '../models/toolConstants';
 import type { ExecutionContext } from '../types/executionContext';
+import { getCalibrationProfile } from '../models/modelCalibration';
 
 /**
  * Orchestrates the entire analysis process, including managing the conversation loop,
@@ -175,11 +176,30 @@ export class ToolCallingAnalysisProvider {
                 `Code intelligence brief: ${codeIntelBrief.enrichedSymbols.length} symbols, ${codeIntelBrief.timeoutCount} timeouts`
             );
 
+            // Resolve model and calibration profile before prompt generation
+            const model = await this.copilotModelManager.getCurrentModel();
+            Log.info(
+                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
+            );
+
+            const calibrationProfile = getCalibrationProfile(
+                model.family,
+                model.id
+            );
+            executionContext.calibrationProfile = calibrationProfile;
+            Log.info(
+                `Model calibration: using '${calibrationProfile.name}' profile (bias: ${calibrationProfile.findingBias})`
+            );
+
             // Get available tools and generate system prompt
             const availableTools = toolExecutor.getAvailableTools();
             const systemPrompt = isRecursiveMode
-                ? this.promptGenerator.generateRecursiveSystemPrompt()
-                : this.promptGenerator.generateToolAwareSystemPrompt();
+                ? this.promptGenerator.generateRecursiveSystemPrompt(
+                      calibrationProfile
+                  )
+                : this.promptGenerator.generateToolAwareSystemPrompt(
+                      calibrationProfile
+                  );
 
             // Generate user prompt
             executionContext.parsedDiff = parsedDiff;
@@ -194,11 +214,6 @@ export class ToolCallingAnalysisProvider {
             conversationManager.addUserMessage(userMessage);
             progressCallback?.('Starting conversation with AI model...', 0.5);
 
-            // Create token validator for this analysis
-            const model = await this.copilotModelManager.getCurrentModel();
-            Log.info(
-                `Using model: ${model.name} (${model.vendor}/${model.id}, ${model.maxInputTokens} tokens)`
-            );
             const tokenValidator = new TokenValidator(model);
 
             // Create context status function that captures local state

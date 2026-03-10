@@ -42,6 +42,7 @@ export interface ToolExecutionResult {
  */
 export class ToolExecutor {
     private toolCallCount = 0;
+    private toolCallCountsByName = new Map<string, number>();
 
     /**
      * @param toolRegistry Registry containing available tools
@@ -63,6 +64,7 @@ export class ToolExecutor {
                 'ToolExecutor requires ExecutionContext with a valid cancellationToken'
             );
         }
+        this.executionContext.toolCallCounts = this.toolCallCountsByName;
     }
 
     /**
@@ -106,6 +108,10 @@ export class ToolExecutor {
         // not just successful executions. A model making many invalid calls is broken
         // and should be stopped. Like password lockout, we count all attempts.
         this.toolCallCount++;
+        this.toolCallCountsByName.set(
+            name,
+            (this.toolCallCountsByName.get(name) ?? 0) + 1
+        );
 
         Log.debug(`Tool '${name}' starting (call #${this.toolCallCount})`);
 
@@ -306,6 +312,10 @@ export class ToolExecutor {
      */
     getAvailableTools(): ITool[] {
         return this.toolRegistry.getAllTools();
+    }
+
+    getToolCallCountByName(name: string): number {
+        return this.toolCallCountsByName.get(name) ?? 0;
     }
 
     /**

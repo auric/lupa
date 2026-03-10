@@ -2,6 +2,7 @@ import { DiffHunk } from '../types/contextTypes';
 import type { CodeIntelligenceBrief } from '../types/enrichedDiffTypes';
 import { ToolAwareSystemPromptGenerator } from '../prompts/toolAwareSystemPromptGenerator';
 import { RecursionConstants } from '../sessions/recursiveStateManager';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
 
 /**
  * Centralized prompt generation service.
@@ -15,16 +16,22 @@ export class PromptGenerator {
      * Tool descriptions are provided to the LLM via the VS Code API tool schemas,
      * so the system prompt focuses on methodology and behavioral guidance.
      */
-    public generateToolAwareSystemPrompt(): string {
-        return this.toolAwarePromptGenerator.generateSystemPrompt();
+    public generateToolAwareSystemPrompt(
+        calibration?: ModelCalibrationProfile
+    ): string {
+        return this.toolAwarePromptGenerator.generateSystemPrompt(calibration);
     }
 
     /**
      * Generate recursive review system prompt for the root controller agent.
      * Uses decompose → delegate → aggregate → synthesize methodology.
      */
-    public generateRecursiveSystemPrompt(): string {
-        return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt();
+    public generateRecursiveSystemPrompt(
+        calibration?: ModelCalibrationProfile
+    ): string {
+        return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt(
+            calibration
+        );
     }
 
     /**

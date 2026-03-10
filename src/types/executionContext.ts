@@ -5,6 +5,7 @@ import { SubagentExecutor } from '../services/subagentExecutor';
 import { RecursiveStateManager } from '../sessions/recursiveStateManager';
 import type { FindingStore } from '../sessions/findingStore';
 import type { DiffHunk } from './contextTypes';
+import type { ModelCalibrationProfile } from '../models/modelCalibration';
 
 /**
  * Context passed to tools during execution.
@@ -79,4 +80,16 @@ export interface ExecutionContext {
      * Findings survive timeout/cancellation and are structured from the start.
      */
     findingStore?: FindingStore;
+
+    /**
+     * Model-specific calibration profile for the current analysis.
+     * Adjusts prompt content, challenge mode, and tool enforcement per model.
+     */
+    calibrationProfile?: ModelCalibrationProfile;
+
+    /**
+     * Per-tool-name call counts for the current analysis.
+     * Used by calibration gates (e.g., minimum validate_claim calls before submit).
+     */
+    toolCallCounts?: Map<string, number>;
 }
