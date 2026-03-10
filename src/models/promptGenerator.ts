@@ -17,7 +17,7 @@ export class PromptGenerator {
      * so the system prompt focuses on methodology and behavioral guidance.
      */
     public generateToolAwareSystemPrompt(
-        calibration?: ModelCalibrationProfile
+        calibration: ModelCalibrationProfile
     ): string {
         return this.toolAwarePromptGenerator.generateSystemPrompt(calibration);
     }
@@ -27,7 +27,7 @@ export class PromptGenerator {
      * Uses decompose → delegate → aggregate → synthesize methodology.
      */
     public generateRecursiveSystemPrompt(
-        calibration?: ModelCalibrationProfile
+        calibration: ModelCalibrationProfile
     ): string {
         return this.toolAwarePromptGenerator.generateRecursiveSystemPrompt(
             calibration

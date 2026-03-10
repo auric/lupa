@@ -14,9 +14,9 @@ import type { ModelCalibrationProfile } from '../../models/modelCalibration';
  * Devil's advocate mode (balanced/aggressive): argues AGAINST findings to filter noise.
  */
 export function generateSelfReflectionGuidance(
-    calibration?: ModelCalibrationProfile
+    calibration: ModelCalibrationProfile
 ): string {
-    const challengeMode = calibration?.challengeMode ?? 'devils-advocate';
+    const challengeMode = calibration.challengeMode;
 
     const challengeCheckpoint =
         challengeMode === 'prosecution'

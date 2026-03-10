@@ -41,6 +41,7 @@ import type {
 } from '../types/chatTypes';
 import type { DiffHunk } from '../types/contextTypes';
 import type { ExecutionContext } from '../types/executionContext';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import { createFollowupProvider } from './chatFollowupProvider';
 
 /**
@@ -281,6 +282,8 @@ export class ChatParticipantService implements vscode.Disposable {
                 subagentSessionManager,
                 subagentExecutor,
                 cancellationToken: token,
+                calibrationProfile: DEFAULT_PROFILE,
+                toolCallCounts: new Map(),
             });
 
             const runner = new ConversationRunner(client, toolExecutor);
@@ -549,7 +552,7 @@ export class ChatParticipantService implements vscode.Disposable {
 
         // Create execution context as a mutable reference so parsedDiff can be
         // set after diff processing (RLM approach needs it on the context for tools)
-        const executionContext: ExecutionContext = {
+        const executionContext = {
             planManager,
             subagentSessionManager,
             subagentExecutor,
@@ -558,7 +561,9 @@ export class ChatParticipantService implements vscode.Disposable {
             currentDepth: 0,
             currentAgentId: 'root',
             findingStore,
-        };
+            calibrationProfile: DEFAULT_PROFILE,
+            toolCallCounts: new Map<string, number>(),
+        } as ExecutionContext;
 
         const toolExecutor = new ToolExecutor(
             this.deps!.toolRegistry,
@@ -572,8 +577,12 @@ export class ChatParticipantService implements vscode.Disposable {
         const conversation = new ConversationManager();
         const availableTools = toolExecutor.getAvailableTools();
         const systemPrompt = isRecursiveMode
-            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt()
-            : this.deps!.promptGenerator.generateToolAwareSystemPrompt();
+            ? this.deps!.promptGenerator.generateRecursiveSystemPrompt(
+                  DEFAULT_PROFILE
+              )
+            : this.deps!.promptGenerator.generateToolAwareSystemPrompt(
+                  DEFAULT_PROFILE
+              );
 
         if (gitRootUri && parsedDiff.length > 0) {
             const fileTree = buildFileTree(parsedDiff);

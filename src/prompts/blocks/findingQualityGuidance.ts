@@ -19,11 +19,11 @@ import type { ModelCalibrationProfile } from '../../models/modelCalibration';
  * - Balanced models: full guidance (original behavior)
  */
 export function generateFindingQualityGuidance(
-    calibration?: ModelCalibrationProfile
+    calibration: ModelCalibrationProfile
 ): string {
-    const includeRevertTest = calibration?.includeRevertTest ?? true;
-    const includeFPGuide = calibration?.includeFalsePositiveGuide ?? true;
-    const evidenceThreshold = calibration?.evidenceThreshold ?? 'medium';
+    const includeRevertTest = calibration.includeRevertTest;
+    const includeFPGuide = calibration.includeFalsePositiveGuide;
+    const evidenceThreshold = calibration.evidenceThreshold;
 
     const revertTestSection = includeRevertTest
         ? `
@@ -186,7 +186,7 @@ Different languages and runtimes have different semantics. Before reporting conc
 
 The key principle: **verify, don't assume.** The same code pattern can be a bug in one language and perfectly safe in another.
 ${
-    calibration?.findingBias !== 'dismissive'
+    calibration.findingBias !== 'dismissive'
         ? `
 ### False Positive Cost
 

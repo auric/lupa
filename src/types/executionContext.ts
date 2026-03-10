@@ -85,11 +85,11 @@ export interface ExecutionContext {
      * Model-specific calibration profile for the current analysis.
      * Adjusts prompt content, challenge mode, and tool enforcement per model.
      */
-    calibrationProfile?: ModelCalibrationProfile;
+    calibrationProfile: ModelCalibrationProfile;
 
     /**
      * Per-tool-name call counts for the current analysis.
      * Used by calibration gates (e.g., minimum validate_claim calls before submit).
      */
-    toolCallCounts?: Map<string, number>;
+    toolCallCounts: Map<string, number>;
 }

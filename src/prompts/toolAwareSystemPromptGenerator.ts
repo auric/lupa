@@ -20,7 +20,7 @@ export class ToolAwareSystemPromptGenerator {
      * Generate system prompt for PR review mode.
      * Uses modular blocks: role, tools, methodology, output format.
      */
-    public generateSystemPrompt(calibration?: ModelCalibrationProfile): string {
+    public generateSystemPrompt(calibration: ModelCalibrationProfile): string {
         return createPRReviewPromptBuilder(calibration).build();
     }
 
@@ -29,7 +29,7 @@ export class ToolAwareSystemPromptGenerator {
      * Root agent decomposes the PR and delegates to recursive sub-agents.
      */
     public generateRecursiveSystemPrompt(
-        calibration?: ModelCalibrationProfile
+        calibration: ModelCalibrationProfile
     ): string {
         return createRecursiveRootPromptBuilder(calibration).build();
     }

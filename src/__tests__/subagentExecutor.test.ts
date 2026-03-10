@@ -510,7 +510,7 @@ describe('SubagentExecutor', () => {
                 expect.anything(),
                 expect.any(Number),
                 true, // canRecurse
-                undefined // calibrationProfile
+                expect.objectContaining({ name: expect.any(String) }) // calibrationProfile
             );
         });
 
@@ -537,7 +537,7 @@ describe('SubagentExecutor', () => {
                 expect.anything(),
                 expect.any(Number),
                 false, // canRecurse
-                undefined // calibrationProfile
+                expect.objectContaining({ name: expect.any(String) }) // calibrationProfile
             );
         });
 

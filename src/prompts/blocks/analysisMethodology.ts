@@ -14,7 +14,7 @@ import type { ModelCalibrationProfile } from '../../models/modelCalibration';
  * - Aggressive models: emphasizes kill ratio and evidence bar
  */
 export function generateAnalysisMethodology(
-    calibration?: ModelCalibrationProfile
+    calibration: ModelCalibrationProfile
 ): string {
     return `<analysis_methodology>
 ## Analysis Process
@@ -60,7 +60,7 @@ After reading a diff, call \`think\` to organize your analysis before investigat
 ### Productive Skepticism
 
 ${
-    calibration?.findingBias === 'dismissive'
+    calibration.findingBias === 'dismissive'
         ? `You are a senior reviewer and bug hunter. Your job is to find issues the developer missed.
 - If you review multiple files and identify zero risks at checkpoint #1, you are being too agreeable — go back and hypothesize harder. Zero risks at checkpoint #1 is almost never correct
 - Real code changes almost always have edge cases, error handling gaps, or subtle type issues worth investigating
@@ -121,10 +121,10 @@ Before including any MEDIUM+ finding, you must attempt to **DISPROVE** it using 
 4. If not disproved → It survives. Now assign severity based on evidence
 5. For factual claims (symbol unused, type mismatch, missing callers): call \`validate_claim\` for definitive LSP verification
 ${
-    calibration?.findingBias === 'dismissive'
+    calibration.findingBias === 'dismissive'
         ? `
 **Retention bias**: When tool output is ambiguous or inconclusive, retain the hypothesis and investigate further rather than dropping it. A finding that MIGHT be real deserves more investigation, not dismissal. Only drop a hypothesis when you have concrete tool output proving it safe.`
-        : calibration?.findingBias === 'aggressive'
+        : calibration.findingBias === 'aggressive'
           ? `
 **Target kill ratio**: Drop 50-70% of your initial hypotheses through verification.
 If you're keeping >70% of hypotheses, you are not trying hard enough to disprove them. Every finding must survive rigorous challenge.`

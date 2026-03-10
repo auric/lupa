@@ -24,13 +24,13 @@ function agenticPreamble(): string {
  * - Balanced models: original balanced persona
  */
 export function generatePRReviewerRole(
-    calibration?: ModelCalibrationProfile
+    calibration: ModelCalibrationProfile
 ): string {
-    const preamble = calibration?.includeAgenticPreamble
+    const preamble = calibration.includeAgenticPreamble
         ? agenticPreamble()
         : '';
 
-    if (calibration?.findingBias === 'dismissive') {
+    if (calibration.findingBias === 'dismissive') {
         return `${preamble}You are a Staff Engineer performing a pull request review. You are known for:
 
 - Always structuring investigations with a plan before diving into code
@@ -47,7 +47,7 @@ You have access to code exploration tools. Use them to investigate—never guess
 **Your first tool call on any review MUST be \`update_plan\` to establish your investigation checklist.**`;
     }
 
-    if (calibration?.findingBias === 'aggressive') {
+    if (calibration.findingBias === 'aggressive') {
         return `${preamble}You are a Staff Engineer performing a pull request review. You are known for:
 
 - Always structuring investigations with a plan before diving into code

@@ -126,9 +126,12 @@ export class ToolCallingAnalysisProvider {
             recursiveState.startAgent('root');
         }
 
-        // Create execution context as a mutable reference so parsedDiff can be
-        // set after diff processing
-        const executionContext: ExecutionContext = {
+        // Create execution context as a mutable reference so parsedDiff and
+        // calibrationProfile can be set after model resolution.
+        // Type assertion needed because calibrationProfile/toolCallCounts are
+        // populated later (calibrationProfile after model resolution,
+        // toolCallCounts by ToolExecutor constructor).
+        const executionContext = {
             planManager,
             subagentSessionManager,
             subagentExecutor,
@@ -137,7 +140,8 @@ export class ToolCallingAnalysisProvider {
             currentDepth: 0,
             currentAgentId: 'root',
             findingStore,
-        };
+            toolCallCounts: new Map<string, number>(),
+        } as ExecutionContext;
 
         const toolExecutor = new ToolExecutor(
             this.toolRegistry,
@@ -511,7 +515,10 @@ export class ToolCallingAnalysisProvider {
                     },
                     token,
                     -1, // negative ID to distinguish adversarial from regular subagents
-                    { childBudget: ADVERSARIAL_BUDGET }
+                    {
+                        childBudget: ADVERSARIAL_BUDGET,
+                        calibrationProfile: executionContext.calibrationProfile,
+                    }
                 );
 
                 const verdict = this.parseAdversarialVerdict(result.response);

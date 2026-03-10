@@ -29,7 +29,7 @@ export class SubagentPromptGenerator {
         tools: ITool[],
         maxIterations: number,
         canRecurse: boolean = false,
-        calibration?: ModelCalibrationProfile
+        calibration: ModelCalibrationProfile
     ): string {
         const hasDiffTools = tools.some((t) => t.name === 'get_file_diff');
         const contextSection = task.context
@@ -219,7 +219,7 @@ Focus on the highest-risk items first. If you can't fully investigate all areas,
 
         // Calibration-specific behavioral override for subagents
         const calibrationSection =
-            calibration?.findingBias === 'dismissive'
+            calibration.findingBias === 'dismissive'
                 ? `
 <calibration_override>
 ## Investigation Stance: Prosecution Mode
@@ -309,11 +309,11 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs (with 2-3 hypotheses in identified_risks), after gathering evidence, and as ' + (calibration?.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording' : '- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context (with 2-3 hypotheses in identified_risks), after gathering evidence, and as ' + (calibration?.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording'}
+${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs (with 2-3 hypotheses in identified_risks), after gathering evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording' : '- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context (with 2-3 hypotheses in identified_risks), after gathering evidence, and as ' + (calibration.challengeMode === 'prosecution' ? 'prosecution checkpoint' : "devil's advocate") + ' before recording'}
 - ⚠️ You MUST call \`validate_claim\` before EVERY \`record_finding\` — findings without LSP verification are untrustworthy
 - ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
 - For factual claims ("unused symbol", "wrong type", "no callers"): \`validate_claim\` LSP result overrides your reasoning
-${calibration?.challengeMode === 'prosecution' ? '- **Prosecution**: Before recording, use `think` to argue FOR your finding — construct the strongest case that this IS a bug. If the prosecution case is strong, record it. Only drop if you have concrete tool output proving it safe' : "- **Devil's advocate**: Before recording, use `think` to argue AGAINST your finding. If you can't defeat the counter-argument, record it. If the counter-argument wins, drop it"}
+${calibration.challengeMode === 'prosecution' ? '- **Prosecution**: Before recording, use `think` to argue FOR your finding — construct the strongest case that this IS a bug. If the prosecution case is strong, record it. Only drop if you have concrete tool output proving it safe' : "- **Devil's advocate**: Before recording, use `think` to argue AGAINST your finding. If you can't defeat the counter-argument, record it. If the counter-argument wins, drop it"}
 - Return partial findings if running low on iterations — partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;

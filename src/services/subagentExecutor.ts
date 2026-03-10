@@ -25,7 +25,10 @@ import type { FindingStore } from '../sessions/findingStore';
 import type { ExecutionContext } from '../types/executionContext';
 import type { DiffHunk } from '../types/contextTypes';
 import type { SubagentSessionManager } from './subagentSessionManager';
-import type { ModelCalibrationProfile } from '../models/modelCalibration';
+import {
+    type ModelCalibrationProfile,
+    DEFAULT_PROFILE,
+} from '../models/modelCalibration';
 import { Log } from './loggingService';
 import { isCancellationError } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -50,7 +53,7 @@ export interface SubagentExecuteOptions {
     /** Shared finding store for the analysis — enables subagents to record findings. */
     findingStore?: FindingStore;
     /** Model calibration profile inherited from parent — adjusts prompt behavior. */
-    calibrationProfile?: ModelCalibrationProfile;
+    calibrationProfile: ModelCalibrationProfile;
 }
 
 /**
@@ -191,7 +194,9 @@ export class SubagentExecutor {
                 currentAgentId: options?.agentId,
                 parsedDiff: options?.parsedDiff,
                 findingStore: options?.findingStore,
-                calibrationProfile: options?.calibrationProfile,
+                calibrationProfile:
+                    options?.calibrationProfile ?? DEFAULT_PROFILE,
+                toolCallCounts: new Map(),
             };
 
             const toolExecutor = new ToolExecutor(

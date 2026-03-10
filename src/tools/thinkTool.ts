@@ -65,7 +65,7 @@ export class ThinkTool extends BaseTool {
         );
 
         const profile = context.calibrationProfile;
-        const isDismissive = profile?.findingBias === 'dismissive';
+        const isDismissive = profile.findingBias === 'dismissive';
 
         const riskNote =
             riskCount > 0

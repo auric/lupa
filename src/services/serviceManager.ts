@@ -25,6 +25,7 @@ import { ToolExecutor } from '../models/toolExecutor';
 import { ConversationManager } from '../models/conversationManager';
 import { ToolCallingAnalysisProvider } from './toolCallingAnalysisProvider';
 import type { ExecutionContext } from '../types/executionContext';
+import { DEFAULT_PROFILE } from '../models/modelCalibration';
 import { getErrorMessage } from '../utils/errorUtils';
 import { FindSymbolTool } from '../tools/findSymbolTool';
 import { FindUsagesTool } from '../tools/findUsagesTool';
@@ -207,6 +208,8 @@ export class ServiceManager implements vscode.Disposable {
         this.utilityTokenSource = new vscode.CancellationTokenSource();
         const utilityContext: ExecutionContext = {
             cancellationToken: this.utilityTokenSource.token,
+            calibrationProfile: DEFAULT_PROFILE,
+            toolCallCounts: new Map(),
         };
         this.services.toolExecutor = new ToolExecutor(
             this.services.toolRegistry,

@@ -52,9 +52,9 @@ export class SubmitReviewTool extends BaseTool {
 
         // Calibration gate: dismissive models must call validate_claim before submitting
         const profile = context.calibrationProfile;
-        if (profile && profile.minValidateClaimBeforeSubmit > 0) {
+        if (profile.minValidateClaimBeforeSubmit > 0) {
             const validateClaimCalls =
-                context.toolCallCounts?.get('validate_claim') ?? 0;
+                context.toolCallCounts.get('validate_claim') ?? 0;
             if (validateClaimCalls < profile.minValidateClaimBeforeSubmit) {
                 return toolError(
                     `Review rejected: you have not called validate_claim yet (${validateClaimCalls} calls, minimum ${profile.minValidateClaimBeforeSubmit} required). ` +
