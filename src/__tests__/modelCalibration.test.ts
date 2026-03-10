@@ -58,9 +58,27 @@ describe('modelCalibration', () => {
             expect(profile.evidenceThreshold).toBe('medium');
         });
 
-        it('returns Claude profile for raptor family (Copilot alias)', () => {
-            const profile = getCalibrationProfile('raptor', 'raptor-mini');
-            expect(profile.name).toBe('claude');
+        it('returns Raptor mini profile for oswe-vscode-prime id', () => {
+            const profile = getCalibrationProfile(
+                'gpt-5-mini',
+                'oswe-vscode-prime'
+            );
+            expect(profile.name).toBe('raptor-mini');
+            expect(profile.findingBias).toBe('balanced');
+            expect(profile.challengeMode).toBe('devils-advocate');
+            expect(profile.includeAgenticPreamble).toBe(true);
+            expect(profile.evidenceThreshold).toBe('medium');
+        });
+
+        it('returns Raptor mini profile for oswe-vscode id variant', () => {
+            const profile = getCalibrationProfile('gpt-5-mini', 'oswe-vscode');
+            expect(profile.name).toBe('raptor-mini');
+        });
+
+        it('returns GPT-5 mini profile for gpt-5-mini id (not Raptor)', () => {
+            const profile = getCalibrationProfile('gpt-5-mini', 'gpt-5-mini');
+            expect(profile.name).toBe('gpt-5-mini');
+            expect(profile.findingBias).toBe('aggressive');
         });
 
         it('returns default balanced profile for unknown models', () => {

@@ -73,8 +73,8 @@ describe('Calibration-aware prompt blocks', () => {
             expect(role).toContain('False positives erode');
         });
 
-        it('should work without calibration (backward compat)', () => {
-            const role = generatePRReviewerRole();
+        it('should produce balanced output with balanced profile', () => {
+            const role = generatePRReviewerRole(BALANCED_PROFILE);
             expect(role).toContain('Staff Engineer');
             expect(role).toContain('update_plan');
         });
@@ -105,8 +105,8 @@ describe('Calibration-aware prompt blocks', () => {
             expect(methodology).toContain('almost never correct');
         });
 
-        it('should work without calibration (backward compat)', () => {
-            const methodology = generateAnalysisMethodology();
+        it('should produce balanced output with balanced profile', () => {
+            const methodology = generateAnalysisMethodology(BALANCED_PROFILE);
             expect(methodology).toContain('Analysis Process');
             expect(methodology).toContain('update_plan');
         });
@@ -135,8 +135,8 @@ describe('Calibration-aware prompt blocks', () => {
             expect(reflection).toContain('disproof you attempted');
         });
 
-        it('should work without calibration (backward compat)', () => {
-            const reflection = generateSelfReflectionGuidance();
+        it('should produce balanced output with balanced profile', () => {
+            const reflection = generateSelfReflectionGuidance(BALANCED_PROFILE);
             expect(reflection).toContain('Self-Reflection');
             expect(reflection).toContain('submit_review');
         });
@@ -190,11 +190,11 @@ describe('Calibration-aware prompt blocks', () => {
             expect(guidance).toContain('strong, concrete evidence');
         });
 
-        it('should work without calibration (backward compat)', () => {
-            const guidance = generateFindingQualityGuidance();
+        it('should produce balanced output with balanced profile', () => {
+            const guidance = generateFindingQualityGuidance(BALANCED_PROFILE);
             expect(guidance).toContain('Finding Quality Standards');
             expect(guidance).toContain('Verification Gates');
-            // Default includes revert test and FP patterns
+            // Balanced profile includes revert test and FP patterns
             expect(guidance).toContain('Revert Test');
             expect(guidance).toContain('False Positive Patterns');
         });

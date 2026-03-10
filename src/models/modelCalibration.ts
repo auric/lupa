@@ -96,6 +96,22 @@ const GPT_5_MINI_PROFILE: ModelCalibrationProfile = {
     evidenceThreshold: 'high',
 };
 
+/**
+ * Raptor mini: Microsoft fine-tune of GPT-5 mini for coding.
+ * Reports as family "gpt-5-mini" but id "oswe-vscode-prime" or "oswe-vscode".
+ * Lower FP ratio than raw GPT-5 mini, balanced finding behavior.
+ */
+const RAPTOR_MINI_PROFILE: ModelCalibrationProfile = {
+    name: 'raptor-mini',
+    findingBias: 'balanced',
+    challengeMode: 'devils-advocate',
+    includeFalsePositiveGuide: true,
+    includeRevertTest: true,
+    minValidateClaimBeforeSubmit: 0,
+    includeAgenticPreamble: true,
+    evidenceThreshold: 'medium',
+};
+
 const CLAUDE_PROFILE: ModelCalibrationProfile = {
     name: 'claude',
     findingBias: 'balanced',
@@ -107,7 +123,7 @@ const CLAUDE_PROFILE: ModelCalibrationProfile = {
     evidenceThreshold: 'medium',
 };
 
-const DEFAULT_PROFILE: ModelCalibrationProfile = {
+export const DEFAULT_PROFILE: ModelCalibrationProfile = {
     ...CLAUDE_PROFILE,
     name: 'default',
 };
@@ -130,15 +146,19 @@ const MODEL_MATCHERS: Array<{
         profile: GPT_4O_PROFILE,
     },
     {
-        test: (_family, id) =>
-            id.startsWith('gpt-5-mini') || id.startsWith('gpt-5mini'),
+        test: (_family, id) => id.startsWith('oswe-vscode'),
+        profile: RAPTOR_MINI_PROFILE,
+    },
+    {
+        test: (family, id) =>
+            family === 'gpt-5-mini' ||
+            id.startsWith('gpt-5-mini') ||
+            id.startsWith('gpt-5mini'),
         profile: GPT_5_MINI_PROFILE,
     },
     {
         test: (family, _id) =>
-            family.startsWith('claude') ||
-            family.includes('sonnet') ||
-            family.includes('raptor'),
+            family.startsWith('claude') || family.includes('sonnet'),
         profile: CLAUDE_PROFILE,
     },
 ];

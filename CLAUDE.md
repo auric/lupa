@@ -130,7 +130,7 @@ This is a mandatory part of your workflow for any multi-step task:
 1. Implement a logical chunk of work
 2. Run `npm run check-types` — must pass
 3. Run relevant tests if you changed behavior
-4. Run `git add -A && git commit -m "descriptive message"` — **do this yourself, right now**
+4. Run `git add <changed-files> && git commit -m "descriptive message"` — **do this yourself, right now**. **Never use `git add -A` or `git add .`** — only stage files you actually changed to avoid committing unrelated/untracked files.
 5. Move to the next chunk — repeat from step 1
 
 ### What Makes a Good Commit Boundary
