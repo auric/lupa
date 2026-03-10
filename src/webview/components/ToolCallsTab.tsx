@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
     ChevronRight,
     Bot,
@@ -9,6 +9,9 @@ import {
     Clock,
     MessageSquare,
     Info,
+    Search,
+    X,
+    Filter,
 } from 'lucide-react';
 import { JsonViewer } from './JsonViewer';
 import { CopyButton } from './CopyButton';
@@ -21,6 +24,54 @@ interface ToolCallsTabProps {
 }
 
 // ── Helpers ──
+
+/** Recursively collect tool name → call count across the entire tree */
+function collectToolNameCounts(calls: ToolCallRecord[]): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const call of calls) {
+        counts.set(call.toolName, (counts.get(call.toolName) ?? 0) + 1);
+        if (call.nestedCalls?.length) {
+            const nested = collectToolNameCounts(call.nestedCalls);
+            for (const [name, count] of nested) {
+                counts.set(name, (counts.get(name) ?? 0) + count);
+            }
+        }
+    }
+    return counts;
+}
+
+/**
+ * Filter call tree by tool name substring match.
+ * Subagents are included if they or any of their nested calls match.
+ * Returns a new array with only matching calls (subagents get filtered nestedCalls).
+ */
+function filterCallTree(
+    calls: ToolCallRecord[],
+    filter: string
+): ToolCallRecord[] {
+    const lowerFilter = filter.toLowerCase();
+    const result: ToolCallRecord[] = [];
+    for (const call of calls) {
+        const nameMatches = call.toolName.toLowerCase().includes(lowerFilter);
+        if (call.nestedCalls?.length) {
+            // Subagent: include if name matches (show all nested) or if any nested matches
+            if (nameMatches) {
+                result.push(call);
+            } else {
+                const filteredNested = filterCallTree(call.nestedCalls, filter);
+                if (filteredNested.length > 0) {
+                    result.push({
+                        ...call,
+                        nestedCalls: filteredNested,
+                    });
+                }
+            }
+        } else if (nameMatches) {
+            result.push(call);
+        }
+    }
+    return result;
+}
 
 function countAllFailed(calls: ToolCallRecord[]): number {
     let count = 0;
@@ -469,7 +520,20 @@ const EmptyState = () => (
     </div>
 );
 
+const FilterEmptyState = () => (
+    <div className="tc-empty">
+        <Filter size={28} strokeWidth={1.2} className="tc-empty-icon" />
+        <div className="tc-empty-title">No Matching Tool Calls</div>
+        <div className="tc-empty-desc">
+            Try a different filter or clear the search.
+        </div>
+    </div>
+);
+
 export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
+    const [filterText, setFilterText] = useState('');
+    const inputRef = useRef<HTMLInputElement>(null);
+
     if (!toolCalls || toolCalls.calls.length === 0) {
         return <EmptyState />;
     }
@@ -495,6 +559,46 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
         () => formatToolCallsAsMarkdown(toolCalls),
         [toolCalls]
     );
+
+    const toolNameCounts = useMemo(
+        () => collectToolNameCounts(toolCalls.calls),
+        [toolCalls.calls]
+    );
+
+    const sortedToolNames = useMemo(
+        () => [...toolNameCounts.entries()].sort((a, b) => b[1] - a[1]),
+        [toolNameCounts]
+    );
+
+    const trimmedFilter = filterText.trim();
+    const isFiltering = trimmedFilter.length > 0;
+
+    const filteredCalls = useMemo(
+        () =>
+            isFiltering
+                ? filterCallTree(toolCalls.calls, trimmedFilter)
+                : toolCalls.calls,
+        [toolCalls.calls, trimmedFilter, isFiltering]
+    );
+
+    const filteredTotal = useMemo(
+        () => (isFiltering ? countAllCalls(filteredCalls) : totalCalls),
+        [isFiltering, filteredCalls, totalCalls]
+    );
+
+    const handleChipClick = (toolName: string) => {
+        if (filterText === toolName) {
+            setFilterText('');
+        } else {
+            setFilterText(toolName);
+        }
+        inputRef.current?.focus();
+    };
+
+    const handleClearFilter = () => {
+        setFilterText('');
+        inputRef.current?.focus();
+    };
 
     return (
         <div className="tc-container">
@@ -559,9 +663,62 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                 </div>
             )}
 
+            {/* Filter bar */}
+            <div className="tc-filter">
+                <div className="tc-filter-row">
+                    <div className="tc-filter-input-wrap">
+                        <Search size={13} className="tc-filter-icon" />
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            className="tc-filter-input"
+                            placeholder="Filter by tool name..."
+                            value={filterText}
+                            onChange={(e) => setFilterText(e.target.value)}
+                        />
+                        {isFiltering && (
+                            <button
+                                className="tc-filter-clear"
+                                onClick={handleClearFilter}
+                                aria-label="Clear filter"
+                            >
+                                <X size={13} />
+                            </button>
+                        )}
+                    </div>
+                    {isFiltering && (
+                        <span className="tc-filter-count">
+                            {filteredTotal} of {totalCalls}
+                        </span>
+                    )}
+                </div>
+                <div className="tc-filter-chips">
+                    {sortedToolNames.map(([name, count]) => (
+                        <button
+                            key={name}
+                            className={`tc-filter-chip ${
+                                filterText === name
+                                    ? 'tc-filter-chip--active'
+                                    : ''
+                            }`}
+                            onClick={() => handleChipClick(name)}
+                        >
+                            {name}
+                            <span className="tc-filter-chip-count">
+                                {count}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             {/* Unified call tree — root agent's calls rendered inline */}
             <div className="tc-list">
-                <CallList calls={toolCalls.calls} depth={0} />
+                {isFiltering && filteredCalls.length === 0 ? (
+                    <FilterEmptyState />
+                ) : (
+                    <CallList calls={filteredCalls} depth={0} />
+                )}
             </div>
         </div>
     );

@@ -98,6 +98,150 @@
 
 /* ── Scrollable call list ── */
 
+/* ── Filter bar ── */
+
+.tc-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--vscode-panel-border);
+    background: var(--vscode-editorWidget-background);
+    flex-shrink: 0;
+}
+
+.tc-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tc-filter-input-wrap {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    transition: border-color 0.15s;
+}
+
+.tc-filter-input-wrap:focus-within {
+    border-color: var(--vscode-focusBorder);
+}
+
+.tc-filter-icon {
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.tc-filter-input {
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--vscode-input-foreground, var(--vscode-foreground));
+    font-size: 0.75rem;
+    font-family: var(--vscode-font-family, sans-serif);
+    line-height: 1.4;
+}
+
+.tc-filter-input::placeholder {
+    color: var(
+        --vscode-input-placeholderForeground,
+        var(--vscode-descriptionForeground)
+    );
+    opacity: 0.6;
+}
+
+.tc-filter-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    cursor: pointer;
+    padding: 0.125rem;
+    border-radius: 3px;
+    flex-shrink: 0;
+    transition:
+        background 0.1s,
+        color 0.1s;
+}
+
+.tc-filter-clear:hover {
+    background: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-foreground);
+}
+
+.tc-filter-count {
+    font-size: 0.6875rem;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.tc-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.tc-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid
+        color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.625rem;
+    font-family: var(--vscode-editor-font-family, monospace);
+    cursor: pointer;
+    transition:
+        background 0.1s,
+        border-color 0.1s,
+        color 0.1s;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.tc-filter-chip:hover {
+    background: var(--vscode-list-hoverBackground);
+    border-color: var(--vscode-panel-border);
+    color: var(--vscode-foreground);
+}
+
+.tc-filter-chip--active {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-color: var(--vscode-badge-background);
+}
+
+.tc-filter-chip--active:hover {
+    background: var(--vscode-badge-background);
+    color: var(--vscode-badge-foreground);
+    border-color: var(--vscode-badge-background);
+    opacity: 0.9;
+}
+
+.tc-filter-chip-count {
+    font-size: 0.5625rem;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+
+.tc-filter-chip--active .tc-filter-chip-count {
+    opacity: 0.85;
+}
+
 .tc-list {
     flex: 1;
     overflow-y: auto;
