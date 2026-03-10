@@ -63,6 +63,14 @@ export class ThinkTool extends BaseTool {
             guidance += `### Identified Risks (${identified_risks.length})\n`;
             guidance += identified_risks.map((r) => `- ⚠️ ${r}`).join('\n');
             guidance += '\n\n';
+            guidance += `### Verification Required\n`;
+            guidance += `Before recording any risk as a finding, call a tool to attempt disproof:\n`;
+            guidance += `- find_usages: Check if callers already handle the risk\n`;
+            guidance += `- find_symbol (include_body: true): Read full implementation for mitigations\n`;
+            guidance += `- search_for_pattern: Look for existing guards or checks\n`;
+            guidance += `Drop any risk you cannot verify with tool evidence.\n\n`;
+        } else {
+            guidance += `No risks identified — proceed to next area.\n\n`;
         }
 
         if (next_action) {

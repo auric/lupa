@@ -231,7 +231,6 @@ export class SubagentExecutor {
             const ORIENTATION_ONLY_TOOLS = new Set([
                 'get_file_diff',
                 'list_directory',
-                'think',
             ]);
 
             // Run the conversation loop with labeled logging and progress reporting

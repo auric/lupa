@@ -55,54 +55,82 @@ Your parent agent already identified which files belong to your investigation �
             canRecurse && hasDiffTools
                 ? `
 1. **Check your scope**: Count the files in your task.
-   - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-4 below.
+   - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-5 below.
    - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
-2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both to identify real issues.
+2. ⚠️ **Analyze Before Investigating**: Call \`think\` to organize what you observed in the diff:
+   - topic: "[filename] changes"
+   - analysis: what changed, what looks risky, what looks correct
+   - identified_risks: specific concerns to verify with tools
+   - next_action: which tool to call next and why
+   Skipping this step leads to unfocused investigation and false positives.
 
-3. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
+3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both to identify real issues.
 
-4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+4. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
 
-Diff reading is orientation, not investigation. You must call tools from steps 2-4 before writing findings.
+5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-5. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
+Diff reading is orientation, not investigation. You must call tools from steps 3-5 before writing findings.
 
-After reading a diff, call \`think\` to organize your analysis before investigating. After confirming a finding, call \`record_finding\` promptly.
+6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
+
+### Example Investigation Flow
+\`\`\`
+get_file_diff({file_paths: ["src/auth.ts"]})
+→ think({topic: "auth.ts changes", analysis: "Login now accepts plain string password. Comparison uses === which is not constant-time.", identified_risks: ["Timing attack on password comparison"], next_action: "find_usages for login() to check callers"})
+→ find_usages({symbol: "login", file: "src/auth.ts"})
+→ If confirmed: record_finding(...)  |  If disproved: move to next file
+\`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                 : hasDiffTools
                   ? `
 1. **Read the Diff**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This gives you orientation — what changed and where.
 
-2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both.
+2. ⚠️ **Analyze Before Investigating**: Call \`think\` to organize what you observed:
+   - topic: "[filename] changes"
+   - analysis: what changed, what looks risky, what looks correct
+   - identified_risks: specific concerns to verify with tools
+   - next_action: which tool to call next and why
+   Skipping this step leads to unfocused investigation and false positives.
 
-3. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
+3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to read complete implementations of changed functions. The diff shows what changed but not the surrounding code — you need both.
 
-4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+4. **Trace Dependencies**: Use \`find_usages\` to understand callers of modified functions and whether changes affect them.
 
-5. **Self-Reflect**: Use \`think\` to evaluate your progress midway through.
+5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
 6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
 
-Diff reading is orientation, not investigation. You must call tools from steps 2-5 before writing findings.
-After reading a diff, call \`think\` to organize your analysis before investigating. After confirming a finding, call \`record_finding\` promptly.
+Diff reading is orientation, not investigation. You must call tools from steps 3-5 before writing findings.
+
+### Example Investigation Flow
+\`\`\`
+get_file_diff({file_paths: ["src/auth.ts"]})
+→ think({topic: "auth.ts changes", analysis: "Login now accepts plain string password. Comparison uses === which is not constant-time.", identified_risks: ["Timing attack on password comparison"], next_action: "find_usages for login() to check callers"})
+→ find_usages({symbol: "login", file: "src/auth.ts"})
+→ If confirmed: record_finding(...)  |  If disproved: move to next file
+\`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
 1. **Review Parent Context**: Study the code and information the parent agent provided in context above — this is your primary input.
 
-2. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
+2. ⚠️ **Analyze Before Investigating**: Call \`think\` to organize what you observed:
+   - topic: "[area] review"
+   - analysis: what you see in the context, what looks risky, what looks correct
+   - identified_risks: specific concerns to verify with tools
+   - next_action: which tool to call next and why
+   Skipping this step leads to unfocused investigation and false positives.
 
-3. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
+3. **Gather Evidence**: Use \`find_symbol\` with \`include_body: true\` to get complete implementations of relevant functions/classes.
 
-4. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
+4. **Trace Dependencies**: Use \`find_usages\` if you need to understand who calls a function or how it's used.
 
-5. **Self-Reflect**: Use \`think\` to evaluate your progress midway through.
+5. **Search Patterns**: Use \`search_for_pattern\` to find codebase-wide occurrences of concerning patterns.
 
-6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
-
-After reviewing context, call \`think\` to organize your analysis. After confirming a finding, call \`record_finding\` promptly.`;
+6. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.`;
 
         const recursionSection = canRecurse
             ? `
@@ -227,8 +255,8 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-${hasDiffTools ? '- Call \\`think\\` after reading diffs to organize your analysis' : '- Call \\`think\\` after reviewing context to organize your analysis'}
-- Call \`record_finding\` for each confirmed finding
+${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` after reading diffs — this organizes your analysis and prevents false positives' : '- ⚠️ You MUST call \\`think\\` after reviewing context — this organizes your analysis and prevents false positives'}
+- ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
 - Return partial findings if running low on iterations - partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;
