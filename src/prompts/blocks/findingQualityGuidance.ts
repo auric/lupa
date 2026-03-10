@@ -199,7 +199,21 @@ Many well-written PRs have zero reportable findings. That is a normal, expected 
 
 Missing a real bug is costlier than investigating a false lead.
 When evidence is ambiguous, investigate further — do not default to "it's probably fine."
-Use tools to resolve ambiguity: call \`validate_claim\`, \`find_usages\`, or \`search_for_pattern\` instead of reasoning your way to dismissal.`
+Use tools to resolve ambiguity: call \`validate_claim\`, \`find_usages\`, or \`search_for_pattern\` instead of reasoning your way to dismissal.
+
+### Verify Before Recording — Prosecution Model Requirement
+
+You are in prosecution mode: your job is to find real issues aggressively. But EVERY finding you record MUST be backed by tool evidence, not pattern-matching alone.
+
+**Common prosecution pitfalls (findings that FEEL real but aren't):**
+- "Race condition" in single-threaded Node.js → VERIFY the runtime's concurrency model first
+- "Type mismatch" → CALL \`validate_claim\` before recording — your type reasoning is unreliable
+- "Missing validation" → TRACE all callers with \`find_usages\` — a caller may already validate
+- "Missing test" → SEARCH \`__tests__/\` for the function name and synonyms before claiming
+- "Incorrect count" → ENUMERATE actual items instead of estimating
+
+**The prosecution rule: investigate aggressively, record only with tool evidence.**
+If you cannot cite a specific tool call output that supports the finding, you have not verified it. Use tools first, then record.`
 }
 </finding_quality>`;
 }

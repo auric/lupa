@@ -4,6 +4,7 @@ import { BaseTool } from './baseTool';
 import { ToolResult, toolSuccess } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { flexibleStringArrayNonEmpty } from './schemaHelpers';
+import type { RecordedFinding } from '../types/findingTypes';
 
 const Recommendation = z.enum([
     'approve',
@@ -78,15 +79,18 @@ export class ThinkAboutCompletionTool extends BaseTool {
         if (store && store.size > 0) {
             const findings = store.getAll();
             const summary = findings
-                .map(
-                    (f) => `  - [${f.id}] ${f.severity}: ${f.title} (${f.file})`
-                )
+                .map((f) => {
+                    const verificationQ = this.getVerificationQuestion(f);
+                    return `  - [${f.id}] ${f.severity}: ${f.title} (${f.file})${verificationQ}`;
+                })
                 .join('\n');
             findingStoreNote =
                 `\n\n📋 Your investigation team recorded ${store.size} finding(s) in the finding store:\n${summary}\n` +
                 `These findings were recorded by your sub-agents based on tool evidence. ` +
                 `You MUST include each in your review OR explicitly retract it with retract_finding if you have NEW counter-evidence. ` +
-                `Do NOT silently drop findings that your team recorded.`;
+                `Do NOT silently drop findings that your team recorded.\n` +
+                `⚠️ FINAL QUALITY CHECK: For each finding above, confirm you can cite a SPECIFIC tool call (validate_claim, find_usages, search_for_pattern) ` +
+                `that supports it. Findings backed only by LLM reasoning (no tool evidence) should be retracted NOW.`;
         }
 
         return toolSuccess(
@@ -95,5 +99,33 @@ export class ThinkAboutCompletionTool extends BaseTool {
                 `Pre-submit: for each finding, verify it's MECHANICAL (not intent-based), name the confirming tool call, ` +
                 `confirm disproof was attempted. Drop anything "by design." Now call submit_review.${findingStoreNote}`
         );
+    }
+
+    /**
+     * Generate a targeted verification question for a recorded finding based
+     * on its content. Helps the model self-check at the pre-submit stage.
+     */
+    private getVerificationQuestion(finding: RecordedFinding): string {
+        const text = `${finding.title} ${finding.description}`.toLowerCase();
+
+        if (/race\s*condition|concurren|thread.?safe/.test(text)) {
+            return ' → VERIFY: Is the runtime single-threaded? If so, retract.';
+        }
+        if (/type\s*(mismatch|error|wrong)|union\s*type/.test(text)) {
+            return ' → VERIFY: Did validate_claim confirm the type issue?';
+        }
+        if (/missing\s*(validation|check|guard)/.test(text)) {
+            return ' → VERIFY: Did you trace all callers for upstream validation?';
+        }
+        if (/missing\s*test|no\s*test|untested/.test(text)) {
+            return ' → VERIFY: Did you search __tests__/ for the function name?';
+        }
+        if (/unused|dead\s*code|no\s*callers/.test(text)) {
+            return ' → VERIFY: Did find_usages confirm zero callers?';
+        }
+        if (/count|off.?by.?one/.test(text)) {
+            return ' → VERIFY: Did you enumerate actual items to confirm the count?';
+        }
+        return '';
     }
 }
