@@ -248,4 +248,49 @@ describe('ValidateClaimTool', () => {
             ctx.cancellationToken
         );
     });
+
+    describe('normalizeArgs', () => {
+        it('should default to symbol_unused when claim_type is missing', () => {
+            const result = tool.normalizeArgs({
+                file: 'src/service.ts',
+                line: 42,
+                symbol: 'parsedDiff',
+            });
+
+            expect(result.claim_type).toBe('symbol_unused');
+        });
+
+        it('should default to type_mismatch when expected_value is present', () => {
+            const result = tool.normalizeArgs({
+                file: 'src/service.ts',
+                line: 42,
+                symbol: 'count',
+                expected_value: 'number',
+            });
+
+            expect(result.claim_type).toBe('type_mismatch');
+        });
+
+        it('should not modify args when claim_type is valid', () => {
+            const result = tool.normalizeArgs({
+                claim_type: 'no_callers',
+                file: 'src/service.ts',
+                line: 42,
+                symbol: 'helperFn',
+            });
+
+            expect(result.claim_type).toBe('no_callers');
+        });
+
+        it('should handle empty string claim_type', () => {
+            const result = tool.normalizeArgs({
+                claim_type: '',
+                file: 'src/service.ts',
+                line: 42,
+                symbol: 'parsedDiff',
+            });
+
+            expect(result.claim_type).toBe('symbol_unused');
+        });
+    });
 });

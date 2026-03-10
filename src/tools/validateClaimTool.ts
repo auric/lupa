@@ -4,6 +4,7 @@ import { toolSuccess } from '../types/toolResultTypes';
 import type { ToolResult } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import type { LspValidationService } from '../services/lspValidationService';
+import { Log } from '../services/loggingService';
 
 export class ValidateClaimTool extends BaseTool {
     name = 'validate_claim';
@@ -41,6 +42,23 @@ export class ValidateClaimTool extends BaseTool {
 
     constructor(private readonly lspValidation: LspValidationService) {
         super();
+    }
+
+    override normalizeArgs(
+        args: Record<string, unknown>
+    ): Record<string, unknown> {
+        const claimType =
+            typeof args.claim_type === 'string' ? args.claim_type.trim() : '';
+        if (!claimType) {
+            const inferred = args.expected_value
+                ? 'type_mismatch'
+                : 'symbol_unused';
+            Log.warn(
+                `validate_claim: claim_type missing — defaulting to '${inferred}' for symbol '${args.symbol}'`
+            );
+            return { ...args, claim_type: inferred };
+        }
+        return args;
     }
 
     async execute(
