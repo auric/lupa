@@ -5,7 +5,6 @@ import {
     createMockExecutionContext,
     createCancelledExecutionContext,
 } from './testUtils/mockFactories';
-import { FindingStore } from '../sessions/findingStore';
 
 // Mock the logging service
 vi.mock('../services/loggingService', () => ({
@@ -153,151 +152,14 @@ const x = 1;
         });
     });
 
-    describe('FindingStore appendix', () => {
-        it('returns review content as-is when no findings in store', async () => {
-            const store = new FindingStore();
-            const ctx = createMockExecutionContext({ findingStore: store });
+    describe('review content', () => {
+        it('returns review content as-is', async () => {
+            const ctx = createMockExecutionContext();
             const content = 'Review with no findings detected.';
 
             const result = await tool.execute({ review_content: content }, ctx);
 
             expect(result.data).toBe(content);
-        });
-
-        it('appends finding appendix when FindingStore has findings', async () => {
-            const store = new FindingStore();
-            store.record({
-                agentId: 'root',
-                severity: 'HIGH',
-                category: 'security',
-                title: 'SQL injection risk',
-                file: 'src/db.ts',
-                lineRange: [5, 10],
-                description: 'Unsanitized input in query.',
-                supportingToolCalls: ['read_file'],
-                disproof: {
-                    attempted: true,
-                    method: 'checked sanitization',
-                    result: 'none found',
-                },
-                verifiableClaims: [],
-            });
-            const ctx = createMockExecutionContext({ findingStore: store });
-
-            const result = await tool.execute(
-                { review_content: 'Base review content here.' },
-                ctx
-            );
-
-            expect(result.data).toContain('Base review content here.');
-            expect(result.data).toContain('Structured Findings');
-            expect(result.data).toContain('SQL injection risk');
-            expect(result.data).toContain('src/db.ts:5-10');
-        });
-
-        it('groups findings by severity in correct order', async () => {
-            const store = new FindingStore();
-            // Record in non-order to verify sorting
-            store.record({
-                agentId: 'root',
-                severity: 'LOW',
-                category: 'style',
-                title: 'Naming convention',
-                file: 'src/a.ts',
-                lineRange: [1, 1],
-                description: 'Low severity item.',
-                supportingToolCalls: [],
-                disproof: {
-                    attempted: false,
-                    method: '',
-                    result: '',
-                },
-                verifiableClaims: [],
-            });
-            store.record({
-                agentId: 'root',
-                severity: 'CRITICAL',
-                category: 'security',
-                title: 'RCE vulnerability',
-                file: 'src/b.ts',
-                lineRange: [2, 3],
-                description: 'Critical severity item.',
-                supportingToolCalls: [],
-                disproof: {
-                    attempted: true,
-                    method: 'test',
-                    result: 'confirmed',
-                },
-                verifiableClaims: [],
-            });
-            const ctx = createMockExecutionContext({ findingStore: store });
-
-            const result = await tool.execute(
-                { review_content: 'Review content here.' },
-                ctx
-            );
-
-            // Severity order in appendix should be critical before low
-            const criticalIdx = result.data!.indexOf('RCE vulnerability');
-            const lowIdx = result.data!.indexOf('Naming convention');
-            expect(criticalIdx).toBeLessThan(lowIdx);
-        });
-
-        it('appends LSP verification tags', async () => {
-            const store = new FindingStore();
-            const f1 = store.record({
-                agentId: 'root',
-                severity: 'HIGH',
-                category: 'type-safety',
-                title: 'Verified finding',
-                file: 'src/v.ts',
-                lineRange: [1, 5],
-                description: 'This was verified by LSP.',
-                supportingToolCalls: ['validate_claim'],
-                disproof: {
-                    attempted: true,
-                    method: 'lsp',
-                    result: 'confirmed',
-                },
-                verifiableClaims: [],
-            });
-            store.updateLspValidation(f1.id, {
-                status: 'verified',
-                details: 'LSP confirmed',
-                claimResults: [],
-            });
-
-            const f2 = store.record({
-                agentId: 'root',
-                severity: 'MEDIUM',
-                category: 'type-safety',
-                title: 'Refuted finding',
-                file: 'src/r.ts',
-                lineRange: [10, 15],
-                description: 'This was refuted by LSP.',
-                supportingToolCalls: ['validate_claim'],
-                disproof: {
-                    attempted: true,
-                    method: 'lsp',
-                    result: 'refuted',
-                },
-                verifiableClaims: [],
-            });
-            store.updateLspValidation(f2.id, {
-                status: 'refuted',
-                details: 'LSP refuted',
-                claimResults: [],
-            });
-
-            const ctx = createMockExecutionContext({ findingStore: store });
-
-            const result = await tool.execute(
-                { review_content: 'Review with LSP findings.' },
-                ctx
-            );
-
-            expect(result.data).toContain('✅ LSP-verified');
-            expect(result.data).toContain('❌ LSP-refuted');
         });
 
         it('returns success with isCompletion metadata', async () => {
