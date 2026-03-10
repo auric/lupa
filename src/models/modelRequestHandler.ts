@@ -207,27 +207,45 @@ export class ModelRequestHandler {
                 linkedTokenSource.cancel();
             });
 
+            let timeoutReject: ((error: Error) => void) | undefined;
+
+            const resetTimeout = () => {
+                if (timeoutId !== undefined) {
+                    clearTimeout(timeoutId);
+                }
+                timeoutId = setTimeout(() => {
+                    Log.warn(
+                        `[Timeout] LLM request abandoned after ${timeoutMs}ms of inactivity - cancelling stream`
+                    );
+                    linkedTokenSource.cancel();
+                    timeoutReject?.(
+                        TimeoutError.create(
+                            'LLM request (inactivity)',
+                            timeoutMs
+                        )
+                    );
+                }, timeoutMs);
+            };
+
             const streamPromise = ModelRequestHandler.sendAndConsumeStream(
                 model,
                 messages,
                 options,
-                linkedTokenSource.token
+                linkedTokenSource.token,
+                resetTimeout
             );
             // Suppress late rejections from stream consumption if timeout/cancellation wins the race.
             // Must be attached before any early throws to prevent unhandled rejections.
             streamPromise.catch(() => {});
 
             const timeoutPromise = new Promise<never>((_, reject) => {
-                timeoutId = setTimeout(() => {
-                    Log.warn(
-                        `[Timeout] LLM request abandoned after ${timeoutMs}ms - cancelling stream consumption`
-                    );
-                    linkedTokenSource.cancel();
-                    reject(TimeoutError.create('LLM request', timeoutMs));
-                }, timeoutMs);
+                timeoutReject = reject;
             });
 
-            // Race the stream consumption against timeout
+            // Start the initial inactivity timer
+            resetTimeout();
+
+            // Race the stream consumption against inactivity timeout
             // When timeout wins, it also cancels the linked token to stop the stream
             return await Promise.race([streamPromise, timeoutPromise]);
         } finally {
@@ -247,16 +265,18 @@ export class ModelRequestHandler {
         model: vscode.LanguageModelChat,
         messages: vscode.LanguageModelChatMessage[],
         options: vscode.LanguageModelChatRequestOptions,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        onActivity?: () => void
     ): Promise<ToolCallResponse> {
         const response = await model.sendRequest(messages, options, token);
+        onActivity?.();
 
         let responseText = '';
         const toolCalls: ToolCall[] = [];
 
         for await (const chunk of response.stream) {
-            // Check cancellation between chunks for responsive cancellation
-            // on slow networks where chunks arrive infrequently
+            onActivity?.();
+
             if (token.isCancellationRequested) {
                 throw new vscode.CancellationError();
             }
