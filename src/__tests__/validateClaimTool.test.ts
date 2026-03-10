@@ -204,4 +204,48 @@ describe('ValidateClaimTool', () => {
 
         expect(toolResult.data).not.toContain('Ground truth');
     });
+
+    it('handles no_implementation claim type', async () => {
+        const result: ClaimValidationResult = {
+            claimType: 'no_implementation',
+            verified: true,
+            confidence: 'definitive',
+            evidence: 'No implementation found for declared interface method',
+            groundTruth: 'Interface method has no concrete implementation',
+        };
+        vi.mocked(mockLsp.validate).mockResolvedValue(result);
+
+        const ctx = createMockExecutionContext();
+        const toolResult = await tool.execute(
+            {
+                claim_type: 'no_implementation',
+                file: 'src/interfaces.ts',
+                line: 15,
+                symbol: 'processData',
+            },
+            ctx
+        );
+
+        expect(toolResult.success).toBe(true);
+        expect(toolResult.data).toContain('✅');
+        expect(toolResult.data).toContain('VERIFIED');
+        expect(toolResult.data).toContain('no_implementation');
+        expect(toolResult.data).toContain('Confidence: definitive');
+        expect(toolResult.data).toContain(
+            'Evidence: No implementation found for declared interface method'
+        );
+        expect(toolResult.data).toContain(
+            'Ground truth: Interface method has no concrete implementation'
+        );
+        expect(mockLsp.validate).toHaveBeenCalledWith(
+            {
+                claimType: 'no_implementation',
+                file: 'src/interfaces.ts',
+                line: 15,
+                symbol: 'processData',
+                expectedValue: undefined,
+            },
+            ctx.cancellationToken
+        );
+    });
 });

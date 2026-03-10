@@ -11,6 +11,7 @@ import type { GitOperationsManager } from './gitOperationsManager';
 import {
     withCancellableTimeout,
     isCancellationError,
+    isTimeoutError,
 } from '../utils/asyncUtils';
 import { getErrorMessage } from '../utils/errorUtils';
 import { extractHoverText } from '../utils/hoverTextExtractor';
@@ -91,6 +92,7 @@ export class DiffEnricher implements vscode.Disposable {
             const enriched: (EnrichedSymbol | undefined)[] = Array.from<
                 EnrichedSymbol | undefined
             >({ length: candidates.length });
+            const symbolTimeouts = { count: 0 };
             await this.withConcurrency(
                 candidates,
                 CONCURRENCY_LIMIT,
@@ -105,7 +107,8 @@ export class DiffEnricher implements vscode.Disposable {
                     try {
                         enriched[index] = await this.enrichSymbol(
                             candidate,
-                            token
+                            token,
+                            symbolTimeouts
                         );
                     } catch (error) {
                         if (isCancellationError(error)) {
@@ -115,6 +118,7 @@ export class DiffEnricher implements vscode.Disposable {
                     }
                 }
             );
+            timeoutCount += symbolTimeouts.count;
 
             const symbols = enriched
                 .filter((s): s is EnrichedSymbol => s !== undefined)
@@ -199,7 +203,8 @@ export class DiffEnricher implements vscode.Disposable {
 
     private async enrichSymbol(
         candidate: SymbolCandidate,
-        token: vscode.CancellationToken
+        token: vscode.CancellationToken,
+        symbolTimeouts: { count: number }
     ): Promise<EnrichedSymbol | undefined> {
         const { symbol, fileUri, filePath } = candidate;
 
@@ -245,6 +250,9 @@ export class DiffEnricher implements vscode.Disposable {
             if (isCancellationError(error)) {
                 throw error;
             }
+            if (isTimeoutError(error)) {
+                symbolTimeouts.count++;
+            }
         }
 
         try {
@@ -277,6 +285,9 @@ export class DiffEnricher implements vscode.Disposable {
             if (isCancellationError(error)) {
                 throw error;
             }
+            if (isTimeoutError(error)) {
+                symbolTimeouts.count++;
+            }
         }
 
         return {
@@ -297,7 +308,7 @@ export class DiffEnricher implements vscode.Disposable {
     ): Array<{ start: number; end: number }> {
         return hunks.map((hunk) => ({
             start: hunk.newStart,
-            end: hunk.newStart + hunk.newLines - 1,
+            end: hunk.newStart + Math.max(hunk.newLines, 1) - 1,
         }));
     }
 
@@ -363,7 +374,8 @@ export class DiffEnricher implements vscode.Disposable {
         // Go: _test.go, JS/TS: *.test.* / *.spec.*, Python: test_* / *_test.py,
         // Java/C#: *Test.java / *Tests.cs, Ruby: *_spec.rb / *_test.rb
         return (
-            /[._-](test|spec|tests)s?\b/.test(fileName) ||
+            /[._-](tests?|specs?)\b/.test(fileName) ||
+            /(tests?|specs?)\.[^.]+$/.test(fileName) ||
             fileName.startsWith('test_')
         );
     }

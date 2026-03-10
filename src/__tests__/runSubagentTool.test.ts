@@ -1537,6 +1537,35 @@ describe('RunSubagentTool', () => {
         });
     });
 
+    describe('FindingStore Propagation', () => {
+        it('should pass findingStore from context to child executor', async () => {
+            const mockFindingStore = { record: vi.fn(), getAll: vi.fn() };
+            const mockExecutor = createMockExecutor();
+            const tool = new RunSubagentTool(workspaceSettings);
+            const context = createMockExecutionContext({
+                subagentExecutor: mockExecutor,
+                subagentSessionManager: sessionManager,
+                findingStore: mockFindingStore as any,
+            });
+
+            await tool.execute(
+                {
+                    task: 'Investigate the authentication flow thoroughly',
+                },
+                context
+            );
+
+            expect(mockExecutor.execute).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                expect.any(Number),
+                expect.objectContaining({
+                    findingStore: mockFindingStore,
+                })
+            );
+        });
+    });
+
     describe('extractFilesExamined', () => {
         it('should only extract files from get_file_diff calls', () => {
             const toolCalls = [

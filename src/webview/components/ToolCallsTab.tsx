@@ -715,6 +715,7 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                             type="text"
                             className="tc-filter-input"
                             placeholder="Filter by tool name..."
+                            aria-label="Filter tool calls by name"
                             value={filterText}
                             onChange={(e) => setFilterText(e.target.value)}
                         />
@@ -735,22 +736,25 @@ export const ToolCallsTab = ({ toolCalls, onCopy }: ToolCallsTabProps) => {
                     )}
                 </div>
                 <div className="tc-filter-chips">
-                    {sortedToolNames.map(([name, count]) => (
-                        <button
-                            key={name}
-                            className={`tc-filter-chip ${
-                                filterText === name
-                                    ? 'tc-filter-chip--active'
-                                    : ''
-                            }`}
-                            onClick={() => handleChipClick(name)}
-                        >
-                            {name}
-                            <span className="tc-filter-chip-count">
-                                {count}
-                            </span>
-                        </button>
-                    ))}
+                    {sortedToolNames.map(([name, count]) => {
+                        const isActive =
+                            trimmedFilter.toLowerCase() === name.toLowerCase();
+                        return (
+                            <button
+                                key={name}
+                                className={`tc-filter-chip ${
+                                    isActive ? 'tc-filter-chip--active' : ''
+                                }`}
+                                aria-pressed={isActive}
+                                onClick={() => handleChipClick(name)}
+                            >
+                                {name}
+                                <span className="tc-filter-chip-count">
+                                    {count}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 

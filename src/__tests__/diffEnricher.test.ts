@@ -225,16 +225,17 @@ describe('DiffEnricher', () => {
             symbols
         );
 
-        // Return varying reference counts per symbol
-        let callIndex = 0;
+        // Return varying reference counts per symbol based on position (deterministic,
+        // not dependent on call order — safe under concurrent processing)
         executeCommandSpy.mockImplementation(
             async (command: string, ..._args: any[]) => {
                 if (command === 'vscode.executeHoverProvider') {
                     return [{ contents: [{ value: 'some type' }] }];
                 }
                 if (command === 'vscode.executeReferenceProvider') {
-                    const count = callIndex++;
-                    // Return `count` mock Location objects
+                    // Use the symbol's line position as its reference count
+                    const position = _args[1] as vscode.Position;
+                    const count = position?.line ?? 0;
                     return Array.from(
                         { length: count },
                         () =>
