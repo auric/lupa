@@ -11,14 +11,12 @@ import {
     isCancellationError,
     rethrowIfCancellationOrTimeout,
 } from '../utils/asyncUtils';
-import { AsyncSemaphore } from '../utils/asyncSemaphore';
 import { getErrorMessage } from '../utils/errorUtils';
 import { extractHoverText } from '../utils/hoverTextExtractor';
 import { Log } from './loggingService';
 import type { GitOperationsManager } from './gitOperationsManager';
 
 const LSP_VALIDATION_TIMEOUT = 2000;
-const LSP_VALIDATION_CONCURRENCY = 4;
 
 export class LspValidationService implements vscode.Disposable {
     constructor(private readonly gitOps: GitOperationsManager) {}
@@ -77,18 +75,6 @@ export class LspValidationService implements vscode.Disposable {
                 `LSP error: ${getErrorMessage(error)}`
             );
         }
-    }
-
-    async validateBatch(
-        requests: ClaimValidationRequest[],
-        token: vscode.CancellationToken
-    ): Promise<ClaimValidationResult[]> {
-        const semaphore = new AsyncSemaphore(LSP_VALIDATION_CONCURRENCY);
-        return Promise.all(
-            requests.map((request) =>
-                semaphore.run(() => this.validate(request, token), token)
-            )
-        );
     }
 
     private resolveFileUri(filePath: string): vscode.Uri | undefined {
@@ -293,7 +279,17 @@ export class LspValidationService implements vscode.Disposable {
             token
         );
 
-        if (!definitions || definitions.length === 0) {
+        if (definitions === undefined) {
+            if (token.isCancellationRequested) {
+                throw new vscode.CancellationError();
+            }
+            return this.inconclusive(
+                request.claimType,
+                'LSP returned no result'
+            );
+        }
+
+        if (definitions.length === 0) {
             return {
                 claimType: request.claimType,
                 verified: true,

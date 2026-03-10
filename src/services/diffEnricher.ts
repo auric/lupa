@@ -306,10 +306,12 @@ export class DiffEnricher implements vscode.Disposable {
     private getChangedLineRanges(
         hunks: DiffHunkLine[]
     ): Array<{ start: number; end: number }> {
-        return hunks.map((hunk) => ({
-            start: hunk.newStart,
-            end: hunk.newStart + Math.max(hunk.newLines, 1) - 1,
-        }));
+        return hunks
+            .filter((hunk) => hunk.newLines > 0)
+            .map((hunk) => ({
+                start: hunk.newStart,
+                end: hunk.newStart + hunk.newLines - 1,
+            }));
     }
 
     private symbolOverlapsChanges(
