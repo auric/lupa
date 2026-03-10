@@ -11,26 +11,28 @@ export class RecordFindingTool extends BaseTool {
         'Findings recorded here survive timeout — unrecorded findings are LOST. ' +
         'Call this for every issue that survives disproof.';
 
-    schema = z
-        .object({
-            severity: z
-                .enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
-                .describe('Finding severity'),
-            title: z.string().describe('Brief finding title'),
-            file: z.string().describe('Primary file path affected'),
-            line: z.number().describe('Primary line number (1-indexed)'),
-            description: z
-                .string()
-                .describe(
-                    'Detailed description: what is wrong, what tool calls confirmed it, and what could go wrong'
-                ),
-            disproof_note: z
-                .string()
-                .describe(
-                    'How you tried to disprove this finding and why it survived (e.g., "Checked callers with find_usages — all 3 callers pass unvalidated input")'
-                ),
-        })
-        .strict();
+    schema = z.object({
+        severity: z
+            .string()
+            .transform((s) => s.toUpperCase())
+            .pipe(z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']))
+            .describe('Finding severity: CRITICAL, HIGH, MEDIUM, or LOW'),
+        title: z.string().describe('Brief finding title'),
+        file: z.string().describe('Primary file path affected'),
+        line: z.coerce.number().describe('Primary line number (1-indexed)'),
+        description: z
+            .string()
+            .describe(
+                'Detailed description: what is wrong, what tool calls confirmed it, and what could go wrong'
+            ),
+        disproof_note: z
+            .string()
+            .describe(
+                'How you tried to disprove this finding and why it survived (e.g., "Checked callers with find_usages — all 3 callers pass unvalidated input")'
+            )
+            .optional()
+            .default(''),
+    });
 
     async execute(
         args: z.infer<typeof this.schema>,

@@ -10,7 +10,7 @@ describe('ThinkTool', () => {
 
     it('should have correct name and description', () => {
         expect(tool.name).toBe('think');
-        expect(tool.description).toContain('step-by-step reasoning');
+        expect(tool.description).toContain('REQUIRED reasoning checkpoint');
     });
 
     it('should return analysis guidance with topic heading', async () => {

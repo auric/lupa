@@ -174,7 +174,11 @@ Use relative_path to scope searches: "src/services" or "src/auth/login.ts".`;
                     `Symbol '${namePath}' not found in searched files (search was limited due to file count). Try narrowing search scope with relative_path.`
                 );
             }
-            return toolError(`Symbol '${namePath}' not found`);
+            return toolError(
+                `Symbol '${namePath}' not found. Ensure you use the symbol NAME only ` +
+                    `(e.g., "MyClass" not "file.MyClass", "execute" not "BaseTool.execute"). ` +
+                    `Tool identifiers like "think" or "record_finding" are string constants, not code symbols.`
+            );
         }
 
         const formattedResults = await this.formatSymbolResults(

@@ -58,7 +58,7 @@ Your parent agent already identified which files belong to your investigation �
    - **1-3 files**: Call \`get_file_diff\` ONCE with all file paths in the \`file_paths\` array, e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts", "c.ts"]})\`. Then investigate using steps 2-5 below.
    - **4+ files**: You **MUST** spawn sub-agents. Read 1 key diff to orient, then follow the **Decomposition Strategy** below.
 
-2. ⚠️ **Analyze Before Investigating**: Call \`think\` to organize what you observed in the diff:
+2. ⚠️ **Reasoning Checkpoint #1**: Call \`think\` to plan your investigation:
    - topic: "[filename] changes"
    - analysis: what changed, what looks risky, what looks correct
    - identified_risks: specific concerns to verify with tools
@@ -73,17 +73,22 @@ Your parent agent already identified which files belong to your investigation �
 
 6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks? Update your next_action.
+
 Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
 
-7. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
+8. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout. Before each record_finding, call \`think\` (checkpoint #3) to verify the conclusion holds.
 
 ### Example Investigation Flow
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
-→ think({topic: "auth.ts changes", ...risks: ["Timing attack on password comparison"], next_action: "find_usages for login()"})
+→ think({topic: "auth.ts changes", identified_risks: ["Timing attack on password comparison"], next_action: "find_usages for login()"})
 → find_usages({symbol: "login", file: "src/auth.ts"})
+→ find_symbol({name_path: "login", include_body: true})
+→ think({topic: "evidence synthesis", analysis: "3 callers found, none use constant-time comparison...", next_action: "validate_claim"})
 → validate_claim({claim: "login() has no constant-time comparison", symbol: "login", file: "src/auth.ts"})
-→ If confirmed: record_finding(...)  |  If disproved: move to next file
+→ think({topic: "pre-finding check", analysis: "LSP confirms no timing-safe import. Real issue.", next_action: "record finding"})
+→ record_finding({severity: "HIGH", title: "Timing attack on password comparison", file: "src/auth.ts", line: 42, description: "...", disproof_note: "Checked all 3 callers..."})
 \`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
@@ -91,7 +96,7 @@ get_file_diff({file_paths: ["src/auth.ts"]})
                   ? `
 1. **Read the Diff**: Call \`get_file_diff\` ONCE with ALL file paths in the \`file_paths\` array (e.g. \`get_file_diff({file_paths: ["a.ts", "b.ts"]})\`). This gives you orientation — what changed and where.
 
-2. ⚠️ **Analyze Before Investigating**: Call \`think\` to organize what you observed:
+2. ⚠️ **Reasoning Checkpoint #1**: Call \`think\` to plan your investigation:
    - topic: "[filename] changes"
    - analysis: what changed, what looks risky, what looks correct
    - identified_risks: specific concerns to verify with tools
@@ -106,24 +111,28 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 
 6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
-7. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks?
+
+8. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout. Before each record_finding, call \`think\` (checkpoint #3) to verify the conclusion holds.
 
 Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
 
 ### Example Investigation Flow
 \`\`\`
 get_file_diff({file_paths: ["src/auth.ts"]})
-→ think({topic: "auth.ts changes", ...risks: ["Timing attack on password comparison"], next_action: "find_usages for login()"})
+→ think({topic: "auth.ts changes", identified_risks: ["Timing attack"], next_action: "find_usages for login()"})
 → find_usages({symbol: "login", file: "src/auth.ts"})
-→ validate_claim({claim: "login() has no constant-time comparison", symbol: "login", file: "src/auth.ts"})
-→ If confirmed: record_finding(...)  |  If disproved: move to next file
+→ think({topic: "evidence synthesis", analysis: "3 callers found, none handle timing...", next_action: "validate_claim"})
+→ validate_claim({claim: "login() has no constant-time comparison", ...})
+→ think({topic: "pre-finding check", analysis: "LSP confirms — real issue", next_action: "record finding"})
+→ record_finding({severity: "HIGH", ...})
 \`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
                   : `
 1. **Review Parent Context**: Study the code and information the parent agent provided in context above — this is your primary input.
 
-2. ⚠️ **Analyze Before Investigating**: Call \`think\` to organize what you observed:
+2. ⚠️ **Reasoning Checkpoint #1**: Call \`think\` to plan your investigation:
    - topic: "[area] review"
    - analysis: what you see in the context, what looks risky, what looks correct
    - identified_risks: specific concerns to verify with tools
@@ -138,7 +147,9 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 
 6. **Verify Factual Claims**: For claims like "symbol is unused", "type is wrong", or "no callers handle this" — call \`validate_claim\` for compiler-grade LSP verification. Its result overrides your reasoning.
 
-7. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout.`;
+7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks?
+
+8. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout. Before each record_finding, call \`think\` (checkpoint #3) to verify the conclusion holds.`;
 
         const recursionSection = canRecurse
             ? `
@@ -263,7 +274,7 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` after reading diffs — this organizes your analysis and prevents false positives' : '- ⚠️ You MUST call \\`think\\` after reviewing context — this organizes your analysis and prevents false positives'}
+${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 2-3 times: after reading diffs, after gathering evidence, and before recording findings' : '- ⚠️ You MUST call \\`think\\` at least 2-3 times: after reviewing context, after gathering evidence, and before recording findings'}
 - ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
 - For factual claims ("unused symbol", "wrong type", "no callers"): call \`validate_claim\` — its LSP result overrides your reasoning
 - Return partial findings if running low on iterations - partial evidence is valuable

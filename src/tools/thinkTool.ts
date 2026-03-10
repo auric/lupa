@@ -18,9 +18,11 @@ import { flexibleStringArray } from './schemaHelpers';
 export class ThinkTool extends BaseTool {
     name = 'think';
     description =
-        'Record your step-by-step reasoning about code changes, investigation progress, or context gaps. ' +
-        'Call after reading each file diff and before investigating further — this is how you organize analysis and catch issues. ' +
-        'Captures your analysis, identified risks, and planned next action in a structured format.';
+        'REQUIRED reasoning checkpoint. Call at three points: ' +
+        '(1) after reading diffs — plan what to investigate, ' +
+        '(2) after gathering evidence — synthesize what tools found, does it confirm or disprove risks? ' +
+        '(3) before recording a finding — verify your conclusion holds under scrutiny. ' +
+        'Skipping checkpoints causes false positives and missed issues.';
 
     schema = z.object({
         topic: z
@@ -59,12 +61,12 @@ export class ThinkTool extends BaseTool {
         const riskCount = identified_risks?.length ?? 0;
         const riskNote =
             riskCount > 0
-                ? `${riskCount} risk(s) to verify — use find_usages/find_symbol/search_for_pattern to attempt disproof before recording.`
+                ? `${riskCount} risk(s) to verify with tools.`
                 : 'No risks identified.';
-        const actionNote = next_action ? ` Next: ${next_action}` : '';
+        const actionNote = next_action ? ` Next: ${next_action}.` : '';
 
         return toolSuccess(
-            `✅ Thinking recorded: "${topic}". ${riskNote}${actionNote}`
+            `Checkpoint "${topic}": ${riskNote}${actionNote} Call think again after your next investigation step.`
         );
     }
 }
