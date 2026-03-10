@@ -1,6 +1,12 @@
 import type { VerifiableClaim, ClaimValidationResult } from './claimTypes';
 
-export type FindingSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export const FINDING_SEVERITIES = [
+    'CRITICAL',
+    'HIGH',
+    'MEDIUM',
+    'LOW',
+] as const;
+export type FindingSeverity = (typeof FINDING_SEVERITIES)[number];
 
 export interface RecordedFinding {
     id: string;

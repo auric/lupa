@@ -4,6 +4,7 @@ import { toolSuccess, toolError } from '../types/toolResultTypes';
 import type { ToolResult } from '../types/toolResultTypes';
 import type { ExecutionContext } from '../types/executionContext';
 import type { FindingBias } from '../models/modelCalibration';
+import { FINDING_SEVERITIES } from '../types/findingTypes';
 
 export class RecordFindingTool extends BaseTool {
     name = 'record_finding';
@@ -17,7 +18,7 @@ export class RecordFindingTool extends BaseTool {
         severity: z
             .string()
             .transform((s) => s.toUpperCase())
-            .pipe(z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']))
+            .pipe(z.enum(FINDING_SEVERITIES))
             .describe('Finding severity: CRITICAL, HIGH, MEDIUM, or LOW'),
         title: z.string().describe('Brief finding title'),
         file: z.string().describe('Primary file path affected'),
