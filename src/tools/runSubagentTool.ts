@@ -82,6 +82,23 @@ MANDATORY when: 4+ files to review, security-critical code, complex dependency c
         });
     }
 
+    override normalizeArgs(
+        args: Record<string, unknown>
+    ): Record<string, unknown> {
+        const task = typeof args.task === 'string' ? args.task.trim() : '';
+        const ctx = typeof args.context === 'string' ? args.context.trim() : '';
+        if (
+            task.length < SubagentLimits.MIN_TASK_LENGTH &&
+            ctx.length >= SubagentLimits.MIN_TASK_LENGTH
+        ) {
+            Log.warn(
+                `run_subagent: task field empty/short — using context field as task (${ctx.length} chars)`
+            );
+            return { ...args, task: ctx, context: undefined };
+        }
+        return args;
+    }
+
     async execute(
         args: z.infer<typeof this.schema>,
         context: ExecutionContext

@@ -393,6 +393,38 @@ describe('ToolExecutor', () => {
             expect(result.error).toContain('Invalid arguments');
             expect(result.error).toContain('message');
         });
+
+        it('should call normalizeArgs before schema validation', async () => {
+            const normalizeTool: ITool = {
+                name: 'normalize_tool',
+                description: 'Tool with normalizeArgs',
+                schema: z.object({ value: z.string().min(5) }),
+                getVSCodeTool: () => ({
+                    name: 'normalize_tool',
+                    description: 'test',
+                    inputSchema: {},
+                }),
+                normalizeArgs: (args: Record<string, unknown>) => {
+                    // Swap 'data' into 'value' if value is missing
+                    if (!args.value && args.data) {
+                        return { ...args, value: args.data, data: undefined };
+                    }
+                    return args;
+                },
+                execute: async (args): Promise<ToolResult> =>
+                    toolSuccess(`got: ${args.value}`),
+            };
+
+            toolRegistry.registerTool(normalizeTool);
+
+            // Without normalizeArgs, this would fail validation (no 'value' field)
+            const result = await toolExecutor.executeTool('normalize_tool', {
+                data: 'hello world',
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.result).toBe('got: hello world');
+        });
     });
 
     describe('Response Size Validation', () => {

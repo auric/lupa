@@ -127,6 +127,59 @@ describe('RunSubagentTool', () => {
         });
     });
 
+    describe('normalizeArgs', () => {
+        it('should swap context into task when task is empty/short', () => {
+            const tool = new RunSubagentTool(workspaceSettings);
+            const longContext =
+                'Investigate the authentication flow in detail for security issues';
+
+            const result = tool.normalizeArgs({
+                task: '',
+                context: longContext,
+            });
+
+            expect(result.task).toBe(longContext);
+            expect(result.context).toBeUndefined();
+        });
+
+        it('should swap context into task when task is missing', () => {
+            const tool = new RunSubagentTool(workspaceSettings);
+            const longContext =
+                'Investigate the authentication flow in detail for security issues';
+
+            const result = tool.normalizeArgs({ context: longContext });
+
+            expect(result.task).toBe(longContext);
+            expect(result.context).toBeUndefined();
+        });
+
+        it('should not modify args when task is already valid', () => {
+            const tool = new RunSubagentTool(workspaceSettings);
+            const validTask =
+                'Investigate the authentication flow in detail for security issues';
+
+            const result = tool.normalizeArgs({
+                task: validTask,
+                context: 'some context',
+            });
+
+            expect(result.task).toBe(validTask);
+            expect(result.context).toBe('some context');
+        });
+
+        it('should not swap when both task and context are short', () => {
+            const tool = new RunSubagentTool(workspaceSettings);
+
+            const result = tool.normalizeArgs({
+                task: 'short',
+                context: 'also short',
+            });
+
+            expect(result.task).toBe('short');
+            expect(result.context).toBe('also short');
+        });
+    });
+
     describe('Session Limits', () => {
         it('should track spawned subagents', async () => {
             const mockExecutor = createMockExecutor();

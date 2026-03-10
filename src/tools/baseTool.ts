@@ -20,6 +20,10 @@ export abstract class BaseTool implements ITool {
         };
     }
 
+    normalizeArgs(args: Record<string, unknown>): Record<string, unknown> {
+        return args;
+    }
+
     abstract execute(
         args: z.infer<this['schema']>,
         context: ExecutionContext

@@ -137,9 +137,15 @@ export class ToolExecutor {
                 };
             }
 
+            // Normalize args before validation (handles model-specific quirks like GPT-4.1
+            // putting run_subagent task content in the context field)
+            const normalizedArgs = tool.normalizeArgs
+                ? tool.normalizeArgs(args)
+                : args;
+
             // Validate args with Zod schema before execution
             // VS Code's LM API should validate via JSON Schema, but some models bypass it
-            const parseResult = tool.schema.safeParse(args);
+            const parseResult = tool.schema.safeParse(normalizedArgs);
             if (!parseResult.success) {
                 const zodError = parseResult.error;
                 const errorDetails = zodError.issues

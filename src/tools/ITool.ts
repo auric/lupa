@@ -38,6 +38,13 @@ export interface ITool {
     getVSCodeTool(): vscode.LanguageModelChatTool;
 
     /**
+     * Normalize raw LLM arguments before schema validation.
+     * Override in tools where LLMs commonly misplace fields.
+     * Default: identity (returns args unchanged).
+     */
+    normalizeArgs?(args: Record<string, unknown>): Record<string, unknown>;
+
+    /**
      * Execute the tool with validated arguments.
      *
      * @param args - Validated arguments matching the schema
