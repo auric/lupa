@@ -77,7 +77,12 @@ Your parent agent already identified which files belong to your investigation �
 
 Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
 
-8. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout. Before each record_finding, call \`think\` (checkpoint #3) to verify the conclusion holds.
+8. **REQUIRED Verification Loop** — for EACH potential finding:
+   a. Call \`validate_claim\` to check the factual basis with LSP ground truth
+   b. If disproved → STOP. Do NOT record this finding
+   c. Call \`think\` (devil's advocate checkpoint): argue AGAINST your own finding — what's the strongest reason this is NOT a bug? Is there a centralized handler, design intent, or framework convention that explains it?
+   d. Only if the finding survives both validate_claim AND devil's advocate → call \`record_finding\`
+   ⚠️ Unrecorded findings are LOST on timeout — record each finding immediately after verification.
 
 ### Example Investigation Flow
 \`\`\`
@@ -85,10 +90,10 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 → think({topic: "auth.ts changes", identified_risks: ["Timing attack on password comparison"], next_action: "find_usages for login()"})
 → find_usages({symbol: "login", file: "src/auth.ts"})
 → find_symbol({name_path: "login", include_body: true})
-→ think({topic: "evidence synthesis", analysis: "3 callers found, none use constant-time comparison...", next_action: "validate_claim"})
-→ validate_claim({claim: "login() has no constant-time comparison", symbol: "login", file: "src/auth.ts"})
-→ think({topic: "pre-finding check", analysis: "LSP confirms no timing-safe import. Real issue.", next_action: "record finding"})
-→ record_finding({severity: "HIGH", title: "Timing attack on password comparison", file: "src/auth.ts", line: 42, description: "...", disproof_note: "Checked all 3 callers..."})
+→ think({topic: "evidence synthesis", analysis: "3 callers found, none use constant-time comparison...", next_action: "validate then record"})
+→ validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
+→ think({topic: "devil's advocate", analysis: "Could a middleware handle this? No — auth.ts is the direct entry point. Is timing-safe comparison needed here? Yes — password comparison.", next_action: "record finding"})
+→ record_finding({severity: "HIGH", title: "Timing attack on password comparison", file: "src/auth.ts", line: 42, description: "...", disproof_note: "validate_claim: timingSafeEqual not found. Devil's advocate: no middleware handles this."})
 \`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
@@ -113,7 +118,12 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 
 7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks?
 
-8. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout. Before each record_finding, call \`think\` (checkpoint #3) to verify the conclusion holds.
+8. **REQUIRED Verification Loop** — for EACH potential finding:
+   a. Call \`validate_claim\` to check the factual basis with LSP ground truth
+   b. If disproved → STOP. Do NOT record this finding
+   c. Call \`think\` (devil's advocate checkpoint): argue AGAINST your own finding — what's the strongest reason this is NOT a bug? Is there a centralized handler, design intent, or framework convention that explains it?
+   d. Only if the finding survives both validate_claim AND devil's advocate → call \`record_finding\`
+   ⚠️ Unrecorded findings are LOST on timeout — record each finding immediately after verification.
 
 Diff reading is orientation, not investigation. You must call tools from steps 3-6 before writing findings.
 
@@ -122,10 +132,10 @@ Diff reading is orientation, not investigation. You must call tools from steps 3
 get_file_diff({file_paths: ["src/auth.ts"]})
 → think({topic: "auth.ts changes", identified_risks: ["Timing attack"], next_action: "find_usages for login()"})
 → find_usages({symbol: "login", file: "src/auth.ts"})
-→ think({topic: "evidence synthesis", analysis: "3 callers found, none handle timing...", next_action: "validate_claim"})
-→ validate_claim({claim: "login() has no constant-time comparison", ...})
-→ think({topic: "pre-finding check", analysis: "LSP confirms — real issue", next_action: "record finding"})
-→ record_finding({severity: "HIGH", ...})
+→ think({topic: "evidence synthesis", analysis: "3 callers found, none handle timing...", next_action: "verify and record"})
+→ validate_claim({claim_type: "symbol_missing", symbol: "timingSafeEqual", file: "src/auth.ts", line: 12})
+→ think({topic: "devil's advocate", analysis: "No middleware or wrapper for this. Real issue.", next_action: "record finding"})
+→ record_finding({severity: "HIGH", ..., disproof_note: "validate_claim confirmed. Devil's advocate: no centralized handler."})
 \`\`\`
 
 **Do NOT call \`list_directory\` first** — your task already tells you which files to examine.`
@@ -149,7 +159,12 @@ get_file_diff({file_paths: ["src/auth.ts"]})
 
 7. ⚠️ **Reasoning Checkpoint #2**: Call \`think\` again to synthesize evidence from steps 3-6. Does the evidence confirm or disprove your initial risks?
 
-8. **Record findings progressively**: ⚠️ You MUST call \`record_finding\` for EVERY confirmed finding — unrecorded findings are LOST on timeout. Before each record_finding, call \`think\` (checkpoint #3) to verify the conclusion holds.`;
+8. **REQUIRED Verification Loop** — for EACH potential finding:
+   a. Call \`validate_claim\` to check the factual basis with LSP ground truth
+   b. If disproved → STOP. Do NOT record this finding
+   c. Call \`think\` (devil's advocate checkpoint): argue AGAINST your own finding — what's the strongest reason this is NOT a bug? Is there a centralized handler, design intent, or framework convention that explains it?
+   d. Only if the finding survives both validate_claim AND devil's advocate → call \`record_finding\`
+   ⚠️ Unrecorded findings are LOST on timeout — record each finding immediately after verification.`;
 
         const recursionSection = canRecurse
             ? `
@@ -274,10 +289,12 @@ ${hasDiffTools ? '- Use `get_file_diff` to read diffs for the files assigned in 
 - You CANNOT execute code or run tests
 
 **Self-Reflection:**
-${hasDiffTools ? '- ⚠️ You MUST call \\`think\\` at least 2-3 times: after reading diffs, after gathering evidence, and before recording findings' : '- ⚠️ You MUST call \\`think\\` at least 2-3 times: after reviewing context, after gathering evidence, and before recording findings'}
+${hasDiffTools ? "- ⚠️ You MUST call \\`think\\` at least 3 times: after reading diffs, after gathering evidence, and as devil's advocate before recording" : "- ⚠️ You MUST call \\`think\\` at least 3 times: after reviewing context, after gathering evidence, and as devil's advocate before recording"}
+- ⚠️ You MUST call \`validate_claim\` before EVERY \`record_finding\` — findings without LSP verification are untrustworthy
 - ⚠️ You MUST call \`record_finding\` for each confirmed finding — unrecorded findings are LOST
-- For factual claims ("unused symbol", "wrong type", "no callers"): call \`validate_claim\` — its LSP result overrides your reasoning
-- Return partial findings if running low on iterations - partial evidence is valuable
+- For factual claims ("unused symbol", "wrong type", "no callers"): \`validate_claim\` LSP result overrides your reasoning
+- **Devil's advocate**: Before recording, use \`think\` to argue AGAINST your finding. If you can't defeat the counter-argument, record it. If the counter-argument wins, drop it
+- Return partial findings if running low on iterations — partial evidence is valuable
 - Apply the quality standards from \`<quality_standards>\` above — they are your primary filter
 </constraints>`;
     }

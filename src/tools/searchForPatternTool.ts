@@ -6,6 +6,7 @@ import { RipgrepSearchService } from '../services/ripgrepSearchService';
 import { ToolResult, toolSuccess, toolError } from '../types/toolResultTypes';
 import { ExecutionContext } from '../types/executionContext';
 import { TimeoutError } from '../types/errorTypes';
+import { TokenConstants } from '../models/tokenConstants';
 import { isCancellationError, isTimeoutError } from '../utils/asyncUtils';
 import { Log } from '../services/loggingService';
 
@@ -198,6 +199,24 @@ Uses ripgrep for fast searching. Be careful with greedy quantifiers (use .*? ins
             }
 
             const formattedResult = this.ripgrepService.formatResults(results);
+
+            // Truncate oversized results instead of letting ToolExecutor reject them entirely.
+            // This gives the model partial results + guidance to narrow the search.
+            const maxChars = TokenConstants.MAX_TOOL_RESPONSE_CHARS;
+            if (formattedResult.length > maxChars) {
+                const truncated = formattedResult.slice(0, maxChars - 200);
+                const lastNewline = truncated.lastIndexOf('\n');
+                const cleanTruncated =
+                    lastNewline > 0
+                        ? truncated.slice(0, lastNewline)
+                        : truncated;
+                return toolSuccess(
+                    cleanTruncated +
+                        `\n\n[TRUNCATED — ${results.length} files matched, output was ${formattedResult.length} chars. ` +
+                        'Narrow your search with include_files, search_path, or a more specific pattern.]'
+                );
+            }
+
             return toolSuccess(formattedResult);
         } finally {
             if (timeoutId !== undefined) {

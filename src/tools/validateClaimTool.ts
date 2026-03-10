@@ -8,10 +8,12 @@ import type { LspValidationService } from '../services/lspValidationService';
 export class ValidateClaimTool extends BaseTool {
     name = 'validate_claim';
     description =
+        'REQUIRED before every record_finding call. ' +
         'Verify a factual claim about code using the Language Server Protocol (LSP). ' +
         'Returns compiler-grade ground truth — no LLM judgment involved. ' +
         'Use to verify claims like "symbol X is unused", "type Y is nullable", "function Z has no callers". ' +
-        'Claims with definitive results should override LLM reasoning.';
+        'If this tool disproves your claim, do NOT record the finding — drop it immediately. ' +
+        'LSP results override LLM reasoning.';
 
     schema = z
         .object({
@@ -61,11 +63,17 @@ export class ValidateClaimTool extends BaseTool {
             : result.confidence === 'inconclusive'
               ? '❓'
               : '❌';
+        const actionGuidance = result.verified
+            ? "Claim verified — proceed to devil's advocate think checkpoint, then record_finding if it survives."
+            : result.confidence === 'inconclusive'
+              ? 'Inconclusive — gather more evidence before recording. Consider dropping if no stronger evidence exists.'
+              : 'Claim DISPROVED — do NOT record this finding. Drop it and move on.';
         const formatted = [
             `${statusIcon} Claim "${args.claim_type}" for ${args.symbol}: ${result.verified ? 'VERIFIED' : 'NOT VERIFIED'}`,
             `Confidence: ${result.confidence}`,
             `Evidence: ${result.evidence}`,
             result.groundTruth ? `Ground truth: ${result.groundTruth}` : '',
+            `Next: ${actionGuidance}`,
         ]
             .filter(Boolean)
             .join('\n');

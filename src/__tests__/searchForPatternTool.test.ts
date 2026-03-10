@@ -481,6 +481,36 @@ describe('SearchForPatternTool', () => {
             expect(result.data).toContain('2: class First {');
             expect(result.data).toContain('4: class Second {');
         });
+
+        it('should truncate oversized results instead of returning raw', async () => {
+            const mockResults: RipgrepFileResult[] = [
+                {
+                    filePath: 'src/large.ts',
+                    matches: [
+                        {
+                            filePath: 'src/large.ts',
+                            lineNumber: 1,
+                            content: 'match',
+                            isContext: false,
+                        },
+                    ],
+                },
+            ];
+
+            mockRipgrepService.search.mockResolvedValue(mockResults);
+            // Return a result that exceeds 60000 chars
+            mockRipgrepService.formatResults.mockReturnValue('x'.repeat(70000));
+
+            const result = await searchForPatternTool.execute(
+                { pattern: 'match' },
+                createMockExecutionContext()
+            );
+
+            expect(result.success).toBe(true);
+            expect(result.data!.length).toBeLessThanOrEqual(60000);
+            expect(result.data).toContain('[TRUNCATED');
+            expect(result.data).toContain('Narrow your search');
+        });
     });
 
     describe('Search Options', () => {

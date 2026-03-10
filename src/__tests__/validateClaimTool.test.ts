@@ -65,6 +65,9 @@ describe('ValidateClaimTool', () => {
         expect(toolResult.data).toContain(
             'Ground truth: Symbol has no references'
         );
+        expect(toolResult.data).toContain(
+            "proceed to devil's advocate think checkpoint"
+        );
     });
 
     it('returns formatted text for non-verified claim', async () => {
@@ -91,6 +94,7 @@ describe('ValidateClaimTool', () => {
         expect(toolResult.data).toContain('❌');
         expect(toolResult.data).toContain('NOT VERIFIED');
         expect(toolResult.data).toContain('Confidence: definitive');
+        expect(toolResult.data).toContain('Claim DISPROVED');
     });
 
     it('returns formatted text for inconclusive claim', async () => {
@@ -117,6 +121,7 @@ describe('ValidateClaimTool', () => {
         expect(toolResult.data).toContain('❓');
         expect(toolResult.data).toContain('NOT VERIFIED');
         expect(toolResult.data).toContain('Confidence: inconclusive');
+        expect(toolResult.data).toContain('Inconclusive');
     });
 
     it('passes correct ClaimValidationRequest to service', async () => {

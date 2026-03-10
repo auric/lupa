@@ -75,13 +75,22 @@ export class GetFileDiffTool extends BaseTool {
                 continue;
             }
 
-            // Exact match first, then suffix match with path separator boundary.
+            // Exact match first, then case-insensitive match, then suffix match.
             // Prioritize exact match to avoid false ambiguity when "Button.tsx"
             // exists alongside "src/components/Button.tsx".
             const exactMatch = parsedDiff.find(
                 (f) => f.filePath === requestedPath
             );
             let fileDiff = exactMatch;
+
+            // Case-insensitive fallback — models often use PascalCase for camelCase files
+            if (!fileDiff) {
+                const caseInsensitiveMatch = parsedDiff.find(
+                    (f) =>
+                        f.filePath.toLowerCase() === requestedPath.toLowerCase()
+                );
+                fileDiff = caseInsensitiveMatch;
+            }
 
             if (!fileDiff) {
                 const suffixMatches = parsedDiff.filter((f) =>

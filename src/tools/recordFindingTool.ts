@@ -9,7 +9,8 @@ export class RecordFindingTool extends BaseTool {
     description =
         'MANDATORY: Record each confirmed finding IMMEDIATELY after verification. ' +
         'Findings recorded here survive timeout — unrecorded findings are LOST. ' +
-        'Call this for every issue that survives disproof.';
+        "PREREQUISITE: You must call validate_claim AND a devil's advocate think checkpoint before this tool. " +
+        'Only record findings that survived both LSP verification and your counter-argument.';
 
     schema = z.object({
         severity: z

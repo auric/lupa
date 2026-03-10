@@ -404,6 +404,20 @@ describe('GetFileDiffTool', () => {
         expect(result.data).toContain('src/services/auth.ts');
     });
 
+    it('matches files case-insensitively when exact match fails', async () => {
+        const context = createMockExecutionContext({
+            parsedDiff: createTestDiff(),
+        });
+        // Request with wrong case — RecordFindingTool.ts vs recordFindingTool.ts style
+        const result = await tool.execute(
+            { file_paths: ['src/services/Auth.ts'] },
+            context
+        );
+
+        expect(result.success).toBe(true);
+        expect(result.data).toContain('=== src/services/auth.ts ===');
+    });
+
     it('strips leading ./ from requested paths', async () => {
         const context = createMockExecutionContext({
             parsedDiff: createTestDiff(),
